@@ -1,6 +1,4 @@
-import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -11,7 +9,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Actions available from the event card long-press context menu.
-enum EventContextAction { about, games, standings, share }
+enum EventContextAction { share }
 
 /// Builds the canonical shareable URL for an event, matching the
 /// `lichess.org/broadcast/<slug>/<id>` shape but on chessever.com.
@@ -55,12 +53,11 @@ Future<void> showEventContextMenu({
   );
 
   if (action == null || !context.mounted) return;
-  await _handleEventContextAction(
-    context: context,
-    ref: ref,
-    model: model,
-    action: action,
-  );
+  switch (action) {
+    case EventContextAction.share:
+      await _shareEvent(context: context, model: model);
+      break;
+  }
 }
 
 /// Community events are calendar-only and not backed by a GroupBroadcast,
@@ -71,22 +68,6 @@ bool canShowFor(GroupEventCardModel model) {
 
 List<PopupMenuEntry<EventContextAction>> _buildMenuItems() {
   return [
-    _menuItem(
-      value: EventContextAction.about,
-      label: 'About event',
-      icon: Icons.info_outline,
-      hasBorder: false,
-    ),
-    _menuItem(
-      value: EventContextAction.games,
-      label: 'Games',
-      icon: Icons.sports_esports_outlined,
-    ),
-    _menuItem(
-      value: EventContextAction.standings,
-      label: 'Standings',
-      icon: Icons.emoji_events_outlined,
-    ),
     _menuItem(
       value: EventContextAction.share,
       label: 'Share',
@@ -99,88 +80,13 @@ PopupMenuItem<EventContextAction> _menuItem({
   required EventContextAction value,
   required String label,
   required IconData icon,
-  bool hasBorder = true,
 }) {
   return PopupMenuItem<EventContextAction>(
     value: value,
     padding: EdgeInsets.zero,
     height: 36.h,
-    child: _EventMenuRow(label: label, icon: icon, hasBorder: hasBorder),
+    child: _EventMenuRow(label: label, icon: icon),
   );
-}
-
-Future<void> _handleEventContextAction({
-  required BuildContext context,
-  required WidgetRef ref,
-  required GroupEventCardModel model,
-  required EventContextAction action,
-}) async {
-  switch (action) {
-    case EventContextAction.about:
-      await _openTournamentDetail(
-        context: context,
-        ref: ref,
-        model: model,
-        mode: TournamentDetailScreenMode.about,
-      );
-      break;
-    case EventContextAction.games:
-      await _openTournamentDetail(
-        context: context,
-        ref: ref,
-        model: model,
-        mode: TournamentDetailScreenMode.games,
-      );
-      break;
-    case EventContextAction.standings:
-      await _openTournamentDetail(
-        context: context,
-        ref: ref,
-        model: model,
-        mode: TournamentDetailScreenMode.standings,
-      );
-      break;
-    case EventContextAction.share:
-      await _shareEvent(context: context, model: model);
-      break;
-  }
-}
-
-Future<void> _openTournamentDetail({
-  required BuildContext context,
-  required WidgetRef ref,
-  required GroupEventCardModel model,
-  required TournamentDetailScreenMode mode,
-}) async {
-  try {
-    final broadcast = await ref
-        .read(groupBroadcastRepositoryProvider)
-        .getGroupBroadcastById(model.id);
-
-    ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-    ref.read(selectedTourModeProvider.notifier).state = mode;
-
-    AnalyticsService.instance.trackEventDetached(
-      'Event Context Menu Opened Tournament',
-      properties: {
-        'event_id': model.id,
-        'event_name': model.title,
-        'target_tab': mode.name,
-      },
-    );
-
-    if (!context.mounted) return;
-    await Navigator.pushNamed(context, '/tournament_detail_screen');
-  } catch (e) {
-    debugPrint('[EventContextMenu] Failed to open tournament ${model.id}: $e');
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Unable to open event'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 }
 
 Future<void> _shareEvent({
@@ -203,15 +109,10 @@ Future<void> _shareEvent({
 }
 
 class _EventMenuRow extends StatelessWidget {
-  const _EventMenuRow({
-    required this.label,
-    required this.icon,
-    required this.hasBorder,
-  });
+  const _EventMenuRow({required this.label, required this.icon});
 
   final String label;
   final IconData icon;
-  final bool hasBorder;
 
   @override
   Widget build(BuildContext context) {
@@ -219,18 +120,7 @@ class _EventMenuRow extends StatelessWidget {
       width: double.infinity,
       height: 40.h,
       padding: EdgeInsets.symmetric(horizontal: 14.w),
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        border:
-            hasBorder
-                ? Border(
-                  top: BorderSide(
-                    color: const Color(0xFFE2E2E2).withValues(alpha: 0.04),
-                    width: 1.w,
-                  ),
-                )
-                : null,
-      ),
+      decoration: const BoxDecoration(color: kBlack2Color),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
