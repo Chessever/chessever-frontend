@@ -10,6 +10,11 @@ class PlayerStandingModel {
   final int? fideId;
   final String? gamebasePlayerId;
 
+  /// 1-based position in the *unfiltered* sorted standings. Preserved across
+  /// search so filtered results still display the player's overall standing
+  /// (e.g. "#42") instead of re-numbering the filtered list from 1.
+  final int? overallRank;
+
   const PlayerStandingModel({
     required this.countryCode,
     this.title,
@@ -19,6 +24,7 @@ class PlayerStandingModel {
     required this.matchScore,
     this.fideId,
     this.gamebasePlayerId,
+    this.overallRank,
   });
 
   factory PlayerStandingModel.fromPlayer(TournamentPlayer player) {
@@ -56,6 +62,7 @@ class PlayerStandingModel {
     String? matchScore,
     int? fideId,
     String? gamebasePlayerId,
+    int? overallRank,
   }) {
     return PlayerStandingModel(
       countryCode: countryCode ?? this.countryCode,
@@ -66,6 +73,7 @@ class PlayerStandingModel {
       matchScore: matchScore ?? this.matchScore,
       fideId: fideId ?? this.fideId,
       gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
+      overallRank: overallRank ?? this.overallRank,
     );
   }
 
@@ -79,6 +87,7 @@ class PlayerStandingModel {
       matchScore: json['matchScore'] as String?,
       fideId: json['fideId'] as int?,
       gamebasePlayerId: json['gamebasePlayerId'] as String?,
+      overallRank: json['overallRank'] as int?,
     );
   }
 
@@ -93,6 +102,7 @@ class PlayerStandingModel {
       'matchScore': matchScore,
       'fideId': fideId,
       'gamebasePlayerId': gamebasePlayerId,
+      'overallRank': overallRank,
     };
   }
 
@@ -107,7 +117,8 @@ class PlayerStandingModel {
         other.scoreChange == scoreChange &&
         other.matchScore == matchScore &&
         other.fideId == fideId &&
-        other.gamebasePlayerId == gamebasePlayerId;
+        other.gamebasePlayerId == gamebasePlayerId &&
+        other.overallRank == overallRank;
   }
 
   @override
@@ -121,6 +132,7 @@ class PlayerStandingModel {
       matchScore,
       fideId,
       gamebasePlayerId,
+      overallRank,
     );
   }
 }

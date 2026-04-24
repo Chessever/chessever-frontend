@@ -18,7 +18,10 @@ import 'package:skeletonizer/skeletonizer.dart' as skel;
 /// - [showFavoriteButton] = false: Shows score on the right (for standings)
 class FigmaPlayerCard extends ConsumerWidget {
   final PlayerStandingModel player;
-  final int rank;
+  /// Nullable so search results can render immediately while the overall
+  /// standing rank is still being resolved asynchronously. A shimmer
+  /// placeholder is shown in the rank slot until the number arrives.
+  final int? rank;
   final bool isFavorite;
   final bool showFavoriteButton;
   final VoidCallback onTap;
@@ -75,16 +78,32 @@ class FigmaPlayerCard extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            // Rank number
+            // Rank number — shows a shimmer placeholder while the overall
+            // standing rank is still resolving for remote search results.
             SizedBox(
               width: 24.w,
-              child: Text(
-                rank.toString(),
-                style: AppTypography.textSmMedium.copyWith(
-                  color: const Color(0xFF71717A),
-                ),
-                textAlign: TextAlign.center,
-              ),
+              child: rank != null
+                  ? Text(
+                      rank.toString(),
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: const Color(0xFF71717A),
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                  : skel.Skeletonizer(
+                      enabled: true,
+                      effect: const skel.ShimmerEffect(
+                        baseColor: Color(0xFF2A2A2A),
+                        highlightColor: Color(0xFF3A3A3A),
+                      ),
+                      child: Text(
+                        '00',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: const Color(0xFF71717A),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
             ),
             SizedBox(width: 12.w),
             // Player photo with title badge overlay

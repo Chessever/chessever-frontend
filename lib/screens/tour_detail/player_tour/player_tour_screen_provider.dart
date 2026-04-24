@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/supabase.dart';
-import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -95,6 +95,87 @@ final standingsSearchQueryProvider = StateProvider.autoDispose<String>(
   (ref) => '',
 );
 
+List<PlayerStandingModel> assignOverallRanks(
+  List<PlayerStandingModel> standings,
+) {
+  return [
+    for (var i = 0; i < standings.length; i++)
+      standings[i].copyWith(overallRank: i + 1),
+  ];
+}
+
+List<PlayerStandingModel> filterStandingsByQuery(
+  List<PlayerStandingModel> standings,
+  String rawQuery,
+) {
+  final query = _normalizeStandingSearch(rawQuery);
+  if (query.isEmpty) return standings;
+
+  return standings
+      .where((player) {
+        final searchable = [
+          player.name,
+          player.title ?? '',
+          player.countryCode,
+        ].join(' ');
+        return _matchesStandingSearch(searchable, query);
+      })
+      .toList(growable: false);
+}
+
+String _normalizeStandingSearch(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .join(' ');
+}
+
+bool _matchesStandingSearch(String value, String normalizedQuery) {
+  final normalizedValue = _normalizeStandingSearch(value);
+  if (normalizedValue.isEmpty) return false;
+  if (normalizedValue.contains(normalizedQuery)) return true;
+
+  final queryTokens = normalizedQuery.split(' ');
+  return queryTokens.every(normalizedValue.contains);
+}
+
+String _standingsGamesSignature(AsyncValue<List<Games>> gamesAsync) {
+  final games = gamesAsync.valueOrNull;
+  if (games == null) {
+    return gamesAsync.isLoading ? 'loading' : 'error';
+  }
+
+  return games
+      .map((game) {
+        final playersSignature =
+            game.players?.map(_standingsPlayerSignature).join('~') ?? '';
+        return [
+          game.id,
+          game.roundId,
+          game.tourId,
+          game.status ?? '',
+          game.boardNr ?? '',
+          game.timeControl ?? '',
+          playersSignature,
+        ].join('|');
+      })
+      .join('||');
+}
+
+String _standingsPlayerSignature(Player player) {
+  return [
+    player.name,
+    player.title,
+    player.rating,
+    player.fideId,
+    player.fed,
+    player.team,
+  ].join(':');
+}
+
 final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
   PlayerTourScreenNotifier,
   List<PlayerStandingModel>
@@ -102,33 +183,50 @@ final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
 
 class PlayerTourScreenNotifier
     extends AutoDisposeAsyncNotifier<List<PlayerStandingModel>> {
+  String? _lastBroadcastId;
+  String? _lastTourId;
+  List<PlayerStandingModel>? _lastGoodStandings;
+
   @override
   Future<List<PlayerStandingModel>> build() async {
     // Keep provider alive while the page is visible to avoid eager disposal
     ref.keepAlive();
 
+    // IMPORTANT: build() intentionally does NOT watch
+    // `standingsSearchQueryProvider`. The full ranked standings are
+    // recomputed only when the tour / games / broadcast change; search
+    // filtering is applied cheaply in-widget so typing doesn't re-run the
+    // (expensive) FIDE-Elo fetch and enrichment pass on every keystroke.
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
-    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-    final searchQuery =
-        ref.watch(standingsSearchQueryProvider).toLowerCase().trim();
 
-    if (selectedBroadcast == null ||
-        selectedBroadcast.id.isEmpty ||
-        tourDetailAsync.isLoading ||
-        tourDetailAsync.hasError) {
+    if (selectedBroadcast == null || selectedBroadcast.id.isEmpty) {
       return const [];
     }
 
-    final tourDetail = tourDetailAsync.value!;
+    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+    if (tourDetailAsync.hasError) {
+      final last = _lastGoodForBroadcast(selectedBroadcast.id);
+      if (last != null) {
+        return last;
+      }
+      Error.throwWithStackTrace(
+        tourDetailAsync.error!,
+        tourDetailAsync.stackTrace ?? StackTrace.current,
+      );
+    }
+
+    final tourDetail = tourDetailAsync.valueOrNull;
+    if (tourDetail == null) {
+      return _lastGoodForBroadcast(selectedBroadcast.id) ?? const [];
+    }
     final aboutTourModel = tourDetail.aboutTourModel;
     if (aboutTourModel.id.isEmpty) {
-      return const [];
+      return _lastGoodFor(
+            broadcastId: selectedBroadcast.id,
+            tourId: aboutTourModel.id,
+          ) ??
+          const [];
     }
-
-    final List<TournamentPlayer> allPlayers;
-    final List<GamesTourModel> allGames = ref.watch(
-      mergedTournamentGamesProvider,
-    );
 
     // Detect if this is a pagination-purposed category (e.g. "Boards 1-66")
     final List<TourModel> relatedTours;
@@ -149,39 +247,88 @@ class PlayerTourScreenNotifier
               .toList();
     }
 
-    if (searchQuery.isNotEmpty) {
-      // Must query Supabase for the search directly rather than filtering local data,
-      // as local data might be paginated or incomplete.
-      final tourRepo = ref.read(tourRepositoryProvider);
-      final searchResults = await Future.wait(
-        relatedTours.map(
-          (t) => tourRepo.searchPlayersInTour(t.tour.id, searchQuery),
-        ),
-      );
-      allPlayers = searchResults.expand((list) => list).toList();
-    } else {
-      allPlayers = [];
-      for (final tourModel in relatedTours) {
-        allPlayers.addAll(tourModel.tour.players);
-      }
+    // Watch only the part of live games that can change standings. Move/clock
+    // ticks should not rebuild this provider, but new games or result changes
+    // should update scores gracefully while the list keeps its scroll offset.
+    final allGames = _watchStandingsGamesForTours(relatedTours);
+
+    final allPlayers = <TournamentPlayer>[];
+    for (final tourModel in relatedTours) {
+      allPlayers.addAll(tourModel.tour.players);
     }
 
-    final standings = await _buildStandingsFromData(
+    final builtStandings = await _buildStandingsFromData(
       tournamentPlayers: allPlayers,
       gamesTourModels: allGames,
     );
 
-    if (searchQuery.isEmpty) {
-      return standings;
+    if (builtStandings.isEmpty) {
+      return _lastGoodFor(
+            broadcastId: selectedBroadcast.id,
+            tourId: aboutTourModel.id,
+          ) ??
+          const [];
     }
 
-    // We must filter again locally, primarily for tournaments that have no player
-    // roster and generate their standings dynamically from the games fallback.
-    return standings.where((p) {
-      return p.name.toLowerCase().contains(searchQuery) ||
-          (p.title?.toLowerCase().contains(searchQuery) ?? false) ||
-          (p.countryCode.toLowerCase().contains(searchQuery));
-    }).toList();
+    // Assign 1-based ranks in unfiltered order. These stay attached to each
+    // player so in-widget filter preserves the overall standing position.
+    final rankedStandings = assignOverallRanks(builtStandings);
+    _rememberGoodStandings(
+      broadcastId: selectedBroadcast.id,
+      tourId: aboutTourModel.id,
+      standings: rankedStandings,
+    );
+    return rankedStandings;
+  }
+
+  List<PlayerStandingModel>? _lastGoodFor({
+    required String broadcastId,
+    required String tourId,
+  }) {
+    if (_lastBroadcastId != broadcastId || _lastTourId != tourId) {
+      return null;
+    }
+    return _lastGoodStandings;
+  }
+
+  List<PlayerStandingModel>? _lastGoodForBroadcast(String broadcastId) {
+    if (_lastBroadcastId != broadcastId) {
+      return null;
+    }
+    return _lastGoodStandings;
+  }
+
+  void _rememberGoodStandings({
+    required String broadcastId,
+    required String tourId,
+    required List<PlayerStandingModel> standings,
+  }) {
+    _lastBroadcastId = broadcastId;
+    _lastTourId = tourId;
+    _lastGoodStandings = standings;
+  }
+
+  List<GamesTourModel> _watchStandingsGamesForTours(
+    List<TourModel> relatedTours,
+  ) {
+    final allGames = <GamesTourModel>[];
+
+    for (final tourModel in relatedTours) {
+      final tourId = tourModel.tour.id;
+      ref.watch(gamesTourProvider(tourId).select(_standingsGamesSignature));
+      final games = ref.read(gamesTourProvider(tourId)).valueOrNull;
+      if (games == null || games.isEmpty) continue;
+
+      for (final game in games) {
+        try {
+          allGames.add(GamesTourModel.fromGame(game));
+        } catch (_) {
+          // Skip malformed rows to keep standings resilient during live ingest.
+        }
+      }
+    }
+
+    return allGames;
   }
 
   /// Identifies categories like "Boards 1-66", "Boards 67-126", "Boards 252+"
@@ -437,9 +584,10 @@ class PlayerTourScreenNotifier
         if (status == GameStatus.ongoing || status == GameStatus.unknown) {
           continue;
         }
-        final opponentCard = gameRef.isWhite
-            ? gameRef.game.blackPlayer
-            : gameRef.game.whitePlayer;
+        final opponentCard =
+            gameRef.isWhite
+                ? gameRef.game.blackPlayer
+                : gameRef.game.whitePlayer;
         final opponentKey = _canonicalGameKey(opponentCard.name);
         if (opponentKey.isEmpty) continue;
         opponentScores.add(scoreByKey[opponentKey] ?? 0.0);
@@ -599,12 +747,9 @@ class PlayerTourScreenNotifier
 
     final ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
     final expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-    final kFactor = fideK ??
-        _heuristicKFactor(
-          playerRating,
-          title: title,
-          timeControl: timeControl,
-        );
+    final kFactor =
+        fideK ??
+        _heuristicKFactor(playerRating, title: title, timeControl: timeControl);
     return kFactor * (actualScore - expectedScore);
   }
 }

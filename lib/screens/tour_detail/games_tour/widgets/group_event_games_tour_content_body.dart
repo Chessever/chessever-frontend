@@ -170,7 +170,7 @@ class _GroupEventGamesTourContentBodyState
       itemCount: listItemCount,
       thumbWidth: 4.sp,
       padding: EdgeInsets.only(
-        top: 16.sp,
+        top: 0,
         bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
       ),
       child: ScrollablePositionedList.builder(
@@ -179,7 +179,8 @@ class _GroupEventGamesTourContentBodyState
         padding: EdgeInsets.only(
           left: 16.sp,
           right: 16.sp,
-          top: 16.sp,
+          // Search bar (item 0) provides its own top spacing.
+          top: 0,
           bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
         ),
         itemCount: listItemCount,

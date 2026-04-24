@@ -197,4 +197,21 @@ class TourRepository extends BaseRepository {
       }).toList();
     });
   }
+
+  /// Fetch the full tournament roster for a single tour from Supabase.
+  /// Used to compute overall standings / ranks for search results when the
+  /// local tour cache may be stale or partial.
+  Future<List<TournamentPlayer>> getTourPlayers(String tourId) async {
+    return handleApiCall(() async {
+      final response =
+          await supabase
+              .from('tours')
+              .select('players')
+              .eq('id', tourId)
+              .single();
+      final playersRaw = response['players'];
+      final playersList = playersRaw is List ? playersRaw : const <dynamic>[];
+      return parsePlayersFromJson(playersList);
+    });
+  }
 }
