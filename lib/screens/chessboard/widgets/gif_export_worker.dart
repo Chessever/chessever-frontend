@@ -7,14 +7,6 @@ import 'package:image/image.dart' as img;
 // Export profile
 // ---------------------------------------------------------------------------
 
-/// Maximum number of played plies shown in a shared GIF.
-///
-/// The Flutter capture path pays for a full widget rasterization per output
-/// frame, so long games must be clipped before capture. Lichess gets away with
-/// full-game GIFs by using a server-side sprite renderer; this client path uses
-/// a compact recent-move recap to stay fast on phones.
-const int kGifMaxAnimatedPlies = 12;
-
 /// Target logical capture scale. The widget capture path also caps final raster
 /// width near Lichess' 720px GIF width before calling `toImage`.
 const double kGifCapturePixelRatio = 2.0;
@@ -28,7 +20,7 @@ class GifExportProfile {
   /// Device-pixel ratio for rasterization.
   final double pixelRatio;
 
-  /// Move indices (0-based into the truncated move list) to capture.
+  /// Move indices (0-based into the selected move list) to capture.
   final List<int> frameIndices;
 
   /// Pre-computed durations in centiseconds.
@@ -40,6 +32,49 @@ class GifExportProfile {
     required this.frameIndices,
     required this.frameDurations,
   });
+}
+
+/// Move prefix selected for a shared GIF.
+class GifExportWindow {
+  /// SAN moves to replay from [captureStartFen] up to the selected end move.
+  final List<String> movesToAnimate;
+
+  /// Offset into the original game move list. Kept for clock lookup.
+  final int globalMoveOffset;
+
+  /// Starting FEN for the first GIF frame; null means standard chess start.
+  final String? captureStartFen;
+
+  const GifExportWindow({
+    required this.movesToAnimate,
+    required this.globalMoveOffset,
+    required this.captureStartFen,
+  });
+}
+
+/// Selects the move prefix used for GIF generation.
+///
+/// [currentMoveIndex] is the user-selected end position. The GIF always starts
+/// from the game's beginning position and replays the prefix up to that move.
+GifExportWindow? computeGifExportWindow({
+  required List<String> moveSans,
+  required int currentMoveIndex,
+  String? startingFen,
+}) {
+  if (moveSans.isEmpty || currentMoveIndex < 0) return null;
+
+  final endIndex =
+      currentMoveIndex < moveSans.length
+          ? currentMoveIndex
+          : moveSans.length - 1;
+
+  return GifExportWindow(
+    movesToAnimate: List<String>.unmodifiable(
+      moveSans.sublist(0, endIndex + 1),
+    ),
+    globalMoveOffset: 0,
+    captureStartFen: startingFen,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +89,8 @@ class GifWorkerFrameData extends GifWorkerCommand {
   final int width;
   final int height;
   final int durationCs;
-  final int frameIndex; // output-frame index (0 = initial, 1..n = sampled)
+  final int
+  frameIndex; // output-frame index (0 = initial, 1..n = selected move)
 
   GifWorkerFrameData({
     required this.rgba,
@@ -78,7 +114,7 @@ class GifWorkerReady extends GifWorkerResponse {
 }
 
 class GifWorkerFrameAccepted extends GifWorkerResponse {
-  /// Output-frame index (0 = initial, 1..n = sampled moves).
+  /// Output-frame index (0 = initial, 1..n = selected moves).
   final int frameIndex;
   GifWorkerFrameAccepted(this.frameIndex);
 }
@@ -100,9 +136,10 @@ class GifWorkerError extends GifWorkerResponse {
 
 /// Builds an export profile for the given game length.
 ///
-/// [moveCount] is the number of moves to animate (length of the truncated
-/// move list).  [currentMoveIndex] should be `moveCount - 1` (the last move
-/// in the truncated list).
+/// [moveCount] is the number of moves to animate. [currentMoveIndex] should be
+/// `moveCount - 1`, because [computeGifExportWindow] already trims the source
+/// moves to the user-selected end position. Every selected move is captured so
+/// the GIF reaches the exact current board position without dropping plies.
 GifExportProfile planGifExport({
   required int moveCount,
   required int currentMoveIndex,
@@ -110,68 +147,13 @@ GifExportProfile planGifExport({
   assert(moveCount > 0);
   assert(currentMoveIndex >= 0 && currentMoveIndex < moveCount);
 
-  late final List<int> frameIndices;
-
-  if (moveCount <= kGifMaxAnimatedPlies) {
-    frameIndices = List.generate(moveCount, (i) => i);
-  } else {
-    frameIndices = sampleFrameIndices(
-      totalMoves: moveCount,
-      targetMoveFrames: kGifMaxAnimatedPlies,
-      currentMoveIndex: currentMoveIndex,
-    );
-  }
-
+  final frameIndices = List<int>.generate(currentMoveIndex + 1, (i) => i);
   final durations = _computeDurations(frameIndices);
   return GifExportProfile(
     pixelRatio: kGifCapturePixelRatio,
     frameIndices: frameIndices,
     frameDurations: durations,
   );
-}
-
-/// Selects [targetMoveFrames] move indices to keep, always including move 0,
-/// [currentMoveIndex], and the previous 8 moves.  Remaining slots are filled
-/// by even sampling from earlier moves.
-List<int> sampleFrameIndices({
-  required int totalMoves,
-  required int targetMoveFrames,
-  required int currentMoveIndex,
-}) {
-  final must = <int>{};
-
-  // Always include first move
-  must.add(0);
-
-  // Always include current move (last animated position)
-  must.add(currentMoveIndex);
-
-  // Include up to 8 moves before current
-  for (int i = currentMoveIndex - 1; i >= 0 && i > currentMoveIndex - 9; i--) {
-    must.add(i);
-  }
-
-  // Fill remaining slots by even sampling from the gap before the
-  // must-include tail region.
-  final remaining = targetMoveFrames - must.length;
-  if (remaining > 0) {
-    final gapEnd = (currentMoveIndex - 9).clamp(0, totalMoves);
-    final candidates = <int>[];
-    for (int i = 1; i < gapEnd; i++) {
-      if (!must.contains(i)) candidates.add(i);
-    }
-
-    if (candidates.isNotEmpty) {
-      final count = remaining.clamp(0, candidates.length);
-      final step = candidates.length / count;
-      for (int i = 0; i < count; i++) {
-        must.add(candidates[(i * step).floor()]);
-      }
-    }
-  }
-
-  final sorted = must.toList()..sort();
-  return sorted;
 }
 
 /// Precomputes per-frame durations (centiseconds).

@@ -15,6 +15,9 @@ class _FakeGamebaseRepository extends GamebaseRepository {
   _FakeGamebaseRepository()
     : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
 
+  String? lastFen;
+  List<String>? lastMoves;
+
   @override
   Future<GamebaseResponse> getMoveAggregates({
     required String fen,
@@ -29,11 +32,38 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     int? yearTo,
     bool? isOnline,
   }) async {
+    lastFen = fen;
+    lastMoves = List<String>.from(moves);
     return const GamebaseResponse(
       status: 'success',
       data: GamebaseData(moves: []),
     );
   }
+}
+
+({List<Move> moves, Position position}) _buildLongLegalLine() {
+  final moves = <Move>[];
+  Position position = Chess.initial;
+
+  void play(String uci) {
+    final move = NormalMove.fromUci(uci);
+    if (!position.isLegal(move)) {
+      throw StateError('$uci is not legal from ${position.fen}');
+    }
+    moves.add(move);
+    position = position.play(move);
+  }
+
+  for (var i = 0; i < 15; i++) {
+    play('g1f3');
+    play('g8f6');
+    play('f3g1');
+    play('f6g8');
+  }
+  play('g1f3');
+  play('g8f6');
+
+  return (moves: moves, position: position);
 }
 
 GamesTourModel _dummyGame() {
@@ -72,10 +102,9 @@ void main() {
   testWidgets('GamebaseExplorerView uses analysis position FEN', (
     tester,
   ) async {
+    final fakeRepository = _FakeGamebaseRepository();
     final container = ProviderContainer(
-      overrides: [
-        gamebaseRepositoryProvider.overrideWithValue(_FakeGamebaseRepository()),
-      ],
+      overrides: [gamebaseRepositoryProvider.overrideWithValue(fakeRepository)],
     );
     addTearDown(container.dispose);
 
@@ -101,6 +130,7 @@ void main() {
                 body: GamebaseExplorerView(
                   state: state,
                   onMoveSelected: (_) {},
+                  showFilterPanel: false,
                 ),
               );
             },
@@ -116,5 +146,54 @@ void main() {
 
     // Let the debounced fetch timer complete to avoid pending timers.
     await tester.pump(const Duration(milliseconds: 250));
+  });
+
+  testWidgets('GamebaseExplorerView passes the full move line for deep nodes', (
+    tester,
+  ) async {
+    final fakeRepository = _FakeGamebaseRepository();
+    final container = ProviderContainer(
+      overrides: [gamebaseRepositoryProvider.overrideWithValue(fakeRepository)],
+    );
+    addTearDown(container.dispose);
+
+    final longLine = _buildLongLegalLine();
+    final state = ChessBoardStateNew(
+      game: _dummyGame(),
+      isAnalysisMode: true,
+      position: null,
+      analysisState: AnalysisBoardState(
+        position: longLine.position,
+        allMoves: longLine.moves,
+        currentMoveIndex: longLine.moves.length - 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: GamebaseExplorerView(
+                  state: state,
+                  onMoveSelected: (_) {},
+                  showFilterPanel: false,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(fakeRepository.lastFen, longLine.position.fen);
+    expect(fakeRepository.lastMoves, hasLength(62));
+    expect(fakeRepository.lastMoves, longLine.moves.map((m) => m.uci));
   });
 }

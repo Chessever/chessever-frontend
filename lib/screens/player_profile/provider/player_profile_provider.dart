@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart' show Games;
@@ -1253,34 +1254,36 @@ Future<List<PlayerEventData>> _getTwicPlayerEvents(
   PlayerProfileKey playerKey,
 ) async {
   final repo = ref.read(gamebaseRepositoryProvider);
-  final playerName = playerKey.playerName.trim();
-  if (playerName.isEmpty) return const [];
+  final playerId = await _resolveTwicPlayerId(ref, playerKey);
+  if (playerId == null || playerId.isEmpty) return const [];
 
-  final escapedName = playerName.replaceAll('"', r'\"');
-  final response = await repo.searchEvents(
-    query: 'player:"$escapedName"',
-    pageNumber: 1,
+  final response = await repo.getPlayerEvents(
+    playerId: playerId,
+    pageNumber: 0,
     pageSize: 100,
   );
 
   return response.events
       .where((item) => item.event.trim().isNotEmpty)
-      .map(
-        (item) => PlayerEventData(
-          tourId: item.event.trim(),
-          tourName: item.event.trim(),
-          tourSlug: item.event.trim(),
-          gamesPlayed: item.gameCount,
-          score: null,
-          startDate: item.startDate,
-          endDate: item.endDate,
-          site: item.site,
-          dominantTimeControl: item.dominantTimeControl,
-          avgElo: item.avgElo,
-          maxElo: item.maxElo,
-        ),
-      )
+      .map(playerEventDataFromGamebaseEvent)
       .toList(growable: false);
+}
+
+PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
+  final event = item.event.trim();
+  return PlayerEventData(
+    tourId: event,
+    tourName: event,
+    tourSlug: event,
+    gamesPlayed: item.gameCount,
+    score: item.score,
+    startDate: item.startDate,
+    endDate: item.endDate,
+    site: item.site,
+    dominantTimeControl: item.dominantTimeControl,
+    avgElo: item.avgElo,
+    maxElo: item.maxElo,
+  );
 }
 
 String _formatEventTimeControl(String? raw) {

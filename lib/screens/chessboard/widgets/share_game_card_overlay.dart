@@ -392,57 +392,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
   /// Computes the export window for GIF generation.
   ///
+  /// The current board position is the selected end position. GIFs always start
+  /// from the game's beginning position and replay up to that selected end.
   /// Returns `null` if no moves are available to animate.
-  ({
-    List<String> movesToAnimate,
-    int globalMoveOffset,
-    String? captureStartFen,
-  })?
-  _computeExportWindow() {
-    if (widget.moveSans.isEmpty) return null;
-
-    if (widget.currentMoveIndex >= 0) {
-      final endIndex = math.min(
-        widget.currentMoveIndex,
-        widget.moveSans.length - 1,
-      );
-      return _buildClippedExportWindow(endIndex);
-    }
-
-    // currentMoveIndex == -1 (initial position): export the latest recap window.
-    return _buildClippedExportWindow(widget.moveSans.length - 1);
-  }
-
-  ({List<String> movesToAnimate, int globalMoveOffset, String? captureStartFen})
-  _buildClippedExportWindow(int endIndex) {
-    var startIndex = math.max(0, endIndex - kGifMaxAnimatedPlies + 1);
-    var captureStartFen = widget.startingFen;
-
-    if (startIndex > 0) {
-      try {
-        Position pos =
-            widget.startingFen != null
-                ? Chess.fromSetup(Setup.parseFen(widget.startingFen!))
-                : Chess.initial;
-        for (int i = 0; i < startIndex; i++) {
-          final move = pos.parseSan(widget.moveSans[i]);
-          if (move == null) throw StateError('Prefix move $i unparseable');
-          pos = pos.play(move);
-        }
-        captureStartFen = pos.fen;
-      } catch (e) {
-        // Broken prefix replay would make the clipped window start from the
-        // wrong board state. Fall back to the full prefix instead.
-        debugPrint('GIF: prefix replay failed, falling back to full line: $e');
-        startIndex = 0;
-        captureStartFen = widget.startingFen;
-      }
-    }
-
-    return (
-      movesToAnimate: widget.moveSans.sublist(startIndex, endIndex + 1),
-      globalMoveOffset: startIndex,
-      captureStartFen: captureStartFen,
+  GifExportWindow? _computeExportWindow() {
+    return computeGifExportWindow(
+      moveSans: widget.moveSans,
+      currentMoveIndex: widget.currentMoveIndex,
+      startingFen: widget.startingFen,
     );
   }
 
@@ -467,7 +424,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     });
 
     try {
-      // Plan export profile using the truncated move list's coordinate space
+      // Plan export profile using the full prefix up to the selected end move.
       final profile = planGifExport(
         moveCount: movesToAnimate.length,
         currentMoveIndex: movesToAnimate.length - 1,

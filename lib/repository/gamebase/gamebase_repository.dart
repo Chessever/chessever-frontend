@@ -242,7 +242,8 @@ class GamebaseRepository {
     final fileDelta = (fromFile - toFile).abs();
 
     final targetPiece = position.board.pieceAt(move.to);
-    final capturesOwnRook = targetPiece != null &&
+    final capturesOwnRook =
+        targetPiece != null &&
         targetPiece.role == Role.rook &&
         targetPiece.color == piece.color;
 
@@ -614,6 +615,87 @@ class GamebaseRepository {
       );
     } catch (e) {
       throw Exception('Failed to search events: $e');
+    }
+  }
+
+  /// Fetch events for a specific player using player-id scoped aggregation.
+  /// Maps to GET /api/player/{playerId}/events.
+  ///
+  /// [pageNumber] is 0-indexed, matching the other player endpoints.
+  Future<GamebaseEventSearchResponse> getPlayerEvents({
+    required String playerId,
+    String? q,
+    String color = 'all',
+    String? timeControl,
+    String? outcome,
+    String? eco,
+    String? opening,
+    String? variation,
+    String? event,
+    String? site,
+    String? dateFrom,
+    String? dateTo,
+    String? opponentId,
+    int? ratingFrom,
+    int? ratingTo,
+    bool? isOnline,
+    int pageNumber = 0,
+    int pageSize = 24,
+  }) async {
+    final queryParams = <String, dynamic>{
+      'color': color,
+      if (q != null && q.isNotEmpty) 'q': q,
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      if (timeControl != null) 'timeControl': timeControl,
+      if (outcome != null) 'outcome': outcome,
+      if (eco != null) 'eco': eco,
+      if (opening != null) 'opening': opening,
+      if (variation != null) 'variation': variation,
+      if (event != null) 'event': event,
+      if (site != null) 'site': site,
+      if (dateFrom != null) 'dateFrom': dateFrom,
+      if (dateTo != null) 'dateTo': dateTo,
+      if (opponentId != null) 'opponentId': opponentId,
+      if (ratingFrom != null) 'ratingFrom': ratingFrom,
+      if (ratingTo != null) 'ratingTo': ratingTo,
+      if (isOnline != null) 'isOnline': isOnline,
+    };
+
+    if (kDebugMode) {
+      debugPrint(
+        '[GamebaseRepository] getPlayerEvents: playerId=$playerId filters=$queryParams',
+      );
+    }
+
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/player/$playerId/events',
+        queryParameters: queryParams,
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return GamebaseEventSearchResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getPlayerEvents DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+        debugPrint('  Response: ${e.response?.data}');
+      }
+      throw Exception(
+        'Failed to load player events: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
+    } catch (e) {
+      throw Exception('Failed to load player events: $e');
     }
   }
 

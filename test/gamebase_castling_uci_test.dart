@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -48,9 +49,27 @@ void main() {
         const fen =
             'r2q1rk1/1bpnbppp/p2p1n2/1p2p3/3PP3/1BP2N1P/PP1N1PP1/R1BQR1K1 w - - 3 12';
         final chess960CastlingMoves = <String>[
-          'e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4',
-          'g8f6', 'e1h1', 'f8e7', 'f1e1', 'b7b5', 'a4b3', 'd7d6',
-          'c2c3', 'e8h8', 'h2h3', 'c6b8', 'd2d4', 'b8d7', 'b1d2',
+          'e2e4',
+          'e7e5',
+          'g1f3',
+          'b8c6',
+          'f1b5',
+          'a7a6',
+          'b5a4',
+          'g8f6',
+          'e1h1',
+          'f8e7',
+          'f1e1',
+          'b7b5',
+          'a4b3',
+          'd7d6',
+          'c2c3',
+          'e8h8',
+          'h2h3',
+          'c6b8',
+          'd2d4',
+          'b8d7',
+          'b1d2',
           'c8b7',
         ];
 
@@ -61,10 +80,16 @@ void main() {
 
         expect(sentMoves.length, 22);
         // Castling UCIs must be rewritten to the king-target form for chess.js.
-        expect(sentMoves[8], 'e1g1',
-            reason: 'white O-O must be sent as e1g1, not e1h1');
-        expect(sentMoves[15], 'e8g8',
-            reason: 'black O-O must be sent as e8g8, not e8h8');
+        expect(
+          sentMoves[8],
+          'e1g1',
+          reason: 'white O-O must be sent as e1g1, not e1h1',
+        );
+        expect(
+          sentMoves[15],
+          'e8g8',
+          reason: 'black O-O must be sent as e8g8, not e8h8',
+        );
         // Non-castling moves should be untouched.
         expect(sentMoves[0], 'e2e4');
         expect(sentMoves[21], 'c8b7');
@@ -108,6 +133,49 @@ void main() {
 
       final sentMoves = (adapter.lastBody!['moves'] as List).cast<String>();
       expect(sentMoves, isEmpty);
+    });
+
+    test('keeps a full 62-ply deep line in aggregate requests', () async {
+      final adapter = _CapturingAdapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      final repo = GamebaseRepository(
+        dio,
+        baseUrl: 'http://test',
+        apiKey: 'test',
+      );
+
+      final moves = <String>[];
+      Position position = Chess.initial;
+
+      void play(String uci) {
+        final move = NormalMove.fromUci(uci);
+        expect(position.isLegal(move), isTrue, reason: '$uci must be legal');
+        moves.add(uci);
+        position = position.play(move);
+      }
+
+      // 15 full knight-shuffle cycles = 60 plies, then two more plies.
+      // This intentionally crosses the old shallow boundary and the new
+      // 30-full-move indexed boundary without relying on a specific database
+      // game being present.
+      for (var i = 0; i < 15; i++) {
+        play('g1f3');
+        play('g8f6');
+        play('f3g1');
+        play('f6g8');
+      }
+      play('g1f3');
+      play('g8f6');
+
+      await repo.getMoveAggregates(fen: position.fen, moves: moves);
+
+      expect(
+        adapter.lastRequest?.path,
+        endsWith('/api/game-position/aggregates/query'),
+      );
+      final sentMoves = (adapter.lastBody!['moves'] as List).cast<String>();
+      expect(sentMoves.length, 62);
+      expect(sentMoves, moves);
     });
   });
 }
