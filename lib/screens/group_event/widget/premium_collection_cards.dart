@@ -60,8 +60,6 @@ class _PremiumCollectionCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subtitle = _getSubtitle(ref);
-
     return GestureDetector(
       onTap: () => _handleTap(context, ref),
       child: Container(
@@ -115,15 +113,14 @@ class _PremiumCollectionCard extends ConsumerWidget {
                       ),
                     ),
                     SizedBox(height: 2.sp),
-                    if (subtitle != null)
-                      Text(
-                        subtitle,
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      'Tap to view→',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.7),
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -132,18 +129,6 @@ class _PremiumCollectionCard extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  String? _getSubtitle(WidgetRef ref) {
-    if (type == PremiumGamesType.favorites) {
-      final favorites = ref.watch(favoritePlayersProviderNew).valueOrNull ?? [];
-      if (favorites.isEmpty) return 'Tap to add players';
-      if (favorites.length == 1) return favorites.first.playerName;
-      return '${favorites.length} players followed';
-    } else {
-      final country = ref.watch(countryDropdownProvider).value;
-      return country?.name ?? 'Select country';
-    }
   }
 
   void _handleTap(BuildContext context, WidgetRef ref) {

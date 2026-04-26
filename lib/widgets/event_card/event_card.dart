@@ -137,30 +137,21 @@ class EventCard extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Event name with status indicator
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        tourEventCardModel.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
-                          fontSize: 15.sp,
-                          height: 1.3,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              blurRadius: 4,
-                            ),
-                          ],
-                        ),
+                Text(
+                  tourEventCardModel.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor,
+                    fontSize: 15.sp,
+                    height: 1.3,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 4,
                       ),
-                    ),
-                    _StatusIndicator(tourEventCardModel: tourEventCardModel),
-                  ],
+                    ],
+                  ),
                 ),
                 SizedBox(height: 6.h),
                 // Event details row
@@ -231,24 +222,15 @@ class EventCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Event name with live indicator
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          tourEventCardModel.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
-                            fontSize: 14.sp,
-                            height: 1.2,
-                          ),
-                        ),
-                      ),
-                      _StatusIndicator(tourEventCardModel: tourEventCardModel),
-                    ],
+                  Text(
+                    tourEventCardModel.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                      fontSize: 14.sp,
+                      height: 1.2,
+                    ),
                   ),
 
                   SizedBox(height: 4.h),
@@ -742,54 +724,8 @@ class _TabletEventBackground extends ConsumerWidget {
   }
 }
 
-// Status Indicator - Subtle indicators next to event name
-class _StatusIndicator extends ConsumerWidget {
-  const _StatusIndicator({required this.tourEventCardModel});
-
-  final GroupEventCardModel tourEventCardModel;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    switch (tourEventCardModel.tourEventCategory) {
-      case TourEventCategory.live:
-        return _LiveIndicator();
-      case TourEventCategory.upcoming:
-      case TourEventCategory.completed:
-      case TourEventCategory.ongoing:
-        return const SizedBox.shrink();
-    }
-  }
-}
-
-class _LiveIndicator extends StatelessWidget {
-  const _LiveIndicator();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(left: 6.w),
-      child: Container(
-        width: 8.w,
-        height: 8.h,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: kPrimaryColor,
-          boxShadow: [
-            BoxShadow(
-              color: kPrimaryColor.withValues(alpha: 0.4),
-              blurRadius: 4,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// "LIVE" label shown on the third line of the card while an event is
 /// actively running — replaces the next-round countdown for live events.
-/// Uses [kPrimaryColor] so it reads as the same accent as [_LiveIndicator].
 class _LiveLabel extends StatelessWidget {
   const _LiveLabel({required this.onLight});
 
