@@ -20,11 +20,6 @@ class FederationFlag extends StatelessWidget {
   final double? height;
   final BorderRadius? borderRadius;
 
-  static const Set<String> _restrictedFideCodes = {'RUS', 'BLR', 'FID'};
-
-  /// Restricted country names (from Gamebase API which returns full names).
-  static const Set<String> _restrictedCountryNames = {'russia', 'belarus'};
-
   /// UK constituent countries that need special flag handling.
   /// Maps FIDE codes to flutter_country_flags Country enum.
   static const Map<String, fcf.Country> _ukSubdivisions = {
@@ -44,10 +39,9 @@ class FederationFlag extends StatelessWidget {
 
     final lowerRaw = raw.toLowerCase();
 
-    // Countries that show FIDE logo due to sanctions or restrictions.
-    // Check both 3-letter FIDE codes and full country names from Gamebase API.
-    if (_restrictedFideCodes.contains(normalized) ||
-        _restrictedCountryNames.contains(lowerRaw)) {
+    // Lichess returns the literal "FIDE" for stateless / sanctioned players;
+    // when no real federation can be resolved, render the FIDE logo.
+    if (normalized == 'FID' || normalized == 'FIDE') {
       return _fideLogo(context);
     }
 

@@ -218,7 +218,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: 2000,
+      cacheExtent: 500,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -284,7 +284,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: 2000,
+      cacheExtent: 500,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -470,9 +470,7 @@ class _ForYouEventSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Single shared snapshot drives both visibility and content.
-    final snapshotAsync = ref.watch(
-      forYouEventGamesWithAutoRefreshProvider(event.id),
-    );
+    final snapshotAsync = ref.watch(forYouEventSnapshotProvider(event.id));
 
     // Hide section after snapshot resolves with no games.
     final shouldHide = snapshotAsync.maybeWhen(
@@ -549,9 +547,7 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Single shared snapshot drives both visibility and content.
-    final snapshotAsync = ref.watch(
-      forYouEventGamesWithAutoRefreshProvider(event.id),
-    );
+    final snapshotAsync = ref.watch(forYouEventSnapshotProvider(event.id));
 
     // Hide column after snapshot resolves with no games.
     final shouldHide = snapshotAsync.maybeWhen(

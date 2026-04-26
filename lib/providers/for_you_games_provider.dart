@@ -106,6 +106,30 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     ) {
       next.whenData(_refreshLiveCategories);
     });
+
+    // Global signals that affect EVERY visible event's snapshot (auto-pin,
+    // tour selection defaults, sign-in state, live transitions). Funnel them
+    // through `forYouEventsRefreshProvider` so each `eventGamesProvider`
+    // family entry only needs ONE listener instead of N. The single fan-out
+    // here replaces 6×N per-event listens.
+    ref.listen(favoritesVersionProvider, (_, __) {
+      bumpForYouEventsRefreshSignal(ref);
+    });
+    ref.listen(countryDropdownProvider, (_, __) {
+      bumpForYouEventsRefreshSignal(ref);
+    });
+    ref.listen(autoPinPreferencesProvider, (_, __) {
+      bumpForYouEventsRefreshSignal(ref);
+    });
+    ref.listen(currentUserProvider, (_, __) {
+      bumpForYouEventsRefreshSignal(ref);
+    });
+    ref.listen(liveTourIdProvider, (_, __) {
+      bumpForYouEventsRefreshSignal(ref);
+    });
+    ref.listen(liveRoundsIdProvider, (_, __) {
+      bumpForYouEventsRefreshSignal(ref);
+    });
   }
 
   void _refreshLiveCategories(List<String> liveIds) {
@@ -558,8 +582,7 @@ class _ForYouPinActionController implements ForYouPinAction {
     required String tourId,
   }) async {
     final storage = _ref.read(forYouPinStorageProvider);
-    final snapshot =
-        _ref.read(forYouEventGamesWithAutoRefreshProvider(eventId)).valueOrNull;
+    final snapshot = _ref.read(forYouEventSnapshotProvider(eventId)).valueOrNull;
     final mode = resolvePinToggleMode(
       isManualPinned:
           snapshot?.manualPinnedIds.contains(gameId) ??
@@ -623,28 +646,15 @@ final eventGamesProvider = StateNotifierProvider.autoDispose.family<
   ref.onCancel(controller.handleCancel);
   ref.onResume(controller.handleResume);
 
+  // Per-event listeners only. Global signals (favorites version, country
+  // dropdown, auto-pin prefs, current user, live tour id, live rounds id) are
+  // funneled through `forYouEventsRefreshProvider` by `ForYouNotifier` — that
+  // collapses N×6 family listens into 6 single listens + N event listens, a
+  // ~6× reduction at typical list sizes.
   ref.listen(eventPinRefreshProvider(eventId), (_, __) {
     controller.requestRefresh();
   });
   ref.listen(forYouEventsRefreshProvider, (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(favoritesVersionProvider, (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(countryDropdownProvider, (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(autoPinPreferencesProvider, (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(currentUserProvider, (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(liveTourIdProvider, (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(liveRoundsIdProvider, (_, __) {
     controller.requestRefresh();
   });
   ref.listen(currentSelectedTourIdForEventProvider(eventId), (_, __) {
@@ -667,6 +677,23 @@ class _ForYouEventGamesController
   bool _isObserved = true;
   bool _isRefreshing = false;
   bool _queuedRefresh = false;
+
+  /// Active game-update stream subscriptions keyed by gameId. Replaces the old
+  /// per-widget `gameUpdatesStreamProvider` watch loop in
+  /// `forYouEventGamesWithAutoRefreshProvider`: now each event owns at most one
+  /// subscription per ongoing game, attached via `ref.listen` (no rebuilds),
+  /// and synced when the visible-games set changes.
+  final Map<String, ProviderSubscription<AsyncValue<Map<String, dynamic>?>>>
+  _liveGameSubs = {};
+
+  @override
+  void dispose() {
+    for (final sub in _liveGameSubs.values) {
+      sub.close();
+    }
+    _liveGameSubs.clear();
+    super.dispose();
+  }
 
   void handleCancel() {
     _isObserved = false;
@@ -740,6 +767,7 @@ class _ForYouEventGamesController
         if (currentSnapshot == null ||
             !areEquivalentForYouSnapshots(currentSnapshot, cachedSnapshot)) {
           state = AsyncValue.data(cachedSnapshot);
+          _syncLiveGameWatchers(cachedSnapshot);
         }
       }
     } catch (error, stackTrace) {
@@ -759,6 +787,7 @@ class _ForYouEventGamesController
           !areEquivalentForYouSnapshots(currentSnapshot, refreshedSnapshot)) {
         state = AsyncValue.data(refreshedSnapshot);
       }
+      _syncLiveGameWatchers(refreshedSnapshot);
       return;
     } catch (error, stackTrace) {
       loadError ??= error;
@@ -770,6 +799,51 @@ class _ForYouEventGamesController
       state = AsyncValue.error(loadError, loadStack);
     } else if (previousSnapshot != null && mounted) {
       state = AsyncValue.data(previousSnapshot);
+    }
+  }
+
+  /// Sync per-game live-update subscriptions to the current snapshot's
+  /// ongoing games. Adds listeners for newly-ongoing games, drops them when a
+  /// game leaves the visible set or finishes. Each listener calls
+  /// [requestRefresh] when its game flips to a finished status — that's the
+  /// single behavior the deleted `forYouEventGamesWithAutoRefreshProvider`
+  /// existed to provide.
+  void _syncLiveGameWatchers(ForYouEventGamesSnapshot snapshot) {
+    if (!mounted) return;
+
+    final ongoingIds = <String>{
+      for (final game in snapshot.visibleGames)
+        if (game.gameStatus == GameStatus.ongoing) game.gameId,
+    };
+
+    // Drop subs that are no longer in the ongoing set.
+    final stale = _liveGameSubs.keys
+        .where((id) => !ongoingIds.contains(id))
+        .toList(growable: false);
+    for (final id in stale) {
+      _liveGameSubs.remove(id)?.close();
+    }
+
+    // Add subs for newly ongoing games.
+    for (final id in ongoingIds) {
+      if (_liveGameSubs.containsKey(id)) continue;
+      _liveGameSubs[id] = ref.listen<AsyncValue<Map<String, dynamic>?>>(
+        gameUpdatesStreamProvider(id),
+        (_, next) {
+          next.whenData((data) {
+            final status = data?['status'] as String?;
+            if (status != null && _isFinishedStatus(status)) {
+              debugPrint(
+                '[ForYou] Game $id finished ($status) — refreshing snapshot for event $eventId',
+              );
+              // Drop the sub immediately; the refresh will re-sync watchers
+              // based on the new snapshot.
+              _liveGameSubs.remove(id)?.close();
+              requestRefresh();
+            }
+          });
+        },
+      );
     }
   }
 }
@@ -1373,45 +1447,21 @@ Future<String?> _resolveAutoPinCountryCode(Ref ref) async {
 }
 
 // ============================================================================
-// LIVE GAME WATCHER - AUTO-REFRESH WHEN GAMES FINISH
+// PUBLIC SNAPSHOT VIEW
 // ============================================================================
 
-/// Watches the status of displayed games and returns updated list.
-/// Round visibility changes are handled by [eventGamesProvider] dependencies.
-final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
+/// Read-only view of the per-event snapshot. Pure passthrough on top of
+/// `eventGamesProvider` — exists so widgets/actions/tests can consume the
+/// `AsyncValue` shape without depending on the internal StateNotifier type.
+///
+/// Live-game finish detection is handled inside the controller via
+/// `ref.listen` (no rebuilds), replacing the previous wrapper-provider that
+/// watched per-game streams during build and fanned out to every visible
+/// section.
+final forYouEventSnapshotProvider = Provider.autoDispose.family<
   AsyncValue<ForYouEventGamesSnapshot>,
   String
->((ref, eventId) {
-  final snapshotAsync = ref.watch(eventGamesProvider(eventId));
-
-  return snapshotAsync.when(
-    data: (snapshot) {
-      final liveGames =
-          snapshot.visibleGames
-              .where((game) => game.gameStatus == GameStatus.ongoing)
-              .toList();
-
-      for (final game in liveGames) {
-        final updatesAsync = ref.watch(gameUpdatesStreamProvider(game.gameId));
-        updatesAsync.whenData((data) {
-          final status = data?['status'] as String?;
-          if (status != null && _isFinishedStatus(status)) {
-            debugPrint(
-              '[ForYou] Game ${game.gameId} finished ($status), refreshing snapshot for event $eventId',
-            );
-            Future.microtask(() {
-              bumpEventPinRefreshSignal(ref, eventId);
-            });
-          }
-        });
-      }
-
-      return AsyncValue.data(snapshot);
-    },
-    loading: () => const AsyncValue.loading(),
-    error: (e, st) => AsyncValue.error(e, st),
-  );
-});
+>((ref, eventId) => ref.watch(eventGamesProvider(eventId)));
 
 bool _isFinishedStatus(String status) {
   return status == '1-0' ||
