@@ -61,6 +61,7 @@ class AppsflyerService {
   bool _isInitialized = false;
 
   static const String _kCachedAffiliateDataKey = 'appsflyer_cached_affiliate_data';
+  static const List<String> _oneLinkCustomDomains = ['get.chessever.com'];
 
   static String _resolveDevKey() {
     const releaseKey = String.fromEnvironment('APPSFLYER_DEV_KEY', defaultValue: '');
@@ -102,6 +103,7 @@ class AppsflyerService {
     );
 
     _appsflyerSdk = AppsflyerSdk(options);
+    _appsflyerSdk?.setOneLinkCustomDomain(_oneLinkCustomDomains);
 
     try {
       await _appsflyerSdk?.initSdk(

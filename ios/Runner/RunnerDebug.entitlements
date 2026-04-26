@@ -10,6 +10,8 @@
 	<array>
 		<string>applinks:chessever.com</string>
 		<string>applinks:www.chessever.com</string>
+		<string>applinks:get.chessever.com</string>
+		<string>applinks:chessever.onelink.me</string>
 	</array>
 	<key>aps-environment</key>
 	<string>development</string>

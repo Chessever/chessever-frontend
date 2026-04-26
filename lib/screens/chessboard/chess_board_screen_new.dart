@@ -1004,6 +1004,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (pageIndex != _currentPageIndex) return;
     if (state.isLoadingMoves) return;
 
+    // When opened from the opening explorer's games sheet, every page's
+    // provider already navigates to the move matching widget.initialFen.
+    // Skipping the default-position override preserves that target position
+    // when the user swipes between games.
+    if (widget.initialFen != null) {
+      _syncedLatestPositions.add(state.game.gameId);
+      return;
+    }
+
     final gameId = state.game.gameId;
     if (_syncedLatestPositions.contains(gameId)) {
       return;
