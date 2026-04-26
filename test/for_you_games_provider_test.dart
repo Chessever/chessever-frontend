@@ -492,11 +492,11 @@ void main() {
     'section visibility is driven by snapshot: empty snapshot hides section',
     () async {
       // With the new architecture, visibility is determined by each section
-      // watching forYouEventGamesWithAutoRefreshProvider directly.
+      // watching forYouEventSnapshotProvider directly.
       // An event whose snapshot resolves with no games should be hidden.
       final container = ProviderContainer(
         overrides: [
-          forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
+          forYouEventSnapshotProvider.overrideWith((ref, eventId) {
             if (eventId == 'event-hidden') {
               return AsyncValue.data(_snapshot(eventId, hasGames: false));
             }
@@ -507,10 +507,10 @@ void main() {
       addTearDown(container.dispose);
 
       final hiddenSnapshot = container.read(
-        forYouEventGamesWithAutoRefreshProvider('event-hidden'),
+        forYouEventSnapshotProvider('event-hidden'),
       );
       final visibleSnapshot = container.read(
-        forYouEventGamesWithAutoRefreshProvider('event-visible'),
+        forYouEventSnapshotProvider('event-visible'),
       );
 
       expect(hiddenSnapshot.valueOrNull?.hasGames, false);
@@ -525,7 +525,7 @@ void main() {
       // (loading state) so shimmer placeholders are shown.
       final container = ProviderContainer(
         overrides: [
-          forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
+          forYouEventSnapshotProvider.overrideWith((ref, eventId) {
             return const AsyncValue<ForYouEventGamesSnapshot>.loading();
           }),
         ],
@@ -533,7 +533,7 @@ void main() {
       addTearDown(container.dispose);
 
       final snapshot = container.read(
-        forYouEventGamesWithAutoRefreshProvider('event-loading'),
+        forYouEventSnapshotProvider('event-loading'),
       );
 
       expect(snapshot.isLoading, true);
@@ -553,7 +553,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           forYouPinStorageProvider.overrideWithValue(storage),
-          forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
+          forYouEventSnapshotProvider.overrideWith((ref, eventId) {
             return AsyncValue.data(_snapshot(eventId));
           }),
         ],
@@ -581,7 +581,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           forYouPinStorageProvider.overrideWithValue(storage),
-          forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
+          forYouEventSnapshotProvider.overrideWith((ref, eventId) {
             return AsyncValue.data(
               _snapshot(
                 eventId,
@@ -610,7 +610,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           forYouPinStorageProvider.overrideWithValue(storage),
-          forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
+          forYouEventSnapshotProvider.overrideWith((ref, eventId) {
             return AsyncValue.data(
               _snapshot(
                 eventId,
@@ -643,7 +643,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           forYouPinStorageProvider.overrideWithValue(storage),
-          forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
+          forYouEventSnapshotProvider.overrideWith((ref, eventId) {
             return AsyncValue.data(
               _snapshot(eventId, unpinnedOverrideIds: const ['game-1']),
             );

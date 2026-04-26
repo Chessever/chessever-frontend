@@ -29,7 +29,9 @@ class BackfilledFederationFlag extends ConsumerWidget {
   bool _needsBackfill(String value) {
     if (value.isEmpty) return true;
     final upper = value.toUpperCase();
-    return upper == 'FID' || upper == '?';
+    // Lichess returns the literal "FIDE" for sanctioned RU/BY players; treat
+    // it as missing so we backfill from chess_players.country.
+    return upper == 'FID' || upper == 'FIDE' || upper == '?';
   }
 
   @override
