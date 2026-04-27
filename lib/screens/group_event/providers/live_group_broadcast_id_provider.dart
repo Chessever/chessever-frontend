@@ -36,15 +36,14 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
   ref,
 ) {
   final resolver = ref.read(_strictLiveGroupBroadcastResolverProvider);
-  final settingsRepository = ref.read(settingsRepositoryProvider);
   final controller = StreamController<List<String>>();
-  final configuredLiveEntriesStream =
-      settingsRepository.subscribeToLiveGroupBroadcastIds();
-  final liveRoundIdsStream = settingsRepository.subscribeToLiveRoundIds();
-  var configuredLiveEntries = const <String>[];
-  var liveRoundIds = const <String>[];
-  var hasConfiguredSnapshot = false;
-  var hasLiveRoundsSnapshot = false;
+  final settings = ref.watch(liveSettingsProvider).valueOrNull;
+  final configuredLiveEntries = List<String>.unmodifiable(
+    settings?.liveGroupBroadcastIds ?? const <String>[],
+  );
+  final liveRoundIds = List<String>.unmodifiable(
+    settings?.liveRoundIds ?? const <String>[],
+  );
   var resolveRequestId = 0;
   List<String>? lastResolvedIds;
 
@@ -80,10 +79,6 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
   }
 
   Future<void> emitResolvedIds() async {
-    if (!hasConfiguredSnapshot || !hasLiveRoundsSnapshot) {
-      return;
-    }
-
     final currentRequestId = ++resolveRequestId;
     final resolvedIds = await resolve(
       configuredLiveEntries: List<String>.of(configuredLiveEntries),
@@ -99,40 +94,7 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
 
   // Unblock first-load callers immediately; strict IDs will stream in later.
   emit(const <String>[]);
-
-  final configuredSubscription = configuredLiveEntriesStream.listen(
-    (nextConfiguredLiveEntries) {
-      configuredLiveEntries = List<String>.unmodifiable(
-        nextConfiguredLiveEntries,
-      );
-      hasConfiguredSnapshot = true;
-      unawaited(emitResolvedIds());
-    },
-    onError: (Object error, StackTrace stackTrace) {
-      debugPrint(
-        '[StrictLiveEvents] Configured live IDs stream failed: $error\n$stackTrace',
-      );
-      hasConfiguredSnapshot = true;
-      configuredLiveEntries = const <String>[];
-      unawaited(emitResolvedIds());
-    },
-  );
-
-  final liveRoundsSubscription = liveRoundIdsStream.listen(
-    (nextLiveRoundIds) {
-      liveRoundIds = List<String>.unmodifiable(nextLiveRoundIds);
-      hasLiveRoundsSnapshot = true;
-      unawaited(emitResolvedIds());
-    },
-    onError: (Object error, StackTrace stackTrace) {
-      debugPrint(
-        '[StrictLiveEvents] Live round IDs stream failed: $error\n$stackTrace',
-      );
-      hasLiveRoundsSnapshot = true;
-      liveRoundIds = const <String>[];
-      unawaited(emitResolvedIds());
-    },
-  );
+  unawaited(emitResolvedIds());
 
   final refreshTimer = Timer.periodic(_liveIndicatorRefreshInterval, (_) {
     unawaited(emitResolvedIds());
@@ -140,8 +102,6 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
 
   ref.onDispose(() {
     refreshTimer.cancel();
-    unawaited(configuredSubscription.cancel());
-    unawaited(liveRoundsSubscription.cancel());
     unawaited(controller.close());
   });
 

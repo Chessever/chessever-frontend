@@ -266,8 +266,7 @@ void _attemptScrollToRound(
 
   if (controller.isAttached) {
     try {
-      // +1 because item 0 of the positioned list is the EventSearchBar.
-      controller.jumpTo(index: itemIndex + 1, alignment: 0.0);
+      controller.jumpTo(index: itemIndex, alignment: 0.0);
     } catch (e) {
       debugPrint('❌ Auto-scroll jumpTo failed for $roundId: $e');
     }

@@ -103,7 +103,7 @@ This function:
 6. For `round_started`: player-favourite users get per-user combined messages (Scenarios A/B/C); event-starred users get a pairings digest ("Carlsen–Nepo · Caruana–Giri +4 more").
 7. For `round_heads_up`: same Scenario A/B/C per-user messages for player-favourites; event template for event-starred.
 8. For `round_finished`: results digest for event-starred users only ("Carlsen 1-0 · Caruana ½-½ +3").
-9. Sends notifications via OneSignal with `android_channel_id` routing.
+9. Sends regular notifications via OneSignal by expanding each user to every active `user_push_tokens` subscription ID, so a signed-in user receives pushes on all synced devices. Users without synced token rows fall back to OneSignal `external_id` targeting.
 10. All round/event data payloads include `tour_id`, `round_id`, and `group_broadcast_id` for deep-link routing.
 11. Database activity payloads include `folder_id` and a deep-link URL so taps can land directly on the subscribed database screen on both iOS and Android.
 12. Records 900-second bidirectional cooldown windows after sending `game_started` or `round_started` (player channel).

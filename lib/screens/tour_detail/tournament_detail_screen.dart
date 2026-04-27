@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -236,6 +237,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             ? const GamesAppBarWidget()
             : _TourDetailDropDownAppBar(data: data),
         SizedBox(height: 8.h),
+        _PinnedEventSearchBar(
+          pageController: pageController,
+          fallbackPage: selectedTourMode.index.toDouble(),
+        ),
         _buildSegmentedSwitcher(
           selectedTourMode,
           (index) => _handleTabSelection(index),
@@ -283,6 +288,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   void _handleTabSelection(int index) {
     try {
+      // Drop the keyboard when leaving the search-enabled tabs so the field
+      // and the keyboard collapse together, instead of the keyboard hovering
+      // over About after a swipe.
+      FocusScope.of(context).unfocus();
       // Schedule the state change to avoid mutating provider state during
       // layout/semantics passes, which can trigger parentDataDirty assertions.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -310,6 +319,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       );
 
       if (currentModeIndex != index) {
+        FocusScope.of(context).unfocus();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           ref
@@ -420,3 +430,53 @@ const _mappedName = {
   TournamentDetailScreenMode.games: 'Games',
   TournamentDetailScreenMode.standings: 'Standings',
 };
+
+/// Search bar pinned above the About/Games/Standings tab switcher.
+///
+/// Hidden on About (search is a no-op there) and visible on Games/Standings.
+/// Drives its height and opacity directly from [pageController.page] so the
+/// reveal/collapse tracks the swipe finger in real time and smoothly chases
+/// `animateToPage` when a tab is tapped — no two-stage "page settles, then
+/// search bar pops" feel.
+class _PinnedEventSearchBar extends StatelessWidget {
+  const _PinnedEventSearchBar({
+    required this.pageController,
+    required this.fallbackPage,
+  });
+
+  final PageController pageController;
+  final double fallbackPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+    return AnimatedBuilder(
+      animation: pageController,
+      builder: (context, child) {
+        final page =
+            pageController.hasClients
+                ? (pageController.page ?? fallbackPage)
+                : fallbackPage;
+        // page 0 == About (hidden); page 1+ == Games/Standings (fully shown).
+        final t = page.clamp(0.0, 1.0);
+        if (t <= 0.0) {
+          return const SizedBox.shrink();
+        }
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: t,
+            child: Opacity(opacity: t, child: child),
+          ),
+        );
+      },
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: const EventSearchBar(),
+      ),
+    );
+  }
+}

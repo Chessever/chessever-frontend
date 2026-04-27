@@ -741,7 +741,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
 }
 
 /// Chess board widget for displaying the current position.
-class _GamebaseChessBoard extends ConsumerWidget {
+class _GamebaseChessBoard extends ConsumerStatefulWidget {
   const _GamebaseChessBoard({
     required this.fen,
     required this.boardSize,
@@ -753,7 +753,30 @@ class _GamebaseChessBoard extends ConsumerWidget {
   final bool isFlipped;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_GamebaseChessBoard> createState() =>
+      _GamebaseChessBoardState();
+}
+
+class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
+  // See _AnalysisBoardState for rationale: bumping this on every external
+  // position change forces chessground to drop its internal selection so a
+  // tapped piece's legal-move dots disappear when the user navigates via
+  // arrows / nav controls instead of moving on the board.
+  int _selectionEpoch = 0;
+  bool _pendingBoardMove = false;
+
+  @override
+  void didUpdateWidget(covariant _GamebaseChessBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final wasBoardMove = _pendingBoardMove;
+    _pendingBoardMove = false;
+    if (oldWidget.fen != widget.fen && !wasBoardMove) {
+      _selectionEpoch++;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
@@ -761,14 +784,14 @@ class _GamebaseChessBoard extends ConsumerWidget {
 
     Chess? position;
     try {
-      position = Chess.fromSetup(Setup.parseFen(fen));
+      position = Chess.fromSetup(Setup.parseFen(widget.fen));
     } catch (_) {
       position = null;
     }
 
     return Container(
-      height: boardSize,
-      width: boardSize,
+      height: widget.boardSize,
+      width: widget.boardSize,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(4.br),
         boxShadow: [
@@ -784,17 +807,18 @@ class _GamebaseChessBoard extends ConsumerWidget {
         child:
             position == null
                 ? Chessboard.fixed(
-                  size: boardSize,
+                  size: widget.boardSize,
                   settings: ChessboardSettings(
                     enableCoordinates: true,
                     colorScheme: boardSettings.colorScheme,
                     pieceAssets: boardSettings.pieceAssets,
                   ),
-                  orientation: isFlipped ? Side.black : Side.white,
-                  fen: fen,
+                  orientation: widget.isFlipped ? Side.black : Side.white,
+                  fen: widget.fen,
                 )
                 : Chessboard(
-                  size: boardSize,
+                  key: ValueKey(_selectionEpoch),
+                  size: widget.boardSize,
                   settings: ChessboardSettings(
                     enableCoordinates: true,
                     colorScheme: boardSettings.colorScheme,
@@ -802,8 +826,8 @@ class _GamebaseChessBoard extends ConsumerWidget {
                     pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
                     autoQueenPromotionOnPremove: false,
                   ),
-                  orientation: isFlipped ? Side.black : Side.white,
-                  fen: fen,
+                  orientation: widget.isFlipped ? Side.black : Side.white,
+                  fen: widget.fen,
                   game: GameData(
                     playerSide:
                         position.turn == Side.white
@@ -834,6 +858,7 @@ class _GamebaseChessBoard extends ConsumerWidget {
                           if (!unlocked) return;
                         }
                       }
+                      _pendingBoardMove = true;
                       notifier.makeMove(move.uci);
                     },
                     onPromotionSelection: (_) {},
@@ -2593,17 +2618,23 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     final isCurrent = pointerId != null && pointerId == currentPointerId;
 
     final nags = token.node?.move.nags ?? const <int>[];
+    // Resolve NAGs into displays. Quality NAGs tint the move text and render
+    // hugged to the SAN; evaluation/observation NAGs render in muted slate
+    // with a leading hair-space and never recolor the SAN.
     final displayNags = <NagDisplay>[];
-    Color? firstNagColor;
+    NagDisplay? firstQualityNag;
+    final seen = <int>{};
     for (final nag in nags) {
+      if (!seen.add(nag)) continue;
       final d = getNagDisplay(nag);
       if (d != null) {
         displayNags.add(d);
-        firstNagColor ??= d.color;
+        if (d.isQuality) firstQualityNag ??= d;
       }
     }
 
-    final color = firstNagColor ?? _resolveMoveColor(token, currentPly);
+    final baseColor = _resolveMoveColor(token, currentPly);
+    final color = firstQualityNag?.color ?? baseColor;
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
@@ -2639,16 +2670,41 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     }
 
     if (displayNags.isNotEmpty) {
-      for (final d in displayNags) {
-        moveSpans.add(
-          TextSpan(
-            text: d.symbol,
-            style: textStyle.copyWith(
-              color: d.color ?? textStyle.color,
-              fontWeight: d.color != null ? FontWeight.bold : FontWeight.normal,
+      // Order: quality first (hugged, bold, color-coded), then evaluation,
+      // then observation (both with leading hair-space, muted slate, w500).
+      final ordered = [...displayNags]..sort((a, b) {
+        int rank(NagDisplay d) => switch (d.category) {
+          NagCategory.quality => 0,
+          NagCategory.evaluation => 1,
+          NagCategory.observation => 2,
+        };
+        return rank(a).compareTo(rank(b));
+      });
+      for (final d in ordered) {
+        if (d.isQuality) {
+          moveSpans.add(
+            TextSpan(
+              text: d.symbol,
+              style: textStyle.copyWith(
+                color: d.color,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          moveSpans.add(
+            TextSpan(
+              text: ' ${d.symbol}',
+              style: textStyle.copyWith(
+                color: d.color,
+                fontWeight: FontWeight.w500,
+                fontSize: (textStyle.fontSize ?? 12.0) - 0.5,
+                letterSpacing: 0.0,
+              ),
+            ),
+          );
+        }
       }
     }
 

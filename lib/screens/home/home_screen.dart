@@ -153,7 +153,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     onOpeningExplorerPressed: () async {
       final allowed = await requireFullAuthGuard(context);
       if (!allowed) return;
-      if (!context.mounted) return;
+      if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => GamebaseExplorerScreen.scoped()),
       );
@@ -161,9 +161,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     onFavoritesPressed: () {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => const FavoritesTabScreen(
-            initialMode: FavoritesScreenMode.favorites,
-          ),
+          builder:
+              (_) => const FavoritesTabScreen(
+                initialMode: FavoritesScreenMode.favorites,
+              ),
         ),
       );
     },
@@ -291,8 +292,9 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
       ),
     );
 
-    // Start with the animation completed
-    _animationController.forward();
+    // The Events tab is the first screen users see; don't spend the first
+    // frames scaling/repainting the whole For You feed while it is loading.
+    _animationController.value = 1;
   }
 
   @override
@@ -331,13 +333,11 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
       onTap: FocusScope.of(context).unfocus,
       child: AnimatedBuilder(
         animation: _animationController,
+        child: _buildScreen(currentItem),
         builder: (context, child) {
           return FadeTransition(
             opacity: _fadeAnimation,
-            child: ScaleTransition(
-              scale: _scaleAnimation,
-              child: _buildScreen(currentItem),
-            ),
+            child: ScaleTransition(scale: _scaleAnimation, child: child),
           );
         },
       ),

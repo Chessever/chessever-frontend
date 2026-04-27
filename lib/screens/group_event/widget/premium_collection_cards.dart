@@ -163,11 +163,18 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
       duration: const Duration(seconds: 45),
     );
 
-    // Start infinite animation
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+
+    // Start infinite animation unless the OS requests reduced motion.
     useEffect(() {
-      animationController.repeat();
+      if (disableAnimations) {
+        animationController.stop();
+        animationController.value = 0;
+      } else {
+        animationController.repeat();
+      }
       return null;
-    }, [animationController]);
+    }, [animationController, disableAnimations]);
 
     if (favorites.isEmpty) {
       return const _EmptyFavoritesPlaceholder();
@@ -175,6 +182,19 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
 
     // Smart grid configuration based on favorites count
     final gridConfig = _calculateGridConfig(favorites.length);
+    final patternCellCount = math.min(
+      favorites.length,
+      gridConfig.maxVisibleCells,
+    );
+    final patternFavorites =
+        favorites.length > patternCellCount
+            ? favorites.take(patternCellCount).toList(growable: false)
+            : favorites;
+    final photoUrls =
+        ref
+            .watch(_favoritePhotoUrlsProvider(_photoUrlKey(patternFavorites)))
+            .valueOrNull ??
+        const <String, String?>{};
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -184,18 +204,15 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
         const cellSpacing = 4.0;
         final rowHeight =
             (cardHeight - (gridConfig.rows - 1) * cellSpacing) /
-                gridConfig.rows;
-        final actualCellSize =
-            math.min(gridConfig.baseCellSize, rowHeight - 2);
+            gridConfig.rows;
+        final actualCellSize = math.min(gridConfig.baseCellSize, rowHeight - 2);
         final verticalPadding = (rowHeight - actualCellSize) / 2;
         final cellWithSpacing = actualCellSize + cellSpacing;
 
-        // Pattern repeats every `favorites.length` cells.
-        final period = favorites.length * cellWithSpacing;
-        // Scroll exactly 2 pattern periods per cycle so the wrap is seamless
-        // (controller resets 1.0 → 0.0 and the image is pixel-identical).
-        const scrollPeriods = 2;
-        final scrollDistance = scrollPeriods * period;
+        // Keep the animated strip bounded. The old version repeated every
+        // favorite, so users with large favorite lists rendered hundreds of
+        // clipped image widgets behind a tiny card.
+        final scrollDistance = patternCellCount * cellWithSpacing;
         final stripCellsPerRow =
             ((cardWidth + scrollDistance) / cellWithSpacing).ceil() + 2;
 
@@ -204,26 +221,34 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
         // work collapses to a cheap GPU transform of a pre-rasterized image.
         // No ClipRect here: the parent _PremiumCollectionCard already wraps
         // everything in a ClipRRect, so off-card cells are already clipped.
+        final grid = RepaintBoundary(
+          child: _StaticPlayerGrid(
+            favorites: patternFavorites,
+            photoUrls: photoUrls,
+            patternCellCount: patternCellCount,
+            rows: gridConfig.rows,
+            cellsPerRow: stripCellsPerRow,
+            cellSize: actualCellSize,
+            cellSpacing: cellSpacing,
+            cellWithSpacing: cellWithSpacing,
+            verticalPadding: verticalPadding,
+          ),
+        );
+
+        if (disableAnimations) {
+          return RepaintBoundary(child: grid);
+        }
+
         return RepaintBoundary(
           child: AnimatedBuilder(
             animation: animationController,
+            child: grid,
             builder: (context, child) {
               return Transform.translate(
                 offset: Offset(-animationController.value * scrollDistance, 0),
                 child: child,
               );
             },
-            child: RepaintBoundary(
-              child: _StaticPlayerGrid(
-                favorites: favorites,
-                rows: gridConfig.rows,
-                cellsPerRow: stripCellsPerRow,
-                cellSize: actualCellSize,
-                cellSpacing: cellSpacing,
-                cellWithSpacing: cellWithSpacing,
-                verticalPadding: verticalPadding,
-              ),
-            ),
           ),
         );
       },
@@ -247,11 +272,7 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
       return const _GridConfig(rows: 3, baseCellSize: 38.0, maxVisibleCells: 9);
     } else {
       // Many players: smaller cells, 3 rows
-      return const _GridConfig(
-        rows: 3,
-        baseCellSize: 34.0,
-        maxVisibleCells: 12,
-      );
+      return const _GridConfig(rows: 3, baseCellSize: 34.0, maxVisibleCells: 9);
     }
   }
 }
@@ -275,6 +296,8 @@ class _GridConfig {
 class _StaticPlayerGrid extends StatelessWidget {
   const _StaticPlayerGrid({
     required this.favorites,
+    required this.photoUrls,
+    required this.patternCellCount,
     required this.rows,
     required this.cellsPerRow,
     required this.cellSize,
@@ -284,6 +307,8 @@ class _StaticPlayerGrid extends StatelessWidget {
   });
 
   final List<FavoritePlayer> favorites;
+  final Map<String, String?> photoUrls;
+  final int patternCellCount;
   final int rows;
   final int cellsPerRow;
   final double cellSize;
@@ -298,21 +323,21 @@ class _StaticPlayerGrid extends StatelessWidget {
       final rowStagger = row.isOdd ? cellWithSpacing * 0.5 : 0.0;
       final y = row * (cellSize + cellSpacing) + verticalPadding;
       for (int i = 0; i < cellsPerRow; i++) {
-        final playerIndex = i % favorites.length;
+        final patternIndex = i % patternCellCount;
+        final playerIndex = patternIndex % favorites.length;
         final player = favorites[playerIndex];
-        final sizeVariation = _getSizeVariation(playerIndex, row);
+        final sizeVariation = _getSizeVariation(patternIndex, row);
         final finalCellSize = cellSize * sizeVariation;
         final sizeOffset = (cellSize - finalCellSize) / 2;
         final x = i * cellWithSpacing + rowStagger + sizeOffset;
         cells.add(
           Positioned(
-            key: ValueKey(
-              '${player.fideId ?? player.playerName}_${row}_$i',
-            ),
+            key: ValueKey('${player.fideId ?? player.playerName}_${row}_$i'),
             left: x,
             top: y + sizeOffset,
             child: _PlayerPhotoCell(
               player: player,
+              photoUrl: player.fideId == null ? null : photoUrls[player.fideId],
               size: finalCellSize,
             ),
           ),
@@ -333,25 +358,45 @@ class _StaticPlayerGrid extends StatelessWidget {
   }
 }
 
-/// Provider to cache player photo URLs - prevents re-fetching on every animation frame
-final _playerPhotoUrlProvider = FutureProvider.family
-    .autoDispose<String?, String?>((ref, fideId) async {
-      if (fideId == null || fideId.isEmpty) return null;
-      return FidePhotoService.getPhotoUrlOrNull(fideId);
+/// One bounded lookup for the whole mosaic. This avoids each repeated visual
+/// cell becoming its own Consumer while the animated layer is being cached.
+final _favoritePhotoUrlsProvider = FutureProvider.family
+    .autoDispose<Map<String, String?>, String>((ref, key) async {
+      if (key.isEmpty) return const <String, String?>{};
+
+      final ids = key.split('|').where((id) => id.isNotEmpty).toSet();
+      if (ids.isEmpty) return const <String, String?>{};
+
+      final entries = await Future.wait(
+        ids.map((id) async {
+          final url = await FidePhotoService.getPhotoUrlOrNull(id);
+          return MapEntry(id, url);
+        }),
+      );
+      return Map<String, String?>.fromEntries(entries);
     });
 
+String _photoUrlKey(List<FavoritePlayer> favorites) {
+  return favorites
+      .map((player) => player.fideId ?? '')
+      .where((id) => id.isNotEmpty)
+      .join('|');
+}
+
 /// Individual player photo cell with loading and error states
-class _PlayerPhotoCell extends ConsumerWidget {
-  const _PlayerPhotoCell({required this.player, required this.size});
+class _PlayerPhotoCell extends StatelessWidget {
+  const _PlayerPhotoCell({
+    required this.player,
+    required this.photoUrl,
+    required this.size,
+  });
 
   final FavoritePlayer player;
+  final String? photoUrl;
   final double size;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Use cached provider instead of useFuture to prevent flashing
-    final photoUrlAsync = ref.watch(_playerPhotoUrlProvider(player.fideId));
-
+  Widget build(BuildContext context) {
     return Container(
       width: size,
       height: size,
@@ -363,21 +408,22 @@ class _PlayerPhotoCell extends ConsumerWidget {
         ),
       ),
       child: ClipOval(
-        child: photoUrlAsync.when(
-          data:
-              (photoUrl) =>
-                  photoUrl != null
-                      ? CachedNetworkImage(
-                        imageUrl: photoUrl,
-                        fit: BoxFit.cover,
-                        memCacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                        placeholder: (_, __) => _buildPlaceholder(),
-                        errorWidget: (_, __, ___) => _buildInitials(),
-                      )
-                      : _buildInitials(),
-          loading: () => _buildPlaceholder(),
-          error: (_, __) => _buildInitials(),
-        ),
+        child:
+            photoUrl != null
+                ? CachedNetworkImage(
+                  imageUrl: photoUrl!,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.low,
+                  memCacheWidth:
+                      (size * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                  memCacheHeight:
+                      (size * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  placeholder: (_, __) => _buildPlaceholder(),
+                  errorWidget: (_, __, ___) => _buildInitials(),
+                )
+                : _buildInitials(),
       ),
     );
   }
@@ -555,10 +601,9 @@ class _FlagFullBackground extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.cover,
                 child: CountryFlag.fromCountryCode(
-country.countryCode,
-  theme: ImageTheme(width: 200,
-                  height: 150,),
-),
+                  country.countryCode,
+                  theme: ImageTheme(width: 200, height: 150),
+                ),
               ),
             ),
           ),

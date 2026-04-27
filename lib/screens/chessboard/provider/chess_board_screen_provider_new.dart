@@ -18,6 +18,7 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -192,6 +193,7 @@ class ChessBoardScreenNotifierNew
         savedAnalysisData?.isBoardFlipped ??
         ref.read(activeBoardFlippedProvider);
     final variationComments = savedAnalysisData?.variationComments ?? const {};
+    final moveNags = savedAnalysisData?.moveNags ?? const <String, List<int>>{};
 
     // Listen for global orientation changes to keep all boards in sync
     ref.listen<bool>(activeBoardFlippedProvider, (previous, next) {
@@ -243,6 +245,10 @@ class ChessBoardScreenNotifierNew
         variationComments: Map<String, String>.from(
           variationComments,
         ), // Restore comments
+        moveNags: {
+          for (final entry in moveNags.entries)
+            entry.key: List<int>.from(entry.value),
+        }, // Restore user-applied NAGs
         position: liveFenPosition,
         analysisState:
             liveFenPosition != null
@@ -1919,6 +1925,63 @@ class ChessBoardScreenNotifierNew
     _scheduleAutoSave();
   }
 
+  /// Toggle a single user-applied NAG on a move pointer.
+  ///
+  /// Within each [NagCategory] (quality / evaluation / observation) only one
+  /// glyph can be active at a time — tapping a different one in the same
+  /// category replaces the previous selection. Tapping the same glyph again
+  /// removes it. This matches how lichess study handles glyphs.
+  void toggleMoveNag({
+    required String pointerId,
+    required int nag,
+  }) {
+    final currentState = state.value;
+    if (currentState == null) return;
+    final tappedDisplay = getNagDisplay(nag);
+    if (tappedDisplay == null) return;
+
+    final nextMap = Map<String, List<int>>.from(currentState.moveNags);
+    final existing = List<int>.from(nextMap[pointerId] ?? const <int>[]);
+
+    if (existing.contains(nag)) {
+      existing.remove(nag);
+    } else {
+      // Drop any other NAG in the same category (one slot per category).
+      existing.removeWhere((other) {
+        final d = getNagDisplay(other);
+        return d != null && d.category == tappedDisplay.category;
+      });
+      existing.add(nag);
+    }
+
+    if (existing.isEmpty) {
+      nextMap.remove(pointerId);
+    } else {
+      nextMap[pointerId] = existing;
+    }
+
+    state = AsyncValue.data(currentState.copyWith(moveNags: nextMap));
+    _scheduleAutoSave();
+  }
+
+  /// Clear all user NAGs from a single move pointer.
+  void clearMoveNags(String pointerId) {
+    final currentState = state.value;
+    if (currentState == null) return;
+    if (!currentState.moveNags.containsKey(pointerId)) return;
+    final nextMap = Map<String, List<int>>.from(currentState.moveNags)
+      ..remove(pointerId);
+    state = AsyncValue.data(currentState.copyWith(moveNags: nextMap));
+    _scheduleAutoSave();
+  }
+
+  /// Replace the full moveNags map (used when restoring a saved analysis).
+  void setMoveNags(Map<String, List<int>> moveNags) {
+    final currentState = state.value;
+    if (currentState == null) return;
+    state = AsyncValue.data(currentState.copyWith(moveNags: moveNags));
+  }
+
   void previewPrincipalVariationMoveAt(
     AnalysisLine line,
     int variantIndex,
@@ -3343,6 +3406,7 @@ class ChessBoardScreenNotifierNew
         chessGame: analysisGame,
         analysisState: analysisStateJson,
         variationComments: currentState.variationComments,
+        moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
         tags: const [],
         isFavorite: false,
@@ -3401,7 +3465,13 @@ class ChessBoardScreenNotifierNew
     final currentJson = analysisGame.toJson().toString();
     final commentsChanged =
         currentState.variationComments != savedAnalysisData?.variationComments;
-    if (currentJson == _lastAutoSavedGameJson && !commentsChanged) return;
+    final nagsChanged =
+        currentState.moveNags != savedAnalysisData?.moveNags;
+    if (currentJson == _lastAutoSavedGameJson &&
+        !commentsChanged &&
+        !nagsChanged) {
+      return;
+    }
 
     // Set saving status
     state = AsyncValue.data(
@@ -3430,6 +3500,7 @@ class ChessBoardScreenNotifierNew
         chessGame: analysisGame,
         analysisState: analysisStateJson,
         variationComments: currentState.variationComments,
+        moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
         tags: const [],
         isFavorite: false,
@@ -7040,6 +7111,9 @@ class SavedAnalysisData {
   /// Comments keyed by variation pointer ID
   final Map<String, String> variationComments;
 
+  /// User-applied NAG codes per move pointer (encoded with NotationPointer).
+  final Map<String, List<int>> moveNags;
+
   /// Saved move pointer to restore navigation position
   final List<int>? movePointer;
 
@@ -7060,6 +7134,7 @@ class SavedAnalysisData {
     this.sourceGameId,
     required this.chessGame,
     required this.variationComments,
+    this.moveNags = const <String, List<int>>{},
     this.movePointer,
     required this.isBoardFlipped,
     required this.lastViewedPosition,

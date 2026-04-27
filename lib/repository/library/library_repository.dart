@@ -481,6 +481,7 @@ class LibraryRepository extends BaseRepository {
                   'chess_game': analysis.chessGame.toJson(),
                   'analysis_state': analysis.analysisState,
                   'variation_comments': analysis.variationComments,
+                  'move_nags': analysis.moveNags,
                   'last_viewed_position': analysis.lastViewedPosition,
                   'tags': analysis.tags,
                   'notes': analysis.notes,

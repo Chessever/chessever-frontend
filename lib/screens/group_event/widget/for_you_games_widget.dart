@@ -447,6 +447,7 @@ class _ForYouEventSection extends ConsumerWidget {
     final eventCard = EventCard(
       tourEventCardModel: event,
       showHeartIndicator: true,
+      favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
       heroTagSuffix: '_foryou',
       onTap: () {
         ref
@@ -591,6 +592,7 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
           child: EventCard(
             tourEventCardModel: event,
             showHeartIndicator: true,
+            favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
             heroTagSuffix: '_foryou_tablet_col',
             onTap: () {
               ref

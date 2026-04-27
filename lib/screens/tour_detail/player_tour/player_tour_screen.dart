@@ -5,7 +5,6 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
@@ -116,8 +115,8 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
   }
 }
 
-/// Only this subtree re-runs when the search query changes. The search bar is
-/// the first scrollable row so it behaves like the Games tab and scrolls away.
+/// Only this subtree re-runs when the search query changes. The search bar
+/// itself is rendered above the tab switcher in TournamentDetailScreen.
 class _StandingsList extends ConsumerWidget {
   const _StandingsList({required this.controller});
 
@@ -152,14 +151,11 @@ class _StandingsList extends ConsumerWidget {
               controller: controller,
               primary: false,
               padding: EdgeInsets.only(
+                top: 8.sp,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
               ),
-              itemCount: data.isEmpty ? 2 : data.length + 1,
+              itemCount: data.isEmpty ? 1 : data.length,
               itemBuilder: (context, index) {
-                if (index == 0) {
-                  return const EventSearchBar();
-                }
-
                 if (data.isEmpty) {
                   return Padding(
                     padding: EdgeInsets.only(top: 48.h),
@@ -172,7 +168,7 @@ class _StandingsList extends ConsumerWidget {
                   );
                 }
 
-                final player = data[index - 1];
+                final player = data[index];
                 final isFav = favIds.contains(player.fideId);
                 return FigmaPlayerCard(
                   key: ValueKey(

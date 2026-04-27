@@ -8,10 +8,9 @@ import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Search bar rendered as the top-most item inside each event-view tab's
-/// scrollable so it scrolls off with the content instead of staying pinned
-/// above the tab bar. Horizontal inset is inherited from the enclosing list
-/// / column so this widget matches the full width of the surrounding cards.
+/// Search bar pinned above the event-view tab switcher (About/Games/
+/// Standings). Stays visible while the inner tab content scrolls. Horizontal
+/// inset comes from the enclosing column.
 class EventSearchBar extends ConsumerStatefulWidget {
   const EventSearchBar({super.key});
 
@@ -82,12 +81,11 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       _syncControllerText(next);
     });
 
-    // Breathing room above (clear gap from the tab switcher) and below
-    // (separation from the first card). Internal vertical padding is kept
-    // modest so the field reads as a compact row, visually in harmony with
-    // the tab chips and round cards.
+    // Sits between the app-bar row and the tab switcher. Tight vertical
+    // padding keeps the strip compact so the tab chips remain near the top
+    // of the viewport.
     return Padding(
-      padding: EdgeInsets.only(top: 14.h, bottom: 14.h),
+      padding: EdgeInsets.only(top: 4.h, bottom: 8.h),
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 4.h),
         decoration: BoxDecoration(

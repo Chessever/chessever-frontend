@@ -12,7 +12,6 @@ import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class GroupEventGamesTourContentBody extends ConsumerStatefulWidget {
@@ -62,9 +61,7 @@ class _GroupEventGamesTourContentBodyState
         }).toList();
 
     if (visibleRounds.isEmpty) {
-      // Still show the search bar so users can search the tour even when no
-      // rounds are visible in the current filter.
-      return const SingleChildScrollView(child: EventSearchBar());
+      return const SizedBox.shrink();
     }
 
     final orderedGamesData = ref
@@ -160,10 +157,7 @@ class _GroupEventGamesTourContentBodyState
       }
     }
 
-    // Build scrollable positioned list with all rounds.
-    // Reserve index 0 for the event-view search bar so it scrolls away with
-    // the content instead of being pinned above the tabs.
-    final listItemCount = allItems.length + 1;
+    final listItemCount = allItems.length;
     return PositionedListScrollbar(
       itemPositionsListener: itemPositionsListener,
       itemScrollController: scrollController,
@@ -179,18 +173,14 @@ class _GroupEventGamesTourContentBodyState
         padding: EdgeInsets.only(
           left: 16.sp,
           right: 16.sp,
-          // Search bar (item 0) provides its own top spacing.
-          top: 0,
+          top: 8.sp,
           bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
         ),
         itemCount: listItemCount,
         itemBuilder: (context, index) {
-          if (index == 0) {
-            return const EventSearchBar();
-          }
-          final item = allItems[index - 1];
+          final item = allItems[index];
           final isLastItem = index == listItemCount - 1;
-          final nextIsHeader = !isLastItem && allItems[index].isHeader;
+          final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
 
           // Apply beautiful UI spacing with visual hierarchy
           EdgeInsets padding;
