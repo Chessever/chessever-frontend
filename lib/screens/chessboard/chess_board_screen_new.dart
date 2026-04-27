@@ -6382,12 +6382,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _wasAtEnd = false;
 
   // Bumped whenever the board position changes from anything other than a
-  // user-made move on the board itself (arrow nav, notation tap, swipe,
-  // jump-to-move, etc.). Used as the Chessboard's ValueKey so chessground's
-  // internal selection state — the tapped piece highlight + legal-move dots —
-  // is reset on every external navigation. Without this, tapping a piece and
-  // then pressing the arrow keeps the dots visible on the new position.
-  int _selectionEpoch = 0;
+  // True between the moment the user taps a piece on the board to make a move
+  // and the resulting FEN reaching us via state. Lets us tell apart "user
+  // moved on the board" from "external position change" (arrow nav, notation
+  // tap, swipe, jump-to-move, autoplay). We used to bump a key on external
+  // changes to reset chessground's internal tap-selection, but a key change
+  // remounts the widget and skips the move-piece animation entirely. The
+  // animation matters more than auto-clearing a stale dot — chessground
+  // clears its own selection on the next board tap.
   bool _pendingBoardMove = false;
 
   /// True only at the end of the original game mainline (not analysis variations).
@@ -6620,17 +6622,13 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Reset chessground's tap-selection on any external position change
-    // (arrow navigation, notation tap, swipe, etc.) but not when the user
-    // moved a piece on the board — chessground clears its own selection in
-    // that case and we want to keep the move's animation.
-    final oldFen = oldWidget.chessBoardState.analysisState.position.fen;
-    final newFen = widget.chessBoardState.analysisState.position.fen;
-    final wasBoardMove = _pendingBoardMove;
+    // We used to bump a _selectionEpoch and re-key the Chessboard on every
+    // external FEN change to clear chessground's tap-selection — but the
+    // resulting widget remount made chessground's didUpdateWidget never
+    // run, which skipped its built-in 200ms piece-translation animation.
+    // We now leave the key stable so chessground sees the FEN change and
+    // animates pieces from old to new squares.
     _pendingBoardMove = false;
-    if (oldFen != newFen && !wasBoardMove) {
-      _selectionEpoch++;
-    }
 
     final analysisState = widget.chessBoardState.analysisState;
     final isAtGameEnd = _isAtGameEnd(analysisState);
@@ -6857,7 +6855,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final allShapes = pvShapes.addAll(annotationShapes);
 
     final chessboard = Chessboard(
-      key: ValueKey(_selectionEpoch),
       size: widget.size,
       settings: ChessboardSettings(
         enableCoordinates: true,
