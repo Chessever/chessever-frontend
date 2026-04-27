@@ -761,22 +761,11 @@ class _GamebaseChessBoard extends ConsumerStatefulWidget {
 }
 
 class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
-  // See _AnalysisBoardState for rationale: bumping this on every external
-  // position change forces chessground to drop its internal selection so a
-  // tapped piece's legal-move dots disappear when the user navigates via
-  // arrows / nav controls instead of moving on the board.
-  int _selectionEpoch = 0;
-  bool _pendingBoardMove = false;
-
-  @override
-  void didUpdateWidget(covariant _GamebaseChessBoard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final wasBoardMove = _pendingBoardMove;
-    _pendingBoardMove = false;
-    if (oldWidget.fen != widget.fen && !wasBoardMove) {
-      _selectionEpoch++;
-    }
-  }
+  // We used to bump a _selectionEpoch and re-key the Chessboard on every
+  // external FEN change to clear chessground's tap-selection — but the
+  // resulting widget remount made chessground's didUpdateWidget never run,
+  // which skipped its built-in piece-translation animation. Keep the key
+  // stable; chessground clears its own selection on the next board tap.
 
   @override
   Widget build(BuildContext context) {
@@ -820,10 +809,10 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                   fen: widget.fen,
                 )
                 : Chessboard(
-                  key: ValueKey(_selectionEpoch),
                   size: widget.boardSize,
                   settings: ChessboardSettings(
                     enableCoordinates: true,
+                    animationDuration: const Duration(milliseconds: 200),
                     colorScheme: boardSettings.colorScheme,
                     pieceAssets: boardSettings.pieceAssets,
                     pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
@@ -861,7 +850,6 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                           if (!unlocked) return;
                         }
                       }
-                      _pendingBoardMove = true;
                       notifier.makeMove(move.uci);
                     },
                     onPromotionSelection: (_) {},

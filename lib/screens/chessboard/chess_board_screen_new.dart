@@ -6381,17 +6381,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
 
-  // Bumped whenever the board position changes from anything other than a
-  // True between the moment the user taps a piece on the board to make a move
-  // and the resulting FEN reaching us via state. Lets us tell apart "user
-  // moved on the board" from "external position change" (arrow nav, notation
-  // tap, swipe, jump-to-move, autoplay). We used to bump a key on external
-  // changes to reset chessground's internal tap-selection, but a key change
-  // remounts the widget and skips the move-piece animation entirely. The
-  // animation matters more than auto-clearing a stale dot — chessground
-  // clears its own selection on the next board tap.
-  bool _pendingBoardMove = false;
-
   /// True only at the end of the original game mainline (not analysis variations).
   /// movePointer: [] = initial pos, [n] = mainline move n, [n,v,m,...] = variation
   bool _isAtGameEnd(AnalysisBoardState s) {
@@ -6624,11 +6613,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
 
     // We used to bump a _selectionEpoch and re-key the Chessboard on every
     // external FEN change to clear chessground's tap-selection — but the
-    // resulting widget remount made chessground's didUpdateWidget never
-    // run, which skipped its built-in 200ms piece-translation animation.
-    // We now leave the key stable so chessground sees the FEN change and
-    // animates pieces from old to new squares.
-    _pendingBoardMove = false;
+    // resulting widget remount made chessground's didUpdateWidget never run,
+    // which skipped its built-in 200ms piece-translation animation. The
+    // key is now stable so chessground sees the FEN change and animates
+    // pieces from the old to the new squares.
 
     final analysisState = widget.chessBoardState.analysisState;
     final isAtGameEnd = _isAtGameEnd(analysisState);
@@ -6885,11 +6873,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
         isCheck: widget.chessBoardState.analysisState.position.isCheck,
         promotionMove: widget.chessBoardState.analysisState.promotionMove,
         onMove: (Move move, {bool? viaDragAndDrop}) {
-          _pendingBoardMove = true;
           notifier.onAnalysisMove(move, viaDragAndDrop: viaDragAndDrop);
         },
         onPromotionSelection: (Role? role) {
-          _pendingBoardMove = true;
           notifier.onAnalysisPromotionSelection(role);
         },
       ),
