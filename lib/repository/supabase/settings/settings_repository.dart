@@ -8,11 +8,20 @@ final settingsRepositoryProvider = AutoDisposeProvider<SettingsRepository>(
   (ref) => SettingsRepository(),
 );
 
+final liveSettingsProvider = AutoDisposeStreamProvider<Settings?>(
+  (ref) => ref.read(settingsRepositoryProvider).subscribeToSettings(),
+);
+
 class SettingsRepository extends BaseRepository {
   Future<Settings?> getSettings() => handleApiCall(() async {
     final response = await supabase.from('settings').select().maybeSingle();
     return response != null ? Settings.fromJson(response) : null;
   });
+
+  Stream<Settings?> subscribeToSettings() => supabase
+      .from('settings')
+      .stream(primaryKey: ['id'])
+      .map((data) => data.isEmpty ? null : Settings.fromJson(data.first));
 
   Stream<List<String>> subscribeToLiveRoundIds() => supabase
       .from('settings')

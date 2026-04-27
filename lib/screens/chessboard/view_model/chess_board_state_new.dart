@@ -343,6 +343,12 @@ class ChessBoardStateNew {
   /// User-supplied annotations for variations keyed by variation id
   final Map<String, String> variationComments;
 
+  /// User-applied NAG codes per move, keyed by encoded ChessMovePointer.
+  /// Each entry is the list of NAG ints the user has attached to that move
+  /// (e.g. `[1, 16]` for "good move, white slightly better").
+  /// Merged with `move.nags` from the PGN at render time.
+  final Map<String, List<int>> moveNags;
+
   /// Whether threats mode is enabled (shows opponent's threats with red arrows)
   final bool isThreatsMode;
 
@@ -431,6 +437,7 @@ class ChessBoardStateNew {
     this.lockedPvMergedPositions,
     this.lockedPvBaseMoveCount,
     this.variationComments = const <String, String>{},
+    this.moveNags = const <String, List<int>>{},
     this.isThreatsMode = false,
     this.autoSaveStatus = AutoSaveStatus.idle,
   });
@@ -481,6 +488,7 @@ class ChessBoardStateNew {
     Object? lockedPvMergedPositions = _noChange,
     Object? lockedPvBaseMoveCount = _noChange,
     Map<String, String>? variationComments,
+    Map<String, List<int>>? moveNags,
     bool? isThreatsMode,
     AutoSaveStatus? autoSaveStatus,
   }) {
@@ -581,10 +589,33 @@ class ChessBoardStateNew {
               ? this.lockedPvBaseMoveCount
               : lockedPvBaseMoveCount as int?,
       variationComments: variationComments ?? this.variationComments,
+      moveNags: moveNags ?? this.moveNags,
       analysisState: newAnalysisState,
       isThreatsMode: isThreatsMode ?? this.isThreatsMode,
       autoSaveStatus: autoSaveStatus ?? this.autoSaveStatus,
     );
+  }
+
+  static bool _moveNagsEquals(
+    Map<String, List<int>> a,
+    Map<String, List<int>> b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      final other = b[entry.key];
+      if (other == null) return false;
+      if (!_intListEquality.equals(entry.value, other)) return false;
+    }
+    return true;
+  }
+
+  static int _moveNagsHash(Map<String, List<int>> map) {
+    if (map.isEmpty) return 0;
+    final keys = map.keys.toList()..sort();
+    return Object.hashAll([
+      for (final k in keys) Object.hash(k, Object.hashAll(map[k]!)),
+    ]);
   }
 
   @override
@@ -664,6 +695,7 @@ class ChessBoardStateNew {
         ) &&
         other.lockedPvBaseMoveCount == lockedPvBaseMoveCount &&
         _stringMapEquality.equals(other.variationComments, variationComments) &&
+        _moveNagsEquals(other.moveNags, moveNags) &&
         other.selectedVariantIndex == selectedVariantIndex &&
         other.shapes == shapes &&
         other.analysisState == analysisState &&
@@ -734,6 +766,7 @@ class ChessBoardStateNew {
           ),
       lockedPvBaseMoveCount,
       _stringMapEquality.hash(variationComments),
+      _moveNagsHash(moveNags),
       isThreatsMode,
       autoSaveStatus,
     ]);

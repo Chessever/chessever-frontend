@@ -8,7 +8,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -40,39 +39,32 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         return gamesTourAsync.when(
           data: (data) {
             if (data.gamesTourModels.isEmpty) {
-              // Keep the search bar available on empty / no-results states so
-              // users can refine or clear their query without switching tabs.
               return SingleChildScrollView(
-                child: Column(
-                  children: [
-                    const EventSearchBar(),
-                    if (data.isSearchMode && data.searchQuery != null)
-                      EmptySearchWidget(query: data.searchQuery!)
-                    else
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12.sp),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(height: 40.h),
-                            SvgPicture.asset(
-                              SvgAsset.tournamentIcon,
-                              height: 35.h,
-                              width: 35.w,
-                            ),
-                            SizedBox(height: 10.h),
-                            Text(
-                              'No games going on',
-                              style: AppTypography.textMdRegular.copyWith(
-                                color: kWhiteColor,
+                child:
+                    data.isSearchMode && data.searchQuery != null
+                        ? EmptySearchWidget(query: data.searchQuery!)
+                        : Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12.sp),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(height: 40.h),
+                              SvgPicture.asset(
+                                SvgAsset.tournamentIcon,
+                                height: 35.h,
+                                width: 35.w,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                              SizedBox(height: 10.h),
+                              Text(
+                                'No games going on',
+                                style: AppTypography.textMdRegular.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
               );
             }
             // TABLET-ONLY: Check if rounds contain knockout-stage IDs.

@@ -61,6 +61,13 @@ class SavedAnalysisMapper extends ClassMapperBase<SavedAnalysis> {
       v.variationComments;
   static const Field<SavedAnalysis, Map<String, String>> _f$variationComments =
       Field('variationComments', _$variationComments);
+  static Map<String, List<int>> _$moveNags(SavedAnalysis v) => v.moveNags;
+  static const Field<SavedAnalysis, Map<String, List<int>>> _f$moveNags = Field(
+    'moveNags',
+    _$moveNags,
+    opt: true,
+    def: const <String, List<int>>{},
+  );
   static int _$lastViewedPosition(SavedAnalysis v) => v.lastViewedPosition;
   static const Field<SavedAnalysis, int> _f$lastViewedPosition = Field(
     'lastViewedPosition',
@@ -110,6 +117,7 @@ class SavedAnalysisMapper extends ClassMapperBase<SavedAnalysis> {
     #chessGame: _f$chessGame,
     #analysisState: _f$analysisState,
     #variationComments: _f$variationComments,
+    #moveNags: _f$moveNags,
     #lastViewedPosition: _f$lastViewedPosition,
     #tags: _f$tags,
     #notes: _f$notes,
@@ -130,6 +138,7 @@ class SavedAnalysisMapper extends ClassMapperBase<SavedAnalysis> {
       chessGame: data.dec(_f$chessGame),
       analysisState: data.dec(_f$analysisState),
       variationComments: data.dec(_f$variationComments),
+      moveNags: data.dec(_f$moveNags),
       lastViewedPosition: data.dec(_f$lastViewedPosition),
       tags: data.dec(_f$tags),
       notes: data.dec(_f$notes),
@@ -206,6 +215,8 @@ abstract class SavedAnalysisCopyWith<$R, $In extends SavedAnalysis, $Out>
   get analysisState;
   MapCopyWith<$R, String, String, ObjectCopyWith<$R, String, String>>
   get variationComments;
+  MapCopyWith<$R, String, List<int>, ObjectCopyWith<$R, List<int>, List<int>>>
+  get moveNags;
   ListCopyWith<$R, String, ObjectCopyWith<$R, String, String>> get tags;
   $R call({
     String? id,
@@ -217,6 +228,7 @@ abstract class SavedAnalysisCopyWith<$R, $In extends SavedAnalysis, $Out>
     ChessGame? chessGame,
     Map<String, dynamic>? analysisState,
     Map<String, String>? variationComments,
+    Map<String, List<int>>? moveNags,
     int? lastViewedPosition,
     List<String>? tags,
     String? notes,
@@ -251,6 +263,13 @@ class _SavedAnalysisCopyWithImpl<$R, $Out>
     (v) => call(variationComments: v),
   );
   @override
+  MapCopyWith<$R, String, List<int>, ObjectCopyWith<$R, List<int>, List<int>>>
+  get moveNags => MapCopyWith(
+    $value.moveNags,
+    (v, t) => ObjectCopyWith(v, $identity, t),
+    (v) => call(moveNags: v),
+  );
+  @override
   ListCopyWith<$R, String, ObjectCopyWith<$R, String, String>> get tags =>
       ListCopyWith(
         $value.tags,
@@ -268,6 +287,7 @@ class _SavedAnalysisCopyWithImpl<$R, $Out>
     ChessGame? chessGame,
     Map<String, dynamic>? analysisState,
     Map<String, String>? variationComments,
+    Map<String, List<int>>? moveNags,
     int? lastViewedPosition,
     List<String>? tags,
     Object? notes = $none,
@@ -286,6 +306,7 @@ class _SavedAnalysisCopyWithImpl<$R, $Out>
       if (chessGame != null) #chessGame: chessGame,
       if (analysisState != null) #analysisState: analysisState,
       if (variationComments != null) #variationComments: variationComments,
+      if (moveNags != null) #moveNags: moveNags,
       if (lastViewedPosition != null) #lastViewedPosition: lastViewedPosition,
       if (tags != null) #tags: tags,
       if (notes != $none) #notes: notes,
@@ -312,6 +333,7 @@ class _SavedAnalysisCopyWithImpl<$R, $Out>
       #variationComments,
       or: $value.variationComments,
     ),
+    moveNags: data.get(#moveNags, or: $value.moveNags),
     lastViewedPosition: data.get(
       #lastViewedPosition,
       or: $value.lastViewedPosition,

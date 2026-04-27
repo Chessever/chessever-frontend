@@ -245,6 +245,34 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
   }
 }
 
+/// Merge NAGs baked into the PGN with NAGs the user has applied locally.
+/// PGN NAGs come first (preserving authoring order), user NAGs append after —
+/// the SAN/badge resolvers dedupe and re-sort by category at render time.
+List<int> _mergeUserNags(
+  List<int>? pgnNags,
+  String? pointerId,
+  Map<String, List<int>> userMoveNags,
+) {
+  final pgn = pgnNags ?? const <int>[];
+  final user = pointerId == null
+      ? const <int>[]
+      : (userMoveNags[pointerId] ?? const <int>[]);
+  if (user.isEmpty) return pgn;
+  if (pgn.isEmpty) return user;
+  return <int>[...pgn, ...user];
+}
+
+List<int> _mergeUserNagsForMovePointer(
+  ChessMove? move,
+  List<Number>? movePointer,
+  Map<String, List<int>> userMoveNags,
+) {
+  final pointerId = (movePointer == null || movePointer.isEmpty)
+      ? null
+      : NotationPointer.encode(movePointer);
+  return _mergeUserNags(move?.nags, pointerId, userMoveNags);
+}
+
 String _moveSansSignature(List<String> moveSans) {
   // Normalize: strip check indicators (+, #) for consistent signature matching
   // Different PGN parsers may or may not include these symbols
@@ -6330,9 +6358,37 @@ class _AnalysisBoard extends ConsumerStatefulWidget {
   ConsumerState<_AnalysisBoard> createState() => _AnalysisBoardState();
 }
 
+/// Typography rung in the move-list ladder. Higher rungs (mainline) get
+/// larger size, heavier weight, tighter tracking; deeper variations step
+/// down each axis so the hierarchy is legible at a glance.
+class _MoveLadder {
+  final double sanSize;
+  final FontWeight sanWeight;
+  final double sanLetterSpacing;
+  final double numberSize;
+  final double numberAlpha;
+
+  const _MoveLadder({
+    required this.sanSize,
+    required this.sanWeight,
+    required this.sanLetterSpacing,
+    required this.numberSize,
+    required this.numberAlpha,
+  });
+}
+
 class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
+
+  // Bumped whenever the board position changes from anything other than a
+  // user-made move on the board itself (arrow nav, notation tap, swipe,
+  // jump-to-move, etc.). Used as the Chessboard's ValueKey so chessground's
+  // internal selection state — the tapped piece highlight + legal-move dots —
+  // is reset on every external navigation. Without this, tapping a piece and
+  // then pressing the arrow keeps the dots visible on the new position.
+  int _selectionEpoch = 0;
+  bool _pendingBoardMove = false;
 
   /// True only at the end of the original game mainline (not analysis variations).
   /// movePointer: [] = initial pos, [n] = mainline move n, [n,v,m,...] = variation
@@ -6343,6 +6399,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     );
   }
 
+  // Map an author-supplied PGN NAG to a Lichess SVG annotation type — but
+  // only for NAGs whose glyph is faithfully reproduced by the Lichess SVG.
+  // NAG 5 (!?, "Interesting") and NAG 6 (?!, "Dubious") are intentionally
+  // omitted: $5 used to map to goodMove, whose SVG renders just "!", which
+  // squashed "!?" → "!" on the board. Returning null for those (and $7 □,
+  // $10+ evaluation, $32+ observation) lets the fallback in the caller
+  // render the literal Unicode glyph from getNagDisplay() in the author
+  // color from nag_display.dart, matching the SAN-text rendering exactly.
   LichessMoveAnnotationType? _mapNagToAnnotationType(int nag) {
     switch (nag) {
       case 1:
@@ -6353,10 +6417,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
         return LichessMoveAnnotationType.brilliant; // !!
       case 4:
         return LichessMoveAnnotationType.blunder; // ??
-      case 5:
-        return LichessMoveAnnotationType.goodMove; // !? (Interesting)
-      case 6:
-        return LichessMoveAnnotationType.inaccuracy; // ?! (Inaccuracy)
       default:
         return null;
     }
@@ -6457,21 +6517,20 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     return shapes;
   }
 
-  Positioned _buildBoardAnnotationBadge({
+  Positioned _buildBoardBadge({
     required Square square,
-    required LichessMoveAnnotation annotation,
+    required Color color,
+    required Widget child,
+    double sizeFactor = 0.42,
   }) {
     final squareSize = widget.size / 8;
     final effectiveFile = widget.isFlipped ? 7 - square.file : square.file;
     final effectiveRank = widget.isFlipped ? square.rank : 7 - square.rank;
     final left = effectiveFile * squareSize;
     final top = effectiveRank * squareSize;
-    final badgeSize = squareSize * 0.40;
-    // Exact anchor from reference: center the badge on the destination square's
-    // top-right corner intersection.
+    final badgeSize = squareSize * sizeFactor;
     final badgeLeftRaw = left + squareSize - (badgeSize / 2);
     final badgeTopRaw = top - (badgeSize / 2) + (squareSize * 0.04);
-    // Clamp to prevent badge from being clipped at board edges
     final badgeLeft = badgeLeftRaw.clamp(0.0, widget.size - badgeSize);
     final badgeTop = badgeTopRaw.clamp(0.0, widget.size - badgeSize);
 
@@ -6479,25 +6538,77 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       left: badgeLeft,
       top: badgeTop,
       child: IgnorePointer(
-        child: Container(
-          width: badgeSize,
-          height: badgeSize,
-          decoration: BoxDecoration(
-            color: annotation.type.color,
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 4,
-                offset: const Offset(0, 1),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.6, end: 1.0),
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutBack,
+          builder: (context, scale, c) =>
+              Transform.scale(scale: scale, child: c),
+          child: Container(
+            width: badgeSize,
+            height: badgeSize,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.18),
+                width: 0.5,
               ),
-            ],
+            ),
+            padding: EdgeInsets.all(badgeSize * 0.16),
+            child: RepaintBoundary(child: child),
           ),
-          padding: EdgeInsets.all(badgeSize * 0.18),
-          child: RepaintBoundary(
-            child: SvgPicture.asset(
-              annotation.type.iconAssetPath,
-              fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+
+  Positioned _buildBoardAnnotationBadge({
+    required Square square,
+    required LichessMoveAnnotation annotation,
+  }) {
+    return _buildBoardBadge(
+      square: square,
+      color: annotation.type.color,
+      sizeFactor: 0.40,
+      child: SvgPicture.asset(
+        annotation.type.iconAssetPath,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
+  /// Render any NAG that doesn't have a dedicated SVG as a Container+Text
+  /// badge — same anchor + shadow language as the SVG badges, but the symbol
+  /// is the literal Unicode glyph from [NagDisplay].
+  Positioned _buildBoardNagTextBadge({
+    required Square square,
+    required NagDisplay display,
+  }) {
+    final squareSize = widget.size / 8;
+    final badgeSize = squareSize * 0.42;
+    return _buildBoardBadge(
+      square: square,
+      color: display.color,
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            display.symbol,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              height: 1.0,
+              fontSize: badgeSize * 0.62,
+              letterSpacing: -0.5,
             ),
           ),
         ),
@@ -6508,6 +6619,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   @override
   void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Reset chessground's tap-selection on any external position change
+    // (arrow navigation, notation tap, swipe, etc.) but not when the user
+    // moved a piece on the board — chessground clears its own selection in
+    // that case and we want to keep the move's animation.
+    final oldFen = oldWidget.chessBoardState.analysisState.position.fen;
+    final newFen = widget.chessBoardState.analysisState.position.fen;
+    final wasBoardMove = _pendingBoardMove;
+    _pendingBoardMove = false;
+    if (oldFen != newFen && !wasBoardMove) {
+      _selectionEpoch++;
+    }
 
     final analysisState = widget.chessBoardState.analysisState;
     final isAtGameEnd = _isAtGameEnd(analysisState);
@@ -6641,13 +6764,17 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
             }
           }
 
-          // 2. Fallback to NAGs from the move itself (e.g. for pasted PGNs)
-          // This enables annotations like "??", "!", etc. for both mainline and variations.
+          // 2. Fallback to NAGs from the move itself OR user-applied NAGs.
+          // Quality NAGs ($1–$6) get the high-fidelity SVG badge.
+          // Other NAGs ($7+) fall through to the text-glyph badge below.
           final currentMove = navigatorState.currentMove;
-          if (currentMove != null &&
-              currentMove.nags != null &&
-              currentMove.nags!.isNotEmpty) {
-            final nag = currentMove.nags!.first;
+          final mergedNags = _mergeUserNagsForMovePointer(
+            currentMove,
+            navigatorState.movePointer,
+            widget.chessBoardState.moveNags,
+          );
+          if (mergedNags.isNotEmpty) {
+            final nag = primaryBoardNag(mergedNags) ?? mergedNags.first;
             final type = _mapNagToAnnotationType(nag);
             if (type != null) {
               return LichessMoveAnnotation(type: type, comment: '');
@@ -6659,13 +6786,37 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final boardAnnotationSquare = _lastMoveDestinationSquare(
       widget.chessBoardState.analysisState.lastMove,
     );
-    final boardAnnotationBadge =
-        (boardAnnotation != null && boardAnnotationSquare != null)
-            ? _buildBoardAnnotationBadge(
-              square: boardAnnotationSquare,
-              annotation: boardAnnotation,
-            )
-            : null;
+    final Positioned? boardAnnotationBadge = (() {
+      if (boardAnnotationSquare == null) return null;
+      // Path A: Lichess analysis annotation OR mappable NAG → SVG badge.
+      if (boardAnnotation != null) {
+        return _buildBoardAnnotationBadge(
+          square: boardAnnotationSquare,
+          annotation: boardAnnotation,
+        );
+      }
+      // Path B: any other NAG ($7, $10, $13–$22, $32, $36, $40, $44, $132,
+      // $138, $140, $146) → render the literal Unicode glyph in a circular
+      // badge. This is what fixes "exclamation symbols don't show on the
+      // board" for NAGs that don't have a Lichess SVG mapping. Includes
+      // user-applied NAGs from widget.state.moveNags.
+      final currentMove = navigatorState?.currentMove;
+      final mergedNags = _mergeUserNagsForMovePointer(
+        currentMove,
+        navigatorState?.movePointer,
+        widget.chessBoardState.moveNags,
+      );
+      final nag = primaryBoardNag(mergedNags);
+      if (nag == null) return null;
+      // Skip if it would have been an SVG type (already handled above).
+      if (_mapNagToAnnotationType(nag) != null) return null;
+      final display = getNagDisplay(nag);
+      if (display == null) return null;
+      return _buildBoardNagTextBadge(
+        square: boardAnnotationSquare,
+        display: display,
+      );
+    })();
 
     // Calculate square highlights and annotations for game ending
     final gameEndingData =
@@ -6706,6 +6857,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final allShapes = pvShapes.addAll(annotationShapes);
 
     final chessboard = Chessboard(
+      key: ValueKey(_selectionEpoch),
       size: widget.size,
       settings: ChessboardSettings(
         enableCoordinates: true,
@@ -6735,8 +6887,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
         sideToMove: widget.chessBoardState.analysisState.position.turn,
         isCheck: widget.chessBoardState.analysisState.position.isCheck,
         promotionMove: widget.chessBoardState.analysisState.promotionMove,
-        onMove: notifier.onAnalysisMove,
-        onPromotionSelection: notifier.onAnalysisPromotionSelection,
+        onMove: (Move move, {bool? viaDragAndDrop}) {
+          _pendingBoardMove = true;
+          notifier.onAnalysisMove(move, viaDragAndDrop: viaDragAndDrop);
+        },
+        onPromotionSelection: (Role? role) {
+          _pendingBoardMove = true;
+          notifier.onAnalysisPromotionSelection(role);
+        },
       ),
     );
 
@@ -7569,40 +7727,28 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             : null;
     final currentPly = currentNode?.ply ?? -1;
 
+    final rows = _buildNotationRows(
+      tokens,
+      params: params,
+      currentPly: currentPly,
+      currentPointerId: pointerForHighlightId,
+      tailPointerId: tailPointerId,
+      lichessAnnotations: lichessAnnotations,
+      useFigurine: useFigurine,
+      pieceAssets: pieceAssets,
+      pointerMap: pointerMap,
+    );
+
     final notationContent = SingleChildScrollView(
       controller: _scrollController,
       child: Container(
         alignment: Alignment.centerLeft,
-        padding: EdgeInsets.all(20.sp),
+        padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 20.sp),
         child: ExcludeSemantics(
-          child: Wrap(
-            spacing: 2.sp,
-            runSpacing: 2.sp,
-            children:
-                tokens.map((token) {
-                  switch (token.type) {
-                    case NotationTokenType.move:
-                      return _buildMoveChip(
-                        token,
-                        params,
-                        currentPly,
-                        pointerForHighlightId,
-                        tailPointerId,
-                        lichessAnnotations,
-                        useFigurine: useFigurine,
-                        pieceAssets: pieceAssets,
-                      );
-                    case NotationTokenType.comment:
-                      return _buildVariationCommentChip(token, params);
-                    case NotationTokenType.lichessComment:
-                      return _buildLichessCommentChip(token);
-                    case NotationTokenType.openParen:
-                    case NotationTokenType.closeParen:
-                    case NotationTokenType.ellipsis:
-                    case NotationTokenType.variationPlaceholder:
-                      return _buildAuxToken(token);
-                  }
-                }).toList(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: rows,
           ),
         ),
       ),
@@ -7904,30 +8050,49 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         pointerId == tailPointerId;
 
     final annotation = _resolveLichessAnnotation(token, lichessAnnotations);
-    final nags = token.node?.move.nags ?? const <int>[];
+    final nags = _mergeUserNags(
+      token.node?.move.nags,
+      token.pointerId,
+      widget.state.moveNags,
+    );
 
-    // Resolve NAGs into displays
+    // Resolve NAGs into displays. Quality NAGs are highlighted on the move
+    // text itself; evaluation/observation NAGs render in their muted slate
+    // and never tint the SAN.
     final displayNags = <NagDisplay>[];
-    Color? firstNagColor;
+    NagDisplay? firstQualityNag;
+    final seen = <int>{};
     for (final nag in nags) {
+      if (!seen.add(nag)) continue;
       final d = getNagDisplay(nag);
       if (d != null) {
         displayNags.add(d);
-        firstNagColor ??= d.color;
+        if (d.isQuality) firstQualityNag ??= d;
       }
     }
 
-    final annotationColor = annotation?.type.color;
+    final depth = token.depth;
+    final isMainline = token.node?.isMainline ?? (depth <= 0);
+    final ladder = _moveLadderForDepth(depth, isMainline: isMainline);
     final baseColor = _resolveMoveColor(token, currentPly);
-    final color = annotationColor ?? firstNagColor ?? baseColor;
+    final annotationColor = annotation?.type.color;
+    final qualityColor = firstQualityNag?.color;
+    final color = annotationColor ?? qualityColor ?? baseColor;
 
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
-      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+      fontSize: ladder.sanSize,
+      fontWeight: isCurrent ? FontWeight.w800 : ladder.sanWeight,
+      letterSpacing: ladder.sanLetterSpacing,
+      height: 1.2,
     );
     final numberStyle = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor,
-      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+      color: kWhiteColor.withValues(alpha: ladder.numberAlpha),
+      fontSize: ladder.numberSize,
+      fontWeight: FontWeight.w500,
+      fontFeatures: const [FontFeature.tabularFigures()],
+      letterSpacing: 0.0,
+      height: 1.2,
     );
 
     // Build move text spans - either with figurine pieces or plain text
@@ -7977,17 +8142,43 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ),
       );
     } else if (annotation == null && displayNags.isNotEmpty) {
-      // Render NAG symbols inline if no evaluative Lichess annotation
-      for (final d in displayNags) {
-        moveSpans.add(
-          TextSpan(
-            text: d.symbol,
-            style: textStyle.copyWith(
-              color: d.color ?? baseColor,
-              fontWeight: d.color != null ? FontWeight.bold : FontWeight.normal,
+      // Quality glyphs (!, ??, !?, ?!, ...) — bold, color-coded, hugged to SAN.
+      // Eval glyphs (±, ∞, ⩲, ⩱, +-, ...) — separated by a hair-space and
+      // rendered in muted slate so they don't compete with quality glyphs.
+      // Order: quality first, then evaluation, then observation.
+      final ordered = [...displayNags]..sort((a, b) {
+        int rank(NagDisplay d) => switch (d.category) {
+          NagCategory.quality => 0,
+          NagCategory.evaluation => 1,
+          NagCategory.observation => 2,
+        };
+        return rank(a).compareTo(rank(b));
+      });
+      for (final d in ordered) {
+        if (d.isQuality) {
+          moveSpans.add(
+            TextSpan(
+              text: d.symbol,
+              style: textStyle.copyWith(
+                color: d.color,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          moveSpans.add(
+            TextSpan(
+              text: ' ${d.symbol}',
+              style: textStyle.copyWith(
+                color: d.color,
+                fontWeight: FontWeight.w500,
+                fontSize: ladder.sanSize - 0.5,
+                letterSpacing: 0.0,
+              ),
+            ),
+          );
+        }
       }
     }
 
@@ -8068,213 +8259,328 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
   }
 
-  Widget _buildAuxToken(NotationDisplayToken token) {
-    final isVariationToken =
-        token.type != NotationTokenType.ellipsis &&
-        (token.variation != null || token.variationColorKey != null);
-    Color depthColor;
-    if (isVariationToken) {
-      depthColor = _accentColorForToken(token);
-    } else if (token.depth > 0) {
-      depthColor = _colorForVariationDepth(token.depth);
-    } else {
-      depthColor = kWhiteColor.withValues(alpha: 0.75);
-    }
+  // ===========================================================================
+  // Tree-aware notation layout — partitions a flat token stream into a Column
+  // of rows: consecutive moves stay in a Wrap, comments and variations break
+  // to full-width blocks. Variations get a depth-colored left rail (the
+  // "ladder") so the eye can follow nesting at a glance — no parens needed.
+  // ===========================================================================
 
-    Widget child;
-    if (token.type == NotationTokenType.variationPlaceholder) {
-      // Collapsed variation placeholder - tappable to expand
-      child = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          _toggleVariationCollapse(token);
-        },
-        onLongPress: () {
-          _showVariationActions(token);
-        },
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-          decoration: BoxDecoration(
-            color: depthColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(6.sp),
-            border: Border.all(
-              color: depthColor.withValues(alpha: 0.25),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Expand icon
-              Icon(
-                Icons.unfold_more_rounded,
-                size: 12.sp,
-                color: depthColor.withValues(alpha: 0.7),
-              ),
-              SizedBox(width: 4.sp),
-              Text(
-                token.text,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: depthColor.withValues(alpha: 0.85),
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
+  List<Widget> _buildNotationRows(
+    List<NotationDisplayToken> tokens, {
+    required ChessBoardProviderParams params,
+    required int currentPly,
+    required String? currentPointerId,
+    required String? tailPointerId,
+    required Map<int, LichessMoveAnnotation> lichessAnnotations,
+    required bool useFigurine,
+    required PieceAssets? pieceAssets,
+    required Map<String, NotationMoveNode> pointerMap,
+  }) {
+    final widgets = <Widget>[];
+    var currentRun = <NotationDisplayToken>[];
+
+    void flushRun() {
+      if (currentRun.isEmpty) return;
+      widgets.add(
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 1.sp),
+          child: Wrap(
+            spacing: 4.sp,
+            runSpacing: 3.sp,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: currentRun
+                .map(
+                  (t) => _buildMoveChip(
+                    t,
+                    params,
+                    currentPly,
+                    currentPointerId,
+                    tailPointerId,
+                    lichessAnnotations,
+                    useFigurine: useFigurine,
+                    pieceAssets: pieceAssets,
+                  ),
+                )
+                .toList(),
           ),
         ),
       );
-      // Return early - already has gesture handling
-      return child;
-    } else if (token.type == NotationTokenType.openParen &&
-        token.variation != null) {
-      // Opening paren with +/- toggle button
-      final isCollapsed = token.isCollapsed;
-      child = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          _toggleVariationCollapse(token);
-        },
-        onLongPress: () {
-          _showVariationActions(token);
-        },
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Toggle button with clear visual affordance
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                curve: Curves.easeOutCubic,
-                width: 16.sp,
-                height: 16.sp,
-                margin: EdgeInsets.only(right: 3.sp),
-                decoration: BoxDecoration(
-                  color:
-                      isCollapsed
-                          ? depthColor.withValues(alpha: 0.2)
-                          : depthColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4.sp),
-                  border: Border.all(
-                    color: depthColor.withValues(
-                      alpha: isCollapsed ? 0.4 : 0.25,
-                    ),
-                    width: 1,
+      currentRun = <NotationDisplayToken>[];
+    }
+
+    var i = 0;
+    while (i < tokens.length) {
+      final t = tokens[i];
+
+      if (t.type == NotationTokenType.move ||
+          t.type == NotationTokenType.ellipsis) {
+        currentRun.add(t);
+        i++;
+        continue;
+      }
+
+      if (t.type == NotationTokenType.openParen) {
+        flushRun();
+        // Slice out the contents of this variation up to its matching close.
+        final innerTokens = <NotationDisplayToken>[];
+        var depth = 1;
+        i++;
+        while (i < tokens.length && depth > 0) {
+          if (tokens[i].type == NotationTokenType.openParen) {
+            depth++;
+          } else if (tokens[i].type == NotationTokenType.closeParen) {
+            depth--;
+            if (depth == 0) {
+              i++; // consume matching closeParen
+              break;
+            }
+          }
+          innerTokens.add(tokens[i]);
+          i++;
+        }
+        widgets.add(
+          _buildVariationBlock(
+            openParenToken: t,
+            innerTokens: innerTokens,
+            params: params,
+            currentPly: currentPly,
+            currentPointerId: currentPointerId,
+            tailPointerId: tailPointerId,
+            lichessAnnotations: lichessAnnotations,
+            useFigurine: useFigurine,
+            pieceAssets: pieceAssets,
+            pointerMap: pointerMap,
+          ),
+        );
+        continue;
+      }
+
+      if (t.type == NotationTokenType.closeParen) {
+        // Stray close paren — skip defensively.
+        i++;
+        continue;
+      }
+
+      if (t.type == NotationTokenType.variationPlaceholder) {
+        flushRun();
+        widgets.add(_buildCollapsedVariationBlock(t));
+        i++;
+        continue;
+      }
+
+      if (t.type == NotationTokenType.comment) {
+        flushRun();
+        widgets.add(_buildCommentBlock(t, params));
+        i++;
+        continue;
+      }
+
+      if (t.type == NotationTokenType.lichessComment) {
+        flushRun();
+        widgets.add(_buildLichessCommentBlock(t));
+        i++;
+        continue;
+      }
+
+      i++;
+    }
+    flushRun();
+    return widgets;
+  }
+
+  /// Container that wraps an entire variation in a depth-colored left rail
+  /// with a header chip showing the divergence point ("alt to 5...Bc5").
+  /// Beyond depth 4 the indent is capped — rails carry the hierarchy.
+  Widget _buildVariationBlock({
+    required NotationDisplayToken openParenToken,
+    required List<NotationDisplayToken> innerTokens,
+    required ChessBoardProviderParams params,
+    required int currentPly,
+    required String? currentPointerId,
+    required String? tailPointerId,
+    required Map<int, LichessMoveAnnotation> lichessAnnotations,
+    required bool useFigurine,
+    required PieceAssets? pieceAssets,
+    required Map<String, NotationMoveNode> pointerMap,
+  }) {
+    final variation = openParenToken.variation;
+    final depth = openParenToken.depth;
+    final accent = _accentColorForToken(openParenToken);
+    final railColor = accent.withValues(alpha: 0.45);
+    final railWidth = depth == 1 ? 2.0 : 1.5;
+    final indentPx = math.min(depth - 1, 3) * 6.sp;
+
+    String? headerLabel;
+    if (variation != null && variation.parentPointer.isNotEmpty) {
+      final parentId = NotationPointer.encode(variation.parentPointer);
+      final parent = pointerMap[parentId];
+      if (parent != null) {
+        final dots = parent.isWhiteMove ? '.' : '...';
+        final cleanSan = parent.move.san.replaceAll(RegExp(r'[!?]+$'), '');
+        headerLabel = '${parent.moveNumber}$dots$cleanSan';
+      }
+    }
+
+    final innerRows = _buildNotationRows(
+      innerTokens,
+      params: params,
+      currentPly: currentPly,
+      currentPointerId: currentPointerId,
+      tailPointerId: tailPointerId,
+      lichessAnnotations: lichessAnnotations,
+      useFigurine: useFigurine,
+      pieceAssets: pieceAssets,
+      pointerMap: pointerMap,
+    );
+
+    return Padding(
+      padding: EdgeInsets.only(left: indentPx, top: 4.sp, bottom: 4.sp),
+      child: Container(
+        padding: EdgeInsets.only(left: 9.sp, top: 2.sp, bottom: 2.sp),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: railColor, width: railWidth),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (headerLabel != null)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  if (variation != null) _focusVariationHead(variation);
+                },
+                onLongPress: () => _showVariationActions(openParenToken),
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 3.sp),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.subdirectory_arrow_right_rounded,
+                        size: 11.sp,
+                        color: accent.withValues(alpha: 0.85),
+                      ),
+                      SizedBox(width: 3.sp),
+                      Flexible(
+                        child: Text(
+                          'alt to $headerLabel',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: accent.withValues(alpha: 0.85),
+                            fontSize: 10.sp,
+                            fontStyle: FontStyle.italic,
+                            letterSpacing: 0.2,
+                            height: 1.0,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      SizedBox(width: 6.sp),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _toggleVariationCollapse(openParenToken);
+                        },
+                        child: Icon(
+                          Icons.unfold_less_rounded,
+                          size: 12.sp,
+                          color: accent.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 150),
-                    child: Icon(
-                      isCollapsed ? Icons.add_rounded : Icons.remove_rounded,
-                      key: ValueKey(isCollapsed),
-                      size: 12.sp,
-                      color: depthColor.withValues(alpha: 0.9),
-                    ),
-                  ),
-                ),
               ),
-              Text(
-                token.text,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: depthColor.withValues(alpha: 0.85),
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
+            ...innerRows,
+          ],
         ),
-      );
-      // Return early - already has gesture handling
-      return child;
-    } else if (token.type == NotationTokenType.closeParen &&
-        token.variation != null) {
-      // Closing paren - tappable to collapse
-      child = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          _toggleVariationCollapse(token);
-        },
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 2.sp),
-          child: Text(
-            token.text,
-            style: AppTypography.textXsMedium.copyWith(
-              color: depthColor.withValues(alpha: 0.85),
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ),
-      );
-      return child;
-    } else {
-      child = Text(
-        token.text,
-        style: AppTypography.textXsMedium.copyWith(
-          color:
-              token.type == NotationTokenType.ellipsis
-                  ? kWhiteColor70
-                  : depthColor.withValues(alpha: 0.85),
-          fontStyle:
-              token.type == NotationTokenType.ellipsis
-                  ? FontStyle.normal
-                  : FontStyle.italic,
-        ),
-      );
-    }
-
-    if (!isVariationToken || token.variation == null) {
-      return child;
-    }
-
-    final decoratedChild = ExcludeSemantics(excluding: true, child: child);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        _focusVariationHead(token.variation!);
-        _toggleVariationCollapse(token);
-      },
-      onLongPress: () {
-        _showVariationActions(token);
-      },
-      child: decoratedChild,
+      ),
     );
   }
 
-  /// Compact inline comment display - italic text with accent color
-  Widget _buildVariationCommentChip(
+  /// Tappable pill shown in place of an auto-collapsed variation. One row
+  /// in the Column — never inline with adjacent moves.
+  Widget _buildCollapsedVariationBlock(NotationDisplayToken token) {
+    final accent = _accentColorForToken(token);
+    return Padding(
+      padding: EdgeInsets.only(top: 4.sp, bottom: 4.sp),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            _toggleVariationCollapse(token);
+          },
+          onLongPress: () => _showVariationActions(token),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 9.sp, vertical: 4.sp),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: accent.withValues(alpha: 0.35),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.unfold_more_rounded,
+                  size: 11.sp,
+                  color: accent.withValues(alpha: 0.85),
+                ),
+                SizedBox(width: 4.sp),
+                Text(
+                  token.text,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: accent.withValues(alpha: 0.95),
+                    fontSize: 10.5.sp,
+                    fontStyle: FontStyle.italic,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Editorial block-quote for a comment — full-width, depth-colored left
+  /// rail, soft white wash. Long comments fold to a "Read more" toggle.
+  Widget _buildCommentBlock(
     NotationDisplayToken token,
     ChessBoardProviderParams params,
   ) {
     final fullText = token.commentText?.trim() ?? token.text.trim();
-    if (fullText.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
+    if (fullText.isEmpty) return const SizedBox.shrink();
     final id = token.pointerId ?? token.variation?.id;
     if (id == null) return const SizedBox.shrink();
 
     final isExpanded = _expandedCommentIds.contains(id);
     final isLong = fullText.length > _variationCommentPreviewChars;
+    final displayText = (isLong && !isExpanded)
+        ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
+        : fullText;
 
-    final displayText =
-        (isLong && !isExpanded)
-            ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
-            : fullText;
-
-    final depth = token.depth;
-    final accentColor = _colorForVariationAccent(
-      math.max(1, depth),
+    final depth = math.max(1, token.depth);
+    final accent = _colorForVariationAccent(
+      depth,
       seed: token.variationColorKey ?? token.variation?.id,
     );
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
+      padding: EdgeInsets.only(top: 5.sp, bottom: 5.sp),
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () {
           HapticFeedback.lightImpact();
           if (isLong) {
@@ -8287,40 +8593,81 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           HapticFeedback.mediumImpact();
           _editNotationComment(token, params, fullText);
         },
-        child: Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: displayText,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: accentColor.withValues(alpha: 0.7),
-                  fontStyle: FontStyle.italic,
-                  height: 1.4,
-                ),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(11.sp, 8.sp, 11.sp, 8.sp),
+          decoration: BoxDecoration(
+            color: kWhiteColor.withValues(alpha: 0.045),
+            borderRadius: BorderRadius.only(
+              topRight: Radius.circular(6.sp),
+              bottomRight: Radius.circular(6.sp),
+            ),
+            border: Border(
+              left: BorderSide(
+                color: accent.withValues(alpha: 0.65),
+                width: 3,
               ),
-              if (isLong)
+            ),
+          ),
+          child: Text.rich(
+            TextSpan(
+              children: [
                 TextSpan(
-                  text: isExpanded ? ' ▲' : ' ▼',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: accentColor.withValues(alpha: 0.5),
+                  text: displayText,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.86),
+                    fontSize: 13.sp,
+                    height: 1.45,
+                    letterSpacing: 0.05,
                   ),
                 ),
-            ],
+                if (isLong)
+                  TextSpan(
+                    text: isExpanded ? '   Show less' : '   Read more',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: accent.withValues(alpha: 0.95),
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildLichessCommentChip(NotationDisplayToken token) {
+  Widget _buildLichessCommentBlock(NotationDisplayToken token) {
+    final text = token.text.trim();
+    if (text.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 2.sp),
-      child: Text(
-        token.text,
-        style: AppTypography.textXsRegular.copyWith(
-          color: kWhiteColor70.withValues(alpha: 0.6),
-          fontStyle: FontStyle.italic,
-          height: 1.4,
+      padding: EdgeInsets.only(top: 4.sp, bottom: 4.sp),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(11.sp, 7.sp, 11.sp, 7.sp),
+        decoration: BoxDecoration(
+          color: kWhiteColor.withValues(alpha: 0.025),
+          borderRadius: BorderRadius.only(
+            topRight: Radius.circular(6.sp),
+            bottomRight: Radius.circular(6.sp),
+          ),
+          border: Border(
+            left: BorderSide(
+              color: kWhiteColor.withValues(alpha: 0.18),
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          text,
+          style: AppTypography.textXsRegular.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.6),
+            fontSize: 12.sp,
+            height: 1.4,
+            fontStyle: FontStyle.italic,
+          ),
         ),
       ),
     );
@@ -8497,14 +8844,57 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
     if (node.isMainline || token.depth <= 0) {
-      return isPast ? kWhiteColor : kWhiteColor;
+      return kWhiteColor.withValues(alpha: isPast ? 0.95 : 0.95);
     }
 
-    final depthColor = _colorForVariationAccent(
-      token.depth,
-      seed: token.variationColorKey ?? token.variation?.id,
+    // Variation moves: white with alpha that decays by depth — readable
+    // hierarchy without per-line tinting (the rail carries the depth color).
+    final alpha = switch (token.depth) {
+      1 => isPast ? 0.85 : 0.78,
+      2 => isPast ? 0.70 : 0.62,
+      _ => isPast ? 0.58 : 0.50,
+    };
+    return kWhiteColor.withValues(alpha: alpha);
+  }
+
+  /// Typography ladder per variation depth — the visual hierarchy that lets
+  /// the eye separate mainline from subline at a glance, in concert with the
+  /// guide-rail colors.
+  _MoveLadder _moveLadderForDepth(int depth, {required bool isMainline}) {
+    if (isMainline || depth <= 0) {
+      return _MoveLadder(
+        sanSize: 13.sp,
+        sanWeight: FontWeight.w700,
+        sanLetterSpacing: -0.1,
+        numberSize: 12.sp,
+        numberAlpha: 0.55,
+      );
+    }
+    if (depth == 1) {
+      return _MoveLadder(
+        sanSize: 12.5.sp,
+        sanWeight: FontWeight.w600,
+        sanLetterSpacing: -0.05,
+        numberSize: 11.5.sp,
+        numberAlpha: 0.45,
+      );
+    }
+    if (depth == 2) {
+      return _MoveLadder(
+        sanSize: 12.sp,
+        sanWeight: FontWeight.w500,
+        sanLetterSpacing: 0.0,
+        numberSize: 11.sp,
+        numberAlpha: 0.40,
+      );
+    }
+    return _MoveLadder(
+      sanSize: 11.5.sp,
+      sanWeight: FontWeight.w500,
+      sanLetterSpacing: 0.0,
+      numberSize: 10.5.sp,
+      numberAlpha: 0.35,
     );
-    return depthColor.withValues(alpha: isPast ? 0.95 : 0.75);
   }
 
   LichessMoveAnnotation? _resolveLichessAnnotation(
@@ -8904,6 +9294,20 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         },
       ),
       _NotationActionItem(
+        icon: Icons.label_important_outline_rounded,
+        label: 'Annotate (!?, ±, …)',
+        color: const Color(0xFF22AC38),
+        onSelected: (sheetCtx) async {
+          Navigator.of(sheetCtx).maybePop();
+          if (!mounted) return;
+          await _showNagPicker(
+            params: params,
+            pointerId: pointerId,
+            moveText: isNullMove ? 'Null move' : moveText,
+          );
+        },
+      ),
+      _NotationActionItem(
         icon: Icons.add_comment_outlined,
         label: 'Add comment',
         color: kWhiteColor,
@@ -8970,6 +9374,27 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       commentConfig: commentConfig,
       timeSpentLabel: timeSpentLabel,
       initialSheetFraction: initialSheetFraction,
+    );
+  }
+
+  /// Open the NAG picker for a single move. Lets the user toggle quality,
+  /// evaluation, and observation glyphs on/off — at most one per category.
+  Future<void> _showNagPicker({
+    required ChessBoardProviderParams params,
+    required String pointerId,
+    required String moveText,
+  }) async {
+    HapticFeedback.selectionClick();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (sheetContext) => _NagPickerSheet(
+        moveText: moveText,
+        params: params,
+        pointerId: pointerId,
+      ),
     );
   }
 
@@ -12537,6 +12962,327 @@ class _EventInfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ===========================================================================
+// NAG picker — manual annotation entry. The user long-presses a move chip,
+// taps "Annotate", then sees this sheet. Three groups (quality / evaluation /
+// observation), one slot per group; tap to toggle. State changes propagate
+// live through the chess board provider so the move list and on-board badge
+// update instantly without closing the sheet.
+// ===========================================================================
+
+class _NagPickerSheet extends ConsumerWidget {
+  static const List<int> _qualityNags = [3, 1, 5, 6, 2, 4, 7];
+  static const List<int> _evaluationNags = [
+    14, 15, 16, 17, 18, 19, 10, 13, 22, 44,
+  ];
+  static const List<int> _observationNags = [146, 140, 36, 40, 132, 32, 138];
+
+  final String moveText;
+  final ChessBoardProviderParams params;
+  final String pointerId;
+
+  const _NagPickerSheet({
+    required this.moveText,
+    required this.params,
+    required this.pointerId,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stateAsync = ref.watch(chessBoardScreenProviderNew(params));
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final activeNags = stateAsync.valueOrNull?.moveNags[pointerId] ??
+        const <int>[];
+    final activeSet = activeNags.toSet();
+
+    return SafeArea(
+      top: false,
+      child: ClipRRect(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.sp)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            color: kBlack2Color.withValues(alpha: 0.92),
+            padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 18.sp),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36.sp,
+                    height: 4.sp,
+                    margin: EdgeInsets.only(bottom: 14.sp),
+                    decoration: BoxDecoration(
+                      color: kWhiteColor.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.label_important_outline_rounded,
+                      size: 16.sp,
+                      color: const Color(0xFF22AC38),
+                    ),
+                    SizedBox(width: 6.sp),
+                    Text(
+                      'Annotate',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.55),
+                        letterSpacing: 1.2,
+                        fontSize: 11.sp,
+                      ),
+                    ),
+                    SizedBox(width: 8.sp),
+                    Expanded(
+                      child: Text(
+                        moveText,
+                        style: AppTypography.textMdBold.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 16.sp,
+                          letterSpacing: -0.2,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (activeNags.isNotEmpty)
+                      _NagPickerClearButton(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          notifier.clearMoveNags(pointerId);
+                        },
+                      ),
+                  ],
+                ),
+                SizedBox(height: 14.sp),
+                _NagGroup(
+                  label: 'Quality',
+                  hint: 'How good was the move?',
+                  nags: _qualityNags,
+                  activeSet: activeSet,
+                  onTap: (nag) {
+                    HapticFeedback.selectionClick();
+                    notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
+                  },
+                ),
+                SizedBox(height: 14.sp),
+                _NagGroup(
+                  label: 'Position assessment',
+                  hint: 'Who stands better?',
+                  nags: _evaluationNags,
+                  activeSet: activeSet,
+                  onTap: (nag) {
+                    HapticFeedback.selectionClick();
+                    notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
+                  },
+                ),
+                SizedBox(height: 14.sp),
+                _NagGroup(
+                  label: 'Observation',
+                  hint: 'Theme of the move',
+                  nags: _observationNags,
+                  activeSet: activeSet,
+                  onTap: (nag) {
+                    HapticFeedback.selectionClick();
+                    notifier.toggleMoveNag(pointerId: pointerId, nag: nag);
+                  },
+                ),
+                SizedBox(height: 18.sp),
+                Center(
+                  child: Text(
+                    'One glyph per category. Tap a glyph again to remove it.',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.4),
+                      fontSize: 10.5.sp,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NagPickerClearButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _NagPickerClearButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 9.sp, vertical: 5.sp),
+        decoration: BoxDecoration(
+          color: kWhiteColor.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.close_rounded,
+              size: 12.sp,
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+            SizedBox(width: 3.sp),
+            Text(
+              'Clear',
+              style: AppTypography.textXsMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.7),
+                fontSize: 11.sp,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NagGroup extends StatelessWidget {
+  final String label;
+  final String hint;
+  final List<int> nags;
+  final Set<int> activeSet;
+  final void Function(int nag) onTap;
+
+  const _NagGroup({
+    required this.label,
+    required this.hint,
+    required this.nags,
+    required this.activeSet,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(left: 2.sp, bottom: 8.sp),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.55),
+                  fontSize: 10.sp,
+                  letterSpacing: 1.4,
+                ),
+              ),
+              SizedBox(width: 8.sp),
+              Expanded(
+                child: Text(
+                  hint,
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.32),
+                    fontSize: 10.sp,
+                    letterSpacing: 0.0,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Wrap(
+          spacing: 8.sp,
+          runSpacing: 8.sp,
+          children: [
+            for (final nag in nags)
+              _NagChip(
+                nag: nag,
+                isActive: activeSet.contains(nag),
+                onTap: () => onTap(nag),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _NagChip extends StatelessWidget {
+  final int nag;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _NagChip({
+    required this.nag,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final display = getNagDisplay(nag);
+    if (display == null) return const SizedBox.shrink();
+
+    final activeBg = display.color;
+    final inactiveBg = display.color.withValues(alpha: 0.10);
+    final inactiveBorder = display.color.withValues(alpha: 0.45);
+    final width = display.symbol.length > 1 ? 50.sp : 42.sp;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        width: width,
+        height: 38.sp,
+        decoration: BoxDecoration(
+          color: isActive ? activeBg : inactiveBg,
+          borderRadius: BorderRadius.circular(10.sp),
+          border: Border.all(
+            color: isActive
+                ? Colors.white.withValues(alpha: 0.25)
+                : inactiveBorder,
+            width: 1,
+          ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: display.color.withValues(alpha: 0.45),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : const [],
+        ),
+        child: Center(
+          child: Text(
+            display.symbol,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: display.symbol.length > 1 ? 14.sp : 17.sp,
+              color: isActive
+                  ? Colors.white
+                  : display.color.withValues(alpha: 0.95),
+              fontWeight: FontWeight.w800,
+              height: 1.0,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

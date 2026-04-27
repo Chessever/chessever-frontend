@@ -20,6 +20,11 @@ class SavedAnalysis with SavedAnalysisMappable {
   // Analysis-specific data
   final Map<String, dynamic> analysisState;
   final Map<String, String> variationComments;
+
+  /// User-applied NAG codes per move pointer (encoded with NotationPointer).
+  /// Each entry is the list of NAG ints attached to that move (e.g. [1, 16]).
+  final Map<String, List<int>> moveNags;
+
   final int lastViewedPosition;
 
   // Metadata
@@ -42,6 +47,7 @@ class SavedAnalysis with SavedAnalysisMappable {
     required this.chessGame,
     required this.analysisState,
     required this.variationComments,
+    this.moveNags = const <String, List<int>>{},
     required this.lastViewedPosition,
     required this.tags,
     this.notes,
@@ -65,6 +71,7 @@ class SavedAnalysis with SavedAnalysisMappable {
       variationComments:
           ((json['variation_comments'] as Map<String, dynamic>?) ?? {})
               .cast<String, String>(),
+      moveNags: _parseMoveNags(json['move_nags']),
       lastViewedPosition: json['last_viewed_position'] as int? ?? -1,
       tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
       notes: json['notes'] as String?,
@@ -90,6 +97,7 @@ class SavedAnalysis with SavedAnalysisMappable {
       'chess_game': chessGame.toJson(),
       'analysis_state': analysisState,
       'variation_comments': variationComments,
+      'move_nags': moveNags,
       'last_viewed_position': lastViewedPosition,
       'tags': tags,
       'notes': notes,
@@ -112,11 +120,36 @@ class SavedAnalysis with SavedAnalysisMappable {
       'chess_game': chessGame.toJson(),
       'analysis_state': analysisState,
       'variation_comments': variationComments,
+      'move_nags': moveNags,
       'last_viewed_position': lastViewedPosition,
       'tags': tags,
       'notes': notes,
       'is_favorite': isFavorite,
     };
+  }
+
+  /// Decode move_nags from a Supabase JSONB payload, tolerating both the
+  /// expected `Map<String, List<int>>` shape and stringly-typed numbers.
+  static Map<String, List<int>> _parseMoveNags(dynamic raw) {
+    if (raw is! Map) return const <String, List<int>>{};
+    final result = <String, List<int>>{};
+    raw.forEach((key, value) {
+      if (key is! String) return;
+      if (value is! List) return;
+      final parsed = <int>[];
+      for (final element in value) {
+        if (element is int) {
+          parsed.add(element);
+        } else if (element is num) {
+          parsed.add(element.toInt());
+        } else if (element is String) {
+          final asInt = int.tryParse(element);
+          if (asInt != null) parsed.add(asInt);
+        }
+      }
+      if (parsed.isNotEmpty) result[key] = parsed;
+    });
+    return result;
   }
 
   /// Get move count from chess game

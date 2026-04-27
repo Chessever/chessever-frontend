@@ -96,6 +96,16 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     // Listen to favorite player cache updates (affects heart counts)
     ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _reSortList());
 
+    // When the user's favorite players change, recompute the visible
+    // heart-count cache in one batch. For You cards consume this cache only,
+    // avoiding an N-per-card fallback while preserving the same final UI.
+    ref.listen(favoritePlayersProviderNew, (_, next) {
+      if (!next.hasValue) return;
+      ref.read(eventFavoritePlayersCacheProvider.notifier).clear();
+      _prefetchHeartDataWithTimeout(state.events);
+      bumpForYouEventsRefreshSignal(ref);
+    });
+
     // Match the Current tab's behavior: when a tour transitions ongoing→live
     // (or live→completed), re-derive tourEventCategory on every existing card
     // so the _NextRoundLine flips from "starts in…" to "LIVE" without waiting
@@ -270,16 +280,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       // This prevents For You from saturating the HTTP connection pool
       // and starving other tabs (e.g. Current) of network access.
       // 5s timeout prevents indefinite stalling if any provider hangs.
-      _prefetchHeartData(models)
-          .timeout(
-            const Duration(seconds: 5),
-            onTimeout: () {
-              debugPrint('[ForYou] _prefetchHeartData timed out after 5s');
-            },
-          )
-          .then((_) {
-            if (mounted) _reSortList();
-          });
+      _prefetchHeartDataWithTimeout(models);
 
       // Sort this batch (without heart data initially — will re-sort once heart data arrives)
       final sortedModels = await _sortModels(models);
@@ -389,6 +390,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           }
         }
 
+        // Match the legacy per-card provider behavior: if roster data is
+        // absent/stale, derive favorite-player presence from games instead.
+        if (eventPlayerFideIds.isEmpty) {
+          eventPlayerFideIds.addAll(
+            await _loadEventPlayerFideIdsFromGamesFallback(
+              eventId: model.id,
+              tours: tours,
+            ),
+          );
+        }
+
         final matchingFideIds =
             eventPlayerFideIds.intersection(favoriteFideIds).toList();
 
@@ -413,6 +425,64 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       ref
           .read(eventFavoritePlayersCacheProvider.notifier)
           .updateCacheBatch(map);
+    }
+  }
+
+  void _prefetchHeartDataWithTimeout(List<GroupEventCardModel> models) {
+    if (models.isEmpty) return;
+    unawaited(
+      _prefetchHeartData(models)
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              debugPrint('[ForYou] _prefetchHeartData timed out after 5s');
+            },
+          )
+          .then((_) {
+            if (mounted) _reSortList();
+          }),
+    );
+  }
+
+  Future<Set<int>> _loadEventPlayerFideIdsFromGamesFallback({
+    required String eventId,
+    required List<Tour> tours,
+  }) async {
+    try {
+      var tourIds = tours.map((tour) => tour.id).toList(growable: false);
+
+      if (tourIds.isEmpty) {
+        try {
+          tourIds = await ref
+              .read(groupBroadcastRepositoryProvider)
+              .getTourIdsForGroupBroadcast(eventId);
+        } catch (_) {
+          tourIds = const <String>[];
+        }
+      }
+
+      if (tourIds.isEmpty) {
+        tourIds = [eventId];
+      }
+
+      final games = await ref
+          .read(gameRepositoryProvider)
+          .getGamesFromTourIds(tourIds: tourIds, limit: 200, offset: 0);
+
+      final fideIds = <int>{};
+      for (final game in games) {
+        final players = game.players;
+        if (players == null || players.isEmpty) continue;
+        for (final player in players) {
+          if (player.fideId > 0) {
+            fideIds.add(player.fideId);
+          }
+        }
+      }
+      return fideIds;
+    } catch (e) {
+      debugPrint('[ForYou] Error in heart fallback for $eventId: $e');
+      return const <int>{};
     }
   }
 
@@ -582,7 +652,8 @@ class _ForYouPinActionController implements ForYouPinAction {
     required String tourId,
   }) async {
     final storage = _ref.read(forYouPinStorageProvider);
-    final snapshot = _ref.read(forYouEventSnapshotProvider(eventId)).valueOrNull;
+    final snapshot =
+        _ref.read(forYouEventSnapshotProvider(eventId)).valueOrNull;
     final mode = resolvePinToggleMode(
       isManualPinned:
           snapshot?.manualPinnedIds.contains(gameId) ??
@@ -827,23 +898,22 @@ class _ForYouEventGamesController
     // Add subs for newly ongoing games.
     for (final id in ongoingIds) {
       if (_liveGameSubs.containsKey(id)) continue;
-      _liveGameSubs[id] = ref.listen<AsyncValue<Map<String, dynamic>?>>(
-        gameUpdatesStreamProvider(id),
-        (_, next) {
-          next.whenData((data) {
-            final status = data?['status'] as String?;
-            if (status != null && _isFinishedStatus(status)) {
-              debugPrint(
-                '[ForYou] Game $id finished ($status) — refreshing snapshot for event $eventId',
-              );
-              // Drop the sub immediately; the refresh will re-sync watchers
-              // based on the new snapshot.
-              _liveGameSubs.remove(id)?.close();
-              requestRefresh();
-            }
-          });
-        },
-      );
+      _liveGameSubs[id] = ref.listen<
+        AsyncValue<Map<String, dynamic>?>
+      >(gameUpdatesStreamProvider(id), (_, next) {
+        next.whenData((data) {
+          final status = data?['status'] as String?;
+          if (status != null && _isFinishedStatus(status)) {
+            debugPrint(
+              '[ForYou] Game $id finished ($status) — refreshing snapshot for event $eventId',
+            );
+            // Drop the sub immediately; the refresh will re-sync watchers
+            // based on the new snapshot.
+            _liveGameSubs.remove(id)?.close();
+            requestRefresh();
+          }
+        });
+      });
     }
   }
 }
@@ -1458,10 +1528,10 @@ Future<String?> _resolveAutoPinCountryCode(Ref ref) async {
 /// `ref.listen` (no rebuilds), replacing the previous wrapper-provider that
 /// watched per-game streams during build and fanned out to every visible
 /// section.
-final forYouEventSnapshotProvider = Provider.autoDispose.family<
-  AsyncValue<ForYouEventGamesSnapshot>,
-  String
->((ref, eventId) => ref.watch(eventGamesProvider(eventId)));
+final forYouEventSnapshotProvider = Provider.autoDispose
+    .family<AsyncValue<ForYouEventGamesSnapshot>, String>(
+      (ref, eventId) => ref.watch(eventGamesProvider(eventId)),
+    );
 
 bool _isFinishedStatus(String status) {
   return status == '1-0' ||

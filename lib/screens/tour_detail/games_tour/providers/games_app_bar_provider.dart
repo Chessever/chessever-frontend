@@ -365,17 +365,15 @@ class _GamesAppBarNotifier
       await Future.delayed(const Duration(milliseconds: 50));
 
       if (controller.isAttached) {
-        // +1 because item 0 of the positioned list is the EventSearchBar.
-        final scrollIndex = itemIndex + 1;
         try {
-          print('🎯 Executing jumpTo(index: $scrollIndex)');
-          controller.jumpTo(index: scrollIndex, alignment: 0.0);
+          print('🎯 Executing jumpTo(index: $itemIndex)');
+          controller.jumpTo(index: itemIndex, alignment: 0.0);
           print('✅ jumpTo completed successfully');
         } catch (e) {
           print('⚠️ jumpTo failed: $e, trying scrollTo...');
           try {
             controller.scrollTo(
-              index: scrollIndex,
+              index: itemIndex,
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
               alignment: 0.0,

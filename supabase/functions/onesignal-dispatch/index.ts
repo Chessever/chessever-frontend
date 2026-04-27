@@ -89,6 +89,9 @@ const CLOUD_EVAL_MAX_REQUESTS = 5;
 const CHESS_API_MAX_REQUESTS = 10;
 const DEFAULT_DISPATCH_LIMIT = 50;
 const MAX_DISPATCH_LIMIT = 500;
+const PUSH_USER_QUERY_CHUNK_SIZE = 1000;
+const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
+const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
 const cloudEvalCache = new Map<string, EvalSnapshot | null>();
 const chessApiEvalCache = new Map<string, EvalSnapshot | null>();
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
@@ -2874,34 +2877,104 @@ async function sendOneSignal(
 ) {
   if (userIds.length === 0) return;
 
-  const chunks = chunk(userIds, 1000);
+  const targets = await fetchPushSubscriptionTargets(userIds);
 
-  for (const batch of chunks) {
+  for (const batch of chunk(
+    targets.subscriptionIds,
+    ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE,
+  )) {
     const payload: Record<string, unknown> = {
+      ...buildOneSignalPayload(notification),
       app_id: ONESIGNAL_APP_ID,
-      include_aliases: { external_id: batch },
+      include_subscription_ids: batch,
       target_channel: "push",
-      headings: { en: notification.title },
-      contents: { en: notification.body },
-      data: notification.data,
     };
-
-    if (notification.url) {
-      payload.url = notification.url;
-    }
-
-    // NOTE: android_channel_id omitted — channels are not registered in
-    // OneSignal yet.  Notifications use the default channel instead.
-
-    if (notification.iosSound) {
-      payload.ios_sound = notification.iosSound;
-    }
-    if (notification.androidSound) {
-      payload.android_sound = notification.androidSound;
-    }
 
     await sendOneSignalPayload(payload);
   }
+
+  // Some older installs may have a OneSignal external_id but no mirrored row in
+  // user_push_tokens yet. Keep a fallback for those users only, so users with
+  // synced devices do not receive duplicates.
+  for (const batch of chunk(
+    targets.externalIdFallbackUserIds,
+    ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE,
+  )) {
+    const payload: Record<string, unknown> = {
+      ...buildOneSignalPayload(notification),
+      app_id: ONESIGNAL_APP_ID,
+      include_aliases: { external_id: batch },
+      target_channel: "push",
+    };
+
+    await sendOneSignalPayload(payload);
+  }
+}
+
+function buildOneSignalPayload(notification: NotificationPayload) {
+  const payload: Record<string, unknown> = {
+    headings: { en: notification.title },
+    contents: { en: notification.body },
+    data: notification.data,
+  };
+
+  if (notification.url) {
+    payload.url = notification.url;
+  }
+
+  // NOTE: android_channel_id omitted — channels are not registered in
+  // OneSignal yet. Notifications use the default channel instead.
+
+  if (notification.iosSound) {
+    payload.ios_sound = notification.iosSound;
+  }
+  if (notification.androidSound) {
+    payload.android_sound = notification.androidSound;
+  }
+
+  return payload;
+}
+
+async function fetchPushSubscriptionTargets(userIds: string[]) {
+  const uniqueUserIds = [...new Set(userIds)];
+  const subscriptionIds = new Set<string>();
+  const usersWithSubscriptions = new Set<string>();
+
+  try {
+    for (const batch of chunk(uniqueUserIds, PUSH_USER_QUERY_CHUNK_SIZE)) {
+      const { data, error } = await supabase
+        .from("user_push_tokens")
+        .select("user_id, subscription_id")
+        .eq("provider", "onesignal")
+        .eq("opted_in", true)
+        .in("user_id", batch);
+
+      if (error) throw error;
+
+      for (const row of data ?? []) {
+        const userId = row.user_id as string | null;
+        const subscriptionId = row.subscription_id as string | null;
+        if (!userId || !subscriptionId) continue;
+        usersWithSubscriptions.add(userId);
+        subscriptionIds.add(subscriptionId);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      `[onesignal-dispatch] Falling back to external_id targeting after token lookup failed: ${error}`,
+    );
+    return {
+      subscriptionIds: [],
+      externalIdFallbackUserIds: uniqueUserIds,
+    };
+  }
+
+  return {
+    subscriptionIds: Array.from(subscriptionIds),
+    externalIdFallbackUserIds: uniqueUserIds.filter((userId) =>
+      !usersWithSubscriptions.has(userId)
+    ),
+  };
 }
 
 function chunk<T>(list: T[], size: number) {

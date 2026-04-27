@@ -24,10 +24,13 @@ import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
+enum EventFavoritePlayersSource { automatic, cacheOnly }
+
 class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
   final bool showHeartIndicator;
+  final EventFavoritePlayersSource favoritePlayersSource;
 
   /// Optional suffix to make hero tag unique when same event appears in multiple lists
   final String? heroTagSuffix;
@@ -36,6 +39,7 @@ class EventCard extends ConsumerWidget {
     required this.tourEventCardModel,
     this.onTap,
     this.showHeartIndicator = false,
+    this.favoritePlayersSource = EventFavoritePlayersSource.automatic,
     this.heroTagSuffix,
     super.key,
   });
@@ -176,6 +180,7 @@ class EventCard extends ConsumerWidget {
                     _StarWidget(
                       tourEventCardModel: tourEventCardModel,
                       showHeartIndicator: showHeartIndicator,
+                      favoritePlayersSource: favoritePlayersSource,
                     ),
                   ],
                 ),
@@ -239,9 +244,7 @@ class EventCard extends ConsumerWidget {
                   _MetaLine(
                     dates: _compactDates(tourEventCardModel),
                     timeControlSpan: _timeControlSpan(
-                      AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor70,
-                      ),
+                      AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
                     ),
                     showLocation:
                         tourEventCardModel.eventSource ==
@@ -268,6 +271,7 @@ class EventCard extends ConsumerWidget {
             _StarWidget(
               tourEventCardModel: tourEventCardModel,
               showHeartIndicator: showHeartIndicator,
+              favoritePlayersSource: favoritePlayersSource,
             ),
           ],
         ),
@@ -339,12 +343,18 @@ class _MetaLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = onLight ? kWhiteColor.withValues(alpha: 0.9) : kWhiteColor70;
+    final baseColor =
+        onLight ? kWhiteColor.withValues(alpha: 0.9) : kWhiteColor70;
     final style = AppTypography.textXsMedium.copyWith(
       color: baseColor,
       shadows:
           onLight
-              ? [Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 3)]
+              ? [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 3,
+                ),
+              ]
               : null,
     );
 
@@ -761,10 +771,12 @@ class _StarWidget extends ConsumerWidget {
   const _StarWidget({
     required this.tourEventCardModel,
     required this.showHeartIndicator,
+    required this.favoritePlayersSource,
   });
 
   final GroupEventCardModel tourEventCardModel;
   final bool showHeartIndicator;
+  final EventFavoritePlayersSource favoritePlayersSource;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -780,30 +792,14 @@ class _StarWidget extends ConsumerWidget {
     );
     final favoritesCount = favoritesAsync.valueOrNull?.length ?? 0;
 
-    // Check if event has favorite players
-    final eventFavoritePlayersAsync = ref.watch(
-      eventFavoritePlayersProvider(tourEventCardModel.id),
-    );
-
-    // Get current value and check if already cached
-    final currentCache = ref.watch(eventFavoritePlayersCacheProvider);
-    final eventFavoritePlayers = eventFavoritePlayersAsync.maybeWhen(
-      data: (data) {
-        // Update cache if data has changed (do this after build with microtask)
-        if (currentCache[tourEventCardModel.id] != data) {
-          Future.microtask(() {
-            ref
-                .read(eventFavoritePlayersCacheProvider.notifier)
-                .updateCache(tourEventCardModel.id, data);
-          });
-        }
-        return data;
-      },
-      orElse:
-          () =>
-              currentCache[tourEventCardModel.id] ??
-              const EventFavoritePlayers.empty(),
-    );
+    final shouldResolveFavoritePlayers =
+        !isStarred &&
+        (favoritePlayersSource == EventFavoritePlayersSource.automatic ||
+            showHeartIndicator);
+    final eventFavoritePlayers =
+        shouldResolveFavoritePlayers
+            ? _watchEventFavoritePlayers(context, ref)
+            : const EventFavoritePlayers.empty();
 
     // Priority: Star icon (user favorited) ALWAYS takes precedence
     // Heart icon shows ONLY when NOT starred but has favorite players
@@ -879,6 +875,39 @@ class _StarWidget extends ConsumerWidget {
           width: 20.w,
         ),
       ),
+    );
+  }
+
+  EventFavoritePlayers _watchEventFavoritePlayers(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    final cached = ref.watch(
+      eventFavoritePlayersCacheProvider.select(
+        (cache) => cache[tourEventCardModel.id],
+      ),
+    );
+
+    if (cached != null ||
+        favoritePlayersSource == EventFavoritePlayersSource.cacheOnly) {
+      return cached ?? const EventFavoritePlayers.empty();
+    }
+
+    final eventFavoritePlayersAsync = ref.watch(
+      eventFavoritePlayersProvider(tourEventCardModel.id),
+    );
+
+    return eventFavoritePlayersAsync.maybeWhen(
+      data: (data) {
+        Future.microtask(() {
+          if (!context.mounted) return;
+          ref
+              .read(eventFavoritePlayersCacheProvider.notifier)
+              .updateCache(tourEventCardModel.id, data);
+        });
+        return data;
+      },
+      orElse: () => const EventFavoritePlayers.empty(),
     );
   }
 }
@@ -1024,35 +1053,31 @@ class _NextRoundLine extends ConsumerWidget {
 
     return Padding(
       padding: EdgeInsets.only(top: 3.h),
-      child: showName
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Flexible(
-                  child: Text(
-                    roundName,
-                    style: textStyle.copyWith(fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
+      child:
+          showName
+              ? Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(
+                      roundName,
+                      style: textStyle.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                Text('  ·  ', style: textStyle),
-                Text(
-                  label,
-                  style: textStyle,
-                  maxLines: 1,
-                  softWrap: false,
-                ),
-              ],
-            )
-          : Text(
-              label,
-              style: textStyle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+                  Text('  ·  ', style: textStyle),
+                  Text(label, style: textStyle, maxLines: 1, softWrap: false),
+                ],
+              )
+              : Text(
+                label,
+                style: textStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
     );
   }
 

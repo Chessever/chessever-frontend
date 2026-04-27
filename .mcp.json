@@ -1,8 +1,12 @@
 {
   "mcpServers": {
-    "supabase-chessever": {
+    "supabase_chessever_dev": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju"
+      "url": "https://mcp.supabase.com/mcp?project_ref=qijqcotdnaxqdpgbehvy&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage"
+    },
+    "supabase_chessever_main": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju&read_only=true&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage"
     }
   }
 }
