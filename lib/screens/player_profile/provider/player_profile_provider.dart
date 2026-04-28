@@ -455,10 +455,12 @@ class TwicProfileSummary {
   const TwicProfileSummary({
     required this.gamebasePlayerId,
     required this.totalGames,
+    required this.totalEvents,
   });
 
   final String gamebasePlayerId;
   final int totalGames;
+  final int totalEvents;
 }
 
 bool _looksLikeUuid(String? raw) {
@@ -556,9 +558,22 @@ final twicProfileSummaryProvider = FutureProvider.family
 
         if (totalGames <= 0) return null;
 
+        int totalEvents = 0;
+        try {
+          final eventsResponse = await repo.getPlayerEvents(
+            playerId: playerId,
+            pageNumber: 0,
+            pageSize: 1,
+          );
+          totalEvents = eventsResponse.metadata.totalCount ?? 0;
+        } catch (_) {
+          // Best-effort; banner falls back to '--' when zero.
+        }
+
         return TwicProfileSummary(
           gamebasePlayerId: playerId,
           totalGames: totalGames,
+          totalEvents: totalEvents,
         );
       } catch (_) {
         return null;

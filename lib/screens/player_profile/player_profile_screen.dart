@@ -580,6 +580,21 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final chesseverGameCount =
         supabaseGamesState.totalCount ?? supabaseGamesState.allGames.length;
 
+    // On the Events tab the banner shows event totals; otherwise game totals.
+    final showEventCounts = selectedTab == PlayerProfileTab.events;
+    final supabaseEventsAsync = ref.watch(
+      playerEventsKeyProvider(supabaseKey),
+    );
+    final chesseverEventCount = supabaseEventsAsync.valueOrNull?.length;
+    final isChesseverLoading =
+        showEventCounts
+            ? supabaseEventsAsync.isLoading
+            : supabaseGamesState.isLoading;
+    final chesseverBannerCount =
+        showEventCounts
+            ? (chesseverEventCount ?? 0)
+            : chesseverGameCount;
+
     return Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
       backgroundColor: kBackgroundColor,
@@ -635,8 +650,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                   children: [
                     _buildDataSourceSelector(
                       twicSummaryAsync,
-                      chesseverGameCount: chesseverGameCount,
-                      isChesseverLoading: supabaseGamesState.isLoading,
+                      chesseverCount: chesseverBannerCount,
+                      isChesseverLoading: isChesseverLoading,
+                      showEventCounts: showEventCounts,
                     ),
                     if (hasPlayerExplorer &&
                         _currentDataSource == PlayerProfileDataSource.twic &&
@@ -1028,8 +1044,9 @@ countryCode,
 
   Widget _buildDataSourceSelector(
     AsyncValue<TwicProfileSummary?> twicSummaryAsync, {
-    required int chesseverGameCount,
+    required int chesseverCount,
     required bool isChesseverLoading,
+    required bool showEventCounts,
   }) {
     final summary = twicSummaryAsync.valueOrNull;
     final isLoading = twicSummaryAsync.isLoading;
@@ -1043,10 +1060,12 @@ countryCode,
       phone: 20.sp,
       tablet: 32.sp,
     );
+    final twicTotal =
+        showEventCounts ? summary?.totalEvents : summary?.totalGames;
     final twicGameCount =
-        summary != null ? formatCompactCount(summary.totalGames) : '--';
-    final chesseverCount =
-        isChesseverLoading ? null : formatCompactCount(chesseverGameCount);
+        twicTotal != null ? formatCompactCount(twicTotal) : '--';
+    final chesseverFormatted =
+        isChesseverLoading ? null : formatCompactCount(chesseverCount);
 
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
@@ -1067,7 +1086,7 @@ countryCode,
                 isTwic: isTwic,
                 isLoading: isLoading,
                 twicGameCount: twicGameCount,
-                chesseverGameCount: chesseverCount,
+                chesseverGameCount: chesseverFormatted,
                 twicEnabled: summary != null || isTwic,
                 onSelectRegular:
                     () => _setDataSource(PlayerProfileDataSource.supabase),
