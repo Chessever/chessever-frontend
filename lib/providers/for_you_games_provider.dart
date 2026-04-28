@@ -749,23 +749,6 @@ class _ForYouEventGamesController
   bool _isRefreshing = false;
   bool _queuedRefresh = false;
 
-  /// Active game-update stream subscriptions keyed by gameId. Replaces the old
-  /// per-widget `gameUpdatesStreamProvider` watch loop in
-  /// `forYouEventGamesWithAutoRefreshProvider`: now each event owns at most one
-  /// subscription per ongoing game, attached via `ref.listen` (no rebuilds),
-  /// and synced when the visible-games set changes.
-  final Map<String, ProviderSubscription<AsyncValue<Map<String, dynamic>?>>>
-  _liveGameSubs = {};
-
-  @override
-  void dispose() {
-    for (final sub in _liveGameSubs.values) {
-      sub.close();
-    }
-    _liveGameSubs.clear();
-    super.dispose();
-  }
-
   void handleCancel() {
     _isObserved = false;
   }
@@ -838,7 +821,6 @@ class _ForYouEventGamesController
         if (currentSnapshot == null ||
             !areEquivalentForYouSnapshots(currentSnapshot, cachedSnapshot)) {
           state = AsyncValue.data(cachedSnapshot);
-          _syncLiveGameWatchers(cachedSnapshot);
         }
       }
     } catch (error, stackTrace) {
@@ -858,7 +840,6 @@ class _ForYouEventGamesController
           !areEquivalentForYouSnapshots(currentSnapshot, refreshedSnapshot)) {
         state = AsyncValue.data(refreshedSnapshot);
       }
-      _syncLiveGameWatchers(refreshedSnapshot);
       return;
     } catch (error, stackTrace) {
       loadError ??= error;
@@ -870,50 +851,6 @@ class _ForYouEventGamesController
       state = AsyncValue.error(loadError, loadStack);
     } else if (previousSnapshot != null && mounted) {
       state = AsyncValue.data(previousSnapshot);
-    }
-  }
-
-  /// Sync per-game live-update subscriptions to the current snapshot's
-  /// ongoing games. Adds listeners for newly-ongoing games, drops them when a
-  /// game leaves the visible set or finishes. Each listener calls
-  /// [requestRefresh] when its game flips to a finished status — that's the
-  /// single behavior the deleted `forYouEventGamesWithAutoRefreshProvider`
-  /// existed to provide.
-  void _syncLiveGameWatchers(ForYouEventGamesSnapshot snapshot) {
-    if (!mounted) return;
-
-    final ongoingIds = <String>{
-      for (final game in snapshot.visibleGames)
-        if (game.gameStatus == GameStatus.ongoing) game.gameId,
-    };
-
-    // Drop subs that are no longer in the ongoing set.
-    final stale = _liveGameSubs.keys
-        .where((id) => !ongoingIds.contains(id))
-        .toList(growable: false);
-    for (final id in stale) {
-      _liveGameSubs.remove(id)?.close();
-    }
-
-    // Add subs for newly ongoing games.
-    for (final id in ongoingIds) {
-      if (_liveGameSubs.containsKey(id)) continue;
-      _liveGameSubs[id] = ref.listen<
-        AsyncValue<Map<String, dynamic>?>
-      >(gameUpdatesStreamProvider(id), (_, next) {
-        next.whenData((data) {
-          final status = data?['status'] as String?;
-          if (status != null && _isFinishedStatus(status)) {
-            debugPrint(
-              '[ForYou] Game $id finished ($status) — refreshing snapshot for event $eventId',
-            );
-            // Drop the sub immediately; the refresh will re-sync watchers
-            // based on the new snapshot.
-            _liveGameSubs.remove(id)?.close();
-            requestRefresh();
-          }
-        });
-      });
     }
   }
 }
@@ -1517,20 +1454,57 @@ Future<String?> _resolveAutoPinCountryCode(Ref ref) async {
 }
 
 // ============================================================================
-// PUBLIC SNAPSHOT VIEW
+// LIVE GAME WATCHER - AUTO-REFRESH WHEN GAMES FINISH
 // ============================================================================
 
-/// Read-only view of the per-event snapshot. Pure passthrough on top of
-/// `eventGamesProvider` — exists so widgets/actions/tests can consume the
-/// `AsyncValue` shape without depending on the internal StateNotifier type.
+/// Watches displayed live games so each visible For You section stays reactive
+/// to Supabase row updates, while still using [eventGamesProvider] for the
+/// cached/refreshed snapshot.
 ///
-/// Live-game finish detection is handled inside the controller via
-/// `ref.listen` (no rebuilds), replacing the previous wrapper-provider that
-/// watched per-game streams during build and fanned out to every visible
-/// section.
+/// The card widgets consume their own live row data, but this wrapper keeps the
+/// section subscribed to the same rendered live rows and refreshes the snapshot
+/// as soon as a displayed game finishes.
+final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
+  AsyncValue<ForYouEventGamesSnapshot>,
+  String
+>((ref, eventId) {
+  final snapshotAsync = ref.watch(eventGamesProvider(eventId));
+
+  return snapshotAsync.when(
+    data: (snapshot) {
+      final liveGames =
+          snapshot.visibleGames
+              .take(kGamesPerEvent)
+              .where((game) => game.gameStatus == GameStatus.ongoing)
+              .toList();
+
+      for (final game in liveGames) {
+        final updatesAsync = ref.watch(gameUpdatesStreamProvider(game.gameId));
+        updatesAsync.whenData((data) {
+          final status = data?['status'] as String?;
+          if (status != null && _isFinishedStatus(status)) {
+            debugPrint(
+              '[ForYou] Game ${game.gameId} finished ($status), refreshing snapshot for event $eventId',
+            );
+            Future.microtask(() {
+              bumpEventPinRefreshSignal(ref, eventId);
+            });
+          }
+        });
+      }
+
+      return AsyncValue.data(snapshot);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (e, st) => AsyncValue.error(e, st),
+  );
+});
+
+/// Read-only snapshot alias for non-rendering code paths.
 final forYouEventSnapshotProvider = Provider.autoDispose
     .family<AsyncValue<ForYouEventGamesSnapshot>, String>(
-      (ref, eventId) => ref.watch(eventGamesProvider(eventId)),
+      (ref, eventId) =>
+          ref.watch(forYouEventGamesWithAutoRefreshProvider(eventId)),
     );
 
 bool _isFinishedStatus(String status) {

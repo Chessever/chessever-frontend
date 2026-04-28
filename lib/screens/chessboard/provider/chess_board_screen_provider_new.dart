@@ -256,7 +256,10 @@ class ChessBoardScreenNotifierNew
                 : const AnalysisBoardState(),
       ),
     );
-    parseMoves();
+    Future.microtask(() {
+      if (!mounted) return;
+      unawaited(parseMoves());
+    });
 
     // Listen for engine settings changes and clear cache to force re-evaluation
     ref.listen<AsyncValue<EngineSettings>>(engineSettingsProviderNew, (
@@ -897,8 +900,11 @@ class ChessBoardScreenNotifierNew
       final seededGameData =
           ref.read(gameUpdatesStreamProvider(game.gameId)).valueOrNull;
       if (seededGameData != null) {
-        _releaseLog('🌱 STREAM SEED for game ${game.gameId}');
-        _handleGameStreamUpdate(seededGameData, source: 'seed');
+        Future.microtask(() {
+          if (!mounted) return;
+          _releaseLog('🌱 STREAM SEED for game ${game.gameId}');
+          _handleGameStreamUpdate(seededGameData, source: 'seed');
+        });
       }
     }
   }
@@ -1931,10 +1937,7 @@ class ChessBoardScreenNotifierNew
   /// glyph can be active at a time — tapping a different one in the same
   /// category replaces the previous selection. Tapping the same glyph again
   /// removes it. This matches how lichess study handles glyphs.
-  void toggleMoveNag({
-    required String pointerId,
-    required int nag,
-  }) {
+  void toggleMoveNag({required String pointerId, required int nag}) {
     final currentState = state.value;
     if (currentState == null) return;
     final tappedDisplay = getNagDisplay(nag);
@@ -3400,9 +3403,7 @@ class ChessBoardScreenNotifierNew
         folderId: savedAnalysisData?.folderId,
         title:
             savedAnalysisData?.title ??
-            currentState.game.whitePlayer.name +
-                ' vs ' +
-                currentState.game.blackPlayer.name,
+            '${currentState.game.whitePlayer.name} vs ${currentState.game.blackPlayer.name}',
         chessGame: analysisGame,
         analysisState: analysisStateJson,
         variationComments: currentState.variationComments,
@@ -3465,8 +3466,7 @@ class ChessBoardScreenNotifierNew
     final currentJson = analysisGame.toJson().toString();
     final commentsChanged =
         currentState.variationComments != savedAnalysisData?.variationComments;
-    final nagsChanged =
-        currentState.moveNags != savedAnalysisData?.moveNags;
+    final nagsChanged = currentState.moveNags != savedAnalysisData?.moveNags;
     if (currentJson == _lastAutoSavedGameJson &&
         !commentsChanged &&
         !nagsChanged) {
@@ -3494,9 +3494,7 @@ class ChessBoardScreenNotifierNew
         folderId: savedAnalysisData?.folderId,
         title:
             savedAnalysisData?.title ??
-            currentState.game.whitePlayer.name +
-                ' vs ' +
-                currentState.game.blackPlayer.name,
+            '${currentState.game.whitePlayer.name} vs ${currentState.game.blackPlayer.name}',
         chessGame: analysisGame,
         analysisState: analysisStateJson,
         variationComments: currentState.variationComments,
