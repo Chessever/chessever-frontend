@@ -218,7 +218,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: 500,
+        cacheExtent: 2000,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -284,7 +284,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: 500,
+        cacheExtent: 2000,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
