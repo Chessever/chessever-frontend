@@ -147,19 +147,6 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         hasDifferentPlayerScope;
   }
 
-  void _clearFiltersForCurrentScope() {
-    final notifier = ref.read(gamebaseExplorerProvider.notifier);
-    final scopedPlayer = widget.initialPlayer;
-
-    if (scopedPlayer != null) {
-      // In player-scoped explorer, "clear filters" should keep player scope.
-      notifier.initializeWithPlayer(scopedPlayer);
-      return;
-    }
-
-    notifier.clearFilters();
-  }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -603,13 +590,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             ),
         ],
       ),
+      // Three actions, evenly spaced: Reset, Filters (with active dot when
+      // filters are applied), Done. The dot on the filter icon is enough to
+      // signal "filters active" — no separate clear-filters button is needed
+      // since Reset wipes the same state.
       actions: [
-        if (_shouldShowClearFilters(state))
-          IconButton(
-            icon: Icon(Icons.filter_alt_off, size: 24.ic),
-            onPressed: _clearFiltersForCurrentScope,
-            tooltip: 'Clear filters',
-          ),
         IconButton(
           icon: Icon(Icons.restart_alt, size: 24.ic),
           onPressed:
@@ -639,20 +624,24 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
           onPressed: () => _showFilterSheet(context),
           tooltip: 'Filters',
         ),
-        GestureDetector(
-          onTap: () => _openAnalysis(context),
-          child: Container(
-            key: e2eKey(E2eIds.openingExplorerDoneButton),
-            margin: EdgeInsets.only(right: 8.sp),
-            padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 6.sp),
-            decoration: BoxDecoration(
-              color: kWhiteColor,
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-            child: Text(
-              'Done',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kBackgroundColor,
+        // Match IconButton's default 8dp surrounding padding so the gap
+        // tune→Done equals the gap reset→tune.
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8.sp),
+          child: GestureDetector(
+            onTap: () => _openAnalysis(context),
+            child: Container(
+              key: e2eKey(E2eIds.openingExplorerDoneButton),
+              padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
+              decoration: BoxDecoration(
+                color: kWhiteColor,
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Text(
+                'Done',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kBackgroundColor,
+                ),
               ),
             ),
           ),
