@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
@@ -54,7 +55,7 @@ class PlayerGamesTab extends ConsumerStatefulWidget {
 }
 
 class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
-    with AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -89,6 +90,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     _searchFocusNode.addListener(_onSearchFocusChange);
     _searchController.addListener(_onSearchTextChange);
@@ -118,9 +120,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   void _restartHintRotation() {
     _hintRotationTimer?.cancel();
-    if (_hintCycleDone ||
-        _hintCycleFadingOut ||
-        _rotatingHints.length <= 1) {
+    if (_hintCycleDone || _hintCycleFadingOut || _rotatingHints.length <= 1) {
       return;
     }
     if (_searchController.text.isNotEmpty || _searchFocusNode.hasFocus) return;
@@ -151,6 +151,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _hintRotationTimer?.cancel();
     _hintFadeOutTimer?.cancel();
@@ -161,6 +162,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed || !mounted) return;
+
+    ref.invalidate(gameUpdatesStreamProvider);
+    unawaited(
+      ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).refresh(),
+    );
   }
 
   void _onScroll() {
@@ -1166,6 +1178,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   isSelectionMode
                       ? () => _toggleGameSelection(game.gameId)
                       : () => _showAddToFolderSheet(game),
+              onLiveAdd:
+                  isSelectionMode
+                      ? null
+                      : (liveGame) => _showAddToFolderSheet(liveGame),
               onTap:
                   isSelectionMode
                       ? () => _toggleGameSelection(game.gameId)

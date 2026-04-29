@@ -201,11 +201,24 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
         final cardWidth = constraints.maxWidth;
         final cardHeight = constraints.maxHeight;
 
+        // Bail out on degenerate constraints (zero/negative/non-finite). Without
+        // this guard the math below collapses cellWithSpacing to zero and
+        // (cardWidth / 0).ceil() throws "Infinity or NaN toInt".
+        if (!cardWidth.isFinite ||
+            !cardHeight.isFinite ||
+            cardWidth <= 0 ||
+            cardHeight <= 8) {
+          return const SizedBox.shrink();
+        }
+
         const cellSpacing = 4.0;
         final rowHeight =
             (cardHeight - (gridConfig.rows - 1) * cellSpacing) /
             gridConfig.rows;
-        final actualCellSize = math.min(gridConfig.baseCellSize, rowHeight - 2);
+        final actualCellSize = math.max(
+          1.0,
+          math.min(gridConfig.baseCellSize, rowHeight - 2),
+        );
         final verticalPadding = (rowHeight - actualCellSize) / 2;
         final cellWithSpacing = actualCellSize + cellSpacing;
 

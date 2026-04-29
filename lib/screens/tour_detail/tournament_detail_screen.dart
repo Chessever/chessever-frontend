@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -63,6 +64,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     Future.microtask(() {
       debugPrint('🔥 TournamentDetail: didPopNext - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
+      ref.invalidate(gameUpdatesStreamProvider);
     });
     super.didPopNext();
   }
@@ -102,6 +104,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     debugPrint('🔥 TournamentDetail: App resumed - refreshing games');
     // Re-enable streaming when app comes back to foreground
     ref.read(shouldStreamProvider.notifier).state = true;
+    ref.invalidate(gameUpdatesStreamProvider);
 
     // Refresh games data while preserving current UI state
     // This avoids showing "no games" during the refresh

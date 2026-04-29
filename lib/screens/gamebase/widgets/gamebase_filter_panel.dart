@@ -163,12 +163,11 @@ class _FilterContent extends HookConsumerWidget {
 
           SizedBox(height: 16.h),
 
-          // Format Section (OTB / Online)
-          _SectionLabel(label: 'Format'),
-          SizedBox(height: 8.h),
-          _FormatChips(selectedIsOnline: filters.isOnline),
-
-          SizedBox(height: 16.h),
+          // Format Section (OTB / Online) — temporarily hidden
+          // _SectionLabel(label: 'Format'),
+          // SizedBox(height: 8.h),
+          // _FormatChips(selectedIsOnline: filters.isOnline),
+          // SizedBox(height: 16.h),
 
           // Color Section (only when a player is selected)
           if (filters.playerIds.isNotEmpty) ...[
@@ -305,38 +304,38 @@ class _GameResultChips extends ConsumerWidget {
   }
 }
 
-/// Format filter chips (OTB, Online).
-class _FormatChips extends ConsumerWidget {
-  const _FormatChips({required this.selectedIsOnline});
-
-  final bool? selectedIsOnline;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Wrap(
-      spacing: 8.w,
-      runSpacing: 8.h,
-      children: [
-        _FilterChip(
-          label: 'OTB',
-          icon: Icons.location_on_outlined,
-          isSelected: selectedIsOnline == false,
-          onTap: () {
-            ref.read(gamebaseExplorerProvider.notifier).toggleFormat(false);
-          },
-        ),
-        _FilterChip(
-          label: 'Online',
-          icon: Icons.language_rounded,
-          isSelected: selectedIsOnline == true,
-          onTap: () {
-            ref.read(gamebaseExplorerProvider.notifier).toggleFormat(true);
-          },
-        ),
-      ],
-    );
-  }
-}
+// Format filter chips (OTB, Online) — temporarily hidden.
+// class _FormatChips extends ConsumerWidget {
+//   const _FormatChips({required this.selectedIsOnline});
+//
+//   final bool? selectedIsOnline;
+//
+//   @override
+//   Widget build(BuildContext context, WidgetRef ref) {
+//     return Wrap(
+//       spacing: 8.w,
+//       runSpacing: 8.h,
+//       children: [
+//         _FilterChip(
+//           label: 'OTB',
+//           icon: Icons.location_on_outlined,
+//           isSelected: selectedIsOnline == false,
+//           onTap: () {
+//             ref.read(gamebaseExplorerProvider.notifier).toggleFormat(false);
+//           },
+//         ),
+//         _FilterChip(
+//           label: 'Online',
+//           icon: Icons.language_rounded,
+//           isSelected: selectedIsOnline == true,
+//           onTap: () {
+//             ref.read(gamebaseExplorerProvider.notifier).toggleFormat(true);
+//           },
+//         ),
+//       ],
+//     );
+//   }
+// }
 
 /// Player color filter chips (White, Black).
 class _PlayerColorChips extends ConsumerWidget {

@@ -501,6 +501,35 @@ class GroupBroadcastRepository extends BaseRepository {
     return tokens;
   }
 
+  /// Fetch the (id, slug) of the primary tour under a group_broadcast.
+  /// "Primary" = oldest by `created_at`, which mirrors the order Lichess
+  /// reports its broadcast tournaments and matches the URL slug Lichess
+  /// uses on `lichess.org/broadcast/<slug>/<id>`. Returns null when the
+  /// group has no tour rows (e.g. synthesized broadcasts).
+  Future<({String id, String slug})?> getPrimaryTourSlugAndId(
+    String groupBroadcastId,
+  ) async {
+    return handleApiCall(() async {
+      final dynamic response = await supabase
+          .from('tours')
+          .select('id, slug')
+          .eq('group_broadcast_id', groupBroadcastId)
+          .order('created_at', ascending: true)
+          .limit(1);
+
+      if (response == null) return null;
+      final list = response as List;
+      if (list.isEmpty) return null;
+      final row = list.first as Map<String, dynamic>;
+      final id = row['id'] as String?;
+      final slug = row['slug'] as String?;
+      if (id == null || id.isEmpty || slug == null || slug.isEmpty) {
+        return null;
+      }
+      return (id: id, slug: slug);
+    });
+  }
+
   /// Get tour IDs that belong to a specific group_broadcast
   /// Used to fetch games for a single event in the For You tab
   Future<List<String>> getTourIdsForGroupBroadcast(

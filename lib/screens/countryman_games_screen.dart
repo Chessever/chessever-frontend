@@ -1,6 +1,7 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -69,11 +70,13 @@ class CountrymanGamesList extends ConsumerWidget {
             final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
 
             Widget buildGameItem(int index) {
-              var game = data.gamesTourModels[index];
-
-              // Update game with unified live stream to keep FEN/PGN/clocks in sync
-              if (game.gameStatus == GameStatus.ongoing) {
-                game = watchLiveGame(ref, game);
+              final baseGame = data.gamesTourModels[index];
+              final game = watchLiveGame(ref, baseGame);
+              final updatedGames = List<GamesTourModel>.from(
+                data.gamesTourModels,
+              );
+              if (index >= 0 && index < updatedGames.length) {
+                updatedGames[index] = game;
               }
 
               return gamesListViewMode == GamesListViewMode.chessBoard
@@ -99,11 +102,15 @@ class CountrymanGamesList extends ConsumerWidget {
                         MaterialPageRoute(
                           builder:
                               (_) => ChessBoardScreenNew(
-                                games: data.gamesTourModels,
+                                games: updatedGames,
                                 currentIndex: index,
                               ),
                         ),
-                      );
+                      ).then((_) {
+                        if (context.mounted) {
+                          ref.invalidate(gameUpdatesStreamProvider);
+                        }
+                      });
                     },
                     gamesTourModel: game,
                   )
@@ -123,11 +130,15 @@ class CountrymanGamesList extends ConsumerWidget {
                         MaterialPageRoute(
                           builder:
                               (_) => ChessBoardScreenNew(
-                                games: data.gamesTourModels,
+                                games: updatedGames,
                                 currentIndex: index,
                               ),
                         ),
-                      );
+                      ).then((_) {
+                        if (context.mounted) {
+                          ref.invalidate(gameUpdatesStreamProvider);
+                        }
+                      });
                     },
                     matchComparison: MatchWithComparison(
                       game: game,
@@ -277,7 +288,10 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                           children: [
                             SvgPicture.asset(
                               SvgAsset.searchIcon,
-                              color: kWhiteColor,
+                              colorFilter: const ColorFilter.mode(
+                                kWhiteColor,
+                                BlendMode.srcIn,
+                              ),
                             ),
                             SizedBox(width: 4.w),
                             Expanded(

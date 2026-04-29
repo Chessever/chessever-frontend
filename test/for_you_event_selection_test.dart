@@ -298,6 +298,67 @@ void main() {
       },
     );
 
+    test('actual live game rows override stale live round ids', () {
+      final now = DateTime.now();
+      final tour = _makeTour(
+        id: 'tour-1',
+        name: 'Titled Tuesday',
+        dates: [now.subtract(const Duration(hours: 3)), now],
+      );
+      final rounds = [
+        _makeRound(
+          id: 'round-10',
+          tourId: 'tour-1',
+          name: 'Round 10',
+          startsAt: now.subtract(const Duration(minutes: 30)),
+        ),
+        _makeRound(
+          id: 'round-11',
+          tourId: 'tour-1',
+          name: 'Round 11',
+          startsAt: now.add(const Duration(hours: 2)),
+        ),
+      ];
+      final games = [
+        _makeGame(
+          id: 'r10-g1',
+          roundId: 'round-10',
+          roundSlug: 'round-10',
+          tourId: 'tour-1',
+          status: '1-0',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(minutes: 3)),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+        _makeGame(
+          id: 'r11-g1',
+          roundId: 'round-11',
+          roundSlug: 'round-11',
+          tourId: 'tour-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(minutes: 1)),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: rounds,
+        roundsByTourId: {'tour-1': rounds},
+        selectedTourGames: games,
+        gamesByTourId: {'tour-1': games},
+        liveRoundIds: const ['round-10'],
+        pinnedIds: const [],
+      );
+
+      expect(snapshot.visibleGames.first.gameId, 'r11-g1');
+    });
+
     test('regular event returns Games-tab visible order', () {
       final now = DateTime.now();
       final tour = _makeTour(

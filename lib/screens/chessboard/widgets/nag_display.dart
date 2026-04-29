@@ -25,20 +25,31 @@ class NagDisplay {
 const Color _kEvalSlate = Color(0xFF9AA3AD);
 const Color _kObservationDim = Color(0xFFB8C4D0);
 
+// Quality NAG colors mirror LichessMoveAnnotationTypeX.color in
+// chess_board_screen_new.dart so glyphs render identically whether they
+// come from the PGN ($N), the user's Annotate sheet, or a Lichess fetched
+// analysis classification (good/inaccuracy/mistake/blunder/brilliant).
 NagDisplay? getNagDisplay(int nag) {
   switch (nag) {
     case 1:
-      return const NagDisplay('!', Color(0xFF22AC38), NagCategory.quality);
+      // Lichess goodMove
+      return const NagDisplay('!', Color(0xFF177A68), NagCategory.quality);
     case 2:
-      return const NagDisplay('?', Color(0xFFE69F00), NagCategory.quality);
+      // Lichess mistake
+      return const NagDisplay('?', Color(0xFFEB9518), NagCategory.quality);
     case 3:
-      return const NagDisplay('!!', Color(0xFF168226), NagCategory.quality);
+      // Lichess brilliant
+      return const NagDisplay('!!', Color(0xFF177A68), NagCategory.quality);
     case 4:
-      return const NagDisplay('??', Color(0xFFDF5353), NagCategory.quality);
+      // Lichess blunder
+      return const NagDisplay('??', Color(0xFFC9342E), NagCategory.quality);
     case 5:
+      // No Lichess equivalent — keep the canonical "speculative" magenta.
       return const NagDisplay('!?', Color(0xFFEA45D8), NagCategory.quality);
     case 6:
-      return const NagDisplay('?!', Color(0xFF56B4E9), NagCategory.quality);
+      // Lichess inaccuracy (matches the yellow rendered for $6 when the
+      // game is fetched from Lichess analysis).
+      return const NagDisplay('?!', Color(0xFFFABE46), NagCategory.quality);
     case 7:
       return const NagDisplay('□', Color(0xFFA04048), NagCategory.quality);
     case 10:

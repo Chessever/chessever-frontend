@@ -11,6 +11,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -23,9 +24,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const String _kStartFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-
-/// Simple cache for PGN to final FEN conversion to avoid expensive re-parsing during scroll
-final Map<String, String> _pgnToFenCache = {};
 
 Setup? _tryParseFen(String fen) {
   if (fen.trim().isEmpty) return null;
@@ -42,36 +40,7 @@ String _resolveFen(String? fen) {
 }
 
 String? _finalFenFromPgn(String? pgn) {
-  final raw = pgn?.trim();
-  if (raw == null || raw.isEmpty) return null;
-
-  // Check cache first
-  final cached = _pgnToFenCache[raw];
-  if (cached != null) return cached;
-
-  try {
-    final game = PgnGame.parsePgn(raw);
-    var position = PgnGame.startingPosition(game.headers);
-    var moveCount = 0;
-    for (final node in game.moves.mainline()) {
-      final move = position.parseSan(node.san);
-      if (move == null) break;
-      position = position.play(move);
-      moveCount++;
-    }
-    if (moveCount == 0) return null;
-
-    final resultFen = position.fen;
-    // Limit cache size to prevent memory issues
-    if (_pgnToFenCache.length > 500) {
-      _pgnToFenCache.remove(_pgnToFenCache.keys.first);
-    }
-    _pgnToFenCache[raw] = resultFen;
-
-    return resultFen;
-  } catch (_) {
-    return null;
-  }
+  return resolveFinalPositionFromPgn(pgn)?.fen;
 }
 
 bool _isGamebasePreviewGame(GamesTourModel game) {
@@ -114,20 +83,16 @@ final _resolvedFenProvider = Provider.autoDispose
       });
       ref.onDispose(() => timer.cancel());
 
-      // 1. Try local FEN first (already normalized in model usually)
-      final localFen = (game.fen ?? '').trim();
-      if (localFen.isNotEmpty && _tryParseFen(localFen) != null) {
-        return localFen;
+      final freshestFen = resolveFreshestGameFen(
+        fen: game.fen,
+        pgn: game.pgn,
+        lastMove: game.lastMove,
+      );
+      if (freshestFen != null) {
+        return freshestFen;
       }
 
-      // 2. Try PGN if FEN is missing
-      final pgn = (game.pgn ?? '').trim();
-      if (pgn.isNotEmpty) {
-        final pgnFen = _finalFenFromPgn(pgn);
-        if (pgnFen != null) return pgnFen;
-      }
-
-      // 3. Gamebase async fallback
+      // Gamebase async fallback
       if (_isGamebasePreviewGame(game) && !pgnHasMoves(game.pgn)) {
         final remoteFen =
             ref.watch(_gamebaseFinalFenProvider(game.gameId)).valueOrNull;

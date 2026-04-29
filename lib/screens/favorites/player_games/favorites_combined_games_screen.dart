@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
-import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
+import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -26,7 +27,8 @@ class FavoritesCombinedGamesScreen extends ConsumerStatefulWidget {
 }
 
 class _FavoritesCombinedGamesScreenState
-    extends ConsumerState<FavoritesCombinedGamesScreen> {
+    extends ConsumerState<FavoritesCombinedGamesScreen>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -38,17 +40,28 @@ class _FavoritesCombinedGamesScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed || !mounted) return;
+
+    ref.invalidate(gameUpdatesStreamProvider);
+    unawaited(ref.read(favoritesCombinedGamesProvider.notifier).refreshGames());
   }
 
   void _onScroll() {
@@ -731,13 +744,14 @@ class _FavoritesCombinedGamesScreenState
           final game = filteredGames[index];
           return Padding(
             padding: EdgeInsets.only(bottom: 12.h),
-            child: GamebaseSearchGameCard(
+            child: LiveGamebaseSearchGameCard(
               game: game,
               allGames: filteredGames,
               gameIndex: index,
               animationIndex: index,
               showRound: true,
               onAdd: () => _showAddToFolderSheet(context, game),
+              onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
             ),
           );
         }, childCount: filteredGames.length + (showLoadingIndicator ? 1 : 0)),

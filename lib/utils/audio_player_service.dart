@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -215,22 +214,19 @@ class AudioPlayerService with WidgetsBindingObserver {
 
   /// Dispose the native engine to avoid stale handles when the app goes
   /// background or is torn down by the OS.
+  // SoLoud.instance is per-isolate state, so deinit MUST run on the main
+  // isolate. A previous version off-loaded this to Isolate.run, which both
+  // failed to sendport-encode the closure (it captured `this`, which holds a
+  // non-sendable Future) and would have deinit'd an empty fresh SoLoud
+  // instance in the child isolate anyway.
   void _teardownPlayer() {
     debugPrint(
       '🎧 AudioPlayerService: tearing down player (wasInitialized: $_initialized, assetsLoaded: $_assetsLoaded)',
     );
     try {
       if (player.isInitialized) {
-        // PERFORMANCE: Run deinit in a background isolate to avoid blocking
-        // the main thread, which can cause hangs during hot-restart teardown.
-        unawaited(
-          Isolate.run(() {
-            player.deinit();
-          }),
-        );
-        debugPrint(
-          '🎧 AudioPlayerService: SoLoud deinit triggered in background',
-        );
+        player.deinit();
+        debugPrint('🎧 AudioPlayerService: SoLoud deinit complete');
       }
     } catch (e, s) {
       debugPrint('⚠️ Audio teardown failed: $e\n$s');

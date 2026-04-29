@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 
 class AboutTourModel extends Equatable {
   final String id;
+  final String slug;
   final String name;
   final String description;
   final String imageUrl;
@@ -17,6 +18,7 @@ class AboutTourModel extends Equatable {
 
   const AboutTourModel({
     required this.id,
+    required this.slug,
     required this.name,
     required this.description,
     required this.imageUrl,
@@ -33,6 +35,7 @@ class AboutTourModel extends Equatable {
   factory AboutTourModel.fromTour(Tour tour) {
     return AboutTourModel(
       id: tour.id,
+      slug: tour.slug,
       name: tour.name,
       imageUrl: tour.image ?? '',
       //todo: This field needs to be added in the Tour Model
@@ -50,6 +53,7 @@ class AboutTourModel extends Equatable {
   factory AboutTourModel.empty() {
     return const AboutTourModel(
       id: '',
+      slug: '',
       name: 'No Tournament',
       description: 'Currently no tournaments available',
       imageUrl: '',
@@ -89,6 +93,7 @@ class AboutTourModel extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    slug,
     name,
     description,
     imageUrl,

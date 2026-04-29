@@ -278,9 +278,16 @@ class TournamentMenuButton extends ConsumerWidget {
     }
 
     // 5. Share event
-    final shareId =
-        tourData.aboutTourModel.groupBroadcastId ?? tourData.aboutTourModel.id;
-    if (shareId.isNotEmpty && tourData.aboutTourModel.name.isNotEmpty) {
+    // We have the active tour (id + slug) in hand here, so we can build the
+    // Lichess-mirror URL `<tour.slug>/<tour.id>` directly without an extra
+    // database round-trip. `groupBroadcastId` is passed only as the fallback
+    // path id used when slug/tourId are missing (legacy events).
+    final aboutModel = tourData.aboutTourModel;
+    final fallbackId =
+        aboutModel.groupBroadcastId?.isNotEmpty == true
+            ? aboutModel.groupBroadcastId!
+            : aboutModel.id;
+    if (fallbackId.isNotEmpty && aboutModel.name.isNotEmpty) {
       items.add(
         PopupMenuItem<TournamentMenuAction>(
           value: TournamentMenuAction.shareEvent,
@@ -288,8 +295,10 @@ class TournamentMenuButton extends ConsumerWidget {
           height: 36.h,
           onTap: () {
             final url = buildEventShareUrl(
-              id: shareId,
-              title: tourData.aboutTourModel.name,
+              id: fallbackId,
+              title: aboutModel.name,
+              tourId: aboutModel.id,
+              tourSlug: aboutModel.slug,
             );
             final box = context.findRenderObject() as RenderBox?;
             final origin =

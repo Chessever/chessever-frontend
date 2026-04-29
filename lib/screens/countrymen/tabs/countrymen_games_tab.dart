@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -39,7 +40,7 @@ class CountrymenGamesTab extends ConsumerStatefulWidget {
 }
 
 class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
-    with AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -54,17 +55,30 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_onScroll);
     _debounceTimer?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed || !mounted) return;
+
+    ref.invalidate(gameUpdatesStreamProvider);
+    unawaited(
+      ref.read(countrymenCombinedGamesProvider.notifier).refreshGames(),
+    );
   }
 
   void _onScroll() {
@@ -558,7 +572,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             if (isChessBoardVisible) {
               // Board mode: use GameCardWrapperWidget with chessboard visible
               items.add(
-                _CountrymenKeepAliveGameCard(
+                _CountrymenLiveBoardGameCard(
                   key: ValueKey('cmen_game_${game.gameId}_${viewMode.index}'),
                   game: game,
                   gamesData: gamesData,
@@ -583,13 +597,15 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                     showSwipeHint: showHint,
                     showGamebaseButton: false,
                     onAdd: () => _showAddToFolderSheet(context, game),
-                    onTap: () async {
+                    onLiveAdd:
+                        (liveGame) => _showAddToFolderSheet(context, liveGame),
+                    onLiveTap: (liveGame, updatedGames, liveIndex) async {
                       final hasPremium = await requirePremiumGuard(
                         context,
                         ref,
                       );
                       if (!hasPremium) return;
-                      _navigateToChessBoard(game, games, gameIndex);
+                      _navigateToChessBoard(liveGame, updatedGames, liveIndex);
                     },
                   ),
                 ),
@@ -649,7 +665,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         delegate: SliverChildBuilderDelegate(
           (context, index) => items[index],
           childCount: items.length,
-          addAutomaticKeepAlives: true,
+          addAutomaticKeepAlives: false,
         ),
       ),
     );
@@ -920,6 +936,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     ).then((_) {
       if (mounted) {
         ref.read(shouldStreamProvider.notifier).state = true;
+        ref.invalidate(gameUpdatesStreamProvider);
       }
     });
   }
@@ -999,10 +1016,10 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-/// ConsumerStatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
-/// This prevents the card from being disposed when scrolled off-screen
-class _CountrymenKeepAliveGameCard extends ConsumerStatefulWidget {
-  const _CountrymenKeepAliveGameCard({
+/// Adds premium guard for navigation while allowing offscreen live streams to
+/// auto-dispose.
+class _CountrymenLiveBoardGameCard extends ConsumerStatefulWidget {
+  const _CountrymenLiveBoardGameCard({
     super.key,
     required this.game,
     required this.gamesData,
@@ -1022,17 +1039,13 @@ class _CountrymenKeepAliveGameCard extends ConsumerStatefulWidget {
   final bool isLast;
 
   @override
-  ConsumerState<_CountrymenKeepAliveGameCard> createState() =>
-      _CountrymenKeepAliveGameCardState();
+  ConsumerState<_CountrymenLiveBoardGameCard> createState() =>
+      _CountrymenLiveBoardGameCardState();
 }
 
-class _CountrymenKeepAliveGameCardState
-    extends ConsumerState<_CountrymenKeepAliveGameCard>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  Future<void> _handleNavigate() async {
+class _CountrymenLiveBoardGameCardState
+    extends ConsumerState<_CountrymenLiveBoardGameCard> {
+  Future<void> _handleNavigate(List<GamesTourModel> updatedGames) async {
     // Premium guard - show paywall if not subscribed
     final hasPremium = await requirePremiumGuard(context, ref);
     if (!hasPremium) return;
@@ -1042,7 +1055,7 @@ class _CountrymenKeepAliveGameCardState
         .read(gameCardWrapperProvider)
         .navigateToChessBoard(
           context: context,
-          orderedGames: widget.gamesData.gamesTourModels,
+          orderedGames: updatedGames,
           gameIndex: widget.gameIndex,
           onReturnFromChessboard: (_) {},
           viewSource: ChessboardView.countryman,
@@ -1051,12 +1064,14 @@ class _CountrymenKeepAliveGameCardState
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
     final liveGame = watchLiveGame(ref, widget.game);
     final gameId = liveGame.gameId;
+    final updatedGames = List<GamesTourModel>.from(widget.allGames);
+    if (widget.gameIndex >= 0 && widget.gameIndex < updatedGames.length) {
+      updatedGames[widget.gameIndex] = liveGame;
+    }
 
     // Use ChessBoardFromFENNew directly with premium-guarded navigation
     final card = Padding(
@@ -1064,7 +1079,7 @@ class _CountrymenKeepAliveGameCardState
       child: ChessBoardFromFENNew(
         key: ValueKey('cmen_board_game_${liveGame.gameId}'),
         gamesTourModel: liveGame,
-        onChanged: _handleNavigate,
+        onChanged: () => _handleNavigate(updatedGames),
         pinnedIds: widget.gamesData.pinnedGamedIs,
         onPinToggle: (_) {},
       ),

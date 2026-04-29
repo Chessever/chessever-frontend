@@ -21,6 +21,8 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
     this.hideEventInfo = false,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.onTap,
+    this.onLiveTap,
+    this.onLiveAdd,
   });
 
   final GamesTourModel game;
@@ -36,6 +38,13 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
 
   /// Optional tap callback. If provided, overrides default chessboard navigation.
   final VoidCallback? onTap;
+  final void Function(
+    GamesTourModel liveGame,
+    List<GamesTourModel> updatedGames,
+    int gameIndex,
+  )?
+  onLiveTap;
+  final void Function(GamesTourModel liveGame)? onLiveAdd;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,14 +63,23 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
       game: liveGame,
       allGames: updatedGames,
       gameIndex: gameIndex,
-      onAdd: onAdd,
+      onAdd: () {
+        if (onLiveAdd != null) {
+          onLiveAdd!(liveGame);
+          return;
+        }
+        onAdd();
+      },
       animationIndex: animationIndex,
       showRound: showRound,
       showSwipeHint: showSwipeHint,
       showGamebaseButton: showGamebaseButton,
       hideEventInfo: hideEventInfo,
       playerProfileDataSource: playerProfileDataSource,
-      onTap: onTap,
+      onTap:
+          onLiveTap == null
+              ? onTap
+              : () => onLiveTap!(liveGame, updatedGames, gameIndex),
     );
   }
 }

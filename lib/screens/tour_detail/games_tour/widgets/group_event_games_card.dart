@@ -2,6 +2,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -42,12 +43,21 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
       itemCount: widget.games.length,
       separatorBuilder: (context, _) => SizedBox(height: 12.sp),
       itemBuilder: (context, index) {
-        final game = widget.games[index];
+        final match = widget.games[index];
+        final liveGame = watchLiveGame(ref, match.game);
+        final liveMatch = MatchWithComparison(
+          game: liveGame,
+          comparison: match.comparison,
+        );
+        final gameIndex = gameIndexMap[liveGame.gameId] ?? -1;
+        final updatedGames = List<GamesTourModel>.from(fullGamesList);
+        if (gameIndex >= 0 && gameIndex < updatedGames.length) {
+          updatedGames[gameIndex] = liveGame;
+        }
 
-        final gameIndex = gameIndexMap[game.game.gameId] ?? -1;
         return GameCard(
           // Use actual comparison to maintain team positions
-          matchComparison: game,
+          matchComparison: liveMatch,
           onPinToggle: (game) async {
             await ref
                 .read(gamesTourScreenProvider.notifier)
@@ -59,7 +69,7 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
                 .read(gameCardWrapperProvider)
                 .navigateToChessBoard(
                   context: context,
-                  orderedGames: fullGamesList,
+                  orderedGames: updatedGames,
                   gameIndex: gameIndex,
                   onReturnFromChessboard: widget.onReturnFromChessboard,
                 );

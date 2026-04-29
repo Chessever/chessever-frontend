@@ -14,6 +14,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 // import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_cache.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
@@ -254,9 +255,10 @@ List<int> _mergeUserNags(
   Map<String, List<int>> userMoveNags,
 ) {
   final pgn = pgnNags ?? const <int>[];
-  final user = pointerId == null
-      ? const <int>[]
-      : (userMoveNags[pointerId] ?? const <int>[]);
+  final user =
+      pointerId == null
+          ? const <int>[]
+          : (userMoveNags[pointerId] ?? const <int>[]);
   if (user.isEmpty) return pgn;
   if (pgn.isEmpty) return user;
   return <int>[...pgn, ...user];
@@ -267,9 +269,10 @@ List<int> _mergeUserNagsForMovePointer(
   List<Number>? movePointer,
   Map<String, List<int>> userMoveNags,
 ) {
-  final pointerId = (movePointer == null || movePointer.isEmpty)
-      ? null
-      : NotationPointer.encode(movePointer);
+  final pointerId =
+      (movePointer == null || movePointer.isEmpty)
+          ? null
+          : NotationPointer.encode(movePointer);
   return _mergeUserNags(move?.nags, pointerId, userMoveNags);
 }
 
@@ -1351,6 +1354,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _handleLifecycleResume() {
     if (!mounted || widget.games.isEmpty) return;
+    ref.invalidate(gameUpdatesStreamProvider);
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
@@ -6533,8 +6537,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           tween: Tween(begin: 0.6, end: 1.0),
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutBack,
-          builder: (context, scale, c) =>
-              Transform.scale(scale: scale, child: c),
+          builder:
+              (context, scale, c) => Transform.scale(scale: scale, child: c),
           child: Container(
             width: badgeSize,
             height: badgeSize,
@@ -6737,22 +6741,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           final isOnMainline =
               currentMovePointer.isEmpty || currentMovePointer.length == 1;
 
-          // 1. Try Lichess annotations first (Mainline only)
-          if (isOnMainline) {
-            final currentMoveIndex =
-                currentMovePointer.isEmpty ? -1 : currentMovePointer[0];
-            if (currentMoveIndex >= 0 && lichessAnnotations.isNotEmpty) {
-              // Only show annotations on mainline, not variations or PV previews.
-              if (!widget.chessBoardState.isPvPreviewActive) {
-                final annotation = lichessAnnotations[currentMoveIndex];
-                if (annotation != null) return annotation;
-              }
-            }
-          }
-
-          // 2. Fallback to NAGs from the move itself OR user-applied NAGs.
-          // Quality NAGs ($1–$6) get the high-fidelity SVG badge.
-          // Other NAGs ($7+) fall through to the text-glyph badge below.
+          // 1. Author/user NAGs win — they reflect explicit intent and must
+          // override Lichess analysis classifications. Quality NAGs ($1–$4)
+          // get the high-fidelity SVG badge here; non-mappable NAGs ($5–$7,
+          // $10+) return null so Path B renders the Unicode glyph badge.
           final currentMove = navigatorState.currentMove;
           final mergedNags = _mergeUserNagsForMovePointer(
             currentMove,
@@ -6765,6 +6757,22 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
             if (type != null) {
               return LichessMoveAnnotation(type: type, comment: '');
             }
+            // Non-mappable NAG — let Path B render the text-glyph badge.
+            return null;
+          }
+
+          // 2. No explicit NAGs → fall back to Lichess fetched analysis on
+          // mainline only.
+          if (isOnMainline) {
+            final currentMoveIndex =
+                currentMovePointer.isEmpty ? -1 : currentMovePointer[0];
+            if (currentMoveIndex >= 0 && lichessAnnotations.isNotEmpty) {
+              // Don't show annotations on variations or PV previews.
+              if (!widget.chessBoardState.isPvPreviewActive) {
+                final annotation = lichessAnnotations[currentMoveIndex];
+                if (annotation != null) return annotation;
+              }
+            }
           }
 
           return null;
@@ -6772,37 +6780,38 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final boardAnnotationSquare = _lastMoveDestinationSquare(
       widget.chessBoardState.analysisState.lastMove,
     );
-    final Positioned? boardAnnotationBadge = (() {
-      if (boardAnnotationSquare == null) return null;
-      // Path A: Lichess analysis annotation OR mappable NAG → SVG badge.
-      if (boardAnnotation != null) {
-        return _buildBoardAnnotationBadge(
-          square: boardAnnotationSquare,
-          annotation: boardAnnotation,
-        );
-      }
-      // Path B: any other NAG ($7, $10, $13–$22, $32, $36, $40, $44, $132,
-      // $138, $140, $146) → render the literal Unicode glyph in a circular
-      // badge. This is what fixes "exclamation symbols don't show on the
-      // board" for NAGs that don't have a Lichess SVG mapping. Includes
-      // user-applied NAGs from widget.state.moveNags.
-      final currentMove = navigatorState?.currentMove;
-      final mergedNags = _mergeUserNagsForMovePointer(
-        currentMove,
-        navigatorState?.movePointer,
-        widget.chessBoardState.moveNags,
-      );
-      final nag = primaryBoardNag(mergedNags);
-      if (nag == null) return null;
-      // Skip if it would have been an SVG type (already handled above).
-      if (_mapNagToAnnotationType(nag) != null) return null;
-      final display = getNagDisplay(nag);
-      if (display == null) return null;
-      return _buildBoardNagTextBadge(
-        square: boardAnnotationSquare,
-        display: display,
-      );
-    })();
+    final Positioned? boardAnnotationBadge =
+        (() {
+          if (boardAnnotationSquare == null) return null;
+          // Path A: Lichess analysis annotation OR mappable NAG → SVG badge.
+          if (boardAnnotation != null) {
+            return _buildBoardAnnotationBadge(
+              square: boardAnnotationSquare,
+              annotation: boardAnnotation,
+            );
+          }
+          // Path B: any other NAG ($7, $10, $13–$22, $32, $36, $40, $44, $132,
+          // $138, $140, $146) → render the literal Unicode glyph in a circular
+          // badge. This is what fixes "exclamation symbols don't show on the
+          // board" for NAGs that don't have a Lichess SVG mapping. Includes
+          // user-applied NAGs from widget.state.moveNags.
+          final currentMove = navigatorState?.currentMove;
+          final mergedNags = _mergeUserNagsForMovePointer(
+            currentMove,
+            navigatorState?.movePointer,
+            widget.chessBoardState.moveNags,
+          );
+          final nag = primaryBoardNag(mergedNags);
+          if (nag == null) return null;
+          // Skip if it would have been an SVG type (already handled above).
+          if (_mapNagToAnnotationType(nag) != null) return null;
+          final display = getNagDisplay(nag);
+          if (display == null) return null;
+          return _buildBoardNagTextBadge(
+            square: boardAnnotationSquare,
+            display: display,
+          );
+        })();
 
     // Calculate square highlights and annotations for game ending
     final gameEndingData =
@@ -7300,8 +7309,7 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
       _currentPage = enabled ? 1 : 0;
     }
     _pageController = PageController(initialPage: _currentPage);
-    _lastTutorialRequest =
-        ref.read(analysisSwitchViewsTutorialRequestProvider);
+    _lastTutorialRequest = ref.read(analysisSwitchViewsTutorialRequestProvider);
     _setupSwipeAnimation();
   }
 
@@ -7379,8 +7387,7 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
     // Respect the shared 7-day cadence — if the user already saw this
     // teaching in the standalone gamebase explorer recently, don't nag
     // them with it again in the chained flow.
-    final lastShownMs =
-        await prefs.getInt(kSwitchViewsWalkthroughShownDateKey);
+    final lastShownMs = await prefs.getInt(kSwitchViewsWalkthroughShownDateKey);
     if (lastShownMs != null) {
       final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
       if (DateTime.now().difference(lastShown).inDays < 7) return;
@@ -8032,7 +8039,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         tailPointerId != null &&
         pointerId == tailPointerId;
 
-    final annotation = _resolveLichessAnnotation(token, lichessAnnotations);
+    // Author/user NAGs win — Lichess fetched analysis is only used as a
+    // fallback when no NAGs are present on the move.
+    final rawAnnotation = _resolveLichessAnnotation(token, lichessAnnotations);
     final nags = _mergeUserNags(
       token.node?.move.nags,
       token.pointerId,
@@ -8054,13 +8063,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       }
     }
 
+    final annotation = displayNags.isEmpty ? rawAnnotation : null;
+
     final depth = token.depth;
     final isMainline = token.node?.isMainline ?? (depth <= 0);
     final ladder = _moveLadderForDepth(depth, isMainline: isMainline);
     final baseColor = _resolveMoveColor(token, currentPly);
-    final annotationColor = annotation?.type.color;
     final qualityColor = firstQualityNag?.color;
-    final color = annotationColor ?? qualityColor ?? baseColor;
+    final annotationColor = annotation?.type.color;
+    final color = qualityColor ?? annotationColor ?? baseColor;
 
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
@@ -8272,20 +8283,21 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             spacing: 4.sp,
             runSpacing: 3.sp,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: currentRun
-                .map(
-                  (t) => _buildMoveChip(
-                    t,
-                    params,
-                    currentPly,
-                    currentPointerId,
-                    tailPointerId,
-                    lichessAnnotations,
-                    useFigurine: useFigurine,
-                    pieceAssets: pieceAssets,
-                  ),
-                )
-                .toList(),
+            children:
+                currentRun
+                    .map(
+                      (t) => _buildMoveChip(
+                        t,
+                        params,
+                        currentPly,
+                        currentPointerId,
+                        tailPointerId,
+                        lichessAnnotations,
+                        useFigurine: useFigurine,
+                        pieceAssets: pieceAssets,
+                      ),
+                    )
+                    .toList(),
           ),
         ),
       );
@@ -8422,9 +8434,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       child: Container(
         padding: EdgeInsets.only(left: 9.sp, top: 2.sp, bottom: 2.sp),
         decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(color: railColor, width: railWidth),
-          ),
+          border: Border(left: BorderSide(color: railColor, width: railWidth)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -8550,9 +8560,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final isExpanded = _expandedCommentIds.contains(id);
     final isLong = fullText.length > _variationCommentPreviewChars;
-    final displayText = (isLong && !isExpanded)
-        ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
-        : fullText;
+    final displayText =
+        (isLong && !isExpanded)
+            ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
+            : fullText;
 
     final depth = math.max(1, token.depth);
     final accent = _colorForVariationAccent(
@@ -8586,10 +8597,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               bottomRight: Radius.circular(6.sp),
             ),
             border: Border(
-              left: BorderSide(
-                color: accent.withValues(alpha: 0.65),
-                width: 3,
-              ),
+              left: BorderSide(color: accent.withValues(alpha: 0.65), width: 3),
             ),
           ),
           child: Text.rich(
@@ -9373,11 +9381,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       barrierColor: Colors.black.withValues(alpha: 0.55),
-      builder: (sheetContext) => _NagPickerSheet(
-        moveText: moveText,
-        params: params,
-        pointerId: pointerId,
-      ),
+      builder:
+          (sheetContext) => _NagPickerSheet(
+            moveText: moveText,
+            params: params,
+            pointerId: pointerId,
+          ),
     );
   }
 
@@ -12960,7 +12969,16 @@ class _EventInfoRow extends StatelessWidget {
 class _NagPickerSheet extends ConsumerWidget {
   static const List<int> _qualityNags = [3, 1, 5, 6, 2, 4, 7];
   static const List<int> _evaluationNags = [
-    14, 15, 16, 17, 18, 19, 10, 13, 22, 44,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    10,
+    13,
+    22,
+    44,
   ];
   static const List<int> _observationNags = [146, 140, 36, 40, 132, 32, 138];
 
@@ -12978,8 +12996,8 @@ class _NagPickerSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final stateAsync = ref.watch(chessBoardScreenProviderNew(params));
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final activeNags = stateAsync.valueOrNull?.moveNags[pointerId] ??
-        const <int>[];
+    final activeNags =
+        stateAsync.valueOrNull?.moveNags[pointerId] ?? const <int>[];
     final activeSet = activeNags.toSet();
 
     return SafeArea(
@@ -13235,20 +13253,22 @@ class _NagChip extends StatelessWidget {
           color: isActive ? activeBg : inactiveBg,
           borderRadius: BorderRadius.circular(10.sp),
           border: Border.all(
-            color: isActive
-                ? Colors.white.withValues(alpha: 0.25)
-                : inactiveBorder,
+            color:
+                isActive
+                    ? Colors.white.withValues(alpha: 0.25)
+                    : inactiveBorder,
             width: 1,
           ),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: display.color.withValues(alpha: 0.45),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : const [],
+          boxShadow:
+              isActive
+                  ? [
+                    BoxShadow(
+                      color: display.color.withValues(alpha: 0.45),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                  : const [],
         ),
         child: Center(
           child: Text(
@@ -13256,9 +13276,10 @@ class _NagChip extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: display.symbol.length > 1 ? 14.sp : 17.sp,
-              color: isActive
-                  ? Colors.white
-                  : display.color.withValues(alpha: 0.95),
+              color:
+                  isActive
+                      ? Colors.white
+                      : display.color.withValues(alpha: 0.95),
               fontWeight: FontWeight.w800,
               height: 1.0,
               letterSpacing: -0.2,
