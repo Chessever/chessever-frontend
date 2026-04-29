@@ -5,6 +5,7 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -164,6 +165,23 @@ class GamesTourScreenProvider
   final Object? error;
 
   Future<void> _setupListeners() async {
+    // The display-mode provider lives outside this notifier so it survives
+    // recreations triggered by tourDetailScreenProvider (category change,
+    // live tour ID pushes). Republish state when it changes externally —
+    // e.g. after the notifier is rebuilt and reads the persisted value.
+    ref.listen<GameDisplayMode>(gameDisplayModeProvider, (previous, next) {
+      if (previous == next) return;
+      final current = state.valueOrNull;
+      if (current != null && !current.isSearchMode) {
+        // Keep the screen model in sync with the persisted preference.
+        // The grouped provider does the actual display filtering off
+        // gameDisplayMode, so we just need to mirror it onto the model.
+        if (mounted) {
+          state = AsyncValue.data(current.copyWith(gameDisplayMode: next));
+        }
+      }
+    });
+
     // Recompute when games list changes (but do not break active search view)
     ref.listen<AsyncValue<List<Games>>>(gamesTourProvider(aboutTourModel!.id), (
       previous,
@@ -370,6 +388,12 @@ class GamesTourScreenProvider
         ),
       );
 
+      // Read the persisted display mode so it survives notifier recreations
+      // (category change, live-tour-id push). `current?.gameDisplayMode` is
+      // null on a freshly recreated notifier, which is what produced the
+      // "Focus on live games → Show all games" snap-back.
+      final persistedDisplayMode = ref.read(gameDisplayModeProvider);
+
       if (mounted) {
         state = AsyncValue.data(
           GamesScreenModel(
@@ -378,7 +402,7 @@ class GamesTourScreenProvider
             pinnedGamedIs: pinnedIds,
             isSearchMode: isSearchMode,
             searchQuery: searchQuery,
-            gameDisplayMode: current?.gameDisplayMode ?? GameDisplayMode.all,
+            gameDisplayMode: persistedDisplayMode,
           ),
         );
       }
@@ -495,6 +519,9 @@ class GamesTourScreenProvider
     final sortedGames = _sortGamesForFilters(finishedGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
+    ref.read(gameDisplayModeProvider.notifier).state =
+        GameDisplayMode.showfinishedGame;
+
     state = AsyncValue.data(
       GamesScreenModel(
         gamesTourModels: models,
@@ -514,6 +541,9 @@ class GamesTourScreenProvider
     final sortedGames = _sortGamesForFilters(unfinishedGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
+    ref.read(gameDisplayModeProvider.notifier).state =
+        GameDisplayMode.hideFinishedGames;
+
     state = AsyncValue.data(
       GamesScreenModel(
         gamesTourModels: models,
@@ -531,6 +561,8 @@ class GamesTourScreenProvider
     final allGames = _collectGamesAcrossVisibleStages();
     final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
+
+    ref.read(gameDisplayModeProvider.notifier).state = GameDisplayMode.all;
 
     state = AsyncValue.data(
       GamesScreenModel(

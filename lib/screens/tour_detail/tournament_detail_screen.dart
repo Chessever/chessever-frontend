@@ -4,6 +4,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -152,6 +153,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ref.invalidate(tourDetailScreenProvider);
       ref.invalidate(gamesAppBarProvider);
       ref.invalidate(gamesTourScreenProvider);
+      ref.invalidate(gameDisplayModeProvider);
       ref.invalidate(playerTourScreenProvider);
       ref.invalidate(searchQueryProvider);
       // Scroll provider is scoped per screen; it will dispose with the ProviderScope below.

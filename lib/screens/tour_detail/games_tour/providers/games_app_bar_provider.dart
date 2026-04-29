@@ -42,6 +42,16 @@ class _GamesAppBarNotifier
     : _liveRounds = [],
       _roundSortMeta = {},
       super(const AsyncValue.loading()) {
+    // Seed from the current value before subscribing — `ref.listen` does not
+    // fire for the existing emission, so a freshly recreated notifier (e.g.
+    // after a tourDetailScreenProvider republish) would otherwise compute
+    // round statuses with `_liveRounds == []` and mark a currently-live
+    // round as `upcoming`, hiding it from `visibleRounds`.
+    final initialLiveRounds = ref.read(liveRoundsIdProvider).valueOrNull;
+    if (initialLiveRounds != null && initialLiveRounds.isNotEmpty) {
+      _liveRounds = List.unmodifiable(initialLiveRounds);
+    }
+
     ref.listen<List<String>?>(
       liveRoundsIdProvider.select((a) => a.valueOrNull),
       (_, next) {

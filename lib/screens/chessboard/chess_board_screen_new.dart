@@ -276,6 +276,29 @@ List<int> _mergeUserNagsForMovePointer(
   return _mergeUserNags(move?.nags, pointerId, userMoveNags);
 }
 
+ChessMove? _moveForPointer(ChessGame? game, ChessMovePointer? pointer) {
+  if (game == null || pointer == null || pointer.isEmpty) return null;
+
+  ChessLine? line = game.mainline;
+  ChessMove? move;
+
+  for (var depth = 0; depth < pointer.length; depth++) {
+    final index = pointer[depth].toInt();
+    if (index < 0) return null;
+
+    if (depth.isEven) {
+      if (line == null || index >= line.length) return null;
+      move = line[index];
+    } else {
+      final variations = move?.variations;
+      if (variations == null || index >= variations.length) return null;
+      line = variations[index];
+    }
+  }
+
+  return move;
+}
+
 String _moveSansSignature(List<String> moveSans) {
   // Normalize: strip check indicators (+, #) for consistent signature matching
   // Different PGN parsers may or may not include these symbols
@@ -6690,10 +6713,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final analysisGame = widget.chessBoardState.analysisState.game;
-    final navigatorState =
-        analysisGame == null
-            ? null
-            : ref.watch(chessGameNavigatorProvider(analysisGame));
+    final activeMovePointer = widget.chessBoardState.analysisState.movePointer;
+    final activeMove = _moveForPointer(analysisGame, activeMovePointer);
 
     // PERF: Use .select() to only rebuild when showPvArrows changes
     final showPvArrows = ref.watch(
@@ -6702,11 +6723,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       ),
     );
 
-    // Cross-check analysisState and navigatorState to avoid stale props.
+    // Game-ending effects only belong to the original mainline, not branches.
     final gameStatus = widget.game.gameStatus;
     final isAtGameEnd =
         _isAtGameEnd(widget.chessBoardState.analysisState) &&
-        (navigatorState == null || navigatorState.movePointer.length == 1);
+        activeMovePointer.length == 1;
     final isGameOver =
         gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
 
@@ -6716,11 +6737,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
 
     final boardAnnotation =
         (() {
-          if (navigatorState == null) return null;
+          if (analysisGame == null ||
+              widget.chessBoardState.isPvPreviewActive) {
+            return null;
+          }
           final mainlineSans =
-              navigatorState.game.mainline.map((move) => move.san).toList();
-          final lichessGameId = _extractLichessGameId(navigatorState.game);
-          final lichessSiteUrl = _extractLichessSiteUrl(navigatorState.game);
+              analysisGame.mainline.map((move) => move.san).toList();
+          final lichessGameId = _extractLichessGameId(analysisGame);
+          final lichessSiteUrl = _extractLichessSiteUrl(analysisGame);
           final lichessAnnotationsAsync = ref.watch(
             lichessMoveAnnotationsProvider(
               LichessMoveAnnotationsParams(
@@ -6728,7 +6752,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
                 siteUrl: lichessSiteUrl,
                 signature: _moveSansSignature(mainlineSans),
                 moveSans: mainlineSans,
-                isLiveGame: navigatorState.game.isLiveGame,
+                isLiveGame: analysisGame.isLiveGame,
               ),
             ),
           );
@@ -6736,19 +6760,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
               lichessAnnotationsAsync.valueOrNull ??
               const <int, LichessMoveAnnotation>{};
 
-          // Use navigatorState.movePointer to avoid stale widget props.
-          final currentMovePointer = navigatorState.movePointer;
           final isOnMainline =
-              currentMovePointer.isEmpty || currentMovePointer.length == 1;
+              activeMovePointer.isEmpty || activeMovePointer.length == 1;
 
           // 1. Author/user NAGs win — they reflect explicit intent and must
           // override Lichess analysis classifications. Quality NAGs ($1–$4)
           // get the high-fidelity SVG badge here; non-mappable NAGs ($5–$7,
           // $10+) return null so Path B renders the Unicode glyph badge.
-          final currentMove = navigatorState.currentMove;
           final mergedNags = _mergeUserNagsForMovePointer(
-            currentMove,
-            navigatorState.movePointer,
+            activeMove,
+            activeMovePointer,
             widget.chessBoardState.moveNags,
           );
           if (mergedNags.isNotEmpty) {
@@ -6765,13 +6786,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           // mainline only.
           if (isOnMainline) {
             final currentMoveIndex =
-                currentMovePointer.isEmpty ? -1 : currentMovePointer[0];
+                activeMovePointer.isEmpty ? -1 : activeMovePointer[0].toInt();
             if (currentMoveIndex >= 0 && lichessAnnotations.isNotEmpty) {
-              // Don't show annotations on variations or PV previews.
-              if (!widget.chessBoardState.isPvPreviewActive) {
-                final annotation = lichessAnnotations[currentMoveIndex];
-                if (annotation != null) return annotation;
-              }
+              final annotation = lichessAnnotations[currentMoveIndex];
+              if (annotation != null) return annotation;
             }
           }
 
@@ -6795,10 +6813,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           // badge. This is what fixes "exclamation symbols don't show on the
           // board" for NAGs that don't have a Lichess SVG mapping. Includes
           // user-applied NAGs from widget.state.moveNags.
-          final currentMove = navigatorState?.currentMove;
           final mergedNags = _mergeUserNagsForMovePointer(
-            currentMove,
-            navigatorState?.movePointer,
+            activeMove,
+            activeMovePointer,
             widget.chessBoardState.moveNags,
           );
           final nag = primaryBoardNag(mergedNags);
@@ -6846,9 +6863,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
             ? (widget.chessBoardState.shapes ?? const ISet<Shape>.empty())
             : const ISet<Shape>.empty();
 
-    final annotationShapes = _extractAnnotationShapes(
-      navigatorState?.currentMove,
-    );
+    final annotationShapes = _extractAnnotationShapes(activeMove);
     final allShapes = pvShapes.addAll(annotationShapes);
 
     final chessboard = Chessboard(
@@ -9288,11 +9303,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         icon: Icons.label_important_outline_rounded,
         label: 'Annotate (!?, ±, …)',
         color: const Color(0xFF22AC38),
-        onSelected: (sheetCtx) async {
-          Navigator.of(sheetCtx).maybePop();
+        onSelected: (_) async {
           if (!mounted) return;
           await _showNagPicker(
             params: params,
+            pointer: List<Number>.of(pointer),
             pointerId: pointerId,
             moveText: isNullMove ? 'Null move' : moveText,
           );
@@ -9372,10 +9387,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   /// evaluation, and observation glyphs on/off — at most one per category.
   Future<void> _showNagPicker({
     required ChessBoardProviderParams params,
+    required ChessMovePointer pointer,
     required String pointerId,
     required String moveText,
   }) async {
     HapticFeedback.selectionClick();
+    ref
+        .read(chessBoardScreenProviderNew(params).notifier)
+        .goToMovePointer(List<Number>.of(pointer));
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -13060,6 +13081,20 @@ class _NagPickerSheet extends ConsumerWidget {
                           notifier.clearMoveNags(pointerId);
                         },
                       ),
+                    SizedBox(width: 6.sp),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Done',
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).pop();
+                      },
+                      icon: Icon(
+                        Icons.check_rounded,
+                        size: 18.sp,
+                        color: kWhiteColor.withValues(alpha: 0.82),
+                      ),
+                    ),
                   ],
                 ),
                 SizedBox(height: 14.sp),

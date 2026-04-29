@@ -1169,6 +1169,8 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     });
   }
 
+  // Kept while the OTB/Online filter UI is commented out in the bottom sheet.
+  // ignore: unused_element
   void _toggleOnline(bool value) {
     setState(() {
       _draftFilters = _draftFilters.copyWith(
@@ -1444,12 +1446,11 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   SizedBox(height: 16.sp),
                 ],
 
-                // Format filter (OTB / Online). Available in every
-                // explorer scope — player-scoped (matches the "Format"
-                // filter in the player profile games tab) and the
-                // sidebar-accessed global explorer. The backend honors
-                // the `isOnline` flag the same way regardless of whether
-                // a player is selected.
+                // Format filter (OTB / Online) — commented out per product
+                // request: we don't want this filter exposed in the opening
+                // explorer bottom sheet anymore. Kept here (not deleted) so
+                // it can be reinstated quickly if needed.
+                /*
                 Text(
                   'Format',
                   style: TextStyle(
@@ -1523,6 +1524,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   ],
                 ),
                 SizedBox(height: 16.sp),
+                */
 
                 // Rating range
                 Text(

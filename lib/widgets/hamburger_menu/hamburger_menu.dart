@@ -181,7 +181,7 @@ class HamburgerMenu extends HookConsumerWidget {
                         width: 20.w,
                       ),
                       icon: Icons.grid_view_rounded,
-                      title: 'Analysis Board',
+                      title: 'Board Editor',
                       textStyle: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor,
                         height: 20.h / 14.h,
