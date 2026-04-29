@@ -279,7 +279,26 @@ class PgnFileIntakeService {
     );
     if (pgnFile.path.isEmpty) return;
 
-    final text = await _readPgnFile(pgnFile.path);
+    await handlePgnFilePath(
+      pgnFile.path,
+      navigatorKey,
+      waitAppReady: waitAppReady,
+    );
+  }
+
+  /// Public entry point for iOS file-open URLs delivered via app_links
+  /// (DeepLinkService routes `file://` URIs here) and any other path-only
+  /// caller. Reads the file, parses, then routes single-game PGNs to the
+  /// board and multi-game PGNs to the preview screen — same behavior as
+  /// the share-intent flow.
+  Future<void> handlePgnFilePath(
+    String path,
+    GlobalKey<NavigatorState> navigatorKey, {
+    required bool waitAppReady,
+  }) async {
+    if (path.isEmpty) return;
+
+    final text = await _readPgnFile(path);
     if (text == null) return;
 
     final parsed = parsePgnsToChessGames(text);

@@ -596,7 +596,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Text(
-                'Done',
+                'Analyze',
                 style: AppTypography.textSmMedium.copyWith(
                   color: kBackgroundColor,
                 ),

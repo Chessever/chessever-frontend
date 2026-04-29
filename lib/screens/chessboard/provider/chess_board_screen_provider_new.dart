@@ -794,9 +794,10 @@ class ChessBoardScreenNotifierNew
               );
               final newMoveTimes = [...currentState.moveTimes, timeStr];
 
+              final displayedMoveIndex =
+                  currentState.analysisState.currentMoveIndex;
               final wasViewingLastMove =
-                  currentState.currentMoveIndex ==
-                  currentState.allMoves.length - 1;
+                  displayedMoveIndex == currentState.allMoves.length - 1;
               final isFollowing =
                   game.gameStatus.isOngoing
                       ? _isFollowingLive
@@ -804,19 +805,25 @@ class ChessBoardScreenNotifierNew
               final newMoveIndex =
                   isFollowing
                       ? newAllMoves.length - 1
-                      : currentState.currentMoveIndex;
+                      : displayedMoveIndex
+                          .clamp(-1, newAllMoves.length - 1)
+                          .toInt();
 
-              Position displayPosition =
-                  currentState.startingPosition ??
-                  Position.setupPosition(
-                    Rule.chess,
-                    Setup.parseFen(_defaultStartFen),
-                  );
-              Move? displayLastMove;
-              if (newMoveIndex >= 0 && newMoveIndex < newAllMoves.length) {
-                for (int i = 0; i <= newMoveIndex; i++) {
-                  displayLastMove = newAllMoves[i];
-                  displayPosition = displayPosition.play(newAllMoves[i]);
+              Position displayPosition = currentState.analysisState.position;
+              Move? displayLastMove = currentState.analysisState.lastMove;
+              if (isFollowing) {
+                displayPosition =
+                    currentState.startingPosition ??
+                    Position.setupPosition(
+                      Rule.chess,
+                      Setup.parseFen(_defaultStartFen),
+                    );
+                displayLastMove = null;
+                if (newMoveIndex >= 0 && newMoveIndex < newAllMoves.length) {
+                  for (int i = 0; i <= newMoveIndex; i++) {
+                    displayLastMove = newAllMoves[i];
+                    displayPosition = displayPosition.play(newAllMoves[i]);
+                  }
                 }
               }
 
@@ -837,18 +844,19 @@ class ChessBoardScreenNotifierNew
                   moveSans: newMoveSans,
                 ),
                 hasUnseenMoves: !isFollowing,
-                evaluation: null,
-                isEvaluating: true,
+                evaluation: isFollowing ? null : currentState.evaluation,
+                isEvaluating: isFollowing ? true : currentState.isEvaluating,
               );
 
               state = AsyncValue.data(newState);
 
+              _analysisNavigator?.updateWithLatestGame(
+                _createChessGameFromPgn(newPgn),
+                goToTail: isFollowing,
+              );
+
               if (isFollowing) {
                 _updateLastSeenMoveCount(newMoveSans.length);
-                _analysisNavigator?.updateWithLatestGame(
-                  _createChessGameFromPgn(newPgn),
-                  goToTail: true,
-                );
 
                 final currentVisiblePage = ref.read(
                   currentlyVisiblePageIndexProvider,
@@ -3324,8 +3332,14 @@ class ChessBoardScreenNotifierNew
   Future<void> _persistAnalysisState() async {
     if (_analysisGame == null || _analysisStateManager == null) return;
 
-    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    await _analysisStateManager!.saveState(navigatorState);
+    try {
+      final navigatorState = ref.read(
+        chessGameNavigatorProvider(_analysisGame!),
+      );
+      await _analysisStateManager!.saveState(navigatorState);
+    } catch (e) {
+      _releaseLog('⚠️ Failed to persist analysis navigator state: $e');
+    }
   }
 
   /// Called after the save-analysis sheet creates a new row in Supabase.

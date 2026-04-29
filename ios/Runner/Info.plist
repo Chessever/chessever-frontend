@@ -187,9 +187,13 @@
 		<false/>
 		<!-- Claim "Open With…" for .pgn files. The declared UTI below conforms
 		     to public.plain-text so mail/Files/Safari offer ChessEver as an
-		     editor; receive_sharing_intent delivers the file path to Dart. -->
+		     editor. The OS forwards the file URL via the SceneDelegate to the
+		     app_links plugin; DeepLinkService routes file:// URIs into
+		     PgnFileIntakeService. Set to false so iOS copies the file into
+		     Documents/Inbox/ rather than handing us a security-scoped URL whose
+		     scope dies before Dart can read it. -->
 		<key>LSSupportsOpeningDocumentsInPlace</key>
-		<true/>
+		<false/>
 		<key>CFBundleDocumentTypes</key>
 		<array>
 			<dict>

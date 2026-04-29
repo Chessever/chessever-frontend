@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:app_links/app_links.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
@@ -21,6 +22,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_ba
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/live_updates_service.dart';
+import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -125,6 +127,39 @@ class DeepLinkService {
     WidgetRef ref,
   ) {
     debugPrint('DeepLinkService: Received link: $uri');
+
+    // iOS "Open in ChessEver" delivers `.pgn` as a file:// URI through
+    // app_links (SceneDelegate forwards the URL). With
+    // LSSupportsOpeningDocumentsInPlace disabled in Info.plist, iOS copies
+    // the file into Documents/Inbox/ first, so the path is freely readable.
+    // On Android, ACTION_VIEW for .pgn is handled by receive_sharing_intent
+    // (which also resolves content:// URIs to real file paths), so we skip
+    // this branch on Android to avoid double-handling the same file.
+    if (Platform.isIOS && uri.scheme == 'file') {
+      _addBreadcrumb(
+        'file uri received',
+        data: {'scheme': uri.scheme, 'path': _maskedValue(uri.path)},
+      );
+      try {
+        final path = uri.toFilePath();
+        unawaited(
+          PgnFileIntakeService.instance.handlePgnFilePath(
+            path,
+            navigatorKey,
+            waitAppReady: true,
+          ),
+        );
+      } catch (e, stackTrace) {
+        debugPrint('DeepLinkService: Failed routing file uri: $e');
+        _captureDeepLinkException(
+          e,
+          stackTrace,
+          stage: 'route_file_uri',
+          extras: {'path': _maskedValue(uri.path)},
+        );
+      }
+      return;
+    }
 
     try {
       String? gameId;
