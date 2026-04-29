@@ -8,6 +8,7 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -40,7 +41,7 @@ class FavoritesGamesTab extends ConsumerStatefulWidget {
 }
 
 class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
-    with AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -55,17 +56,28 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_onScroll);
     _debounceTimer?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed || !mounted) return;
+
+    ref.invalidate(gameUpdatesStreamProvider);
+    unawaited(ref.read(favoritesCombinedGamesProvider.notifier).refreshGames());
   }
 
   void _onScroll() {
@@ -779,7 +791,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             if (isChessBoardVisible) {
               // Board mode: use GameCardWrapperWidget with chessboard visible
               items.add(
-                _FavoritesKeepAliveGameCard(
+                _FavoritesLiveBoardGameCard(
                   key: ValueKey('fav_game_${game.gameId}_${viewMode.index}'),
                   game: game,
                   gamesData: gamesData,
@@ -805,13 +817,15 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     showSwipeHint: showHint,
                     showGamebaseButton: false,
                     onAdd: () => _showAddToFolderSheet(context, game),
-                    onTap: () async {
+                    onLiveAdd:
+                        (liveGame) => _showAddToFolderSheet(context, liveGame),
+                    onLiveTap: (liveGame, updatedGames, liveIndex) async {
                       final hasPremium = await requirePremiumGuard(
                         context,
                         ref,
                       );
                       if (!hasPremium) return;
-                      _navigateToChessBoard(game, games, gameIndex);
+                      _navigateToChessBoard(liveGame, updatedGames, liveIndex);
                     },
                   ),
                 ),
@@ -864,7 +878,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         delegate: SliverChildBuilderDelegate(
           (context, index) => items[index],
           childCount: items.length,
-          addAutomaticKeepAlives: true,
+          addAutomaticKeepAlives: false,
         ),
       ),
     );
@@ -888,7 +902,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         if (!mounted) return;
 
         // Navigate to chess board with the live-updated games
-        _navigateToChessBoard(game, updatedGames, gameIndex);
+        _navigateToChessBoard(updatedGames[gameIndex], updatedGames, gameIndex);
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
@@ -1130,6 +1144,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       // Re-enable streaming when coming back
       if (mounted) {
         ref.read(shouldStreamProvider.notifier).state = true;
+        ref.invalidate(gameUpdatesStreamProvider);
       }
     });
   }
@@ -1209,11 +1224,10 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-/// ConsumerStatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
-/// This prevents the card from being disposed when scrolled off-screen
-/// Also adds premium guard for navigation
-class _FavoritesKeepAliveGameCard extends ConsumerStatefulWidget {
-  const _FavoritesKeepAliveGameCard({
+/// Adds premium guard for navigation while allowing offscreen live streams to
+/// auto-dispose.
+class _FavoritesLiveBoardGameCard extends ConsumerStatefulWidget {
+  const _FavoritesLiveBoardGameCard({
     super.key,
     required this.game,
     required this.gamesData,
@@ -1240,16 +1254,12 @@ class _FavoritesKeepAliveGameCard extends ConsumerStatefulWidget {
   onNavigateToChessBoard;
 
   @override
-  ConsumerState<_FavoritesKeepAliveGameCard> createState() =>
-      _FavoritesKeepAliveGameCardState();
+  ConsumerState<_FavoritesLiveBoardGameCard> createState() =>
+      _FavoritesLiveBoardGameCardState();
 }
 
-class _FavoritesKeepAliveGameCardState
-    extends ConsumerState<_FavoritesKeepAliveGameCard>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
+class _FavoritesLiveBoardGameCardState
+    extends ConsumerState<_FavoritesLiveBoardGameCard> {
   Future<void> _handleNavigate(List<GamesTourModel> updatedGames) async {
     // Premium guard - show paywall if not subscribed
     final hasPremium = await requirePremiumGuard(context, ref);
@@ -1257,13 +1267,15 @@ class _FavoritesKeepAliveGameCardState
     if (!mounted) return;
 
     // Navigate to chess board with the live-updated games
-    widget.onNavigateToChessBoard(widget.game, updatedGames, widget.gameIndex);
+    widget.onNavigateToChessBoard(
+      updatedGames[widget.gameIndex],
+      updatedGames,
+      widget.gameIndex,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-
     final gameId = widget.game.gameId;
 
     // Use BoardGameCardWrapperWidget for live position updates

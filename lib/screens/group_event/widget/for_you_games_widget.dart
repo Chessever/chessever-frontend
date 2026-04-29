@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
 /// For You tab widget - displays events with their top 4 games
 ///
@@ -71,7 +72,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       // Current/Past.
       final selected = ref.read(selectedGroupCategoryProvider);
       if (selected == GroupEventCategory.forYou) {
-        unawaited(ref.read(forYouEventsProvider.notifier).refreshIfStale());
+        ref.invalidate(gameUpdatesStreamProvider);
+        unawaited(
+          ref
+              .read(forYouEventsProvider.notifier)
+              .refreshIfStale(maxAge: Duration.zero),
+        );
       }
     }
   }
@@ -218,7 +224,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-        cacheExtent: 2000,
+      cacheExtent: 2000,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -284,7 +290,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-        cacheExtent: 2000,
+      cacheExtent: 2000,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),

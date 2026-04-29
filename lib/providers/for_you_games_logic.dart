@@ -8,6 +8,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/round_orderi
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:collection/collection.dart';
 
+const Duration _kActualLiveGameActivityWindow = Duration(minutes: 120);
+
 class ForYouEventGamesSnapshot {
   ForYouEventGamesSnapshot({
     required this.eventId,
@@ -128,6 +130,9 @@ ForYouEventGamesSnapshot buildForYouEventGamesSnapshot({
   List<String> unpinnedOverrideIds = const [],
 }) {
   final primaryGames = _mapGames(selectedTourGames);
+  final actualLiveRoundIds = _actualLiveRoundIdsFromGames(primaryGames);
+  final effectiveLiveRoundIds =
+      actualLiveRoundIds.isNotEmpty ? actualLiveRoundIds : liveRoundIds;
   final isKnockoutTournament = isKnockoutTour(
     tour: selectedTour,
     games: selectedTourGames,
@@ -149,7 +154,9 @@ ForYouEventGamesSnapshot buildForYouEventGamesSnapshot({
 
   final baseRounds =
       selectedTourRounds
-          .map((round) => GamesAppBarModel.fromRound(round, liveRoundIds))
+          .map(
+            (round) => GamesAppBarModel.fromRound(round, effectiveLiveRoundIds),
+          )
           .toList();
 
   final processedRounds = _buildProcessedRounds(
@@ -158,7 +165,7 @@ ForYouEventGamesSnapshot buildForYouEventGamesSnapshot({
     baseRounds: baseRounds,
     roundsByTourId: roundsByTourId,
     gamesByTourId: gamesByTourId,
-    liveRoundIds: liveRoundIds,
+    liveRoundIds: effectiveLiveRoundIds,
     roundSortMeta: roundSortMeta,
     primaryGames: primaryGames,
     isKnockoutTournament: isKnockoutTournament,
@@ -301,6 +308,52 @@ List<GamesTourModel> _mapGames(List<Games> games) {
     }
   }
   return models;
+}
+
+List<String> _actualLiveRoundIdsFromGames(List<GamesTourModel> games) {
+  final now = DateTime.now();
+  final activityByRound = <String, DateTime?>{};
+
+  for (final game in games) {
+    if (!game.gameStatus.isOngoing) {
+      continue;
+    }
+
+    final activity = game.lastMoveTime;
+    if (activity == null ||
+        now.difference(activity) > _kActualLiveGameActivityWindow) {
+      continue;
+    }
+
+    final current = activityByRound[game.roundId];
+    if (!activityByRound.containsKey(game.roundId) ||
+        current == null ||
+        activity.isAfter(current)) {
+      activityByRound[game.roundId] = activity;
+    }
+  }
+
+  final entries =
+      activityByRound.entries.toList()..sort((a, b) {
+        final aTime = a.value;
+        final bTime = b.value;
+        if (aTime == null && bTime == null) {
+          return a.key.compareTo(b.key);
+        }
+        if (aTime == null) {
+          return 1;
+        }
+        if (bTime == null) {
+          return -1;
+        }
+        final timeCompare = bTime.compareTo(aTime);
+        if (timeCompare != 0) {
+          return timeCompare;
+        }
+        return a.key.compareTo(b.key);
+      });
+
+  return entries.map((entry) => entry.key).toList(growable: false);
 }
 
 bool _formatSuggestsKnockout(String? format) {

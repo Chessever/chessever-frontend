@@ -1264,7 +1264,7 @@ class _DropdownContentState extends State<_DropdownContent> {
       const dragStartThreshold = 6.0;
       if (delta >= dragStartThreshold) {
         HapticFeedbackService.heavy();
-        setState(() => _isDragging = true);
+        if (mounted) setState(() => _isDragging = true);
       }
     }
 
@@ -1278,7 +1278,7 @@ class _DropdownContentState extends State<_DropdownContent> {
     // Skip selection if arrow was tapped
     if (_arrowWasTapped) {
       _arrowWasTapped = false;
-      setState(() => _isDragging = false);
+      if (mounted) setState(() => _isDragging = false);
       _lastPointerPosition = null;
       _dragStartPosition = null;
       _pointerStartedOnSelector = false;
@@ -1306,7 +1306,7 @@ class _DropdownContentState extends State<_DropdownContent> {
         }
       }
     }
-    setState(() => _isDragging = false);
+    if (mounted) setState(() => _isDragging = false);
     _lastPointerPosition = null;
     _dragStartPosition = null;
     _pointerStartedOnSelector = false;
@@ -1318,7 +1318,7 @@ class _DropdownContentState extends State<_DropdownContent> {
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
-    setState(() => _isDragging = false);
+    if (mounted) setState(() => _isDragging = false);
     _lastPointerPosition = null;
     _dragStartPosition = null;
     _pointerStartedOnSelector = false;

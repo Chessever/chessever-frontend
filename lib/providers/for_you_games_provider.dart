@@ -1508,10 +1508,7 @@ final forYouEventSnapshotProvider = Provider.autoDispose
     );
 
 bool _isFinishedStatus(String status) {
-  return status == '1-0' ||
-      status == '0-1' ||
-      status == '1/2-1/2' ||
-      status == '½-½';
+  return GameStatus.fromString(status).isFinished;
 }
 
 // ============================================================================

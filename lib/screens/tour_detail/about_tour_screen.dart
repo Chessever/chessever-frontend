@@ -34,6 +34,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
 
   static const AboutTourModel _fallbackAboutModel = AboutTourModel(
     id: 'Chessever',
+    slug: '',
     name: 'Chessever',
     description: 'Chessever',
     imageUrl: '',

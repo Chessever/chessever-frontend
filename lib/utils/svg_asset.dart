@@ -51,8 +51,6 @@ class SvgAsset {
   static const libary_book = 'assets/svgs/libary_book.svg';
   static const laptop = 'assets/svgs/laptop.svg';
 
-  static const stop = 'assets/svgs/stop.svg';
-
   static const refresh = 'assets/svgs/refresh.svg';
   static const left_arrow = 'assets/svgs/left_arrow.svg';
 
@@ -119,7 +117,6 @@ class SvgAsset {
       tour_list,
       libary_book,
       laptop,
-      stop,
       refresh,
       left_arrow,
       right_arrow,

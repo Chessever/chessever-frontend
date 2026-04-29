@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -11,9 +12,26 @@ import 'package:share_plus/share_plus.dart';
 /// Actions available from the event card long-press context menu.
 enum EventContextAction { share }
 
-/// Builds the canonical shareable URL for an event, matching the
-/// `lichess.org/broadcast/<slug>/<id>` shape but on chessever.com.
-String buildEventShareUrl({required String id, required String title}) {
+/// Builds the canonical shareable URL for an event, mirroring
+/// `lichess.org/broadcast/<tour.slug>/<tour.id>` on chessever.com.
+///
+/// Pass [tourSlug] and [tourId] when known (Lichess short id like `QXavbhIZ`
+/// + kebab slug) to produce a link that swaps `lichess.org` ↔ `chessever.com`
+/// without any other change. The fallback path uses the group_broadcast id
+/// and a slugified title — always works, but the path tail isn't a Lichess
+/// short id.
+String buildEventShareUrl({
+  required String id,
+  required String title,
+  String? tourId,
+  String? tourSlug,
+}) {
+  if (tourId != null &&
+      tourId.isNotEmpty &&
+      tourSlug != null &&
+      tourSlug.isNotEmpty) {
+    return 'https://chessever.com/broadcast/$tourSlug/$tourId';
+  }
   final slug = _slugify(title);
   return 'https://chessever.com/broadcast/$slug/$id';
 }
@@ -55,7 +73,7 @@ Future<void> showEventContextMenu({
   if (action == null || !context.mounted) return;
   switch (action) {
     case EventContextAction.share:
-      await _shareEvent(context: context, model: model);
+      await _shareEvent(context: context, ref: ref, model: model);
       break;
   }
 }
@@ -91,9 +109,29 @@ PopupMenuItem<EventContextAction> _menuItem({
 
 Future<void> _shareEvent({
   required BuildContext context,
+  required WidgetRef ref,
   required GroupEventCardModel model,
 }) async {
-  final url = buildEventShareUrl(id: model.id, title: model.title);
+  // Resolve the primary tour so the share link mirrors the Lichess shape
+  // `<tour.slug>/<tour.id>`. This keeps the path tail an 8-char Lichess
+  // short id (e.g. `QXavbhIZ`) instead of repeating the slug. Fall back to
+  // the group_broadcast id if the lookup fails, so sharing never blocks.
+  ({String id, String slug})? tour;
+  try {
+    tour = await ref
+        .read(groupBroadcastRepositoryProvider)
+        .getPrimaryTourSlugAndId(model.id);
+  } catch (_) {
+    tour = null;
+  }
+
+  final url = buildEventShareUrl(
+    id: model.id,
+    title: model.title,
+    tourId: tour?.id,
+    tourSlug: tour?.slug,
+  );
+  if (!context.mounted) return;
   final box = context.findRenderObject() as RenderBox?;
   final origin =
       box != null

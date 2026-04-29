@@ -993,14 +993,31 @@ class DeepLinkService {
       }
     }
 
-    // Resolve/validate group_broadcast_id from tour if possible.
-    if (resolvedTourId != null) {
+    // Shared event URLs `chessever.com/broadcast/<slug>/<id>` mirror Lichess,
+    // where `<id>` is a tour's short id (e.g. `QXavbhIZ`). When that's the
+    // case, treat the path-tail value as the shared tour so the destination
+    // category is preselected — matching Lichess's behavior for the same URL
+    // shape. If `<id>` is actually a group_broadcasts.id (legacy shares) the
+    // lookup misses and we fall through with the original value.
+    final probeId =
+        resolvedTourId == null && resolvedGroupBroadcastId != null
+            ? resolvedGroupBroadcastId
+            : null;
+
+    // Resolve/validate group_broadcast_id from tour. Combines the tour-by-id
+    // lookup for both an explicit `tourId` and the Lichess-style probe above
+    // into a single Supabase round-trip.
+    final lookupId = resolvedTourId ?? probeId;
+    if (lookupId != null) {
       try {
         final tours = await ref
             .read(tourRepositoryProvider)
-            .getToursByIds([resolvedTourId])
+            .getToursByIds([lookupId])
             .timeout(_fetchTimeout);
         if (tours.isNotEmpty) {
+          if (resolvedTourId == null) {
+            resolvedTourId = tours.first.id;
+          }
           final tourGroupId = _asNonEmptyString(tours.first.groupBroadcastId);
           if (tourGroupId != null) {
             resolvedGroupBroadcastId = tourGroupId;
@@ -1008,7 +1025,7 @@ class DeepLinkService {
         }
       } catch (e) {
         debugPrint(
-          'DeepLinkService: Failed to resolve group broadcast from tour: $e',
+          'DeepLinkService: Failed to resolve tour/group broadcast: $e',
         );
       }
     }

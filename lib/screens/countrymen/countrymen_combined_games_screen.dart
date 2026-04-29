@@ -1,8 +1,9 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
-import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
+import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -24,7 +25,8 @@ class CountrymenCombinedGamesScreen extends ConsumerStatefulWidget {
 }
 
 class _CountrymenCombinedGamesScreenState
-    extends ConsumerState<CountrymenCombinedGamesScreen> {
+    extends ConsumerState<CountrymenCombinedGamesScreen>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -33,17 +35,30 @@ class _CountrymenCombinedGamesScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed || !mounted) return;
+
+    ref.invalidate(gameUpdatesStreamProvider);
+    unawaited(
+      ref.read(countrymenCombinedGamesProvider.notifier).refreshGames(),
+    );
   }
 
   void _onScroll() {
@@ -78,11 +93,6 @@ class _CountrymenCombinedGamesScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(countrymenCombinedGamesProvider);
-
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
-      tablet: 32.w,
-    );
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
@@ -174,11 +184,12 @@ class _CountrymenCombinedGamesScreenState
                 ],
               ),
               child: CountryFlag.fromCountryCode(
-countryCode,
-  theme: ImageTheme(height: 18.h,
-                width: 26.w,
-                shape: RoundedRectangle(4.br),
-),
+                countryCode,
+                theme: ImageTheme(
+                  height: 18.h,
+                  width: 26.w,
+                  shape: RoundedRectangle(4.br),
+                ),
               ),
             ),
             SizedBox(width: 10.w),
@@ -422,13 +433,14 @@ countryCode,
           final game = games[index];
           return Padding(
             padding: EdgeInsets.only(bottom: 12.h),
-            child: GamebaseSearchGameCard(
+            child: LiveGamebaseSearchGameCard(
               game: game,
               allGames: games,
               gameIndex: index,
               animationIndex: index,
               showRound: true,
               onAdd: () => _showAddToFolderSheet(context, game),
+              onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
             ),
           );
         }, childCount: games.length + (showLoadingIndicator ? 1 : 0)),

@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'dart:async';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -24,11 +25,6 @@ final liveGameCardProvider = AutoDisposeProvider.family<
 >((ref, gameId) {
   final baseGame = ref.watch(baseGameProvider(gameId));
   if (baseGame == null) return null;
-
-  // For finished games, return the base game directly (no stream needed)
-  if (baseGame.gameStatus.isFinished) {
-    return baseGame;
-  }
 
   // NO ref.keepAlive() - allow auto-dispose when scrolled out of view
   // This ensures the Realtime channel is cleaned up properly
@@ -70,19 +66,32 @@ final liveGameCardProvider = AutoDisposeProvider.family<
         clockSeconds: streamedBlackClock,
         clockCentiseconds: baseGame.blackClockCentiseconds,
       );
-
-      return baseGame.copyWith(
-        pgn: gameData['pgn'] as String? ?? baseGame.pgn,
+      final mergedPgn = gameData['pgn'] as String? ?? baseGame.pgn;
+      final mergedLastMove =
+          gameData['last_move'] as String? ?? baseGame.lastMove;
+      final mergedStatus = parseGameStatus(gameData['status'] as String?);
+      final mergedFen = resolveFreshestGameFen(
         fen: gameData['fen'] as String? ?? baseGame.fen,
-        lastMove: gameData['last_move'] as String? ?? baseGame.lastMove,
+        pgn: mergedPgn,
+        lastMove: mergedLastMove,
+      );
+
+      final mergedGame = baseGame.copyWith(
+        pgn: mergedPgn,
+        fen: mergedFen ?? baseGame.fen,
+        lastMove: mergedLastMove,
         lastMoveTime:
             gameData['last_move_time'] != null
                 ? DateTime.tryParse(gameData['last_move_time'] as String)
                 : baseGame.lastMoveTime,
         whiteClockSeconds: normalizedWhiteClock ?? baseGame.whiteClockSeconds,
         blackClockSeconds: normalizedBlackClock ?? baseGame.blackClockSeconds,
-        gameStatus: parseGameStatus(gameData['status'] as String?),
+        gameStatus: mergedStatus,
       );
+      if (_hasLiveFieldChanges(baseGame, mergedGame)) {
+        _storeLatestBaseGame(ref, gameId, mergedGame);
+      }
+      return mergedGame;
     },
     loading: () => baseGame,
     error: (_, __) => baseGame,
@@ -92,13 +101,98 @@ final liveGameCardProvider = AutoDisposeProvider.family<
 /// Helper that sets the base game and watches the live provider in one call.
 /// Returns the live game data, falling back to the base game if not yet available.
 GamesTourModel watchLiveGame(WidgetRef ref, GamesTourModel game) {
+  final current = ref.read(baseGameProvider(game.gameId));
+  if (_shouldUseIncomingGame(current, game, allowEqualFreshnessUpdate: false)) {
+    Future.microtask(() {
+      if (!ref.context.mounted) return;
+      try {
+        ref.read(baseGameProvider(game.gameId).notifier).state = game;
+      } on StateError {
+        // The card can be disposed while navigation is in flight.
+      }
+    });
+  }
+  return ref.watch(liveGameCardProvider(game.gameId)) ?? game;
+}
+
+void _storeLatestBaseGame(Ref ref, String gameId, GamesTourModel game) {
   Future.microtask(() {
-    if (!ref.context.mounted) return;
     try {
-      ref.read(baseGameProvider(game.gameId).notifier).state = game;
+      final current = ref.read(baseGameProvider(gameId));
+      if (_shouldUseIncomingGame(
+        current,
+        game,
+        allowEqualFreshnessUpdate: true,
+      )) {
+        ref.read(baseGameProvider(gameId).notifier).state = game;
+      }
     } on StateError {
-      // The card can be disposed while navigation is in flight.
+      // Provider/card was disposed while a stream event was being delivered.
     }
   });
-  return ref.watch(liveGameCardProvider(game.gameId)) ?? game;
+}
+
+bool _shouldUseIncomingGame(
+  GamesTourModel? current,
+  GamesTourModel incoming, {
+  required bool allowEqualFreshnessUpdate,
+}) {
+  if (current == null) return true;
+  if (current == incoming) return false;
+
+  final currentTime = current.lastMoveTime;
+  final incomingTime = incoming.lastMoveTime;
+  if (currentTime != null && incomingTime != null) {
+    if (incomingTime.isBefore(currentTime)) return false;
+    if (incomingTime.isAfter(currentTime)) return true;
+  } else if (currentTime != null && incomingTime == null) {
+    return false;
+  } else if (currentTime == null && incomingTime != null) {
+    return true;
+  }
+
+  final currentPly = _knownPly(current);
+  final incomingPly = _knownPly(incoming);
+  if (currentPly != null && incomingPly != null) {
+    if (incomingPly < currentPly) return false;
+    if (incomingPly > currentPly) return true;
+  } else if (currentPly != null && incomingPly == null) {
+    return false;
+  } else if (currentPly == null && incomingPly != null) {
+    return true;
+  }
+
+  if ((current.lastMove?.isNotEmpty ?? false) &&
+      (incoming.lastMove == null || incoming.lastMove!.isEmpty)) {
+    return false;
+  }
+
+  if (current.gameStatus == GameStatus.ongoing &&
+      incoming.gameStatus != GameStatus.ongoing) {
+    return true;
+  }
+  if (current.gameStatus != GameStatus.ongoing &&
+      incoming.gameStatus == GameStatus.ongoing) {
+    return false;
+  }
+
+  return allowEqualFreshnessUpdate;
+}
+
+bool _hasLiveFieldChanges(GamesTourModel current, GamesTourModel incoming) {
+  return current.pgn != incoming.pgn ||
+      current.fen != incoming.fen ||
+      current.lastMove != incoming.lastMove ||
+      current.lastMoveTime != incoming.lastMoveTime ||
+      current.whiteClockSeconds != incoming.whiteClockSeconds ||
+      current.blackClockSeconds != incoming.blackClockSeconds ||
+      current.gameStatus != incoming.gameStatus;
+}
+
+int? _knownPly(GamesTourModel game) {
+  final pgnPly = resolveFinalPositionFromPgn(game.pgn)?.moveCount;
+  final fenPly = plyFromFen(game.fen);
+  if (pgnPly == null) return fenPly;
+  if (fenPly == null) return pgnPly;
+  return pgnPly > fenPly ? pgnPly : fenPly;
 }

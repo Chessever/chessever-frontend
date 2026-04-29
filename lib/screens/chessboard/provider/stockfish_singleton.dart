@@ -412,41 +412,43 @@ class StockfishSingleton {
   }
 
   Future<void> _cancelCurrentEvaluation() async {
-    if (_currentJob != null) {
-      // Cancel the current subscription
-      await _currentSubscription?.cancel();
-      _currentSubscription = null;
+    // Capture to a local so a concurrent caller racing through the await below
+    // can't null _currentJob out from under us.
+    final job = _currentJob;
+    if (job == null) return;
+    _currentJob = null;
 
-      // Complete the current job with a cancellation result
-      if (!_currentJob!.completer.isCompleted) {
-        final cancelledResult = EnhancedCloudEval(
-          fen: _currentJob!.fen,
+    await _currentSubscription?.cancel();
+    _currentSubscription = null;
+
+    if (!job.completer.isCompleted) {
+      job.completer.complete(
+        EnhancedCloudEval(
+          fen: job.fen,
           knodes: 0,
           depth: 0,
           pvs: [Pv(moves: '', cp: 0, mate: 0)],
           isCancelled: true,
-          requestedMultiPv: _currentJob!.multiPV,
-        );
-        _currentJob!.completer.complete(cancelledResult);
-      }
-
-      _pendingJobs.remove(_currentJob!.key);
-
-      // Fire-and-forget stop — don't block waiting for readyok.
-      // The next job's _softResetEngine() will synchronize via isready/readyok
-      // before sending the next 'go' command.
-      if (_engine != null && _engine!.state.value == StockfishState.ready) {
-        try {
-          _engine!.stdin = 'stop';
-        } catch (e) {
-          debugPrint('Error sending stop command to Stockfish: $e');
-        }
-      }
-
-      // Mark engine as not yet confirmed idle — _softResetEngine handles sync.
-      _previousJobCompleted = false;
-      _currentJob = null;
+          requestedMultiPv: job.multiPV,
+        ),
+      );
     }
+
+    _pendingJobs.remove(job.key);
+
+    // Fire-and-forget stop — don't block waiting for readyok.
+    // The next job's _softResetEngine() will synchronize via isready/readyok
+    // before sending the next 'go' command.
+    if (_engine != null && _engine!.state.value == StockfishState.ready) {
+      try {
+        _engine!.stdin = 'stop';
+      } catch (e) {
+        debugPrint('Error sending stop command to Stockfish: $e');
+      }
+    }
+
+    // Mark engine as not yet confirmed idle — _softResetEngine handles sync.
+    _previousJobCompleted = false;
   }
 
   Future<void> cancelAllEvaluations() async {
