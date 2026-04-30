@@ -705,6 +705,12 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
   void deleteContinuationAfterPointer(ChessMovePointer pointer) {
     if (pointer.isEmpty) {
+      replaceState(
+        ChessGameNavigatorState(
+          game: state.game.copyWith(mainline: const []),
+          movePointer: const [],
+        ),
+      );
       return;
     }
 

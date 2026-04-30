@@ -13,6 +13,9 @@ class BoardEditorState {
     this.whiteQueensideCastle = true,
     this.blackKingsideCastle = true,
     this.blackQueensideCastle = true,
+    this.epSquare,
+    this.halfmoves = 0,
+    this.fullmoves = 1,
     this.selectedPiece,
     this.pointerMode = EditorPointerMode.drag,
     this.isDeleteMode = false,
@@ -26,6 +29,9 @@ class BoardEditorState {
   final bool whiteQueensideCastle;
   final bool blackKingsideCastle;
   final bool blackQueensideCastle;
+  final Square? epSquare;
+  final int halfmoves;
+  final int fullmoves;
   final Piece? selectedPiece;
   final EditorPointerMode pointerMode;
   final bool isDeleteMode;
@@ -64,7 +70,8 @@ class BoardEditorState {
     final board = boardFen;
     final turn = sideToMove == Side.white ? 'w' : 'b';
     final castling = _castlingString;
-    return '$board $turn $castling - 0 1';
+    final ep = epSquare?.name ?? '-';
+    return '$board $turn $castling $ep $halfmoves $fullmoves';
   }
 
   String get _castlingString {
@@ -85,6 +92,9 @@ class BoardEditorState {
     bool? whiteQueensideCastle,
     bool? blackKingsideCastle,
     bool? blackQueensideCastle,
+    Square? Function()? epSquare,
+    int? halfmoves,
+    int? fullmoves,
     Piece? Function()? selectedPiece,
     EditorPointerMode? pointerMode,
     bool? isDeleteMode,
@@ -98,6 +108,9 @@ class BoardEditorState {
       whiteQueensideCastle: whiteQueensideCastle ?? this.whiteQueensideCastle,
       blackKingsideCastle: blackKingsideCastle ?? this.blackKingsideCastle,
       blackQueensideCastle: blackQueensideCastle ?? this.blackQueensideCastle,
+      epSquare: epSquare != null ? epSquare() : this.epSquare,
+      halfmoves: halfmoves ?? this.halfmoves,
+      fullmoves: fullmoves ?? this.fullmoves,
       selectedPiece:
           selectedPiece != null ? selectedPiece() : this.selectedPiece,
       pointerMode: pointerMode ?? this.pointerMode,
@@ -194,9 +207,9 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
         final newPieces = Map<Square, Piece>.of(state.pieces);
         newPieces.remove(selected);
         newPieces[square] = piece;
-        state = state.copyWith(
+        state = _withBoardMutation(
           pieces: newPieces,
-          selectedDragSquare: () => null,
+          clearDragSquare: true,
         );
       } else {
         state = state.copyWith(selectedDragSquare: () => null);
@@ -211,7 +224,7 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
     } else if (state.selectedPiece != null) {
       newPieces[square] = state.selectedPiece!;
     }
-    state = state.copyWith(pieces: newPieces, selectedDragSquare: () => null);
+    state = _withBoardMutation(pieces: newPieces, clearDragSquare: true);
   }
 
   void onDroppedPiece(Square? origin, Square destination, Piece piece) {
@@ -220,13 +233,13 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
       newPieces.remove(origin);
     }
     newPieces[destination] = piece;
-    state = state.copyWith(pieces: newPieces, selectedDragSquare: () => null);
+    state = _withBoardMutation(pieces: newPieces, clearDragSquare: true);
   }
 
   void onDiscardedPiece(Square square) {
     final newPieces = Map<Square, Piece>.of(state.pieces);
     newPieces.remove(square);
-    state = state.copyWith(pieces: newPieces, selectedDragSquare: () => null);
+    state = _withBoardMutation(pieces: newPieces, clearDragSquare: true);
   }
 
   void setSideToMove(Side side) {
@@ -248,33 +261,69 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
   }
 
   void loadFen(String fen) {
-    final parts = fen.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty) return;
+    final Setup setup;
+    try {
+      setup = Setup.parseFen(fen);
+    } catch (_) {
+      return;
+    }
 
-    final pieces = readFen(parts[0]);
-    final sideToMove =
-        parts.length > 1 && parts[1] == 'b' ? Side.black : Side.white;
-
-    bool wK = false, wQ = false, bK = false, bQ = false;
-    if (parts.length > 2) {
-      final c = parts[2];
-      wK = c.contains('K');
-      wQ = c.contains('Q');
-      bK = c.contains('k');
-      bQ = c.contains('q');
+    final pieces = <Square, Piece>{};
+    for (final (square, piece) in setup.board.pieces) {
+      pieces[square] = piece;
     }
 
     state = state.copyWith(
       pieces: pieces,
-      sideToMove: sideToMove,
-      whiteKingsideCastle: wK,
-      whiteQueensideCastle: wQ,
-      blackKingsideCastle: bK,
-      blackQueensideCastle: bQ,
+      sideToMove: setup.turn,
+      whiteKingsideCastle: _hasCastling(setup, Side.white, kingside: true),
+      whiteQueensideCastle: _hasCastling(setup, Side.white, kingside: false),
+      blackKingsideCastle: _hasCastling(setup, Side.black, kingside: true),
+      blackQueensideCastle: _hasCastling(setup, Side.black, kingside: false),
+      epSquare: () => setup.epSquare,
+      halfmoves: setup.halfmoves,
+      fullmoves: setup.fullmoves,
       selectedPiece: () => null,
       pointerMode: EditorPointerMode.drag,
       isDeleteMode: false,
     );
+  }
+
+  // Any board mutation invalidates the en-passant target and the
+  // halfmove/fullmove counters parsed from a pasted FEN — they describe
+  // a specific move history that no longer applies.
+  BoardEditorState _withBoardMutation({
+    required Pieces pieces,
+    bool clearDragSquare = false,
+  }) {
+    return state.copyWith(
+      pieces: pieces,
+      epSquare: () => null,
+      halfmoves: 0,
+      fullmoves: 1,
+      selectedDragSquare: clearDragSquare ? () => null : null,
+    );
+  }
+
+  // Castling rights in dartchess point at rook squares, which lets us
+  // round-trip Shredder-FEN / X-FEN (e.g. "HAha"). Compare each rook
+  // square to the king's file rather than only checking a1/h1/a8/h8.
+  static bool _hasCastling(Setup setup, Side side, {required bool kingside}) {
+    final castling = setup.castlingRights & SquareSet.backrankOf(side);
+    if (castling.isEmpty) return false;
+    final king = setup.board.kingOf(side);
+    if (king == null) {
+      final rank = side == Side.white ? Rank.first : Rank.eighth;
+      final fallback = Square.fromCoords(
+        kingside ? File.h : File.a,
+        rank,
+      );
+      return castling.has(fallback);
+    }
+    for (final sq in castling.squares) {
+      if (kingside ? sq > king : sq < king) return true;
+    }
+    return false;
   }
 }
 

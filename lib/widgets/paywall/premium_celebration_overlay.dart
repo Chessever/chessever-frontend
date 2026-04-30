@@ -35,6 +35,7 @@ Future<void> showPremiumCelebration(
       ReviewPromptService.instance.maybePrompt(
         context: context,
         trigger: ReviewPromptTrigger.premium,
+        skipSurveyForHighRating: true,
       ),
     );
   }

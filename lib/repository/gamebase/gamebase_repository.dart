@@ -924,6 +924,83 @@ class GamebaseRepository {
       throw Exception('Failed to load position games: $e');
     }
   }
+
+  /// List games containing the exact FEN position, independent of move order.
+  ///
+  /// Uses the FEN-specific endpoint so pasted/custom positions can be searched
+  /// directly without requiring a move aggregate or next-move selection. Filter
+  /// and sort surface mirrors `getPositionGames` — see the OpenAPI spec for
+  /// `/api/game-position/fen/games` (and the POST `/query` variant for
+  /// multi-key sort via `orderBy`).
+  Future<GamebaseSearchQueryResponse> getFenPositionGames({
+    required String fen,
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) async {
+    try {
+      final normalizedFen = _normalizeFenForLookup(fen);
+      final response = await _dio.get(
+        '$_baseUrl/api/game-position/fen/games',
+        queryParameters: {
+          'fen': normalizedFen,
+          'pageNumber': pageNumber,
+          'pageSize': pageSize,
+          if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
+          if (playerId != null && playerId.trim().isNotEmpty)
+            'playerId': playerId.trim(),
+          if (timeControl != null)
+            'timeControl': timeControl.name.toUpperCase(),
+          if (minRating != null) 'minRating': minRating,
+          if (maxRating != null) 'maxRating': maxRating,
+          if (color != null) 'color': color,
+          if (result != null) 'result': result,
+          if (yearFrom != null) 'yearFrom': yearFrom,
+          if (yearTo != null) 'yearTo': yearTo,
+          if (isOnline != null) 'isOnline': isOnline,
+          if (sortBy != null) 'sortBy': sortBy.name,
+          if (sortDirection != null) 'sortDirection': sortDirection.name,
+        },
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return GamebaseSearchQueryResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return GamebaseSearchQueryResponse(
+          status: 'success',
+          data: const [],
+          metadata: GamebasePaginationMetadata(
+            pageNumber: pageNumber,
+            pageSize: pageSize,
+            hasMoreValue: false,
+          ),
+        );
+      }
+      throw Exception('Failed to load FEN position games: $e');
+    } catch (e) {
+      throw Exception('Failed to load FEN position games: $e');
+    }
+  }
 }
 
 final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {

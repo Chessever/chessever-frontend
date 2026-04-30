@@ -164,23 +164,24 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
   Future<void> _pasteFen() async {
     final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = clipboard?.text?.trim();
-    if (text == null || text.isEmpty) {
+    final raw = clipboard?.text;
+    if (raw == null || raw.trim().isEmpty) {
       _showSnack('Clipboard is empty');
       return;
     }
 
-    // Try parsing as FEN
-    try {
-      Setup.parseFen(text);
-      setState(_clearPgnOverride);
-      ref.read(boardEditorProvider.notifier).loadFen(text);
-    } catch (_) {
+    final extracted = _extractFen(raw);
+    if (extracted == null) {
       _showSnack(
         'Invalid FEN',
         backgroundColor: kRedColor.withValues(alpha: 0.9),
       );
+      return;
     }
+
+    if (!mounted) return;
+    setState(_clearPgnOverride);
+    ref.read(boardEditorProvider.notifier).loadFen(extracted);
   }
 
   Future<void> _pastePgn() async {
@@ -1355,4 +1356,78 @@ class _ActionButton extends StatelessWidget {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// FEN extraction (clipboard → loadable FEN)
+// ---------------------------------------------------------------------------
+
+/// Pull the first valid FEN out of arbitrary clipboard text.
+///
+/// Order: trimmed verbatim → PGN `[FEN "..."]` tag → quoted/labeled wrapper →
+/// scan for any 8-rank board substring with up to 7 trailing fields, trying
+/// progressively shorter tail-token windows for each match.
+String? _extractFen(String input) {
+  final trimmed = input.trim();
+  if (_isValidFen(trimmed)) return trimmed;
+
+  final pgnMatch =
+      RegExp(r'\[\s*FEN\s+"([^"]+)"\s*\]').firstMatch(input);
+  if (pgnMatch != null) {
+    final inside = pgnMatch.group(1)!.trim();
+    if (_isValidFen(inside)) return inside;
+  }
+
+  final unwrapped = _stripFenWrappers(trimmed);
+  if (unwrapped != trimmed && _isValidFen(unwrapped)) return unwrapped;
+
+  // Find any 8-rank board pattern in the input, optionally followed by
+  // pockets and up to 7 space-or-underscore-separated tail fields.
+  final boardPattern = RegExp(
+    r'[rnbqkpRNBQKP1-8]+(?:/[rnbqkpRNBQKP1-8]+){7}'
+    r'(?:\[[^\]]*\])?'
+    r'(?:[\s_]+[^\s_]+){0,7}',
+  );
+  for (final match in boardPattern.allMatches(input)) {
+    final candidate = match.group(0)!.trim();
+    if (_isValidFen(candidate)) return candidate;
+    final tokens = candidate.split(RegExp(r'[\s_]+'));
+    for (var i = tokens.length - 1; i > 0; i--) {
+      final reduced = tokens.take(i).join(' ');
+      if (_isValidFen(reduced)) return reduced;
+    }
+  }
+
+  return null;
+}
+
+bool _isValidFen(String text) {
+  if (text.isEmpty) return false;
+  try {
+    Setup.parseFen(text);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+String _stripFenWrappers(String s) {
+  var current = s.trim();
+  // Strip "FEN:" / "Position:" / "fen=" prefixes (case-insensitive).
+  current = current.replaceFirst(
+    RegExp(r'^\s*(?:FEN|Position|fen)\s*[:=]\s*', caseSensitive: false),
+    '',
+  );
+  // Strip surrounding quotes / backticks layer by layer (handles
+  // doubled-up wrappers like ``"..."``).
+  while (current.length >= 2) {
+    final first = current[0];
+    final last = current[current.length - 1];
+    final isMatchingPair = (first == '"' && last == '"') ||
+        (first == "'" && last == "'") ||
+        (first == '`' && last == '`');
+    if (!isMatchingPair) break;
+    current = current.substring(1, current.length - 1).trim();
+  }
+  return current;
 }

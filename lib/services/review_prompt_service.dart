@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/repository/sqlite/app_database.dart';
@@ -26,6 +27,12 @@ class ReviewPromptService {
 
   // Cooldown between prompts
   static const Duration _cooldown = Duration(days: 30);
+
+  // Longer cooldown after a high rating. Replaces the previous "permanent
+  // block" behavior — the OS may have suppressed the native dialog (debug
+  // build, quota, user-disabled), so we allow a re-prompt after this window
+  // rather than locking the user out forever.
+  static const Duration _highRatedCooldown = Duration(days: 180);
 
   static const String _keyLastPromptAt = 'review_prompt_last_prompt_at_ms';
   static const String _keyLastPromptVersion = 'review_prompt_last_version';
@@ -125,27 +132,36 @@ class ReviewPromptService {
       final combinedFeedback = parts.join('\n\n');
       debugPrint('[Feedback] combinedFeedback: "$combinedFeedback"');
 
-      // Submit if there's any text
+      // For high ratings, fire the native OS review prompt FIRST — before any
+      // network calls. SKStoreReviewController / Play ReviewManager are
+      // sensitive to the app being foregrounded and recently interactive, so
+      // delaying behind Supabase + Telegram round-trips can cause the OS to
+      // skip showing the dialog.
+      if (result.rating >= 4) {
+        await _requestNativeReview();
+        await _db.setBool(_keyHasRatedHigh, true);
+      }
+
+      // Submit feedback in the background — don't block the UI thread or the
+      // native review prompt on Supabase/Telegram network latency.
       if (combinedFeedback.isNotEmpty) {
-        debugPrint('[Feedback] Calling _submitFeedback...');
-        await _submitFeedback(
-          rating: result.rating,
-          feedback: combinedFeedback,
-          trigger: trigger,
+        debugPrint('[Feedback] Submitting feedback in background...');
+        unawaited(
+          _submitFeedback(
+            rating: result.rating,
+            feedback: combinedFeedback,
+            trigger: trigger,
+          ),
         );
       } else {
         debugPrint('[Feedback] SKIPPED: combinedFeedback is empty');
       }
 
-      // Always thank the user for their time
-      if (context.mounted) {
+      // Skip the in-app thank-you toast when the OS dialog handled the
+      // acknowledgment (high raters). Low raters still get the toast as
+      // confirmation that their feedback was received.
+      if (result.rating < 4 && context.mounted) {
         _showThanksSnackBar(context);
-      }
-
-      // If High Rating, trigger native review
-      if (result.rating >= 4) {
-        await _requestNativeReview();
-        await _db.setBool(_keyHasRatedHigh, true);
       }
     } finally {
       _promptActive = false;
@@ -167,19 +183,21 @@ class ReviewPromptService {
   Future<bool> _shouldPrompt(ReviewPromptTrigger trigger) async {
     if (!_isMobilePlatform) return false;
 
-    final hasRatedHigh = await _db.getBool(_keyHasRatedHigh) ?? false;
-    if (hasRatedHigh) return false;
-
     // For session-based triggers, require at least N app opens.
     if (trigger == ReviewPromptTrigger.session) {
       final sessionCount = await _db.getInt(_keySessionCount) ?? 0;
       if (sessionCount < _minSessionCount) return false;
     }
 
+    final hasRatedHigh = await _db.getBool(_keyHasRatedHigh) ?? false;
+    final activeCooldown = hasRatedHigh ? _highRatedCooldown : _cooldown;
+
     final lastPromptAtMs = await _db.getInt(_keyLastPromptAt);
     if (lastPromptAtMs != null) {
       final lastPromptAt = DateTime.fromMillisecondsSinceEpoch(lastPromptAtMs);
-      if (DateTime.now().difference(lastPromptAt) < _cooldown) return false;
+      if (DateTime.now().difference(lastPromptAt) < activeCooldown) {
+        return false;
+      }
     }
 
     try {
@@ -194,15 +212,34 @@ class ReviewPromptService {
   }
 
   Future<void> _requestNativeReview() async {
-    if (!_isMobilePlatform) return;
+    if (!_isMobilePlatform) {
+      debugPrint('[Feedback] Native review SKIPPED: not a mobile platform');
+      return;
+    }
 
     try {
       final available = await _inAppReview.isAvailable();
-      if (available) {
-        await _inAppReview.requestReview();
+      debugPrint('[Feedback] InAppReview.isAvailable() = $available');
+      if (!available) {
+        // On iOS this means StoreKit unavailable; on Android it usually means
+        // the app wasn't installed via Play Store (e.g. debug `flutter run`
+        // build). The native dialog will not appear in either case.
+        debugPrint(
+          '[Feedback] Native review NOT shown: store API reported unavailable. '
+          'On Android this is expected for non-Play installs (debug builds, '
+          'sideloads). On iOS this is rare but can happen if StoreKit is off.',
+        );
+        return;
       }
-    } catch (_) {
-      // Ignore review request errors silently.
+      debugPrint('[Feedback] Calling InAppReview.requestReview()...');
+      await _inAppReview.requestReview();
+      debugPrint(
+        '[Feedback] requestReview() returned. Note: the OS may still suppress '
+        'the dialog (per-app quota, recent prompt, debug build), and there is '
+        'no callback indicating whether the dialog was actually displayed.',
+      );
+    } catch (e, stack) {
+      debugPrint('[Feedback] Native review ERROR: $e\n$stack');
     }
   }
 

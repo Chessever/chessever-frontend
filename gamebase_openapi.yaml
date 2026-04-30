@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.0.9
+  version: 1.0.10
 
 servers:
   - url: http://localhost:3232
@@ -350,6 +350,201 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PositionGamesQueryRequest"
+      responses:
+        "200":
+          description: Successful response with games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionGamesResponse"
+        "400":
+          description: Invalid request (e.g., invalid FEN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/game-position/fen/games:
+    get:
+      summary: List games by FEN position
+      description: |
+        Returns a paginated list of games where the given FEN position occurred,
+        regardless of the move order used to reach it.
+
+        Matching uses the position-relevant FEN fields only: board, side to move,
+        castling rights, and en-passant square. The halfmove clock and fullmove
+        number are ignored.
+
+        **Coverage:** Uses the existing indexed position data, currently through
+        the 61-ply opening/deep-position window.
+
+        Supports the same filter and sort surface as `GET /api/game-position/games`,
+        with the exception of the explorer's `moves` parameter (the FEN is the
+        lookup key directly here). For multi-key sort, use
+        `POST /api/game-position/fen/games/query`.
+      operationId: getFenPositionGames
+      tags:
+        - Game Position
+      parameters:
+        - name: fen
+          in: query
+          required: true
+          description: FEN string representing the position. Four-field and six-field FEN inputs are accepted.
+          schema:
+            type: string
+          example: "r1bq1rk1/p1p2ppp/1p2p3/b7/Q1Pn4/B1N3P1/P2P1PBP/R4RK1 w - - 0 14"
+        - name: uci
+          in: query
+          required: false
+          description: |
+            Filter to games where the next move played from this position equals this UCI move
+            (e.g. `e2e4`, `e7e8q`). Lowercase.
+          schema:
+            type: string
+            pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$"
+          example: "e2e4"
+        - name: playerId
+          in: query
+          required: false
+          description: Filter by player UUID (player who reached this position in the game)
+          schema:
+            type: string
+            format: uuid
+        - name: timeControl
+          in: query
+          required: false
+          description: Filter by time control
+          schema:
+            type: string
+            enum:
+              - CLASSICAL
+              - RAPID
+              - BLITZ
+        - name: minRating
+          in: query
+          required: false
+          description: Minimum average rating (mean of white and black Elo)
+          schema:
+            type: integer
+            minimum: 1
+        - name: maxRating
+          in: query
+          required: false
+          description: Maximum average rating (mean of white and black Elo)
+          schema:
+            type: integer
+            minimum: 1
+        - name: yearFrom
+          in: query
+          required: false
+          description: Inclusive lower bound on game year
+          schema:
+            type: integer
+        - name: yearTo
+          in: query
+          required: false
+          description: Inclusive upper bound on game year
+          schema:
+            type: integer
+        - name: color
+          in: query
+          required: false
+          description: When combined with `playerId`, restrict to games where that player had this color
+          schema:
+            type: string
+            enum: [white, black]
+        - name: result
+          in: query
+          required: false
+          description: Filter by game result (W=White wins, B=Black wins, D=Draw)
+          schema:
+            type: string
+            enum: [W, B, D]
+        - name: isOnline
+          in: query
+          required: false
+          description: Filter by online vs OTB games (Online games have "INT" in their Site tag)
+          schema:
+            type: boolean
+        - name: sortBy
+          in: query
+          required: false
+          description: |
+            Field to sort by. Allowed values include `id`, `date`, `eco`, `opening`, `variation`,
+            `event`, `site`, `whiteName`, `blackName`, `whiteTitle`, `blackTitle`, `whiteFideId`,
+            `blackFideId`, `whiteElo`, `blackElo`, `whiteFed`, `blackFed`, `whitePlayerId`,
+            `blackPlayerId`, `timeControl`, `result`, `avgElo`. Default sort is `date DESC, id DESC`.
+          schema:
+            type: string
+        - name: sortDirection
+          in: query
+          required: false
+          description: Sort direction (asc or desc). Default `desc`.
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: pageNumber
+          in: query
+          required: false
+          description: Page number (0-indexed)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of results per page (max 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Successful response with games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionGamesResponse"
+        "400":
+          description: Invalid request (e.g., invalid FEN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/game-position/fen/games/query:
+    post:
+      summary: Query games by FEN position (multi-key sort)
+      description: |
+        Returns a paginated list of games where the given FEN position occurred,
+        regardless of the move order used to reach it. Same response shape as
+        `GET /api/game-position/fen/games`.
+
+        Use this endpoint when you need multi-key sort via `orderBy`. Filter
+        semantics are identical to the GET variant.
+      operationId: postFenPositionGamesQuery
+      tags:
+        - Game Position
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FenPositionGamesQueryRequest"
       responses:
         "200":
           description: Successful response with games
@@ -1265,6 +1460,85 @@ components:
             properties:
               field: { type: string }
               direction: { type: string, enum: [asc, desc] }
+    FenPositionGamesQueryRequest:
+      type: object
+      required:
+        - fen
+      properties:
+        fen:
+          type: string
+          description: |
+            FEN string representing the chess position. Four-field and six-field FEN inputs
+            are accepted. The halfmove clock and fullmove number are ignored for matching.
+        uci:
+          type: string
+          pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$"
+          description: Filter by next move in UCI notation (e.g. "e2e4", "e7e8q")
+        playerId:
+          type: string
+          format: uuid
+          description: Filter by player UUID (player who reached this position in the game)
+        color:
+          type: string
+          enum: [white, black]
+          description: When combined with `playerId`, restrict to games where that player had this color
+        timeControl:
+          type: string
+          enum: [CLASSICAL, RAPID, BLITZ]
+          description: Filter by time control
+        result:
+          type: string
+          enum: [W, B, D]
+          description: Filter by game result (W=White wins, B=Black wins, D=Draw)
+        isOnline:
+          type: boolean
+          description: Filter by online vs OTB games
+        minRating:
+          type: integer
+          minimum: 1
+          description: Minimum average rating (mean of white and black Elo)
+        maxRating:
+          type: integer
+          minimum: 1
+          description: Maximum average rating (mean of white and black Elo)
+        yearFrom:
+          type: integer
+          description: Inclusive lower bound on game year
+        yearTo:
+          type: integer
+          description: Inclusive upper bound on game year
+        sortBy:
+          type: string
+          description: |
+            Backward-compatible single-field sort option. Equivalent to passing
+            one entry in `orderBy`. Same allowed fields as `GET /api/game-position/fen/games`.
+        sortDirection:
+          type: string
+          enum: [asc, desc]
+          description: Sort direction used with `sortBy`.
+        orderBy:
+          type: array
+          description: |
+            Multi-key sort. Fields are applied in order. `sortBy` (if also provided) is appended.
+            Falls back to `date DESC, id DESC` if no valid fields are given.
+          items:
+            type: object
+            required: [field, direction]
+            properties:
+              field: { type: string }
+              direction: { type: string, enum: [asc, desc] }
+        pageNumber:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Page number (0-indexed)
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+          description: Number of results per page
+
     PositionGamesQueryRequest:
       type: object
       required:
