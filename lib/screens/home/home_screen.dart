@@ -65,6 +65,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ReviewPromptService.instance.maybePrompt(
               context: context,
               trigger: ReviewPromptTrigger.session,
+              skipSurveyForHighRating: true,
             ),
           );
         });
@@ -116,6 +117,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ReviewPromptService.instance.maybePrompt(
             context: context,
             trigger: ReviewPromptTrigger.favoriteEvent,
+            skipSurveyForHighRating: true,
           ),
         );
       }
@@ -134,6 +136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ReviewPromptService.instance.maybePrompt(
             context: context,
             trigger: ReviewPromptTrigger.favoritePlayer,
+            skipSurveyForHighRating: true,
           ),
         );
       }

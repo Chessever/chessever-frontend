@@ -2722,8 +2722,19 @@ class ChessBoardScreenNotifierNew
         _releaseLog('🎯 PLAY VARIANT FORWARD: State is null');
         return;
       }
+      if (currentState.principalVariations.isNotEmpty &&
+          !_principalVariationsMatchCurrentPosition(currentState)) {
+        _releaseLog(
+          '🎯 PLAY VARIANT FORWARD: PVs are stale, requesting next PV',
+        );
+        _requestVariantMoveFromCurrentPosition(currentState);
+        return;
+      }
       if (!_ensureVariantSelection()) {
-        _releaseLog('🎯 PLAY VARIANT FORWARD: No variants available');
+        _releaseLog(
+          '🎯 PLAY VARIANT FORWARD: No variants available, requesting next PV',
+        );
+        _requestVariantMoveFromCurrentPosition(currentState);
         return;
       }
       currentState = state.value;
@@ -2740,21 +2751,15 @@ class ChessBoardScreenNotifierNew
         _releaseLog(
           '🎯 PLAY VARIANT FORWARD: New PVs will be calculated for current position',
         );
-        // Clear variant selection AND old PVs, then trigger fresh evaluation
-        final clearedState = _clearVariantSelection(currentState).copyWith(
-          principalVariations: const [],
-          principalVariationsBaseFen: null,
-          isEvaluating: true,
-        );
-        state = AsyncValue.data(clearedState);
-        _updateEvaluation(
-          force: true,
-        ); // Force fresh evaluation for current position
+        _requestVariantMoveFromCurrentPosition(currentState);
         return;
       }
 
       if (currentState.variantBaseFen == null) {
-        _releaseLog('🎯 PLAY VARIANT FORWARD: Missing base FEN, aborting');
+        _releaseLog(
+          '🎯 PLAY VARIANT FORWARD: Missing base FEN, requesting next PV',
+        );
+        _requestVariantMoveFromCurrentPosition(currentState);
         return;
       }
 
@@ -2935,6 +2940,45 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  bool _principalVariationsMatchCurrentPosition(ChessBoardStateNew state) {
+    final pvBaseFen = state.principalVariationsBaseFen;
+    if (pvBaseFen == null) {
+      return false;
+    }
+
+    final currentFen =
+        state.isAnalysisMode
+            ? state.analysisState.position.fen
+            : state.position?.fen;
+    if (currentFen == null) {
+      return false;
+    }
+
+    String fenKey(String fen) =>
+        fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+    return fenKey(pvBaseFen) == fenKey(currentFen);
+  }
+
+  void _requestVariantMoveFromCurrentPosition(ChessBoardStateNew currentState) {
+    if (!currentState.isAnalysisMode) {
+      return;
+    }
+
+    final currentFen = currentState.analysisState.position.fen;
+    final clearedState = _clearVariantSelection(currentState).copyWith(
+      principalVariations: const [],
+      principalVariationsBaseFen: null,
+      isEvaluating: true,
+      variantBaseFen: currentFen,
+      variantBaseMovePointer: currentState.analysisState.movePointer,
+      variantBaseMoveIndex: currentState.analysisState.currentMoveIndex,
+      variantMovePointer: const [],
+    );
+    _resumeVariantAutoPlay = true;
+    state = AsyncValue.data(clearedState);
+    _updateEvaluation(force: true);
+  }
+
   /// Undo last move of the selected variant OR navigator move
   void playVariantMoveBackward() {
     _releaseLog('🎯 PLAY VARIANT BACKWARD called');
@@ -3099,6 +3143,47 @@ class ChessBoardScreenNotifierNew
     if (!canAdvance) return;
 
     await _queueNavigation(1);
+  }
+
+  Future<void> moveForwardOrAppendBestLineMove() async {
+    final currentState = state.value;
+    if (currentState == null || _isProcessingMove) return;
+
+    if (!currentState.isAnalysisMode) {
+      await moveForward();
+      return;
+    }
+
+    final navigator = _analysisNavigator;
+    if (_analysisGame == null || navigator == null) {
+      playVariantMoveForward();
+      return;
+    }
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    final currentLine = navigatorState.currentLine;
+    final currentIndex =
+        navigatorState.movePointer.isEmpty
+            ? -1
+            : navigatorState.movePointer.last.toInt();
+    final isAtLineEnd =
+        currentLine == null ||
+        currentLine.isEmpty ||
+        currentIndex >= currentLine.length - 1;
+
+    if (!isAtLineEnd && navigatorState.canGoForward) {
+      await moveForward();
+      return;
+    }
+
+    if (currentState.principalVariations.isNotEmpty &&
+        _principalVariationsMatchCurrentPosition(currentState)) {
+      clearPvPreview();
+      playPrincipalVariationMove(currentState.principalVariations.first);
+      return;
+    }
+
+    playVariantMoveForward();
   }
 
   Future<void> moveBackward() async {
@@ -3682,7 +3767,10 @@ class ChessBoardScreenNotifierNew
     }
 
     final needsLiveFlag = game.gameStatus.isOngoing;
-    final needsMainlineExtension = game.roundId == 'board_editor';
+    final needsMainlineExtension =
+        game.source == GameSource.boardEditor ||
+        game.roundId == 'board_editor' ||
+        initialFen != null;
 
     if (needsLiveFlag) {
       metadata[ChessGame.metadataIsLiveKey] = true;

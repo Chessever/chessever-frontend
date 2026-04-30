@@ -439,6 +439,19 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   }
 
   static GamesTourModel _mapPreviewToTourModel(Map<String, dynamic> row) {
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    int? parsePositiveInt(dynamic value) {
+      final parsed = parseInt(value);
+      return parsed > 0 ? parsed : null;
+    }
+
+    String readString(String key) => (row[key]?.toString() ?? '').trim();
+
     final id = (row['id']?.toString() ?? '').trim();
     final safeId = id.isNotEmpty ? id : 'unknown';
 
@@ -460,14 +473,24 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                 event)
             .trim();
 
-    final whiteName = (row['white']?.toString() ?? '').trim();
-    final blackName = (row['black']?.toString() ?? '').trim();
-    final whiteElo = (row['whiteElo'] as num?)?.toInt() ?? 0;
-    final blackElo = (row['blackElo'] as num?)?.toInt() ?? 0;
-    final whiteFed = row['whiteFed']?.toString() ?? '';
-    final blackFed = row['blackFed']?.toString() ?? '';
-    final whitePlayerId = row['whitePlayerId']?.toString().trim();
-    final blackPlayerId = row['blackPlayerId']?.toString().trim();
+    final whiteName =
+        (readString('white').isNotEmpty
+                ? readString('white')
+                : readString('whiteName'))
+            .trim();
+    final blackName =
+        (readString('black').isNotEmpty
+                ? readString('black')
+                : readString('blackName'))
+            .trim();
+    final whiteElo = parseInt(row['whiteElo']);
+    final blackElo = parseInt(row['blackElo']);
+    final whiteFed = readString('whiteFed');
+    final blackFed = readString('blackFed');
+    final whiteTitle = readString('whiteTitle');
+    final blackTitle = readString('blackTitle');
+    final whitePlayerId = readString('whitePlayerId');
+    final blackPlayerId = readString('blackPlayerId');
 
     final formatCode =
         (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
@@ -481,29 +504,23 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
       source: GameSource.gamebase,
       whitePlayer: PlayerCard(
         name: whiteName.isNotEmpty ? whiteName : 'White',
-        federation: '',
-        title: '',
+        federation: whiteFed,
+        title: whiteTitle,
         rating: whiteElo,
         countryCode: whiteFed,
         team: null,
-        fideId: null,
-        gamebasePlayerId:
-            (whitePlayerId != null && whitePlayerId.isNotEmpty)
-                ? whitePlayerId
-                : null,
+        fideId: parsePositiveInt(row['whiteFideId']),
+        gamebasePlayerId: whitePlayerId.isNotEmpty ? whitePlayerId : null,
       ),
       blackPlayer: PlayerCard(
         name: blackName.isNotEmpty ? blackName : 'Black',
-        federation: '',
-        title: '',
+        federation: blackFed,
+        title: blackTitle,
         rating: blackElo,
         countryCode: blackFed,
         team: null,
-        fideId: null,
-        gamebasePlayerId:
-            (blackPlayerId != null && blackPlayerId.isNotEmpty)
-                ? blackPlayerId
-                : null,
+        fideId: parsePositiveInt(row['blackFideId']),
+        gamebasePlayerId: blackPlayerId.isNotEmpty ? blackPlayerId : null,
       ),
       whiteTimeDisplay: '--:--',
       blackTimeDisplay: '--:--',

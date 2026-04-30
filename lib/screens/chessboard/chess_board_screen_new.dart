@@ -58,6 +58,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -74,7 +75,12 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
+import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
+import 'package:chessever2/screens/gamebase/models/gamebase_game.dart'
+    show TimeControl, TimeControlExtension;
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
@@ -85,6 +91,7 @@ import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
 
@@ -94,6 +101,13 @@ const Color kGameEndingRedColor = Color(0xCCF53236);
 /// notation↔explorer "Switch Views" tutorial (step 2/2) so the two
 /// teachings feel like a single orchestrated flow.
 final analysisSwitchViewsTutorialRequestProvider = StateProvider<int>((_) => 0);
+
+final boardSelectionClearRequestProvider = StateProvider.family<int, String>(
+  (_, _) => 0,
+);
+
+String _boardSelectionClearKey(GamesTourModel game, int index) =>
+    '${game.gameId}#$index';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -5545,6 +5559,75 @@ class _BottomNavBar extends ConsumerWidget {
     final effectiveCanMoveBackward =
         isPreviewActive ? previewCanMoveBackward : canMoveBackward;
 
+    String fen4(String fen) =>
+        fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+
+    // Paste-FEN / board-editor flow: at the tail of any notation line, the
+    // forward arrow appends the current engine PV instead of falling through
+    // to game navigation. Use the navigator game metadata/FEN as the durable
+    // signal because analysisState.startingPosition can be absent after syncs.
+    final startingFen =
+        state.analysisState.startingPosition?.fen ??
+        navigatorState?.game.startingFen ??
+        state.analysisState.game?.startingFen ??
+        state.startingPosition?.fen ??
+        game.fen;
+    final startsFromCustomFen =
+        startingFen != null && fen4(startingFen) != fen4(Chess.initial.fen);
+    final allowsLineExtension =
+        navigatorState?.game.allowMainlineExtension == true ||
+        state.analysisState.game?.allowMainlineExtension == true;
+    final isBoardEditorFlow =
+        game.source == GameSource.boardEditor || game.roundId == 'board_editor';
+    final isPositionSearchFlow =
+        allowsLineExtension || isBoardEditorFlow || startsFromCustomFen;
+    final currentPositionFen = state.analysisState.position.fen;
+    final pvBaseFen = state.principalVariationsBaseFen;
+    final pvMatchesCurrentPosition =
+        pvBaseFen != null && fen4(pvBaseFen) == fen4(currentPositionFen);
+    final hasUsablePv =
+        pvMatchesCurrentPosition &&
+        state.principalVariations.isNotEmpty &&
+        state.principalVariations.first.moves.isNotEmpty;
+    final navigatorLine = navigatorState?.currentLine;
+    final navigatorPointer = navigatorState?.movePointer ?? const <Number>[];
+    final currentLineIndex =
+        navigatorPointer.isEmpty ? -1 : navigatorPointer.last.toInt();
+    final isAtCurrentLineEnd =
+        navigatorState == null
+            ? !effectiveCanMoveForward
+            : (navigatorLine == null ||
+                navigatorLine.isEmpty ||
+                currentLineIndex >= navigatorLine.length - 1);
+    final shouldPlayPvOnRight =
+        isPositionSearchFlow &&
+        !effectiveCanMoveForward &&
+        !isPreviewActive &&
+        hasUsablePv;
+    final shouldInsertPvAtLineEnd =
+        isPositionSearchFlow &&
+        isAtCurrentLineEnd &&
+        !isPreviewActive &&
+        hasUsablePv;
+    final shouldRequestPvAtLineEnd =
+        isPositionSearchFlow &&
+        isAtCurrentLineEnd &&
+        !isPreviewActive &&
+        !hasUsablePv;
+    final shouldOwnLineEndForward =
+        isPositionSearchFlow && isAtCurrentLineEnd && !isPreviewActive;
+    final shouldUsePositionSearchForward =
+        isPositionSearchFlow && !isPreviewActive;
+
+    final selectionClearKey = _boardSelectionClearKey(game, index);
+
+    void clearBoardSelection() {
+      final clearNotifier = ref.read(
+        boardSelectionClearRequestProvider(selectionClearKey).notifier,
+      );
+      clearNotifier.state++;
+    }
+
     return ChessBoardBottomNavBar(
       key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
       gameIndex: index,
@@ -5559,8 +5642,14 @@ class _BottomNavBar extends ConsumerWidget {
         });
       },
       onRightMove:
-          effectiveCanMoveForward
+          shouldUsePositionSearchForward
               ? () {
+                clearBoardSelection();
+                notifier.moveForwardOrAppendBestLineMove();
+              }
+              : effectiveCanMoveForward
+              ? () {
+                clearBoardSelection();
                 notifier.moveForward().then((_) {
                   final updatedState =
                       ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
@@ -5577,14 +5666,38 @@ class _BottomNavBar extends ConsumerWidget {
                   }
                 });
               }
+              : shouldPlayPvOnRight
+              ? () {
+                clearBoardSelection();
+                notifier.playVariantMoveForward();
+              }
               : null,
       onLeftMove:
-          effectiveCanMoveBackward ? () => notifier.moveBackward() : null,
-      onLongPressBackwardStart: () => notifier.startLongPressBackward(),
+          effectiveCanMoveBackward
+              ? () {
+                clearBoardSelection();
+                notifier.moveBackward();
+              }
+              : null,
+      onLongPressBackwardStart: () {
+        clearBoardSelection();
+        notifier.startLongPressBackward();
+      },
       onLongPressBackwardEnd: () => notifier.stopLongPress(),
-      onLongPressForwardStart: () => notifier.startLongPressForward(),
+      onLongPressForwardStart:
+          shouldOwnLineEndForward
+              ? null
+              : () {
+                clearBoardSelection();
+                notifier.startLongPressForward();
+              },
       onLongPressForwardEnd: () => notifier.stopLongPress(),
-      canMoveForward: effectiveCanMoveForward,
+      canMoveForward:
+          shouldUsePositionSearchForward ||
+          (effectiveCanMoveForward && !shouldOwnLineEndForward) ||
+          shouldPlayPvOnRight ||
+          shouldInsertPvAtLineEnd ||
+          shouldRequestPvAtLineEnd,
       canMoveBackward: effectiveCanMoveBackward,
       showEngineAnalysis: state.showEngineAnalysis,
       showUnseenMoveBadge: state.hasUnseenMoves,
@@ -5749,38 +5862,55 @@ class _AnalysisGameBody extends ConsumerWidget {
             return movesDisplay;
           }
 
-          final gamebaseDisplay = BoardOpeningExplorerPanel(
-            state: state,
-            onMoveSelected: (uci) {
-              final params = ChessBoardProviderParams(game: game, index: index);
-              final notifier = ref.read(
-                chessBoardScreenProviderNew(params).notifier,
-              );
-              try {
-                if (uci.length < 4) return;
-                final from = Square.fromName(uci.substring(0, 2));
-                final to = Square.fromName(uci.substring(2, 4));
-                Role? promotion;
-                if (uci.length > 4) {
-                  promotion = Role.fromChar(uci[4]);
-                }
-                final move = NormalMove(
-                  from: from,
-                  to: to,
-                  promotion: promotion,
-                );
-                notifier.onAnalysisMove(move);
-              } catch (e) {
-                debugPrint('Error making move from UCI: $e');
-              }
-            },
-          );
+          // Paste-FEN flow: the starting position is non-default (notation
+          // doesn't begin at "1."), so the user is searching for a specific
+          // position rather than studying an opening tree. Replace the
+          // opening-explorer swipe page with a position-search games table.
+          final startingFen = state.analysisState.startingPosition?.fen;
+          final isPositionSearchFlow =
+              startingFen != null && startingFen != Chess.initial.fen;
 
-          // Notation (page 0) and Opening Explorer (page 1) live in a
-          // PageView — swipe right on the notation reveals the explorer.
-          // Replaces the previous toggle-driven crossfade so the explorer is
-          // available everywhere the chess board screen is mounted, not just
-          // where `showGamebaseButton: true` was passed.
+          final gamebaseDisplay =
+              isPositionSearchFlow
+                  ? _FenPositionGamesTable(
+                    fen: state.analysisState.position.fen,
+                    enabled: isVisiblePage,
+                  )
+                  : BoardOpeningExplorerPanel(
+                    state: state,
+                    onMoveSelected: (uci) {
+                      final params = ChessBoardProviderParams(
+                        game: game,
+                        index: index,
+                      );
+                      final notifier = ref.read(
+                        chessBoardScreenProviderNew(params).notifier,
+                      );
+                      try {
+                        if (uci.length < 4) return;
+                        final from = Square.fromName(uci.substring(0, 2));
+                        final to = Square.fromName(uci.substring(2, 4));
+                        Role? promotion;
+                        if (uci.length > 4) {
+                          promotion = Role.fromChar(uci[4]);
+                        }
+                        final move = NormalMove(
+                          from: from,
+                          to: to,
+                          promotion: promotion,
+                        );
+                        notifier.onAnalysisMove(move);
+                      } catch (e) {
+                        debugPrint('Error making move from UCI: $e');
+                      }
+                    },
+                  );
+
+          // Notation (page 0) and Opening Explorer / Position Search (page 1)
+          // live in a PageView — swipe right on the notation reveals the
+          // second panel. Replaces the previous toggle-driven crossfade so
+          // the second panel is available everywhere the chess board screen
+          // is mounted, not just where `showGamebaseButton: true` was passed.
           return _AnalysisSwipePanels(
             movesDisplay: movesDisplay,
             gamebaseDisplay: gamebaseDisplay,
@@ -6407,6 +6537,21 @@ class _MoveLadder {
 class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
+  bool _clearBoardSelectionForFrame = false;
+  bool _selectionRestoreScheduled = false;
+  int? _lastSelectionClearRequestId;
+
+  void _scheduleSelectionRestore() {
+    if (_selectionRestoreScheduled) return;
+    _selectionRestoreScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _selectionRestoreScheduled = false;
+      if (_clearBoardSelectionForFrame) {
+        setState(() => _clearBoardSelectionForFrame = false);
+      }
+    });
+  }
 
   /// True only at the end of the original game mainline (not analysis variations).
   /// movePointer: [] = initial pos, [n] = mainline move n, [n,v,m,...] = variation
@@ -6712,6 +6857,20 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       index: widget.index,
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final selectionClearRequestId = ref.watch(
+      boardSelectionClearRequestProvider(
+        _boardSelectionClearKey(widget.game, widget.index),
+      ),
+    );
+    if (_lastSelectionClearRequestId == null) {
+      _lastSelectionClearRequestId = selectionClearRequestId;
+    } else if (_lastSelectionClearRequestId != selectionClearRequestId) {
+      _lastSelectionClearRequestId = selectionClearRequestId;
+      _clearBoardSelectionForFrame = true;
+    }
+    if (_clearBoardSelectionForFrame) {
+      _scheduleSelectionRestore();
+    }
     final analysisGame = widget.chessBoardState.analysisState.game;
     final activeMovePointer = widget.chessBoardState.analysisState.movePointer;
     final activeMove = _moveForPointer(analysisGame, activeMovePointer);
@@ -6865,6 +7024,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
 
     final annotationShapes = _extractAnnotationShapes(activeMove);
     final allShapes = pvShapes.addAll(annotationShapes);
+    final sideToMove = widget.chessBoardState.analysisState.position.turn;
+    final playerSide =
+        _clearBoardSelectionForFrame
+            ? PlayerSide.none
+            : (sideToMove == Side.white ? PlayerSide.white : PlayerSide.black);
 
     final chessboard = Chessboard(
       size: widget.size,
@@ -6888,12 +7052,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       squareHighlights: IMap(squareHighlightsMap),
       annotations: gameEndingData?.annotations ?? const IMap.empty(),
       game: GameData(
-        playerSide:
-            widget.chessBoardState.analysisState.position.turn == Side.white
-                ? PlayerSide.white
-                : PlayerSide.black,
+        playerSide: playerSide,
         validMoves: widget.chessBoardState.analysisState.validMoves,
-        sideToMove: widget.chessBoardState.analysisState.position.turn,
+        sideToMove: sideToMove,
         isCheck: widget.chessBoardState.analysisState.position.isCheck,
         promotionMove: widget.chessBoardState.analysisState.promotionMove,
         onMove: (Move move, {bool? viaDragAndDrop}) {
@@ -7536,6 +7697,1225 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
   }
 }
 
+class _FenPositionGamesTable extends ConsumerStatefulWidget {
+  const _FenPositionGamesTable({required this.fen, required this.enabled});
+
+  final String fen;
+  final bool enabled;
+
+  @override
+  ConsumerState<_FenPositionGamesTable> createState() =>
+      _FenPositionGamesTableState();
+}
+
+class _FenPositionGamesTableState
+    extends ConsumerState<_FenPositionGamesTable> {
+  static const int _pageSize = 20;
+  static const double _scrollPrefetchExtent = 520;
+
+  final ScrollController _scrollController = ScrollController();
+  final List<Map<String, dynamic>> _rows = <Map<String, dynamic>>[];
+  final List<GamesTourModel> _games = <GamesTourModel>[];
+
+  bool _isInitialLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _nextPageNumber = 0;
+  int _requestToken = 0;
+  String? _error;
+
+  // Filters drive both the table fetch and the per-row / header bottom sheets,
+  // so the user sees a consistent set of games. `/api/game-position/fen/games`
+  // accepts the same filter+sort surface as the explorer endpoint.
+  GamebaseFilters _filters = const GamebaseFilters();
+
+  bool get _hasActiveFilters {
+    final f = _filters;
+    return f.timeControls.isNotEmpty ||
+        f.gameResult != null ||
+        f.isOnline != null ||
+        f.minRating != null ||
+        f.maxRating != null ||
+        f.yearFrom != null ||
+        f.yearTo != null ||
+        f.playerColor != null ||
+        f.playerIds.isNotEmpty;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    if (widget.enabled) {
+      _fetchPage(reset: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _FenPositionGamesTable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final becameEnabled = !oldWidget.enabled && widget.enabled;
+    final positionChanged =
+        _positionKey(oldWidget.fen) != _positionKey(widget.fen);
+    if (widget.enabled && (becameEnabled || positionChanged)) {
+      _fetchPage(reset: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _requestToken++;
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  static String _positionKey(String fen) {
+    final parts = fen.trim().split(RegExp(r'\s+'));
+    if (parts.length < 4) return fen.trim();
+    return parts.take(4).join(' ');
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients ||
+        !widget.enabled ||
+        _isInitialLoading ||
+        _isLoadingMore ||
+        !_hasMore) {
+      return;
+    }
+    if (_scrollController.position.extentAfter > _scrollPrefetchExtent) {
+      return;
+    }
+    _fetchPage();
+  }
+
+  Future<void> _fetchPage({bool reset = false}) async {
+    if (!widget.enabled) return;
+
+    if (reset) {
+      setState(() {
+        _rows.clear();
+        _games.clear();
+        _isInitialLoading = true;
+        _isLoadingMore = false;
+        _hasMore = true;
+        _nextPageNumber = 0;
+        _error = null;
+      });
+    } else {
+      if (_isInitialLoading || _isLoadingMore || !_hasMore) return;
+      setState(() {
+        _isLoadingMore = true;
+        _error = null;
+      });
+    }
+
+    final requestToken = ++_requestToken;
+    final pageNumber = _nextPageNumber;
+
+    try {
+      final timeControlFilter =
+          _filters.timeControls.isNotEmpty ? _filters.timeControls.first : null;
+      final playerIdFilter =
+          _filters.playerIds.isNotEmpty ? _filters.playerIds.first : null;
+      final response = await ref
+          .read(gamebaseRepositoryProvider)
+          .getFenPositionGames(
+            fen: widget.fen,
+            pageNumber: pageNumber,
+            pageSize: _pageSize,
+            timeControl: timeControlFilter,
+            playerId: playerIdFilter,
+            color: _filters.playerColor?.name,
+            result: _filters.gameResult?.apiValue,
+            isOnline: _filters.isOnline,
+            minRating: _filters.minRating,
+            maxRating: _filters.maxRating,
+            yearFrom: _filters.yearFrom,
+            yearTo: _filters.yearTo,
+            sortBy: _filters.sortBy,
+            sortDirection: _filters.sortDirection,
+          );
+      if (!mounted || requestToken != _requestToken) return;
+
+      final mergedRows = List<Map<String, dynamic>>.from(_rows);
+      final mergedGames = List<GamesTourModel>.from(_games);
+      final existingIds = <String>{
+        for (final row in _rows)
+          if ((row['id']?.toString().trim() ?? '').isNotEmpty)
+            row['id'].toString().trim(),
+      };
+
+      for (final row in response.data) {
+        final id = row['id']?.toString().trim();
+        if (id != null && id.isNotEmpty && !existingIds.add(id)) {
+          continue;
+        }
+        mergedRows.add(row);
+        mergedGames.add(_mapPreviewToTourModel(row));
+      }
+
+      final addedCount = mergedRows.length - _rows.length;
+      setState(() {
+        _rows
+          ..clear()
+          ..addAll(mergedRows);
+        _games
+          ..clear()
+          ..addAll(mergedGames);
+        _hasMore = response.metadata.hasMore && addedCount > 0;
+        _nextPageNumber = pageNumber + 1;
+        _isInitialLoading = false;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted || requestToken != _requestToken) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _isInitialLoading = false;
+        _isLoadingMore = false;
+      });
+    }
+  }
+
+  static GamesTourModel _mapPreviewToTourModel(Map<String, dynamic> row) {
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    int? parsePositiveInt(dynamic value) {
+      final parsed = parseInt(value);
+      return parsed > 0 ? parsed : null;
+    }
+
+    String readString(String key) => (row[key]?.toString() ?? '').trim();
+
+    final id = readString('id');
+    final safeId = id.isNotEmpty ? id : 'unknown';
+    final rawDate = row['date'];
+    final date = rawDate == null ? null : DateTime.tryParse(rawDate.toString());
+    final resultStr =
+        readString('result').isNotEmpty ? readString('result') : '*';
+    final timeControl = readString('timeControl');
+    final eco = readString('eco');
+    final opening = readString('opening');
+    final variation = readString('variation');
+    final event = readString('event');
+    final site = readString('site');
+
+    final whiteName = readString('white');
+    final blackName = readString('black');
+    final whitePlayerId = readString('whitePlayerId');
+    final blackPlayerId = readString('blackPlayerId');
+    final whiteFed = readString('whiteFed');
+    final blackFed = readString('blackFed');
+    final whiteTitle = readString('whiteTitle');
+    final blackTitle = readString('blackTitle');
+    final whiteElo = parseInt(row['whiteElo']);
+    final blackElo = parseInt(row['blackElo']);
+    final avgElo = parseInt(row['avgElo']);
+
+    final formatCode = eco.isNotEmpty ? eco : timeControl;
+    final openingName =
+        variation.isNotEmpty
+            ? '$opening: $variation'
+            : (opening.isNotEmpty ? opening : null);
+    final eventName =
+        event.isNotEmpty ? event : (site.isNotEmpty ? site : 'Gamebase');
+
+    return GamesTourModel(
+      gameId: safeId,
+      source: GameSource.gamebase,
+      whitePlayer: PlayerCard(
+        name: whiteName.isNotEmpty ? whiteName : 'White',
+        federation: whiteFed,
+        title: whiteTitle,
+        rating: whiteElo,
+        countryCode: whiteFed,
+        team: null,
+        fideId: parsePositiveInt(row['whiteFideId']),
+        gamebasePlayerId: whitePlayerId.isNotEmpty ? whitePlayerId : null,
+      ),
+      blackPlayer: PlayerCard(
+        name: blackName.isNotEmpty ? blackName : 'Black',
+        federation: blackFed,
+        title: blackTitle,
+        rating: blackElo,
+        countryCode: blackFed,
+        team: null,
+        fideId: parsePositiveInt(row['blackFideId']),
+        gamebasePlayerId: blackPlayerId.isNotEmpty ? blackPlayerId : null,
+      ),
+      whiteTimeDisplay: '--:--',
+      blackTimeDisplay: '--:--',
+      whiteClockCentiseconds: 0,
+      blackClockCentiseconds: 0,
+      gameStatus: GameStatus.fromString(resultStr),
+      roundId: 'fen_position',
+      roundSlug: formatCode.isNotEmpty ? formatCode : null,
+      tourId: eventName,
+      tourSlug: site.isNotEmpty ? site : null,
+      lastMoveTime: date,
+      eco: eco.isNotEmpty ? eco : null,
+      openingName: openingName,
+      timeControl: timeControl.isNotEmpty ? timeControl : null,
+      avgElo: avgElo > 0 ? avgElo : null,
+      isOnline: row['isOnline'] == true,
+    );
+  }
+
+  Future<void> _openGame(int index) async {
+    final game = _games[index];
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium || !mounted) return;
+
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.tour;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (ctx) => const Center(
+            child: CircularProgressIndicator(color: kWhiteColor),
+          ),
+    );
+
+    try {
+      final repo = ref.read(gamebaseRepositoryProvider);
+      final gameWithPgn = await repo.getGameWithPgn(game.gameId);
+
+      String? pgn;
+      if (gameWithPgn != null) {
+        final built = buildPgnFromGamebaseData(gameWithPgn.data);
+        for (final candidate in [built, gameWithPgn.pgn]) {
+          final trimmed = candidate?.trim();
+          if (trimmed == null || trimmed.isEmpty) continue;
+          if (pgnHasMoves(trimmed)) {
+            pgn = trimmed;
+            break;
+          }
+          pgn ??= trimmed;
+        }
+      }
+
+      pgn ??= buildHeaderOnlyPgn(
+        whiteName: game.whitePlayer.name,
+        blackName: game.blackPlayer.name,
+        result: game.gameStatus.displayText,
+        event: game.tourId,
+        site: game.tourSlug,
+        eco: game.eco ?? game.roundSlug,
+        opening: game.openingName,
+        date: game.lastMoveTime,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      final boardGames = _games
+          .map((g) => g.gameId == game.gameId ? g.copyWith(pgn: pgn) : g)
+          .toList(growable: false);
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder:
+              (_) => ChessBoardScreenNew(
+                games: boardGames,
+                currentIndex: index.clamp(0, boardGames.length - 1),
+                disableGamebaseOverlayByDefault: true,
+                initialFen: widget.fen,
+              ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
+    }
+  }
+
+  void _showAllGamesSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
+      builder:
+          (_) => PositionGamesSheet(
+            fen: widget.fen,
+            title: 'Position games',
+            filters: _filters,
+          ),
+    );
+  }
+
+  Future<void> _showFiltersSheet() async {
+    final updated = await showModalBottomSheet<GamebaseFilters>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
+      builder: (_) => _FenPositionFiltersSheet(initial: _filters),
+    );
+    if (updated == null || !mounted) return;
+    setState(() => _filters = updated);
+    _fetchPage(reset: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: kDarkGreyColor.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12.sp),
+          topRight: Radius.circular(12.sp),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _FenPositionGamesHeader(
+            loadedCount: _games.length,
+            hasMore: _hasMore,
+            isLoading: _isInitialLoading,
+            hasActiveFilters: _hasActiveFilters,
+            onShowGames: _showAllGamesSheet,
+            onShowFilters: _showFiltersSheet,
+          ),
+          Divider(height: 1, color: kWhiteColor.withValues(alpha: 0.08)),
+          _FenPositionGamesColumnHeader(),
+          Expanded(
+            child:
+                _isInitialLoading && _games.isEmpty
+                    ? const Center(
+                      child: CircularProgressIndicator(
+                        color: kWhiteColor,
+                        strokeWidth: 2,
+                      ),
+                    )
+                    : (_error != null && _games.isEmpty)
+                    ? _FenPositionGamesEmpty(
+                      message: 'Failed to load games',
+                      detail: _error,
+                      onRetry: () => _fetchPage(reset: true),
+                    )
+                    : (_games.isEmpty)
+                    ? _FenPositionGamesEmpty(
+                      message: 'No games found for this position',
+                      onRetry: () => _fetchPage(reset: true),
+                    )
+                    : ListView.separated(
+                      controller: _scrollController,
+                      padding: EdgeInsets.only(bottom: bottomPadding + 8.h),
+                      itemCount: _games.length + 1,
+                      separatorBuilder:
+                          (_, __) => Divider(
+                            height: 1,
+                            color: kWhiteColor.withValues(alpha: 0.06),
+                          ),
+                      itemBuilder: (context, index) {
+                        if (index == _games.length) {
+                          return _FenPositionGamesFooter(
+                            isLoadingMore: _isLoadingMore,
+                            hasMore: _hasMore,
+                            loadedCount: _games.length,
+                            onLoadMore: _fetchPage,
+                          );
+                        }
+
+                        return _FenPositionGameRow(
+                          game: _games[index],
+                          onTap: () => _openGame(index),
+                        );
+                      },
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FenPositionGamesHeader extends StatelessWidget {
+  const _FenPositionGamesHeader({
+    required this.loadedCount,
+    required this.hasMore,
+    required this.isLoading,
+    required this.hasActiveFilters,
+    required this.onShowGames,
+    required this.onShowFilters,
+  });
+
+  final int loadedCount;
+  final bool hasMore;
+  final bool isLoading;
+  final bool hasActiveFilters;
+  final VoidCallback onShowGames;
+  final VoidCallback onShowFilters;
+
+  @override
+  Widget build(BuildContext context) {
+    final countText =
+        isLoading
+            ? 'Searching'
+            : loadedCount == 0
+            ? '0 games'
+            : hasMore
+            ? '$loadedCount+ games'
+            : '$loadedCount games';
+
+    return SizedBox(
+      height: 36.h,
+      child: Row(
+        children: [
+          SizedBox(width: 14.w),
+          Expanded(
+            child: Text(
+              'Position games',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Text(
+            countText,
+            maxLines: 1,
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor70,
+              fontWeight: FontWeight.normal,
+            ),
+          ),
+          SizedBox(width: 4.w),
+          IconButton(
+            tooltip: 'All games for this position',
+            constraints: BoxConstraints.tight(Size(36.sp, 36.sp)),
+            padding: EdgeInsets.zero,
+            onPressed: onShowGames,
+            icon: Icon(
+              Icons.list_alt_rounded,
+              color: kWhiteColor70,
+              size: 18.sp,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Filters',
+            constraints: BoxConstraints.tight(Size(36.sp, 36.sp)),
+            padding: EdgeInsets.zero,
+            onPressed: onShowFilters,
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  Icons.tune_rounded,
+                  color: hasActiveFilters ? kPrimaryColor : kWhiteColor70,
+                  size: 18.sp,
+                ),
+                if (hasActiveFilters)
+                  Positioned(
+                    right: -3.w,
+                    top: -3.h,
+                    child: Container(
+                      width: 8.sp,
+                      height: 8.sp,
+                      decoration: const BoxDecoration(
+                        color: kPrimaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FenPositionGamesColumnHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor.withValues(alpha: 0.45),
+      fontWeight: FontWeight.w600,
+    );
+
+    return Container(
+      height: 28.h,
+      padding: EdgeInsets.symmetric(horizontal: 14.w),
+      color: kBlack2Color.withValues(alpha: 0.24),
+      child: Row(
+        children: [
+          Expanded(flex: 5, child: Text('White', style: style)),
+          SizedBox(width: 8.w),
+          SizedBox(
+            width: 48.w,
+            child: Text('Result', style: style, textAlign: TextAlign.center),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(flex: 5, child: Text('Black', style: style)),
+          SizedBox(width: 8.w),
+          SizedBox(
+            width: 42.w,
+            child: Text('Year', style: style, textAlign: TextAlign.right),
+          ),
+          SizedBox(width: 18.sp),
+        ],
+      ),
+    );
+  }
+}
+
+class _FenPositionGameRow extends StatelessWidget {
+  const _FenPositionGameRow({required this.game, required this.onTap});
+
+  final GamesTourModel game;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final result =
+        game.gameStatus.displayText.isNotEmpty
+            ? game.gameStatus.displayText
+            : '*';
+    final year = game.lastMoveTime?.year.toString() ?? '';
+
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: BoxConstraints(minHeight: 58.h),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 5,
+              child: _FenPositionPlayerCell(player: game.whitePlayer),
+            ),
+            SizedBox(width: 8.w),
+            SizedBox(
+              width: 48.w,
+              child: Center(
+                child: Container(
+                  constraints: BoxConstraints(minWidth: 38.w),
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+                  decoration: BoxDecoration(
+                    color: kWhiteColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6.br),
+                  ),
+                  child: Text(
+                    result,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kWhiteColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Expanded(
+              flex: 5,
+              child: _FenPositionPlayerCell(
+                player: game.blackPlayer,
+                alignRight: true,
+              ),
+            ),
+            SizedBox(width: 8.w),
+            SizedBox(
+              width: 42.w,
+              child: Text(
+                year,
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kWhiteColor70,
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FenPositionPlayerCell extends StatelessWidget {
+  const _FenPositionPlayerCell({required this.player, this.alignRight = false});
+
+  final PlayerCard player;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = <String>[
+      if (player.title.trim().isNotEmpty) player.title.trim(),
+      if (player.rating > 0) player.rating.toString(),
+    ].join(' ');
+
+    final federation =
+        player.countryCode.trim().isNotEmpty
+            ? player.countryCode
+            : player.federation;
+    final flag =
+        federation.trim().isEmpty &&
+                (player.fideId == null || player.fideId! <= 0)
+            ? null
+            : SizedBox(
+              width: 12.w,
+              height: 8.h,
+              child: Center(
+                child: BackfilledFederationFlag(
+                  federation: federation,
+                  fideId: player.fideId,
+                  width: 12.w,
+                  height: 8.h,
+                  borderRadius: BorderRadius.circular(1.5.br),
+                ),
+              ),
+            );
+
+    final nameWidget = Flexible(
+      child: Text(
+        player.name,
+        textAlign: alignRight ? TextAlign.right : TextAlign.left,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTypography.textXsMedium.copyWith(
+          color: kWhiteColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+
+    final nameRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment:
+          alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children:
+          alignRight
+              ? [
+                nameWidget,
+                if (flag != null) ...[SizedBox(width: 5.w), flag],
+              ]
+              : [
+                if (flag != null) ...[flag, SizedBox(width: 5.w)],
+                nameWidget,
+              ],
+    );
+
+    return Column(
+      crossAxisAlignment:
+          alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        nameRow,
+        if (meta.isNotEmpty) ...[
+          SizedBox(height: 2.h),
+          Text(
+            meta,
+            textAlign: alignRight ? TextAlign.right : TextAlign.left,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.48),
+              fontWeight: FontWeight.normal,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FenPositionGamesFooter extends StatelessWidget {
+  const _FenPositionGamesFooter({
+    required this.isLoadingMore,
+    required this.hasMore,
+    required this.loadedCount,
+    required this.onLoadMore,
+  });
+
+  final bool isLoadingMore;
+  final bool hasMore;
+  final int loadedCount;
+  final VoidCallback onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 14.h),
+        child: const Center(
+          child: SizedBox(
+            height: 18,
+            width: 18,
+            child: CircularProgressIndicator(
+              color: kWhiteColor,
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (hasMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+        child: OutlinedButton(
+          onPressed: onLoadMore,
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: kWhiteColor.withValues(alpha: 0.18)),
+            foregroundColor: kWhiteColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8.br),
+            ),
+          ),
+          child: const Text('Load more'),
+        ),
+      );
+    }
+
+    if (loadedCount == 0) return const SizedBox.shrink();
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 12.h),
+      child: Text(
+        'Showing $loadedCount games',
+        textAlign: TextAlign.center,
+        style: AppTypography.textXsMedium.copyWith(
+          color: kWhiteColor.withValues(alpha: 0.45),
+          fontWeight: FontWeight.normal,
+        ),
+      ),
+    );
+  }
+}
+
+class _FenPositionGamesEmpty extends StatelessWidget {
+  const _FenPositionGamesEmpty({
+    required this.message,
+    this.detail,
+    required this.onRetry,
+  });
+
+  final String message;
+  final String? detail;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    // Wrapped in SingleChildScrollView so it stays usable in tight swipe-panel
+    // heights instead of overflowing the parent Column.
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.manage_search_rounded,
+              color: kWhiteColor.withValues(alpha: 0.45),
+              size: 22.sp,
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textXsMedium.copyWith(
+                color: kWhiteColor70,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+            if (detail != null && detail!.isNotEmpty) ...[
+              SizedBox(height: 4.h),
+              Text(
+                detail!,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.42),
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            ],
+            SizedBox(height: 6.h),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: Icon(Icons.refresh_rounded, size: 14.sp),
+              label: const Text('Retry'),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Filter sheet for the FEN-position-search table. Visually mirrors the
+/// opening-explorer's `_FilterSheet` (FilterChip + WheelRangeFilter + section
+/// labels in `kSecondaryTextColor`, full-width primary Apply button, "Clear
+/// all" action when any draft filter is active) so the two surfaces stay
+/// consistent. Returns the resulting [GamebaseFilters] via Navigator.pop.
+class _FenPositionFiltersSheet extends StatefulWidget {
+  const _FenPositionFiltersSheet({required this.initial});
+
+  final GamebaseFilters initial;
+
+  @override
+  State<_FenPositionFiltersSheet> createState() =>
+      _FenPositionFiltersSheetState();
+}
+
+class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
+  static const double _ratingMin = 0;
+  static const double _ratingMax = 3500;
+  static const double _yearMin = 1800;
+  static double get _yearMax => DateTime.now().year.toDouble();
+
+  late GamebaseFilters _draftFilters;
+  late RangeValues _ratingRange;
+  late RangeValues _yearRange;
+
+  @override
+  void initState() {
+    super.initState();
+    _draftFilters = widget.initial;
+    _ratingRange = RangeValues(
+      (_draftFilters.minRating?.toDouble() ?? _ratingMin).clamp(
+        _ratingMin,
+        _ratingMax,
+      ),
+      (_draftFilters.maxRating?.toDouble() ?? _ratingMax).clamp(
+        _ratingMin,
+        _ratingMax,
+      ),
+    );
+    _yearRange = RangeValues(
+      (_draftFilters.yearFrom?.toDouble() ?? _yearMin).clamp(
+        _yearMin,
+        _yearMax,
+      ),
+      (_draftFilters.yearTo?.toDouble() ?? _yearMax).clamp(_yearMin, _yearMax),
+    );
+  }
+
+  int? get _effectiveMinRating {
+    final v = _ratingRange.start.round();
+    return v <= _ratingMin ? null : v;
+  }
+
+  int? get _effectiveMaxRating {
+    final v = _ratingRange.end.round();
+    return v >= _ratingMax ? null : v;
+  }
+
+  int? get _effectiveYearFrom {
+    final v = _yearRange.start.round();
+    return v <= _yearMin ? null : v;
+  }
+
+  int? get _effectiveYearTo {
+    final v = _yearRange.end.round();
+    return v >= _yearMax ? null : v;
+  }
+
+  void _toggleTimeControl(TimeControl tc) {
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        timeControls: _draftFilters.timeControls.contains(tc) ? const [] : [tc],
+      );
+    });
+  }
+
+  void _toggleResult(GamebaseGameResult result) {
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        gameResult: _draftFilters.gameResult == result ? null : result,
+      );
+    });
+  }
+
+  void _toggleOnline(bool value) {
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        isOnline: _draftFilters.isOnline == value ? null : value,
+      );
+    });
+  }
+
+  bool get _hasActiveDraft =>
+      _draftFilters.timeControls.isNotEmpty ||
+      _draftFilters.gameResult != null ||
+      _draftFilters.isOnline != null ||
+      _effectiveMinRating != null ||
+      _effectiveMaxRating != null ||
+      _effectiveYearFrom != null ||
+      _effectiveYearTo != null;
+
+  void _clearAll() {
+    setState(() {
+      _draftFilters = const GamebaseFilters();
+      _ratingRange = const RangeValues(_ratingMin, _ratingMax);
+      _yearRange = RangeValues(_yearMin, _yearMax);
+    });
+  }
+
+  void _apply() {
+    final result = _draftFilters.copyWith(
+      minRating: _effectiveMinRating,
+      maxRating: _effectiveMaxRating,
+      yearFrom: _effectiveYearFrom,
+      yearTo: _effectiveYearTo,
+    );
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filters = _draftFilters;
+    final hasActiveDraft = _hasActiveDraft;
+
+    return SafeArea(
+      top: false,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: kBlack3Color,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
+          ),
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: Padding(
+              padding: EdgeInsets.all(16.sp),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header (matches opening explorer "Filters" + "Clear all")
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filters',
+                        style: TextStyle(
+                          color: kWhiteColor,
+                          fontSize: 18.f,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (hasActiveDraft)
+                        TextButton(
+                          onPressed: _clearAll,
+                          child: Text(
+                            'Clear all',
+                            style: TextStyle(
+                              color: kPrimaryColor,
+                              fontSize: 14.f,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  SizedBox(height: 16.sp),
+
+                  // Time control
+                  _FilterSectionLabel(label: 'Time Control'),
+                  SizedBox(height: 8.sp),
+                  Wrap(
+                    spacing: 8.sp,
+                    children:
+                        TimeControl.values.map((tc) {
+                          final selected = filters.timeControls.contains(tc);
+                          return _ExplorerStyleFilterChip(
+                            label: tc.displayName,
+                            selected: selected,
+                            onSelected: () => _toggleTimeControl(tc),
+                          );
+                        }).toList(),
+                  ),
+                  SizedBox(height: 16.sp),
+
+                  // Result
+                  _FilterSectionLabel(label: 'Result'),
+                  SizedBox(height: 8.sp),
+                  Wrap(
+                    spacing: 8.sp,
+                    children:
+                        GamebaseGameResult.values.map((r) {
+                          final selected = filters.gameResult == r;
+                          return _ExplorerStyleFilterChip(
+                            label: r.displayText,
+                            selected: selected,
+                            onSelected: () => _toggleResult(r),
+                          );
+                        }).toList(),
+                  ),
+                  SizedBox(height: 16.sp),
+
+                  // Format (OTB / Online)
+                  _FilterSectionLabel(label: 'Format'),
+                  SizedBox(height: 8.sp),
+                  Wrap(
+                    spacing: 8.sp,
+                    children: [
+                      _ExplorerStyleFilterChip(
+                        label: 'OTB Only',
+                        selected: filters.isOnline == false,
+                        onSelected: () => _toggleOnline(false),
+                      ),
+                      _ExplorerStyleFilterChip(
+                        label: 'Online Only',
+                        selected: filters.isOnline == true,
+                        onSelected: () => _toggleOnline(true),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16.sp),
+
+                  // Rating range
+                  _FilterSectionLabel(label: 'Rating Range'),
+                  SizedBox(height: 8.sp),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    child: WheelRangeFilter(
+                      minValue: _ratingMin,
+                      maxValue: _ratingMax,
+                      currentStart: _ratingRange.start,
+                      currentEnd: _ratingRange.end,
+                      divisions: 70,
+                      onChanged: (v) => setState(() => _ratingRange = v),
+                    ),
+                  ),
+                  SizedBox(height: 24.sp),
+
+                  // Year range
+                  _FilterSectionLabel(label: 'Year Range'),
+                  SizedBox(height: 8.sp),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    child: WheelRangeFilter(
+                      minValue: _yearMin,
+                      maxValue: _yearMax,
+                      currentStart: _yearRange.start,
+                      currentEnd: _yearRange.end,
+                      divisions: (_yearMax - _yearMin).toInt(),
+                      onChanged: (v) => setState(() => _yearRange = v),
+                    ),
+                  ),
+                  SizedBox(height: 24.sp),
+
+                  // Apply button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _apply,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPrimaryColor,
+                        padding: EdgeInsets.symmetric(vertical: 12.sp),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.br),
+                        ),
+                      ),
+                      child: Text(
+                        'Apply',
+                        style: TextStyle(
+                          color: kWhiteColor,
+                          fontSize: 14.f,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterSectionLabel extends StatelessWidget {
+  const _FilterSectionLabel({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: TextStyle(
+        color: kSecondaryTextColor,
+        fontSize: 12.f,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
+
+class _ExplorerStyleFilterChip extends StatelessWidget {
+  const _ExplorerStyleFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+      showCheckmark: false,
+      labelStyle: TextStyle(
+        color: selected ? kPrimaryColor : kWhiteColor,
+        fontSize: 12.f,
+      ),
+      backgroundColor: kBlack2Color,
+      side: BorderSide(color: selected ? kPrimaryColor : kDividerColor),
+    );
+  }
+}
+
 class _MovesDisplay extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -7712,20 +9092,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       autoCollapseMoveThreshold: _autoCollapseMoveThreshold,
     );
 
-    if (tokens.isEmpty) {
-      return Container(
-        alignment: Alignment.center,
-        padding: EdgeInsets.all(20.sp),
-        child: Text(
-          'No moves available for this game',
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-      );
-    }
-
     final currentNode =
         pointerForHighlightId != null
             ? pointerMap[pointerForHighlightId]
@@ -7743,6 +9109,59 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       pieceAssets: pieceAssets,
       pointerMap: pointerMap,
     );
+
+    // Paste-FEN flow can land here with no moves yet (tokens empty). Don't
+    // try to fake notation — show a clear empty-state. The forward arrow in
+    // the bottom nav auto-plays the engine's top PV move from this position
+    // (see `onRightMove` override at the call site), at which point the
+    // notation renders normally starting from the FEN's fullmove counter.
+    if (rows.isEmpty) {
+      final notationContent = Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.south_east_rounded,
+                color: kWhiteColor.withValues(alpha: 0.45),
+                size: 22.sp,
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'No moves played yet',
+                textAlign: TextAlign.center,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'Tap → to play the engine’s top move, or swipe ← to see games at this position.',
+                textAlign: TextAlign.center,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.45),
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      Widget content = Container(
+        key: e2eKey(E2eIds.boardNotationRoot),
+        decoration: BoxDecoration(
+          color: kDarkGreyColor.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(12.sp),
+            topRight: Radius.circular(12.sp),
+          ),
+        ),
+        child: notationContent,
+      );
+      return content;
+    }
 
     final notationContent = SingleChildScrollView(
       controller: _scrollController,
@@ -7764,6 +9183,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final isTabletLandscape =
         ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
+    // Reset to the pasted-FEN starting state — only meaningful in the
+    // position-search flow (the user came from Board Editor → Paste FEN →
+    // Analyze). For mainline games this would wipe legitimate moves, so it's
+    // gated on the starting position being non-default.
+    final notationStartingFen =
+        widget.state.analysisState.startingPosition?.fen;
+    final isPositionSearchFlow =
+        notationStartingFen != null && notationStartingFen != Chess.initial.fen;
+
     Widget content = Container(
       key: e2eKey(E2eIds.boardNotationRoot),
       decoration: BoxDecoration(
@@ -7777,6 +9205,26 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(child: notationContent),
+          if (isPositionSearchFlow)
+            Positioned(
+              top: 4.h,
+              right: 4.w,
+              child: IconButton(
+                tooltip: 'Reset to pasted position',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints.tight(Size(28.sp, 28.sp)),
+                onPressed: () {
+                  HapticFeedback.mediumImpact();
+                  notifier.deleteContinuationFromPointer(const []);
+                },
+                icon: Icon(
+                  Icons.restart_alt_rounded,
+                  color: kWhiteColor70,
+                  size: 16.ic,
+                ),
+              ),
+            ),
           // Subtle overlay when preview is active - only covers main variant area
           if (widget.state.isPvPreviewActive)
             Positioned(
