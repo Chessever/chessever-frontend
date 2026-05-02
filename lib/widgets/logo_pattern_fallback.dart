@@ -22,6 +22,9 @@ class LogoPatternFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final divisor = logoSize / 32.0;
+    final scale = divisor > 0 && divisor.isFinite ? 4.0 / divisor : 4.0;
+
     final pattern = Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -33,16 +36,25 @@ class LogoPatternFallback extends StatelessWidget {
       ),
       child: Opacity(
         opacity: opacity,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            image: DecorationImage(
-              image: const AssetImage(PngAsset.premium2Icon),
-              repeat: ImageRepeat.repeat,
-              scale: 4.0 / (logoSize / 32.0),
-            ),
-          ),
-          child: const SizedBox.expand(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth;
+            final h = constraints.maxHeight;
+            if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
+              return const SizedBox.expand();
+            }
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: borderRadius,
+                image: DecorationImage(
+                  image: const AssetImage(PngAsset.premium2Icon),
+                  repeat: ImageRepeat.repeat,
+                  scale: scale,
+                ),
+              ),
+              child: const SizedBox.expand(),
+            );
+          },
         ),
       ),
     );

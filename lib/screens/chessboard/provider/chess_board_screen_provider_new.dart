@@ -173,6 +173,10 @@ class ChessBoardScreenNotifierNew
   String? _lastAutoSavedGameJson;
   int _parseGeneration = 0;
 
+  // Deep equality is required because nag values are List<int>; MapEquality
+  // alone would fall back to reference comparison on the list values.
+  static const _autoSaveEquality = DeepCollectionEquality();
+
   void _clearActiveEvalState() {
     _activeEvalKey = null;
     _activeEvalRequestId = null;
@@ -3334,6 +3338,9 @@ class ChessBoardScreenNotifierNew
     if (savedAnalysisData != null) {
       // Use the pre-built ChessGame with all variations directly
       _analysisGame = savedAnalysisData!.chessGame;
+      // Seed the auto-save snapshot so trivial state churn after restore
+      // does not push a redundant write to Supabase.
+      _lastAutoSavedGameJson ??= _analysisGame!.toJson().toString();
       debugPrint(
         '🎯 ChessBoard[$index]: Using saved ChessGame with ${_analysisGame!.mainline.length} moves',
       );
@@ -3445,6 +3452,7 @@ class ChessBoardScreenNotifierNew
       chessGame:
           currentState?.analysisState.game ?? savedAnalysisData!.chessGame,
       variationComments: currentState?.variationComments ?? const {},
+      moveNags: currentState?.moveNags ?? const <String, List<int>>{},
       isBoardFlipped: currentState?.isBoardFlipped ?? false,
       lastViewedPosition: currentState?.analysisState.currentMoveIndex ?? 0,
       title: title,
@@ -3515,7 +3523,14 @@ class ChessBoardScreenNotifierNew
       );
 
       await repository.updateSavedAnalysis(savedAnalysis);
-      _lastAutoSavedGameJson = analysisGame.toJson().toString();
+      _refreshAutoSaveBaseline(
+        gameJson: analysisGame.toJson().toString(),
+        analysisGame: analysisGame,
+        variationComments: currentState.variationComments,
+        moveNags: currentState.moveNags,
+        isBoardFlipped: currentState.isBoardFlipped,
+        lastViewedPosition: currentState.analysisState.currentMoveIndex,
+      );
 
       if (!mounted) return true;
       final s = state.valueOrNull;
@@ -3561,14 +3576,8 @@ class ChessBoardScreenNotifierNew
     final analysisGame = currentState.analysisState.game;
     if (analysisGame == null) return;
 
-    // Check if anything actually changed since last auto-save
     final currentJson = analysisGame.toJson().toString();
-    final commentsChanged =
-        currentState.variationComments != savedAnalysisData?.variationComments;
-    final nagsChanged = currentState.moveNags != savedAnalysisData?.moveNags;
-    if (currentJson == _lastAutoSavedGameJson &&
-        !commentsChanged &&
-        !nagsChanged) {
+    if (!_hasUnsavedChanges(currentState, currentJson)) {
       return;
     }
 
@@ -3606,7 +3615,14 @@ class ChessBoardScreenNotifierNew
       );
 
       await repository.updateSavedAnalysis(savedAnalysis);
-      _lastAutoSavedGameJson = currentJson;
+      _refreshAutoSaveBaseline(
+        gameJson: currentJson,
+        analysisGame: analysisGame,
+        variationComments: currentState.variationComments,
+        moveNags: currentState.moveNags,
+        isBoardFlipped: currentState.isBoardFlipped,
+        lastViewedPosition: currentState.analysisState.currentMoveIndex,
+      );
 
       if (!mounted) return;
       final afterState = state.valueOrNull;
@@ -3636,6 +3652,72 @@ class ChessBoardScreenNotifierNew
         );
       }
     }
+  }
+
+  /// Returns true if any auto-save-relevant state differs from the last
+  /// persisted snapshot. Covers the game tree, variation comments, NAGs,
+  /// board orientation, and last viewed position.
+  bool _hasUnsavedChanges(
+    ChessBoardStateNew currentState,
+    String currentGameJson,
+  ) {
+    final baseline = savedAnalysisData;
+    if (baseline == null) return true;
+
+    if (currentGameJson != _lastAutoSavedGameJson) {
+      return true;
+    }
+    if (!_autoSaveEquality.equals(
+      currentState.variationComments,
+      baseline.variationComments,
+    )) {
+      return true;
+    }
+    if (!_autoSaveEquality.equals(currentState.moveNags, baseline.moveNags)) {
+      return true;
+    }
+    if (currentState.isBoardFlipped != baseline.isBoardFlipped) {
+      return true;
+    }
+    if (currentState.analysisState.currentMoveIndex !=
+        baseline.lastViewedPosition) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Update the auto-save baseline so the next diff compares against the
+  /// just-persisted state. Without this, every flush after the first edit
+  /// would still see the original snapshot and write redundantly.
+  void _refreshAutoSaveBaseline({
+    required String gameJson,
+    required ChessGame analysisGame,
+    required Map<String, String> variationComments,
+    required Map<String, List<int>> moveNags,
+    required bool isBoardFlipped,
+    required int lastViewedPosition,
+    String? title,
+    String? folderId,
+  }) {
+    _lastAutoSavedGameJson = gameJson;
+    final current = savedAnalysisData;
+    if (current == null) return;
+    savedAnalysisData = SavedAnalysisData(
+      analysisId: current.analysisId,
+      sourceGameId: current.sourceGameId,
+      chessGame: analysisGame,
+      variationComments: Map<String, String>.unmodifiable(variationComments),
+      moveNags: Map<String, List<int>>.unmodifiable(
+        moveNags.map(
+          (key, value) => MapEntry(key, List<int>.unmodifiable(value)),
+        ),
+      ),
+      movePointer: current.movePointer,
+      isBoardFlipped: isBoardFlipped,
+      lastViewedPosition: lastViewedPosition,
+      title: title ?? current.title,
+      folderId: folderId ?? current.folderId,
+    );
   }
 
   ChessGame _createChessGameFromPgn(String pgn) {
@@ -7139,12 +7221,14 @@ class ChessBoardScreenNotifierNew
       }
     }
     _navigationQueue.clear();
-    // Cancel debounce timer and fire a final auto-save
-    if (_autoSaveTimer?.isActive ?? false) {
-      _autoSaveTimer!.cancel();
+    // Always attempt a final flush on dispose so navigation-only changes
+    // (e.g. a new lastViewedPosition or board flip after the last save)
+    // are persisted. _performAutoSave short-circuits when nothing differs.
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = null;
+    if (savedAnalysisData?.analysisId != null) {
       unawaited(_performAutoSave());
     }
-    _autoSaveTimer = null;
     unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;

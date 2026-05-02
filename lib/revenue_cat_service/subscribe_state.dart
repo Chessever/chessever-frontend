@@ -28,6 +28,27 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// How often to sync with RevenueCat when app stays open (1 hour)
   static const _periodicSyncInterval = Duration(hours: 1);
 
+  /// Pending offer-code redemption metadata, if the user just opened a
+  /// redemption flow. Used to attribute the resulting entitlement transition
+  /// to the redemption when the customer-info listener fires.
+  _PendingRedemption? _pendingRedemption;
+
+  /// Window for matching an entitlement activation to a pending redemption.
+  /// Beyond this, we assume the activation came from elsewhere (cross-device
+  /// purchase sync, manual restore, etc.) and don't double-attribute.
+  static const _redemptionWindow = Duration(minutes: 30);
+
+  /// Mark that the user just initiated a code redemption. Call before
+  /// presenting the iOS sheet or launching the Android Play Store deep link.
+  void markRedemptionPending({required String source, String? code}) {
+    _pendingRedemption = _PendingRedemption(
+      source: source,
+      code: code,
+      initiatedAt: DateTime.now(),
+    );
+    debugPrint('🎟️ Redemption pending: $source');
+  }
+
   SubscriptionNotifier() : super(SubscriptionState()) {
     _revenueCat.setCustomerInfoListener((customerInfo) {
       _updateStateFromCustomerInfo(customerInfo);
@@ -219,12 +240,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
     DateTime? expirationDate;
     bool willRenew = true;
+    String? activeProductId;
     if (customerInfo.entitlements.active.isNotEmpty) {
       final entitlement = customerInfo.entitlements.active.values.first;
       if (entitlement.expirationDate != null) {
         expirationDate = DateTime.tryParse(entitlement.expirationDate!);
       }
       willRenew = entitlement.willRenew;
+      activeProductId = entitlement.productIdentifier;
     }
 
     final previouslySubscribed = state.isSubscribed;
@@ -242,10 +265,44 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
     }
 
+    // Inactive→active transition with a pending redemption means the user
+    // just successfully redeemed an offer code. Fire the AppsFlyer completion
+    // event with the captured metadata so partner dashboards see the funnel
+    // close. Direct purchases go through `purchaseSubscription` and already
+    // log via that path, so we'd double-count if we didn't gate on the
+    // pending-redemption marker.
+    if (!previouslySubscribed && isSubscribed) {
+      _maybeAttributeRedemption(activeProductId);
+    }
+
     // Schedule a check for when subscription expires (if subscribed)
     if (isSubscribed && expirationDate != null) {
       _scheduleExpirationCheck();
     }
+  }
+
+  void _maybeAttributeRedemption(String? productId) {
+    final pending = _pendingRedemption;
+    if (pending == null) return;
+
+    final age = DateTime.now().difference(pending.initiatedAt);
+    if (age > _redemptionWindow) {
+      debugPrint(
+        '🎟️ Pending redemption expired (${age.inMinutes}m old), discarding',
+      );
+      _pendingRedemption = null;
+      return;
+    }
+
+    debugPrint('🎟️ Attributing redemption: ${pending.source}');
+    unawaited(
+      AppsflyerService.instance.logRedemptionCompleted(
+        source: pending.source,
+        code: pending.code,
+        productId: productId,
+      ),
+    );
+    _pendingRedemption = null;
   }
 
   /// Purchase a subscription package
@@ -363,4 +420,16 @@ class SubscriptionState {
       willRenew: willRenew ?? this.willRenew,
     );
   }
+}
+
+class _PendingRedemption {
+  _PendingRedemption({
+    required this.source,
+    required this.initiatedAt,
+    this.code,
+  });
+
+  final String source;
+  final String? code;
+  final DateTime initiatedAt;
 }
