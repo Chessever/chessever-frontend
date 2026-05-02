@@ -6,7 +6,7 @@ import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart'
-    show CustomerInfo, Package;
+    show CustomerInfo, Package, SubscriptionOption;
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionNotifier, SubscriptionState>((ref) {
@@ -302,6 +302,37 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         productId: productId,
       ),
     );
+
+    // Mirror the direct-purchase path so partner ROAS dashboards keyed off
+    // af_subscribe / af_purchase still see the redemption as a subscription
+    // event. Price is the package's standard price — for paid offer codes the
+    // actual charged amount is lower, but partners rely on RC's webhook for
+    // the authoritative revenue figure (affiliate_conversions.revenue_usd),
+    // so this is intentionally an upper-bound heuristic.
+    if (productId != null) {
+      Package? matchedPackage;
+      for (final pkg in state.products) {
+        if (pkg.storeProduct.identifier == productId) {
+          matchedPackage = pkg;
+          break;
+        }
+      }
+      if (matchedPackage != null) {
+        unawaited(
+          AppsflyerService.instance.logSubscriptionPurchase(
+            productId: productId,
+            price: matchedPackage.storeProduct.price,
+            currency: matchedPackage.storeProduct.currencyCode,
+            packageType: matchedPackage.packageType.toString(),
+          ),
+        );
+      } else {
+        debugPrint(
+          '🎟️ No package matched $productId — skipping af_subscribe mirror',
+        );
+      }
+    }
+
     _pendingRedemption = null;
   }
 
@@ -354,6 +385,67 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       return result;
     } catch (e) {
       debugPrint('❌ Purchase exception: $e');
+      state = state.copyWith(error: e.toString(), isLoading: false);
+      return PurchaseAttemptResult.error(e.toString());
+    }
+  }
+
+  /// Purchase a specific Google Play subscription offer (e.g. a code-gated
+  /// 20%-off offer) attached to [package]'s base plan. Mirrors
+  /// [purchaseSubscription] for analytics: success activates the entitlement,
+  /// fires the same Amplitude/AppsFlyer events, and returns the same result
+  /// shape. Android-only — calling on iOS will surface as an error from the
+  /// underlying SDK.
+  Future<PurchaseAttemptResult> purchaseSubscriptionOption(
+    Package package,
+    SubscriptionOption option,
+  ) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final result = await _revenueCat.purchaseSubscriptionOption(option);
+
+      if (result.success) {
+        state = state.copyWith(isSubscribed: true, isLoading: false);
+
+        final productId = package.storeProduct.identifier;
+        // The base-plan price is what AppsFlyer's revenue dashboards expect as
+        // an upper-bound for the subscription. The actual charged amount for
+        // the offer's first cycle is lower; partners reconcile against
+        // RevenueCat's webhook for the authoritative figure.
+        final price = package.storeProduct.price;
+        final currency = package.storeProduct.currencyCode;
+        final packageType = package.packageType.toString();
+
+        AnalyticsService.instance.trackEventDetached(
+          'Subscription Purchased',
+          properties: {
+            'product_id': productId,
+            'package_type': packageType,
+            'price': price,
+            'currency_code': currency,
+            'offer_id': option.id,
+          },
+        );
+
+        unawaited(AppsflyerService.instance.logSubscriptionPurchase(
+          productId: productId,
+          price: price,
+          currency: currency,
+          packageType: packageType,
+        ));
+      } else if (result.wasCancelled) {
+        state = state.copyWith(isLoading: false);
+      } else {
+        state = state.copyWith(
+          isLoading: false,
+          error: result.errorMessage ?? 'Purchase failed',
+        );
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('❌ Offer purchase exception: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
       return PurchaseAttemptResult.error(e.toString());
     }
