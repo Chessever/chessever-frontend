@@ -187,13 +187,20 @@ class _PaywallContent extends HookConsumerWidget {
         return;
       }
 
-      // Android: Play Store has no in-app sheet, so we collect the code in our
-      // own bottom sheet and deep-link to play.google.com/redeem?code=… which
-      // the Play Store app intercepts via App Links and opens with the code
-      // pre-filled — user just confirms. Attribution happens inside the sheet
-      // since that's where we have the actual code.
+      // Android: code-gated percentage offers can't be redeemed via the
+      // play.google.com/redeem deep link (that path only handles 100%-off
+      // promo codes). We collect the code, validate it locally, then launch
+      // Google Play Billing with the matching SubscriptionOption (offer
+      // token). Attribution happens inside the sheet since that's where we
+      // have the actual code.
       if (!context.mounted) return;
-      await _showAndroidCodeRedeemSheet(context, ref);
+      await _showAndroidCodeRedeemSheet(
+        context,
+        ref,
+        monthlyPackage: monthlyPackage,
+        annualPackage: annualPackage,
+        selectedPlan: selectedPlan.value,
+      );
     }
 
     return Padding(
@@ -861,76 +868,134 @@ Future<void> _launchUrl(String url) async {
   }
 }
 
-/// Android-only redemption flow. Plays Store has no in-app native sheet, so we
-/// take the code in our own UI and hand off to Play with `?code=` pre-filled.
+/// Android-only redemption flow. Code-gated percentage offers must be
+/// purchased via Google Play Billing with a specific offer token; the
+/// /redeem deep link only handles 100%-off promo codes. We validate the
+/// code locally, find the matching SubscriptionOption, and launch billing.
 Future<void> _showAndroidCodeRedeemSheet(
   BuildContext context,
-  WidgetRef ref,
-) async {
+  WidgetRef ref, {
+  required Package? monthlyPackage,
+  required Package? annualPackage,
+  required PlanType selectedPlan,
+}) async {
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder: (_) => _AndroidCodeRedeemSheet(parentRef: ref),
+    builder:
+        (_) => _AndroidCodeRedeemSheet(
+          parentRef: ref,
+          monthlyPackage: monthlyPackage,
+          annualPackage: annualPackage,
+          selectedPlan: selectedPlan,
+        ),
   );
 }
 
 class _AndroidCodeRedeemSheet extends HookConsumerWidget {
-  const _AndroidCodeRedeemSheet({required this.parentRef});
+  const _AndroidCodeRedeemSheet({
+    required this.parentRef,
+    required this.monthlyPackage,
+    required this.annualPackage,
+    required this.selectedPlan,
+  });
 
   final WidgetRef parentRef;
+  final Package? monthlyPackage;
+  final Package? annualPackage;
+
+  /// Plan the user picked on the paywall. When a single code is tagged on
+  /// both offers (so one code works for monthly and annual), this drives
+  /// which one gets applied — the selected plan's offer is checked first.
+  /// If the code is plan-specific (only one offer carries the tag), the
+  /// fallback search picks up the other plan's offer, mirroring iOS.
+  final PlanType selectedPlan;
 
   @override
   Widget build(BuildContext context, WidgetRef _) {
     final controller = useTextEditingController();
     final code = useState('');
     final isSubmitting = useState(false);
+    final errorMessage = useState<String?>(null);
 
     Future<void> submit() async {
-      final trimmed = code.value.trim().toUpperCase();
-      if (trimmed.isEmpty || isSubmitting.value) return;
-      isSubmitting.value = true;
+      if (isSubmitting.value) return;
+      errorMessage.value = null;
 
+      final canonical = code.value.trim();
+      if (canonical.isEmpty) return;
+
+      // Codes are managed entirely in Play Console: each subscription offer
+      // is tagged with its lowercase code (e.g. `goatotb`). We look up the
+      // offer by tag against the live store data, so adding, expiring, or
+      // rotating codes is a Play Console operation — no app release.
+      //
+      // When a single code is tagged on both offers (one code → both plans),
+      // the user's currently-selected plan wins; if no offer in that plan
+      // carries the tag, we fall back to the other plan so a plan-specific
+      // code can still override the selection (matches iOS, where ASC custom
+      // codes auto-route to whichever subscription they're tied to).
+      final preferred =
+          selectedPlan == PlanType.annual ? annualPackage : monthlyPackage;
+      final fallback =
+          selectedPlan == PlanType.annual ? monthlyPackage : annualPackage;
+      final match = RevenueCatService().findOfferByCode(
+        [
+          if (preferred != null) preferred,
+          if (fallback != null) fallback,
+        ],
+        canonical,
+      );
+      if (match == null) {
+        errorMessage.value = 'Invalid or expired code.';
+        return;
+      }
+
+      isSubmitting.value = true;
       try {
-        // Stamp attribution before handing off to Play Store so the metadata
-        // is in place when the customer-info listener fires on app resume.
-        const source = 'android_play_deep_link';
+        // Stamp attribution before handing off to Play Billing so partner
+        // dashboards can see this conversion as a code redemption.
+        const source = 'android_offer_token';
+        final reportedCode = canonical.toUpperCase();
         final affiliate =
             await AppsflyerService.instance.getCachedAffiliateContext();
         parentRef
             .read(subscriptionProvider.notifier)
-            .markRedemptionPending(source: source, code: trimmed);
+            .markRedemptionPending(source: source, code: reportedCode);
         await RevenueCatService().tagRedemptionAttempt(
           source: source,
-          code: trimmed,
+          code: reportedCode,
           affiliateContext: affiliate,
         );
         unawaited(
           AppsflyerService.instance.logRedemptionInitiated(
             source: source,
-            code: trimmed,
+            code: reportedCode,
           ),
         );
 
-        // Play Store intercepts this URL via App Links and opens the redeem
-        // screen with the code pre-filled. Falls back to a browser tab only if
-        // Play Store isn't installed.
-        final uri = Uri.parse(
-          'https://play.google.com/redeem?code=${Uri.encodeQueryComponent(trimmed)}',
-        );
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        final result = await parentRef
+            .read(subscriptionProvider.notifier)
+            .purchaseSubscriptionOption(match.package, match.option);
+
+        if (result.success) {
+          // Subscription state listener on the paywall closes the sheet and
+          // shows the celebration overlay; we just dismiss our own sheet.
           if (context.mounted) Navigator.of(context).pop();
-        } else if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not open the Play Store. Try again later.'),
-            ),
-          );
+        } else if (result.wasCancelled) {
+          // User backed out of the Play sheet — leave them on our sheet so
+          // they can retry without re-typing the code.
+          if (context.mounted) errorMessage.value = null;
+        } else {
+          if (context.mounted) {
+            errorMessage.value =
+                result.errorMessage ?? 'Could not apply the discount.';
+          }
         }
       } finally {
-        isSubmitting.value = false;
+        if (context.mounted) isSubmitting.value = false;
       }
     }
 
@@ -967,7 +1032,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             ),
             SizedBox(height: 6.h),
             Text(
-              "Enter your code below. We'll open the Play Store with it pre-filled — just tap Redeem to confirm.",
+              'Enter your code to apply your discount. The Play Store purchase sheet will open with the discounted price.',
               style: AppTypography.textSmRegular.copyWith(
                 color: kWhiteColor.withOpacity(0.6),
               ),
@@ -976,9 +1041,13 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             TextField(
               controller: controller,
               autofocus: true,
+              enabled: !isSubmitting.value,
               textCapitalization: TextCapitalization.characters,
               textInputAction: TextInputAction.go,
-              onChanged: (val) => code.value = val,
+              onChanged: (val) {
+                code.value = val;
+                if (errorMessage.value != null) errorMessage.value = null;
+              },
               onSubmitted: (_) => submit(),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
@@ -1014,6 +1083,15 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 ),
               ),
             ),
+            if (errorMessage.value != null) ...[
+              SizedBox(height: 8.h),
+              Text(
+                errorMessage.value!,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: const Color(0xFFFF6B6B),
+                ),
+              ),
+            ],
             SizedBox(height: 16.h),
             _RedeemButton(
               isEnabled: code.value.trim().isNotEmpty,
@@ -1107,7 +1185,7 @@ class _RedeemButton extends HookWidget {
                         ),
                       )
                       : Text(
-                        'Open Play Store to redeem',
+                        'Apply discount',
                         style: AppTypography.textLgBold.copyWith(
                           color: kBlackColor,
                           letterSpacing: 0.2,

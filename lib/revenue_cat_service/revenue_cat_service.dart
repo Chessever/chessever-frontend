@@ -114,14 +114,71 @@ class RevenueCatService {
 
   /// Purchase subscription with proper error handling
   Future<PurchaseAttemptResult> purchaseSubscription(Package package) async {
-    try {
-      debugPrint(
-        '🛒 Starting purchase for: ${package.storeProduct.identifier}',
-      );
+    return _runPurchase(
+      label: package.storeProduct.identifier,
+      run: () => Purchases.purchase(PurchaseParams.package(package)),
+    );
+  }
 
-      final purchaseResult = await Purchases.purchase(
-        PurchaseParams.package(package),
-      );
+  /// Android-only. Purchase a specific [SubscriptionOption] (a Google Play
+  /// subscription offer attached to a base plan) so a percentage-discount
+  /// offer can be applied. Use the matching SubscriptionOption id from
+  /// `package.storeProduct.subscriptionOptions` — the base plan itself is
+  /// also a SubscriptionOption (`isBasePlan == true`), so this method is
+  /// only meaningful when invoking a non-base offer.
+  Future<PurchaseAttemptResult> purchaseSubscriptionOption(
+    SubscriptionOption option,
+  ) async {
+    return _runPurchase(
+      label: '${option.productId} / offer=${option.id}',
+      run:
+          () => Purchases.purchase(
+            PurchaseParams.subscriptionOption(option),
+          ),
+    );
+  }
+
+  /// Search across [packages] for a Google Play subscription offer tagged
+  /// with [code] (case-insensitive). Returns the matching `(package, option)`
+  /// or null if no offer carries that tag.
+  ///
+  /// Tagging convention: in Play Console, when creating a subscription offer
+  /// (eligibility "Developer determined"), add the lowercase code as a tag —
+  /// e.g., the offer for code `GOATOTB` is tagged `goatotb`. Tags are exposed
+  /// to the SDK as [SubscriptionOption.tags] and survive offer expiration —
+  /// when the offer expires or is archived in Play Console, Google stops
+  /// returning it, so this lookup naturally fails. No app release is needed
+  /// to add, remove, or rotate codes.
+  ({Package package, SubscriptionOption option})? findOfferByCode(
+    Iterable<Package> packages,
+    String code,
+  ) {
+    final canonical = code.trim().toLowerCase();
+    if (canonical.isEmpty) return null;
+
+    for (final package in packages) {
+      final options = package.storeProduct.subscriptionOptions;
+      if (options == null) continue;
+      for (final option in options) {
+        if (option.isBasePlan) continue;
+        for (final tag in option.tags) {
+          if (tag.toLowerCase() == canonical) {
+            return (package: package, option: option);
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<PurchaseAttemptResult> _runPurchase({
+    required String label,
+    required Future<PurchaseResult> Function() run,
+  }) async {
+    try {
+      debugPrint('🛒 Starting purchase for: $label');
+
+      final purchaseResult = await run();
 
       final isActive =
           purchaseResult.customerInfo.entitlements.active.isNotEmpty;
@@ -133,7 +190,6 @@ class RevenueCatService {
             'Purchase completed but no entitlement activated',
           );
     } on PurchasesErrorCode catch (errorCode) {
-      // Handle specific RevenueCat error codes
       if (errorCode == PurchasesErrorCode.purchaseCancelledError) {
         debugPrint('ℹ️ Purchase cancelled by user');
         return PurchaseAttemptResult.cancelled();
@@ -141,7 +197,6 @@ class RevenueCatService {
       debugPrint('❌ RevenueCat error code: $errorCode');
       return PurchaseAttemptResult.error('Purchase failed: $errorCode');
     } on PlatformException catch (e) {
-      // Handle platform-specific errors (includes user cancellation)
       if (e.code == 'PURCHASE_CANCELLED' ||
           e.message?.contains('cancelled') == true ||
           e.message?.contains('canceled') == true) {
@@ -153,7 +208,6 @@ class RevenueCatService {
         e.message ?? 'Platform error occurred',
       );
     } catch (e) {
-      // Check if error message indicates cancellation
       final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('cancel') || errorStr.contains('user')) {
         debugPrint('ℹ️ Purchase likely cancelled by user');
