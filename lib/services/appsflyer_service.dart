@@ -37,6 +37,10 @@ abstract class AFEvents {
   // Chessever-specific custom events (prefixed to stay out of AF namespace).
   static const affiliateAttributed = 'chessever_affiliate_attributed';
   static const paywallDismissed = 'chessever_paywall_dismissed';
+  // Offer-code / promo-code funnel — separate from `af_purchase` so partners
+  // can split organic conversions from code-driven ones in their dashboards.
+  static const redemptionInitiated = 'chessever_redemption_initiated';
+  static const redemptionCompleted = 'chessever_redemption_completed';
 }
 
 abstract class AFParams {
@@ -301,6 +305,68 @@ class AppsflyerService {
   /// Fire on search queries that qualify as intent signals.
   Future<void> logSearch(String query) async {
     await logEvent(AFEvents.search, {AFParams.searchString: query});
+  }
+
+  /// Fire when the user opens the code-redemption flow (taps "Have a code?").
+  /// On Android `code` is the value the user typed; on iOS it's null because
+  /// Apple's native sheet hides the input from us.
+  Future<void> logRedemptionInitiated({
+    required String source,
+    String? code,
+  }) async {
+    final affiliate = await getCachedAffiliateContext();
+    await logEvent(AFEvents.redemptionInitiated, {
+      'redemption_source': source,
+      if (code != null && code.isNotEmpty) 'redemption_code': code,
+      if (affiliate != null) ...affiliate,
+    });
+  }
+
+  /// Fire when an entitlement becomes active and we have a pending redemption
+  /// — i.e., the user just successfully redeemed a code. Sent in addition to
+  /// (not instead of) the existing `af_subscribe`/`af_purchase` events when
+  /// applicable, so partners that already key off those still get them.
+  Future<void> logRedemptionCompleted({
+    required String source,
+    String? code,
+    String? productId,
+  }) async {
+    final affiliate = await getCachedAffiliateContext();
+    await logEvent(AFEvents.redemptionCompleted, {
+      'redemption_source': source,
+      if (code != null && code.isNotEmpty) 'redemption_code': code,
+      if (productId != null) AFParams.contentId: productId,
+      if (affiliate != null) ...affiliate,
+    });
+  }
+
+  /// Read the affiliate attribution context cached on first install. Used to
+  /// stamp every funnel event with the same affiliate_code/campaign/network
+  /// so partners' dashboards show the full chain (install → redeem → revenue).
+  /// Returns null if there is no affiliate context (organic install).
+  Future<Map<String, String>?> getCachedAffiliateContext() async {
+    try {
+      final prefs = SharedPreferencesService.instance.prefsOrNull;
+      if (prefs == null) return null;
+
+      final cachedDataString = prefs.getString(_kCachedAffiliateDataKey);
+      if (cachedDataString == null || cachedDataString.isEmpty) return null;
+
+      final Map<String, dynamic> cached = jsonDecode(cachedDataString);
+      final affiliateCode =
+          cached['af_sub1']?.toString() ?? cached['deep_link_sub1']?.toString();
+      if (affiliateCode == null || affiliateCode.isEmpty) return null;
+
+      return {
+        'affiliate_code': affiliateCode,
+        if (cached['campaign'] != null) 'campaign': cached['campaign'].toString(),
+        if (cached['media_source'] != null)
+          'media_source': cached['media_source'].toString(),
+      };
+    } catch (e) {
+      debugPrint('AppsflyerService: getCachedAffiliateContext failed: $e');
+      return null;
+    }
   }
 
   // =========================================================================

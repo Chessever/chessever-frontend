@@ -202,4 +202,44 @@ class RevenueCatService {
   void setCustomerInfoListener(void Function(CustomerInfo) listener) {
     Purchases.addCustomerInfoUpdateListener(listener);
   }
+
+  /// iOS only. Opens Apple's native offer-code redemption sheet.
+  /// On Android this is a no-op — codes are redeemed on the Play Store.
+  Future<void> presentCodeRedemptionSheet() async {
+    try {
+      await Purchases.presentCodeRedemptionSheet();
+    } catch (e) {
+      debugPrint('❌ Code redemption sheet error: $e');
+    }
+  }
+
+  /// Tag the customer record with metadata describing the in-flight code
+  /// redemption. RC stores these as customer attributes — they appear in the
+  /// RC dashboard and ride along on the webhooks RC fires to integrations
+  /// (AppsFlyer, Stripe, Mixpanel), so partner reporting can attribute the
+  /// resulting subscription to the correct campaign.
+  ///
+  /// `affiliateContext` is the parsed cache from AppsFlyer (affiliate_code,
+  /// campaign, media_source) — passed in rather than read here so this layer
+  /// stays free of AppsFlyer dependencies.
+  Future<void> tagRedemptionAttempt({
+    required String source,
+    String? code,
+    Map<String, String>? affiliateContext,
+  }) async {
+    try {
+      final attrs = <String, String>{
+        'redemption_source': source,
+        'redemption_initiated_at': DateTime.now().toUtc().toIso8601String(),
+        if (code != null && code.isNotEmpty) 'redemption_code': code,
+        if (affiliateContext != null)
+          for (final entry in affiliateContext.entries)
+            'redemption_${entry.key}': entry.value,
+      };
+      await Purchases.setAttributes(attrs);
+      debugPrint('✅ RevenueCat redemption attributes set: $attrs');
+    } catch (e) {
+      debugPrint('❌ tagRedemptionAttempt error: $e');
+    }
+  }
 }

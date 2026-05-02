@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
@@ -10,6 +11,7 @@ import 'package:chessever2/utils/extensioms/string_extensions.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -102,6 +104,16 @@ class _PaywallContent extends HookConsumerWidget {
     final selectedPlan = useState<PlanType>(PlanType.annual);
     final isLoading = useState(false);
 
+    // Auto-close + celebrate when entitlement activates from any source —
+    // including offer-code redemption on iOS or returning from Play Store on Android.
+    ref.listen<SubscriptionState>(subscriptionProvider, (prev, next) {
+      final wasSubscribed = prev?.isSubscribed ?? false;
+      if (!wasSubscribed && next.isSubscribed && hostContext.mounted) {
+        Navigator.of(hostContext).pop(true);
+        unawaited(showPremiumCelebration(hostContext));
+      }
+    });
+
     // Find monthly and annual packages
     Package? monthlyPackage;
     Package? annualPackage;
@@ -149,6 +161,39 @@ class _PaywallContent extends HookConsumerWidget {
           Navigator.of(hostContext).pop(true);
         }
       }
+    }
+
+    Future<void> handleHaveCode() async {
+      if (Platform.isIOS) {
+        // Apple's native sheet — code is entered inside the OS UI, not ours,
+        // so we can't capture the actual code value on this platform. We
+        // still tag the funnel step and the cached affiliate context so the
+        // resulting entitlement transition can be attributed.
+        const source = 'ios_native_sheet';
+        final affiliate =
+            await AppsflyerService.instance.getCachedAffiliateContext();
+        ref
+            .read(subscriptionProvider.notifier)
+            .markRedemptionPending(source: source);
+        await RevenueCatService().tagRedemptionAttempt(
+          source: source,
+          affiliateContext: affiliate,
+        );
+        unawaited(
+          AppsflyerService.instance.logRedemptionInitiated(source: source),
+        );
+
+        await RevenueCatService().presentCodeRedemptionSheet();
+        return;
+      }
+
+      // Android: Play Store has no in-app sheet, so we collect the code in our
+      // own bottom sheet and deep-link to play.google.com/redeem?code=… which
+      // the Play Store app intercepts via App Links and opens with the code
+      // pre-filled — user just confirms. Attribution happens inside the sheet
+      // since that's where we have the actual code.
+      if (!context.mounted) return;
+      await _showAndroidCodeRedeemSheet(context, ref);
     }
 
     return Padding(
@@ -228,15 +273,37 @@ class _PaywallContent extends HookConsumerWidget {
             onTap: handlePurchase,
           ),
           SizedBox(height: 12.h),
-          // Restore purchases
-          GestureDetector(
-            onTap: isLoading.value ? null : handleRestore,
-            child: Text(
-              'Restore purchases',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withOpacity(0.5),
+          // Restore purchases + redeem code
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: isLoading.value ? null : handleRestore,
+                child: Text(
+                  'Restore purchases',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor.withOpacity(0.5),
+                  ),
+                ),
               ),
-            ),
+              SizedBox(width: 12.w),
+              Text(
+                '·',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withOpacity(0.3),
+                ),
+              ),
+              SizedBox(width: 12.w),
+              GestureDetector(
+                onTap: isLoading.value ? null : handleHaveCode,
+                child: Text(
+                  'Have a code?',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor.withOpacity(0.5),
+                  ),
+                ),
+              ),
+            ],
           ),
           SizedBox(height: 16.h),
           // Legal links
@@ -791,5 +858,265 @@ Future<void> _launchUrl(String url) async {
   final uri = Uri.parse(url);
   if (await canLaunchUrl(uri)) {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+/// Android-only redemption flow. Plays Store has no in-app native sheet, so we
+/// take the code in our own UI and hand off to Play with `?code=` pre-filled.
+Future<void> _showAndroidCodeRedeemSheet(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    constraints: ResponsiveHelper.bottomSheetConstraints,
+    builder: (_) => _AndroidCodeRedeemSheet(parentRef: ref),
+  );
+}
+
+class _AndroidCodeRedeemSheet extends HookConsumerWidget {
+  const _AndroidCodeRedeemSheet({required this.parentRef});
+
+  final WidgetRef parentRef;
+
+  @override
+  Widget build(BuildContext context, WidgetRef _) {
+    final controller = useTextEditingController();
+    final code = useState('');
+    final isSubmitting = useState(false);
+
+    Future<void> submit() async {
+      final trimmed = code.value.trim().toUpperCase();
+      if (trimmed.isEmpty || isSubmitting.value) return;
+      isSubmitting.value = true;
+
+      try {
+        // Stamp attribution before handing off to Play Store so the metadata
+        // is in place when the customer-info listener fires on app resume.
+        const source = 'android_play_deep_link';
+        final affiliate =
+            await AppsflyerService.instance.getCachedAffiliateContext();
+        parentRef
+            .read(subscriptionProvider.notifier)
+            .markRedemptionPending(source: source, code: trimmed);
+        await RevenueCatService().tagRedemptionAttempt(
+          source: source,
+          code: trimmed,
+          affiliateContext: affiliate,
+        );
+        unawaited(
+          AppsflyerService.instance.logRedemptionInitiated(
+            source: source,
+            code: trimmed,
+          ),
+        );
+
+        // Play Store intercepts this URL via App Links and opens the redeem
+        // screen with the code pre-filled. Falls back to a browser tab only if
+        // Play Store isn't installed.
+        final uri = Uri.parse(
+          'https://play.google.com/redeem?code=${Uri.encodeQueryComponent(trimmed)}',
+        );
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          if (context.mounted) Navigator.of(context).pop();
+        } else if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not open the Play Store. Try again later.'),
+            ),
+          );
+        }
+      } finally {
+        isSubmitting.value = false;
+      }
+    }
+
+    return Padding(
+      // Lift the sheet above the keyboard so the CTA stays tappable.
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: kBlack2Color.withOpacity(0.98),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
+        ),
+        padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 36.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: kWhiteColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(2.br),
+                ),
+              ),
+            ),
+            SizedBox(height: 20.h),
+            Text(
+              'Redeem a code',
+              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              "Enter your code below. We'll open the Play Store with it pre-filled — just tap Redeem to confirm.",
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withOpacity(0.6),
+              ),
+            ),
+            SizedBox(height: 16.h),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              textInputAction: TextInputAction.go,
+              onChanged: (val) => code.value = val,
+              onSubmitted: (_) => submit(),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                LengthLimitingTextInputFormatter(40),
+              ],
+              style: AppTypography.textMdMedium.copyWith(
+                color: kWhiteColor,
+                letterSpacing: 1.2,
+              ),
+              decoration: InputDecoration(
+                hintText: 'XXXXXXXXXX',
+                hintStyle: AppTypography.textMdMedium.copyWith(
+                  color: kWhiteColor.withOpacity(0.25),
+                  letterSpacing: 1.2,
+                ),
+                filled: true,
+                fillColor: kBlack2Color,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: BorderSide(
+                    color: kWhiteColor.withOpacity(0.08),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: BorderSide(
+                    color: kWhiteColor.withOpacity(0.08),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: const BorderSide(color: kPrimaryColor),
+                ),
+              ),
+            ),
+            SizedBox(height: 16.h),
+            _RedeemButton(
+              isEnabled: code.value.trim().isNotEmpty,
+              isLoading: isSubmitting.value,
+              onTap: submit,
+            ),
+            SizedBox(height: 8.h),
+            TextButton(
+              onPressed:
+                  isSubmitting.value
+                      ? null
+                      : () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor.withOpacity(0.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RedeemButton extends HookWidget {
+  const _RedeemButton({
+    required this.isEnabled,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  final bool isEnabled;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPressed = useState(false);
+    final tappable = isEnabled && !isLoading;
+
+    return GestureDetector(
+      onTapDown: tappable ? (_) => isPressed.value = true : null,
+      onTapUp:
+          tappable
+              ? (_) {
+                isPressed.value = false;
+                onTap();
+              }
+              : null,
+      onTapCancel: tappable ? () => isPressed.value = false : null,
+      child: AnimatedScale(
+        scale: isPressed.value ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: AnimatedOpacity(
+          opacity: tappable ? 1.0 : 0.5,
+          duration: const Duration(milliseconds: 150),
+          child: Container(
+            width: double.infinity,
+            height: 54.h,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16.br),
+              gradient: const LinearGradient(
+                colors: [kPrimaryColor, kDarkBlue],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow:
+                  tappable
+                      ? [
+                        BoxShadow(
+                          color: kPrimaryColor.withValues(alpha: 0.4),
+                          blurRadius: 25,
+                          offset: const Offset(0, 8),
+                        ),
+                      ]
+                      : const [],
+            ),
+            child: Center(
+              child:
+                  isLoading
+                      ? SizedBox(
+                        width: 24.w,
+                        height: 24.h,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            kBlackColor,
+                          ),
+                        ),
+                      )
+                      : Text(
+                        'Open Play Store to redeem',
+                        style: AppTypography.textLgBold.copyWith(
+                          color: kBlackColor,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
