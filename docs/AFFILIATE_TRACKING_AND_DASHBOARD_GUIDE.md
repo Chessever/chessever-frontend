@@ -8,8 +8,8 @@ Because ChessEver is open-source, the client app cannot be trusted with financia
 
 ### The Flow:
 1. **The Click**: A user clicks an affiliate's AppsFlyer OneLink (e.g., `chessever.onelink.me/abc?af_sub1=gothamchess`).
-2. **The Install (Flutter)**: The user installs the app. The `AppsflyerSdk` fires the `onInstallConversionData` callback. The app caches the payload (`af_sub1: gothamchess`) locally using `SharedPreferences`.
-3. **The Signup (Flutter)**: Once the user logs in or signs up, the app triggers `setCustomerUserId` in AppsFlyer and writes the cached attribution data to the Supabase `affiliate_referrals` table.
+2. **The Install (Flutter)**: The user installs the app. The `AppsflyerSdk` fires the `onInstallConversionData` callback. The app caches install metadata locally and only treats the payload as affiliate-eligible when `af_status = Non-organic` and an affiliate code is present (`af_sub1` / `deep_link_sub1`).
+3. **The Signup (Flutter)**: Once the user logs in or signs up, the app triggers `setCustomerUserId` in AppsFlyer and writes the cached non-organic attribution data to the Supabase `affiliate_referrals` table, including `install_at`.
 4. **The Link to RevenueCat (Flutter)**: The app retrieves the `AppsFlyer UID` and sends it to RevenueCat via `Purchases.setAppsflyerID()`.
 5. **The Purchase (RevenueCat -> Webhook)**: When the user buys a subscription, RevenueCat fires a webhook to our Supabase Edge Function (`revenuecat-webhook`).
 6. **The Commission (Supabase)**: The Edge Function calculates the commission based on the partner's rate in the `affiliates` table and inserts a record into `affiliate_conversions`.
@@ -49,6 +49,7 @@ The `revenuecat-webhook` Edge Function handles the following:
 2. **Idempotency**: Prevents duplicate payouts using `rc_event_id` unique constraint.
 3. **Refunds**: Automatically marks conversions as `refunded` when a cancellation occurs.
 4. **Sandbox Support**: Identifies test events from RevenueCat and marks them with `is_sandbox: true`.
+5. **Attribution Window**: Only records new affiliate trials/purchases when the RevenueCat `purchased_at_ms` is within 14 days of the AppsFlyer install time. Later renewals are only credited if an earlier paid affiliate conversion already exists.
 
 ---
 
@@ -78,6 +79,7 @@ The architecture is bulletproof against client-side spoofing:
 1. You **never** pay based on the `affiliate_referrals` table (which is client-side).
 2. You **only** pay based on the `affiliate_conversions` table (which is server-side).
 3. Financial records are only created when RevenueCat confirms a cryptographically verified Apple/Google transaction.
+4. Affiliate financial records are only created for non-organic AppsFlyer attribution and only inside the 14-day install-to-conversion window; renewals require an existing paid affiliate conversion.
 
 ---
 

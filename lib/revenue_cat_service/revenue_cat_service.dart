@@ -283,9 +283,10 @@ class RevenueCatService {
   /// (AppsFlyer, Stripe, Mixpanel), so partner reporting can attribute the
   /// resulting subscription to the correct campaign.
   ///
-  /// `affiliateContext` is the parsed cache from AppsFlyer (affiliate_code,
-  /// campaign, media_source) — passed in rather than read here so this layer
-  /// stays free of AppsFlyer dependencies.
+  /// `affiliateContext` is the parsed AppsFlyer install context
+  /// (install_at/af_status plus affiliate_code/campaign/media_source when the
+  /// install is non-organic). It is passed in rather than read here so this
+  /// layer stays free of AppsFlyer dependencies.
   Future<void> tagRedemptionAttempt({
     required String source,
     String? code,

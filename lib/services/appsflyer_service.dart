@@ -55,6 +55,58 @@ abstract class AFParams {
   static const quantity = 'af_quantity';
 }
 
+@visibleForTesting
+String? appsFlyerAffiliateCode(Map payload) {
+  for (final key in const ['af_sub1', 'deep_link_sub1']) {
+    final value = payload[key]?.toString().trim();
+    if (value != null && value.isNotEmpty && value != 'null') {
+      return value;
+    }
+  }
+  return null;
+}
+
+@visibleForTesting
+bool appsFlyerIsNonOrganic(Map payload) {
+  final status = payload['af_status']?.toString().trim().toLowerCase();
+  return status == 'non-organic' || status == 'nonorganic';
+}
+
+@visibleForTesting
+DateTime? parseAppsFlyerInstallTime(Object? value) {
+  if (value == null) return null;
+  final raw = value.toString().trim();
+  if (raw.isEmpty || raw == 'null') return null;
+
+  final numeric = int.tryParse(raw);
+  if (numeric != null) {
+    final millis = raw.length <= 10 ? numeric * 1000 : numeric;
+    return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+  }
+
+  final normalized = raw.contains('T') ? raw : raw.replaceFirst(' ', 'T');
+  final parsed = DateTime.tryParse(normalized);
+  if (parsed == null) return null;
+  if (parsed.isUtc) return parsed.toUtc();
+  return DateTime.utc(
+    parsed.year,
+    parsed.month,
+    parsed.day,
+    parsed.hour,
+    parsed.minute,
+    parsed.second,
+    parsed.millisecond,
+    parsed.microsecond,
+  );
+}
+
+String? _nonEmptyString(Object? value) {
+  if (value == null) return null;
+  final str = value.toString().trim();
+  if (str.isEmpty || str == 'null') return null;
+  return str;
+}
+
 /// Service to handle AppsFlyer SDK integration for attribution, deep linking
 /// and in-app conversion events.
 class AppsflyerService {
@@ -71,7 +123,10 @@ class AppsflyerService {
   // the identifier.
   String? _pendingCustomerUserId;
 
-  static const String _kCachedAffiliateDataKey = 'appsflyer_cached_affiliate_data';
+  static const String _kCachedAffiliateDataKey =
+      'appsflyer_cached_affiliate_data';
+  static const String _kCachedInstallMetadataKey =
+      'appsflyer_cached_install_metadata';
   static const List<String> _oneLinkCustomDomains = ['get.chessever.com'];
 
   // Fallback before auto-firing startSDK if no explicit trigger arrives.
@@ -80,26 +135,36 @@ class AppsflyerService {
   static const Duration _autoStartFallback = Duration(seconds: 120);
 
   static String _resolveDevKey() {
-    const releaseKey = String.fromEnvironment('APPSFLYER_DEV_KEY', defaultValue: '');
+    const releaseKey = String.fromEnvironment(
+      'APPSFLYER_DEV_KEY',
+      defaultValue: '',
+    );
     if (kDebugMode) {
       final envKey = dotenv.env['APPSFLYER_DEV_KEY']?.trim();
       if (envKey != null && envKey.isNotEmpty) return envKey;
     }
     if (releaseKey.isNotEmpty) return releaseKey;
 
-    debugPrint('⚠️ APPSFLYER_DEV_KEY is missing. Add it to .env and --dart-define for CI.');
+    debugPrint(
+      '⚠️ APPSFLYER_DEV_KEY is missing. Add it to .env and --dart-define for CI.',
+    );
     return '';
   }
 
   /// Initialize the AppsFlyer SDK.
   ///
   /// Call from a post-frame callback so the ATT dialog can reliably appear.
-  Future<void> initialize(GlobalKey<NavigatorState> navigatorKey, WidgetRef ref) async {
+  Future<void> initialize(
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
     if (_isInitialized) return;
 
     final String devKey = _resolveDevKey();
     if (devKey.isEmpty) {
-      debugPrint('AppsflyerService: Skipping init — APPSFLYER_DEV_KEY missing.');
+      debugPrint(
+        'AppsflyerService: Skipping init — APPSFLYER_DEV_KEY missing.',
+      );
       return;
     }
 
@@ -221,7 +286,9 @@ class AppsflyerService {
         await _forwardUidToRevenueCat();
       },
       onError: (int errorCode, String errorMessage) {
-        debugPrint('AppsflyerService: startSDK error: $errorCode - $errorMessage');
+        debugPrint(
+          'AppsflyerService: startSDK error: $errorCode - $errorMessage',
+        );
       },
     );
   }
@@ -241,11 +308,14 @@ class AppsflyerService {
       // Apple ignores the request if it fires inside a build/layout pass.
       // Wait for the next frame plus a brief scene-active settle delay.
       final completer = Completer<void>();
-      SchedulerBinding.instance.addPostFrameCallback((_) => completer.complete());
+      SchedulerBinding.instance.addPostFrameCallback(
+        (_) => completer.complete(),
+      );
       await completer.future;
       await Future<void>.delayed(const Duration(milliseconds: 400));
 
-      final status = await AppTrackingTransparency.requestTrackingAuthorization();
+      final status =
+          await AppTrackingTransparency.requestTrackingAuthorization();
       debugPrint('AppsflyerService: ATT status: $status');
       return status;
     } on PlatformException catch (e) {
@@ -264,9 +334,33 @@ class AppsflyerService {
       final uid = await _appsflyerSdk?.getAppsFlyerUID();
       if (uid == null || uid.isEmpty) return;
       await Purchases.setAppsflyerID(uid);
+      await _forwardCachedInstallMetadataToRevenueCat();
       debugPrint('AppsflyerService: AppsFlyer UID ($uid) sent to RevenueCat');
     } catch (e) {
       debugPrint('AppsflyerService: Failed to forward UID to RevenueCat: $e');
+    }
+  }
+
+  Future<void> _forwardCachedInstallMetadataToRevenueCat() async {
+    try {
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      final raw = prefs?.getString(_kCachedInstallMetadataKey);
+      if (raw == null || raw.isEmpty) return;
+
+      final metadata = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      final attrs = <String, String>{
+        for (final entry in metadata.entries)
+          if (_nonEmptyString(entry.value) != null)
+            'appsflyer_${entry.key}': _nonEmptyString(entry.value)!,
+      };
+      if (attrs.isEmpty) return;
+
+      await Purchases.setAttributes(attrs);
+      debugPrint('AppsflyerService: install metadata sent to RevenueCat');
+    } catch (e) {
+      debugPrint(
+        'AppsflyerService: Failed to forward install metadata to RevenueCat: $e',
+      );
     }
   }
 
@@ -320,7 +414,10 @@ class AppsflyerService {
   }
 
   /// Fire a generic AppsFlyer event. Prefer the typed helpers below.
-  Future<bool?> logEvent(String eventName, [Map<String, dynamic>? eventValues]) async {
+  Future<bool?> logEvent(
+    String eventName, [
+    Map<String, dynamic>? eventValues,
+  ]) async {
     if (!_isInitialized || _appsflyerSdk == null) return false;
     try {
       return await _appsflyerSdk?.logEvent(eventName, eventValues ?? const {});
@@ -411,7 +508,7 @@ class AppsflyerService {
     required String source,
     String? code,
   }) async {
-    final affiliate = await getCachedAffiliateContext();
+    final affiliate = await getCachedAttributionContext();
     await logEvent(AFEvents.redemptionInitiated, {
       'redemption_source': source,
       if (code != null && code.isNotEmpty) 'redemption_code': code,
@@ -428,7 +525,7 @@ class AppsflyerService {
     String? code,
     String? productId,
   }) async {
-    final affiliate = await getCachedAffiliateContext();
+    final affiliate = await getCachedAttributionContext();
     await logEvent(AFEvents.redemptionCompleted, {
       'redemption_source': source,
       if (code != null && code.isNotEmpty) 'redemption_code': code,
@@ -437,33 +534,57 @@ class AppsflyerService {
     });
   }
 
-  /// Read the affiliate attribution context cached on first install. Used to
-  /// stamp every funnel event with the same affiliate_code/campaign/network
-  /// so partners' dashboards show the full chain (install → redeem → revenue).
-  /// Returns null if there is no affiliate context (organic install).
-  Future<Map<String, String>?> getCachedAffiliateContext() async {
+  /// Read attribution metadata cached on first install. Non-organic installs
+  /// include affiliate_code/campaign/network; every install can carry
+  /// install_at so the backend can enforce the 14-day payout window.
+  Future<Map<String, String>?> getCachedAttributionContext() async {
     try {
       final prefs = await SharedPreferencesService.instance.ensureInitialized();
       if (prefs == null) return null;
 
+      final context = <String, String>{};
+
+      final cachedInstallString = prefs.getString(_kCachedInstallMetadataKey);
+      if (cachedInstallString != null && cachedInstallString.isNotEmpty) {
+        final cachedInstall = Map<String, dynamic>.from(
+          jsonDecode(cachedInstallString) as Map,
+        );
+        for (final key in const [
+          'affiliate_code',
+          'campaign',
+          'media_source',
+          'install_at',
+          'af_status',
+        ]) {
+          final value = _nonEmptyString(cachedInstall[key]);
+          if (value != null) context[key] = value;
+        }
+      }
+
       final cachedDataString = prefs.getString(_kCachedAffiliateDataKey);
-      if (cachedDataString == null || cachedDataString.isEmpty) return null;
+      if (cachedDataString != null && cachedDataString.isNotEmpty) {
+        final Map<String, dynamic> cached = jsonDecode(cachedDataString);
+        final affiliateCode = appsFlyerAffiliateCode(cached);
+        if (affiliateCode != null && appsFlyerIsNonOrganic(cached)) {
+          context['affiliate_code'] = affiliateCode;
+          final campaign = _nonEmptyString(cached['campaign']);
+          final mediaSource = _nonEmptyString(cached['media_source']);
+          if (campaign != null) context['campaign'] = campaign;
+          if (mediaSource != null) context['media_source'] = mediaSource;
+        }
+      }
 
-      final Map<String, dynamic> cached = jsonDecode(cachedDataString);
-      final affiliateCode =
-          cached['af_sub1']?.toString() ?? cached['deep_link_sub1']?.toString();
-      if (affiliateCode == null || affiliateCode.isEmpty) return null;
-
-      return {
-        'affiliate_code': affiliateCode,
-        if (cached['campaign'] != null) 'campaign': cached['campaign'].toString(),
-        if (cached['media_source'] != null)
-          'media_source': cached['media_source'].toString(),
-      };
+      return context.isEmpty ? null : context;
     } catch (e) {
-      debugPrint('AppsflyerService: getCachedAffiliateContext failed: $e');
+      debugPrint('AppsflyerService: getCachedAttributionContext failed: $e');
       return null;
     }
+  }
+
+  Future<Map<String, String>?> getCachedAffiliateContext() async {
+    final context = await getCachedAttributionContext();
+    if (context == null || !context.containsKey('affiliate_code')) return null;
+    return context;
   }
 
   // =========================================================================
@@ -483,19 +604,25 @@ class AppsflyerService {
 
       // af_sub1 is the recommended slot for the affiliate code in OneLink.
       // Fall back to deep_link_sub1 for older OneLink templates.
-      final String? affiliateCode =
-          cachedData['af_sub1']?.toString() ?? cachedData['deep_link_sub1']?.toString();
-      final String? campaignName = cachedData['campaign']?.toString();
-      final String? network = cachedData['media_source']?.toString();
+      final String? affiliateCode = appsFlyerAffiliateCode(cachedData);
+      final String? campaignName = _nonEmptyString(cachedData['campaign']);
+      final String? network = _nonEmptyString(cachedData['media_source']);
 
-      if (affiliateCode == null || affiliateCode.isEmpty) {
+      if (!appsFlyerIsNonOrganic(cachedData) ||
+          affiliateCode == null ||
+          affiliateCode.isEmpty) {
         await prefs.remove(_kCachedAffiliateDataKey);
         return;
       }
 
-      final platform = Platform.isIOS
-          ? 'ios'
-          : Platform.isAndroid
+      final installAt =
+          parseAppsFlyerInstallTime(cachedData['install_time']) ??
+          DateTime.now().toUtc();
+
+      final platform =
+          Platform.isIOS
+              ? 'ios'
+              : Platform.isAndroid
               ? 'android'
               : 'unknown';
 
@@ -506,33 +633,71 @@ class AppsflyerService {
         'network': network,
         'appsflyer_data': cachedData,
         'platform': platform,
+        'install_at': installAt.toIso8601String(),
         // Partner / admin dashboards filter `is_sandbox = false`. NULL would
         // be filtered out and the row would be invisible. Debug builds are
         // tagged sandbox so my-own-testing rows don't pollute the production
         // payout view; the admin dashboard's sandbox toggle still surfaces them.
         'is_sandbox': kDebugMode,
       });
-      debugPrint('AppsflyerService: Affiliate synced for $userId / $affiliateCode');
+      debugPrint(
+        'AppsflyerService: Affiliate synced for $userId / $affiliateCode',
+      );
 
       // Fire a custom AppsFlyer event so the partner's dashboard reflects the
       // attributed signup in addition to the install.
-      unawaited(logEvent(AFEvents.affiliateAttributed, {
-        'affiliate_code': affiliateCode,
-        if (campaignName != null) 'campaign': campaignName,
-        if (network != null) 'media_source': network,
-      }));
+      unawaited(
+        logEvent(AFEvents.affiliateAttributed, {
+          'affiliate_code': affiliateCode,
+          if (campaignName != null) 'campaign': campaignName,
+          if (network != null) 'media_source': network,
+        }),
+      );
 
       await prefs.remove(_kCachedAffiliateDataKey);
     } catch (e) {
       if (e is PostgrestException && e.code == '23505') {
         // UNIQUE(referred_user_id) — already attributed; safe to drop cache.
         debugPrint('AppsflyerService: Referral already exists for user.');
-        final prefs = await SharedPreferencesService.instance.ensureInitialized();
+        final prefs =
+            await SharedPreferencesService.instance.ensureInitialized();
         await prefs?.remove(_kCachedAffiliateDataKey);
       } else {
         debugPrint('AppsflyerService: Failed to sync affiliate data: $e');
       }
     }
+  }
+
+  Map<String, String> _installMetadataFromPayload(Map payload) {
+    final installAt =
+        parseAppsFlyerInstallTime(payload['install_time']) ??
+        DateTime.now().toUtc();
+    final metadata = <String, String>{
+      'install_at': installAt.toIso8601String(),
+    };
+
+    final status = _nonEmptyString(payload['af_status']);
+    if (status != null) metadata['af_status'] = status;
+
+    if (appsFlyerIsNonOrganic(payload)) {
+      final affiliateCode = appsFlyerAffiliateCode(payload);
+      final campaign = _nonEmptyString(payload['campaign']);
+      final mediaSource = _nonEmptyString(payload['media_source']);
+
+      if (affiliateCode != null) metadata['affiliate_code'] = affiliateCode;
+      if (campaign != null) metadata['campaign'] = campaign;
+      if (mediaSource != null) metadata['media_source'] = mediaSource;
+    }
+
+    return metadata;
+  }
+
+  Future<void> _cacheInstallMetadata(
+    SharedPreferences prefs,
+    Map payload,
+  ) async {
+    final metadata = _installMetadataFromPayload(payload);
+    await prefs.setString(_kCachedInstallMetadataKey, jsonEncode(metadata));
   }
 
   void _handleConversionData(
@@ -548,19 +713,32 @@ class AppsflyerService {
     // not on the outer envelope.
     final Map payload = data['payload'] is Map ? data['payload'] as Map : data;
 
-    final bool isFirstLaunch = payload['is_first_launch'] == true ||
+    final bool isFirstLaunch =
+        payload['is_first_launch'] == true ||
         payload['is_first_launch'] == 'true';
     if (isFirstLaunch) {
       debugPrint('AppsflyerService: First launch attribution: $payload');
       try {
-        final prefs = await SharedPreferencesService.instance.ensureInitialized();
+        final prefs =
+            await SharedPreferencesService.instance.ensureInitialized();
         if (prefs != null) {
-          final encodableData = Map<String, dynamic>.from(payload);
-          await prefs.setString(_kCachedAffiliateDataKey, jsonEncode(encodableData));
+          await _cacheInstallMetadata(prefs, payload);
+          unawaited(_forwardCachedInstallMetadataToRevenueCat());
 
-          final user = Supabase.instance.client.auth.currentUser;
-          if (user != null) {
-            unawaited(_syncAffiliateDataToSupabase(user.id));
+          if (appsFlyerIsNonOrganic(payload) &&
+              appsFlyerAffiliateCode(payload) != null) {
+            final encodableData = Map<String, dynamic>.from(payload);
+            await prefs.setString(
+              _kCachedAffiliateDataKey,
+              jsonEncode(encodableData),
+            );
+
+            final user = Supabase.instance.client.auth.currentUser;
+            if (user != null) {
+              unawaited(_syncAffiliateDataToSupabase(user.id));
+            }
+          } else {
+            await prefs.remove(_kCachedAffiliateDataKey);
           }
         }
       } catch (e) {
@@ -570,7 +748,9 @@ class AppsflyerService {
       // Forward attribution context to RevenueCat so the customer profile
       // there carries media_source / campaign / etc. RC then surfaces this
       // in its dashboard and forwards through the AppsFlyer integration.
-      unawaited(_forwardAttributionToRevenueCat(payload));
+      if (appsFlyerIsNonOrganic(payload)) {
+        unawaited(_forwardAttributionToRevenueCat(payload));
+      }
     }
 
     if (payload.containsKey('link')) {
