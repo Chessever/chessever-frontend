@@ -45,6 +45,16 @@ class RevenueCatService {
       debugPrint(
         '✅ RevenueCat user logged in: ${result.customerInfo.originalAppUserId}',
       );
+
+      // Capture device identifiers for the RC <> AppsFlyer integration. On
+      // iOS this is IDFA (only populated if ATT was granted) + IDFV + IP; on
+      // Android this is GAID + Android ID + IP. Idempotent — safe to call on
+      // every login.
+      try {
+        await Purchases.collectDeviceIdentifiers();
+      } catch (e) {
+        debugPrint('RevenueCatService: collectDeviceIdentifiers failed: $e');
+      }
     } catch (e) {
       debugPrint('❌ RevenueCat login error: $e');
     }
