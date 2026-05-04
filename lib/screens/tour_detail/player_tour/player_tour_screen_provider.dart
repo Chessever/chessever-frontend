@@ -257,9 +257,19 @@ class PlayerTourScreenNotifier
       allPlayers.addAll(tourModel.tour.players);
     }
 
+    // Trust the server-side standings order only when scope is a single tour
+    // that the data hub has flagged as canonically sorted (currently from
+    // chess-results.com). Multi-tour pagination categories (e.g. "Boards 1-66"
+    // + "Boards 67-126") interleave players from independent standings, so the
+    // concatenation is not meaningful — fall back to client-side sort there.
+    final useExternalOrder =
+        relatedTours.length == 1 &&
+        relatedTours.first.tour.usesExternalStandings;
+
     final builtStandings = await _buildStandingsFromData(
       tournamentPlayers: allPlayers,
       gamesTourModels: allGames,
+      useExternalOrder: useExternalOrder,
     );
 
     if (builtStandings.isEmpty) {
@@ -383,6 +393,7 @@ class PlayerTourScreenNotifier
   Future<List<PlayerStandingModel>> _buildStandingsFromData({
     required List<TournamentPlayer> tournamentPlayers,
     required List<GamesTourModel> gamesTourModels,
+    bool useExternalOrder = false,
   }) async {
     var players = List<TournamentPlayer>.from(tournamentPlayers);
 
@@ -604,18 +615,25 @@ class PlayerTourScreenNotifier
       buchholzByKey[key] = buchholz;
     }
 
-    // Sort by absolute score, then Buchholz Cut-1, then current rating.
-    enrichedPlayers.sort((a, b) {
-      final aScore = a.score ?? 0.0;
-      final bScore = b.score ?? 0.0;
-      if (bScore != aScore) return bScore.compareTo(aScore);
+    // Sort by absolute score, then Buchholz Cut-1, then current rating —
+    // unless the caller has signalled that the server already supplied a
+    // canonical order (e.g. chess-results.com tiebreaks). In that case we
+    // preserve the input order so the displayed ranking matches the official
+    // tournament standings, while keeping all the per-player enrichment
+    // (score, Buchholz for display, rating diff, etc.).
+    if (!useExternalOrder) {
+      enrichedPlayers.sort((a, b) {
+        final aScore = a.score ?? 0.0;
+        final bScore = b.score ?? 0.0;
+        if (bScore != aScore) return bScore.compareTo(aScore);
 
-      final aBuch = buchholzByKey[_canonicalName(a.name)] ?? 0.0;
-      final bBuch = buchholzByKey[_canonicalName(b.name)] ?? 0.0;
-      if (bBuch != aBuch) return bBuch.compareTo(aBuch);
+        final aBuch = buchholzByKey[_canonicalName(a.name)] ?? 0.0;
+        final bBuch = buchholzByKey[_canonicalName(b.name)] ?? 0.0;
+        if (bBuch != aBuch) return bBuch.compareTo(aBuch);
 
-      return (b.rating ?? 0).compareTo(a.rating ?? 0);
-    });
+        return (b.rating ?? 0).compareTo(a.rating ?? 0);
+      });
+    }
 
     return enrichedPlayers
         .map((player) => PlayerStandingModel.fromPlayer(player))

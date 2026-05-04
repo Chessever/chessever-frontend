@@ -301,6 +301,11 @@ class _TourInfo {
   final String? location; // Tournament location
   final String? timeZone; // Time zone
   final String? standings; // Standings URL
+  // Set by the data hub when it reorders [Tour.players] from an external
+  // source (currently 'chess-results'). Absent => Lichess-feed order, and
+  // consumers should compute their own standings.
+  final String? standingsSource;
+  final DateTime? standingsUpdatedAt;
 
   const _TourInfo({
     this.tc,
@@ -311,6 +316,8 @@ class _TourInfo {
     this.location,
     this.timeZone,
     this.standings,
+    this.standingsSource,
+    this.standingsUpdatedAt,
   });
 
   factory _TourInfo.fromJson(Map<String, dynamic> json) {
@@ -323,7 +330,14 @@ class _TourInfo {
       location: json['location'] as String?,
       timeZone: json['timeZone'] as String?,
       standings: json['standings'] as String?,
+      standingsSource: json['standingsSource'] as String?,
+      standingsUpdatedAt: _parseTimestamp(json['standingsUpdatedAt']),
     );
+  }
+
+  static DateTime? _parseTimestamp(dynamic v) {
+    if (v is String && v.isNotEmpty) return DateTime.tryParse(v);
+    return null;
   }
 
   Map<String, dynamic> toJson() {
@@ -336,6 +350,9 @@ class _TourInfo {
       if (location != null) 'location': location,
       if (timeZone != null) 'timeZone': timeZone,
       if (standings != null) 'standings': standings,
+      if (standingsSource != null) 'standingsSource': standingsSource,
+      if (standingsUpdatedAt != null)
+        'standingsUpdatedAt': standingsUpdatedAt!.toIso8601String(),
     };
   }
 
@@ -430,6 +447,22 @@ class Tour {
       'avg_elo': avgElo,
     };
   }
+
+  /// True when the data hub has populated [players] in canonical ranking
+  /// order from an external source (currently chess-results.com). Standings
+  /// consumers should skip their own re-sort and trust the array order.
+  /// False for past tours that pre-date the data hub PR, future tours, and
+  /// tours mid-round-1 where no game has finished + 20 min yet.
+  bool get usesExternalStandings =>
+      info.standingsSource == 'chess-results' &&
+      info.standingsUpdatedAt != null;
+
+  /// Human-readable name of the standings source, or null when standings are
+  /// computed client-side.
+  String? get standingsSourceLabel =>
+      usesExternalStandings && info.standingsSource == 'chess-results'
+          ? 'chess-results.com'
+          : null;
 
   // Format time until start
   static String timeUntilStart(List<DateTime> dates) {
