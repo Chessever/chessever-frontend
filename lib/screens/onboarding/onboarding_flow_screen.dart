@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
@@ -157,7 +160,15 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       subtitle: 'Pick up to 3 now — add more after signing in.',
                       actionLabel: 'Continue',
                       badgeLabel: null,
-                      onComplete: () => goToPage(3),
+                      onComplete: () async {
+                        // iOS only: ask for ATT consent here so the install
+                        // can be attributed to the creator/campaign that
+                        // referred the user. Pre-prompt explains "why" first;
+                        // the system dialog only fires if the user agrees.
+                        // No-op on Android, on test runs, or if already decided.
+                        await _maybeShowAttPrePrompt(context);
+                        if (context.mounted) await goToPage(3);
+                      },
                     ),
                   ),
                   // 4th page: Different content based on auth status
@@ -1611,6 +1622,136 @@ class _PrimaryButton extends HookWidget {
                     ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ATT PRE-PROMPT — explains why we ask, then triggers Apple's system dialog.
+// ════════════════════════════════════════════════════════════════════════════
+
+Future<void> _maybeShowAttPrePrompt(BuildContext context) async {
+  // Every path through this function MUST end with startSdkIfNotYetStarted()
+  // so the install event fires with the correct ATT/IDFA state. Without
+  // this, users who skip the prompt (Android, E2E, already-decided, "Not
+  // now") would only get startSDK from the 120s fallback timer.
+  try {
+    if (!Platform.isIOS) return;
+    if (E2eConfig.suppressInterruptivePrompts) return;
+
+    final current =
+        await AppTrackingTransparency.trackingAuthorizationStatus;
+    if (current != TrackingStatus.notDetermined) return;
+
+    if (!context.mounted) return;
+
+    final shouldAsk = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (_) => const _AttPrePromptSheet(),
+    );
+
+    if (shouldAsk == true && context.mounted) {
+      await AppsflyerService.instance.requestAtt();
+    }
+  } finally {
+    AppsflyerService.instance.startSdkIfNotYetStarted();
+  }
+}
+
+class _AttPrePromptSheet extends StatelessWidget {
+  const _AttPrePromptSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0F1115),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomInset),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: kWhiteColor.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: kPrimaryColor.withOpacity(0.16),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.insights_rounded,
+              color: kPrimaryColor,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Help us know what\'s working',
+            style: AppTypography.textLgMedium.copyWith(
+              color: kWhiteColor,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'On the next screen, iOS will ask if ChessEver can track activity '
+            'across other apps. We use it for one thing: to credit the creator '
+            'or marketing campaign that brought you here, so we know what\'s '
+            'working. We don\'t sell your data and don\'t use it for anything '
+            'else.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withOpacity(0.78),
+              height: 1.5,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPrimaryColor,
+                foregroundColor: kBlackColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: AppTypography.textMdMedium.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: const Text('Continue'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            style: TextButton.styleFrom(
+              foregroundColor: kWhiteColor.withOpacity(0.55),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            child: const Text('Not now'),
+          ),
+        ],
       ),
     );
   }
