@@ -3135,16 +3135,55 @@ class ChessBoardScreenNotifierNew
     selectVariant(targetIndex);
   }
 
+  bool _canLockedPvPreviewMoveForward(ChessBoardStateNew state) {
+    if (!state.isPvPreviewActive) {
+      return false;
+    }
+    final pvLine = state.lockedPvLine;
+    if (pvLine == null) {
+      return false;
+    }
+    final currentIndex = state.lockedPvNavigationIndex ?? -1;
+    final maxIndex = pvLine.moves.length - 1;
+    return maxIndex >= 0 && currentIndex < maxIndex;
+  }
+
+  bool _canLockedPvPreviewMoveBackward(ChessBoardStateNew state) {
+    if (!state.isPvPreviewActive) {
+      return false;
+    }
+    final pvLine = state.lockedPvLine;
+    if (pvLine == null) {
+      return false;
+    }
+    final currentIndex = state.lockedPvNavigationIndex ?? -1;
+    final maxIndex = pvLine.moves.length - 1;
+    return maxIndex >= 0 && (currentIndex > 0 || currentIndex == -1);
+  }
+
+  bool _canMoveForwardInCurrentContext(ChessBoardStateNew state) {
+    if (state.isPvPreviewActive) {
+      return _canLockedPvPreviewMoveForward(state);
+    }
+    return state.isAnalysisMode
+        ? _canAnalysisNavigatorMoveForward()
+        : state.canMoveForward;
+  }
+
+  bool _canMoveBackwardInCurrentContext(ChessBoardStateNew state) {
+    if (state.isPvPreviewActive) {
+      return _canLockedPvPreviewMoveBackward(state);
+    }
+    return state.isAnalysisMode
+        ? _canAnalysisNavigatorMoveBackward()
+        : state.canMoveBackward;
+  }
+
   Future<void> moveForward() async {
     final currentState = state.value;
     if (currentState == null || _isProcessingMove) return;
 
-    final canAdvance =
-        currentState.isAnalysisMode
-            ? _canAnalysisNavigatorMoveForward()
-            : currentState.canMoveForward;
-
-    if (!canAdvance) return;
+    if (!_canMoveForwardInCurrentContext(currentState)) return;
 
     await _queueNavigation(1);
   }
@@ -3152,6 +3191,11 @@ class ChessBoardScreenNotifierNew
   Future<void> moveForwardOrAppendBestLineMove() async {
     final currentState = state.value;
     if (currentState == null || _isProcessingMove) return;
+
+    if (currentState.isPvPreviewActive) {
+      await moveForward();
+      return;
+    }
 
     if (!currentState.isAnalysisMode) {
       await moveForward();
@@ -3194,12 +3238,7 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null || _isProcessingMove) return;
 
-    final canAdvance =
-        currentState.isAnalysisMode
-            ? _canAnalysisNavigatorMoveBackward()
-            : currentState.canMoveBackward;
-
-    if (!canAdvance) return;
+    if (!_canMoveBackwardInCurrentContext(currentState)) return;
 
     await _queueNavigation(-1);
   }
@@ -3249,11 +3288,7 @@ class ChessBoardScreenNotifierNew
     // If in preview mode with locked PV, navigate within locked PV
     if (currentState?.isPvPreviewActive == true &&
         currentState?.lockedPvLine != null) {
-      final pvLine = currentState!.lockedPvLine!;
-      final currentIndex = currentState.lockedPvNavigationIndex ?? -1;
-      final maxIndex = pvLine.moves.length - 1;
-      final canAdvance = maxIndex >= 0 && currentIndex < maxIndex;
-      if (!canAdvance) return false;
+      if (!_canLockedPvPreviewMoveForward(currentState!)) return false;
       navigateLockedPvForward();
       return true;
     }
@@ -3290,12 +3325,7 @@ class ChessBoardScreenNotifierNew
     // If in preview mode with locked PV, navigate within locked PV
     if (currentState?.isPvPreviewActive == true &&
         currentState?.lockedPvLine != null) {
-      final pvLine = currentState!.lockedPvLine!;
-      final currentIndex = currentState.lockedPvNavigationIndex ?? -1;
-      final maxIndex = pvLine.moves.length - 1;
-      final canRetreat =
-          maxIndex >= 0 && (currentIndex > 0 || currentIndex == -1);
-      if (!canRetreat) return false;
+      if (!_canLockedPvPreviewMoveBackward(currentState!)) return false;
       navigateLockedPvBackward();
       return true;
     }
@@ -7146,9 +7176,8 @@ class ChessBoardScreenNotifierNew
       try {
         final currentState = state.value;
         final canAdvance =
-            currentState?.isAnalysisMode == true
-                ? _canAnalysisNavigatorMoveForward()
-                : currentState?.canMoveForward == true;
+            currentState != null &&
+            _canMoveForwardInCurrentContext(currentState);
         if (canAdvance && !_isProcessingMove) {
           // Light haptic feedback on each step
           HapticFeedback.selectionClick();
@@ -7176,9 +7205,8 @@ class ChessBoardScreenNotifierNew
       try {
         final currentState = state.value;
         final canRetreat =
-            currentState?.isAnalysisMode == true
-                ? _canAnalysisNavigatorMoveBackward()
-                : currentState?.canMoveBackward == true;
+            currentState != null &&
+            _canMoveBackwardInCurrentContext(currentState);
         if (canRetreat && !_isProcessingMove) {
           // Light haptic feedback on each step
           HapticFeedback.selectionClick();

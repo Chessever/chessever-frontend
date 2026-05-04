@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ChessEver — Promo Codes Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 18mm 18mm 18mm; }
+  * { box-sizing: border-box; }
+  html, body {
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #1d1d1f;
+    line-height: 1.55;
+    font-size: 11.5pt;
+  }
+  body { margin: 0; }
+  h1 {
+    font-size: 24pt;
+    margin: 0 0 4pt;
+    color: #0f172a;
+    letter-spacing: -0.5px;
+  }
+  .lede {
+    color: #475569;
+    margin: 0 0 18pt;
+    font-size: 11pt;
+  }
+  h2 {
+    font-size: 15pt;
+    margin: 22pt 0 6pt;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4pt;
+  }
+  h3 {
+    font-size: 12pt;
+    margin: 14pt 0 4pt;
+    color: #1e293b;
+  }
+  p { margin: 0 0 8pt; }
+  ol, ul { margin: 4pt 0 10pt 18pt; padding: 0; }
+  li { margin: 0 0 4pt; }
+  code, .path {
+    background: #f1f5f9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10pt;
+    color: #0f172a;
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 9pt;
+    font-weight: 600;
+    margin-right: 6px;
+    letter-spacing: 0.2px;
+  }
+  .pill.ios { background: #eef2ff; color: #3730a3; }
+  .pill.android { background: #ecfdf5; color: #047857; }
+  .pill.tip { background: #fef3c7; color: #92400e; }
+  .card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12pt 14pt;
+    margin: 10pt 0;
+    background: #fbfcfd;
+  }
+  .card.tip {
+    border-color: #fde68a;
+    background: #fffbeb;
+  }
+  .card.warn {
+    border-color: #fecaca;
+    background: #fef2f2;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10pt;
+    margin: 8pt 0 14pt;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8pt 0 14pt;
+    font-size: 10.5pt;
+  }
+  th, td {
+    border: 1px solid #e2e8f0;
+    padding: 7pt 9pt;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #f8fafc; font-weight: 600; }
+  .muted { color: #64748b; }
+  .small { font-size: 10pt; color: #64748b; }
+  .step-num {
+    display: inline-block;
+    width: 22px; height: 22px;
+    background: #0f172a; color: #fff;
+    text-align: center; line-height: 22px;
+    border-radius: 50%;
+    font-size: 11pt; font-weight: 700;
+    margin-right: 6px;
+  }
+  hr { border: 0; border-top: 1px solid #e2e8f0; margin: 16pt 0; }
+  .toc {
+    background: #f8fafc;
+    border-left: 3px solid #0f172a;
+    padding: 8pt 12pt;
+    margin: 0 0 18pt;
+    font-size: 10.5pt;
+  }
+  .toc strong { color: #0f172a; }
+  .footer {
+    margin-top: 20pt;
+    color: #94a3b8;
+    font-size: 9pt;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>ChessEver — Promo Code Playbook</h1>
+<p class="lede">For the Product Manager. Step-by-step on generating, distributing, and tracking codes in App Store Connect and Google Play Console — plus the one Supabase decision you need to make for partner attribution.</p>
+
+<div class="card tip" style="margin: 0 0 18pt;">
+  <span class="pill tip">TL;DR</span>
+  <p style="margin:6pt 0 0;">The “Have a code?” flow is fully wired in the app. You can mint codes today and they will work — no engineering involvement needed. The <strong>only</strong> decision that affects backend setup is whether you want a code to credit a specific affiliate partner (see §6).</p>
+</div>
+
+<div class="toc">
+  <strong>What's inside</strong>
+  <ol>
+    <li>How the <em>Have a code?</em> button works in the app</li>
+    <li>iOS — generating codes in App Store Connect</li>
+    <li>Android — generating codes in Google Play Console</li>
+    <li>Sharing codes with users &amp; testing</li>
+    <li>Troubleshooting</li>
+    <li>Partner-attributed vanity codes <em>(optional, requires one DB row)</em></li>
+  </ol>
+</div>
+
+<div class="card" style="border-color:#cbd5e1; background:#f8fafc;">
+  <strong>App identifiers you'll need</strong>
+  <table style="margin-top:6pt;">
+    <tr><td><strong>Apple App ID</strong></td><td><code>6752567269</code></td></tr>
+    <tr><td><strong>iOS App Store URL</strong></td><td><code>https://apps.apple.com/us/app/chessever/id6752567269</code></td></tr>
+    <tr><td><strong>iOS direct-redeem URL template</strong></td><td><code>https://apps.apple.com/redeem?ctx=offercodes&amp;id=6752567269&amp;code=&lt;CODE&gt;</code></td></tr>
+    <tr><td><strong>Android direct-redeem URL template</strong></td><td><code>https://play.google.com/redeem?code=&lt;CODE&gt;</code></td></tr>
+  </table>
+</div>
+
+<h2>1. How the “Have a code?” button works</h2>
+
+<p>On every paywall in the ChessEver app, below the “Restore purchases” link, there is a <strong>“Have a code?”</strong> button. What happens when a user taps it depends on which device they are on:</p>
+
+<div class="grid">
+  <div class="card">
+    <span class="pill ios">iOS / iPad</span>
+    <p style="margin-top:6pt;"><strong>Apple's official redemption window opens.</strong></p>
+    <p class="small">The user types the code into Apple's own UI. Apple validates it, charges the right amount (or marks it free), and starts the subscription. The ChessEver app instantly unlocks Premium when Apple confirms.</p>
+  </div>
+  <div class="card">
+    <span class="pill android">Android</span>
+    <p style="margin-top:6pt;"><strong>A small ChessEver sheet asks for the code.</strong></p>
+    <p class="small">After they type it, the app opens the Play Store with that code already filled in. The user just taps <em>Redeem</em>. Coming back to ChessEver, Premium is unlocked automatically.</p>
+  </div>
+</div>
+
+<div class="card tip">
+  <span class="pill tip">Important</span>
+  <p style="margin:6pt 0 0;">Codes are <strong>generated by the stores</strong> (Apple and Google) — not by ChessEver. We do not manually create or enter codes anywhere in our backend. Your job is to use the store consoles to mint codes and share them.</p>
+</div>
+
+<h2>2. iOS — App Store Connect</h2>
+
+<p>App Store Connect offers <strong>two kinds</strong> of codes. Pick the one that fits the use case:</p>
+
+<table>
+  <thead>
+    <tr><th>Type</th><th>Best for</th><th>How users see it</th><th>Limits</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Promo Codes</strong></td>
+      <td>Press, reviewers, free giveaways, a few power users</td>
+      <td>Free version of a specific subscription / IAP</td>
+      <td>Up to <strong>100 per quarter</strong> per app, expires in 28 days</td>
+    </tr>
+    <tr>
+      <td><strong>Offer Codes</strong></td>
+      <td>Marketing campaigns, win-back, partner deals</td>
+      <td>Discount, free trial, or pay-as-you-go offer</td>
+      <td>Up to <strong>10 active offers</strong> per subscription, millions of codes per offer</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>A. Generating <em>Promo Codes</em> (free copy of subscription)</h3>
+<ol>
+  <li><span class="step-num">1</span>Sign in to <span class="path">appstoreconnect.apple.com</span> with the ChessEver Apple ID.</li>
+  <li><span class="step-num">2</span>Click <strong>My Apps</strong> → <strong>ChessEver</strong>.</li>
+  <li><span class="step-num">3</span>In the left sidebar, open <strong>Features</strong> → <strong>Promo Codes</strong>.</li>
+  <li><span class="step-num">4</span>Click the <strong>+ button</strong> next to the In-App Purchase you want to give away (e.g. <em>ChessEver Premium Annual</em>).</li>
+  <li><span class="step-num">5</span>Type how many codes you want (max 100 per quarter, shared across all IAPs).</li>
+  <li><span class="step-num">6</span>Agree to the terms → click <strong>Generate</strong>.</li>
+  <li><span class="step-num">7</span>Click <strong>Download Codes</strong>. Apple gives you a <code>.txt</code> file with one code per line.</li>
+</ol>
+<p class="small muted">Each code can only be used once. Codes expire 28 days after generation, whether redeemed or not.</p>
+
+<h3>B. Generating <em>Offer Codes</em> (discount or free trial)</h3>
+<ol>
+  <li><span class="step-num">1</span>App Store Connect → <strong>My Apps</strong> → <strong>ChessEver</strong> → <strong>Subscriptions</strong> (under <em>In-App Purchases &amp; Subscriptions</em>).</li>
+  <li><span class="step-num">2</span>Click the subscription product (e.g. <em>Premium Annual</em>).</li>
+  <li><span class="step-num">3</span>Scroll to <strong>Subscription Offers</strong> → click <strong>Create Offer Code</strong>.</li>
+  <li><span class="step-num">4</span>Fill out:
+    <ul>
+      <li><strong>Reference name</strong> — internal label, e.g. <em>Holiday2026</em>.</li>
+      <li><strong>Eligibility</strong> — New customers / Existing / Expired.</li>
+      <li><strong>Offer type</strong> — Free, Pay as you go, or Pay up front.</li>
+      <li><strong>Duration</strong> — e.g. 1 month free.</li>
+    </ul>
+  </li>
+  <li><span class="step-num">5</span>Add the territories where the offer is valid.</li>
+  <li><span class="step-num">6</span>Choose how to deliver:
+    <ul>
+      <li><strong>One-time-use codes</strong> — Apple generates a CSV with thousands of unique codes.</li>
+      <li><strong>Custom code</strong> — One single shareable code (e.g. <code>CHESS50</code>) anyone can use, with a usage cap.</li>
+    </ul>
+  </li>
+  <li><span class="step-num">7</span>Save → download the CSV (for one-time codes).</li>
+</ol>
+
+<h2>3. Android — Google Play Console</h2>
+
+<p>Google Play uses a single concept called <strong>Promotions</strong>. You can issue either one shareable code or a batch of unique codes.</p>
+
+<table>
+  <thead>
+    <tr><th>Code style</th><th>Best for</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>One-time codes</strong></td>
+      <td>Giveaways, individual gifting</td>
+      <td>Up to 500,000 codes per promotion. Each code works once.</td>
+    </tr>
+    <tr>
+      <td><strong>Custom (vanity) code</strong></td>
+      <td>Marketing campaigns, podcasts, partners</td>
+      <td>One code, e.g. <code>CHESS50</code>. You set the redemption cap.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Generating a Promotion</h3>
+<ol>
+  <li><span class="step-num">1</span>Sign in to <span class="path">play.google.com/console</span> with the ChessEver Google account.</li>
+  <li><span class="step-num">2</span>Pick the <strong>ChessEver</strong> app.</li>
+  <li><span class="step-num">3</span>In the left sidebar: <strong>Monetize with Play</strong> → <strong>Promo codes</strong>.
+    <span class="small muted">(In some accounts this is under <em>Monetization setup → Promotions</em>.)</span>
+  </li>
+  <li><span class="step-num">4</span>Click <strong>Create promo code</strong>.</li>
+  <li><span class="step-num">5</span>Fill out:
+    <ul>
+      <li><strong>Promotion type</strong> — One-time codes <em>or</em> Custom code.</li>
+      <li><strong>Promotion name</strong> — internal label.</li>
+      <li><strong>Applicable products</strong> — pick the subscription or IAP (e.g. <em>premium_annual</em>).</li>
+      <li><strong>Discount</strong> — Free or Percentage off.</li>
+      <li><strong>Duration</strong> — for free trials, how many days/months are free.</li>
+      <li><strong>Start &amp; end date</strong> — when codes can be redeemed.</li>
+      <li><strong>Number of codes</strong> (one-time) <em>or</em> <strong>max redemptions</strong> (custom).</li>
+    </ul>
+  </li>
+  <li><span class="step-num">6</span>Click <strong>Create</strong>.</li>
+  <li><span class="step-num">7</span>Download the CSV (one-time) or copy the single code (custom).</li>
+</ol>
+
+<div class="card warn">
+  <strong>Heads-up about Android subscriptions:</strong>
+  <p style="margin:4pt 0 0;">Google Play promo codes for <em>subscriptions</em> only support <strong>free trials</strong> — you cannot give a percentage discount on a subscription via a promo code. For one-time products you can do free or % off.</p>
+</div>
+
+<h2>4. Sharing codes &amp; testing</h2>
+
+<h3>How to share codes with users</h3>
+<ul>
+  <li><strong>iOS direct link (recommended for marketing):</strong><br>
+    <code>https://apps.apple.com/redeem?ctx=offercodes&amp;id=6752567269&amp;code=&lt;THECODE&gt;</code><br>
+    <span class="small muted">Opens the App Store with the code pre-filled. One tap to redeem.</span>
+  </li>
+  <li><strong>iOS in-app:</strong> User opens ChessEver → paywall → <em>Have a code?</em> → types it.</li>
+  <li><strong>Android direct link:</strong> <code>https://play.google.com/redeem?code=&lt;THECODE&gt;</code><br>
+    <span class="small muted">Opens Play Store with the code pre-filled.</span>
+  </li>
+  <li><strong>Android in-app:</strong> User opens ChessEver → paywall → <em>Have a code?</em> → types it. The app launches Play Store automatically.</li>
+</ul>
+
+<div class="card" style="border-color:#cbd5e1; background:#f8fafc;">
+  <strong>Example messages you can send</strong>
+  <p class="small" style="margin:6pt 0 4pt;"><strong>iOS user:</strong></p>
+  <p style="margin:0 0 6pt; font-style:italic;">Tap to claim 1 month of ChessEver Premium on us:<br>
+  <code>https://apps.apple.com/redeem?ctx=offercodes&amp;id=6752567269&amp;code=ABC123XYZ</code></p>
+  <p class="small" style="margin:6pt 0 4pt;"><strong>Android user:</strong></p>
+  <p style="margin:0 0 6pt; font-style:italic;">Tap to claim 1 month of ChessEver Premium on us:<br>
+  <code>https://play.google.com/redeem?code=ABC123XYZ</code></p>
+  <p class="small" style="margin:6pt 0 0;"><strong>Cross-platform / unknown device:</strong> share the raw code, e.g. <em>“Open ChessEver, tap <strong>Have a code?</strong> on the upgrade screen, and enter <code>ABC123XYZ</code>.”</em></p>
+</div>
+
+<h3>Testing before you ship codes to real users</h3>
+<ol>
+  <li>Generate <strong>one</strong> code first.</li>
+  <li>On a real device, sign in with a <em>different</em> Apple ID / Google account than your developer account (sandbox / test accounts work).</li>
+  <li>Open ChessEver → paywall → <em>Have a code?</em> → enter the code.</li>
+  <li>Confirm Premium unlocks (the celebration animation plays and the paywall closes).</li>
+  <li>Cancel/refund the test code in the store console so the batch isn't reduced.</li>
+</ol>
+
+<h2>5. Troubleshooting</h2>
+
+<table>
+  <thead><tr><th>Problem</th><th>Likely cause</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>“Code not valid” on iOS</td>
+      <td>Code expired (28 days for promo codes), wrong region, or already redeemed</td>
+      <td>Generate a fresh code; verify the user's country is in the offer's territory list</td>
+    </tr>
+    <tr>
+      <td>Play Store says “Promotion not available”</td>
+      <td>Promotion not started yet, ended, or device country not allowed</td>
+      <td>Check start/end dates and country of the Google account</td>
+    </tr>
+    <tr>
+      <td>Code redeemed but Premium not unlocked</td>
+      <td>App didn't refresh entitlement</td>
+      <td>Force-close and reopen ChessEver. The app re-checks RevenueCat on resume and unlocks automatically.</td>
+    </tr>
+    <tr>
+      <td>Same code redeemed twice</td>
+      <td>One-time codes are single-use — second attempt fails</td>
+      <td>Issue a new code; for repeat use, set up a <em>custom/vanity</em> code with a usage cap</td>
+    </tr>
+    <tr>
+      <td>User on iOS sees a blank sheet</td>
+      <td>Older iOS versions or regional restriction</td>
+      <td>Ask user to redeem via the direct App Store link instead</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="card tip">
+  <span class="pill tip">Quick mental model</span>
+  <p style="margin:6pt 0 0;">Apple and Google handle <strong>billing, validation, and refunds</strong>. ChessEver only listens for the “user is now subscribed” signal via RevenueCat and flips Premium on. So if a code works in the store, it works in the app — no engineering ticket needed.</p>
+</div>
+
+<h2>6. Partner-attributed vanity codes <span class="small muted" style="font-weight:400;">(optional)</span></h2>
+
+<p>Everything above gets you working codes. This section only matters if you plan to give an <strong>affiliate partner</strong> a single shareable code (e.g. <code>JOHNCHESS</code>) and you want commissions to flow to them when anyone redeems it — even users who never clicked their tracking link.</p>
+
+<h3>How it works (one paragraph)</h3>
+<p>The app stamps the typed code onto the user's RevenueCat record. The webhook checks three places, in order, to figure out which affiliate to credit:</p>
+<ol>
+  <li>Did the user <strong>install via an affiliate's tracking link</strong>? → credit that affiliate.</li>
+  <li>Did they install via a tracking link <em>and</em> redeem a code? → credit the install affiliate.</li>
+  <li>Otherwise: does the typed code <strong>match a known affiliate code in our DB</strong>? → credit that affiliate.</li>
+</ol>
+<p>Layer 3 is the new lever for partner vanity codes. To activate it for a given code, that exact string must exist in the <code>affiliates</code> table.</p>
+
+<h3>Setup checklist (per partner)</h3>
+<ol>
+  <li><span class="step-num">1</span><strong>Pick a code string.</strong> Short, uppercase, no spaces. Example: <code>JOHNCHESS</code> or <code>PODCAST50</code>.</li>
+  <li><span class="step-num">2</span><strong>Create the code in the store(s).</strong>
+    <ul>
+      <li><strong>Android (recommended):</strong> Play Console → Promo codes → <em>Custom code</em> with that exact string. Vanity attribution works fully on Android.</li>
+      <li><strong>iOS:</strong> App Store Connect → Subscription Offer Codes → <em>Custom code</em> with the same string. <em>Note:</em> Apple's redemption sheet doesn't pass the typed code back to the app, so iOS attribution to a partner via vanity code only works if the user <em>also</em> installed via the partner's tracking link. For pure-organic iOS users redeeming a vanity code, you can still issue the code, but commission won't be auto-credited.</li>
+    </ul>
+  </li>
+  <li><span class="step-num">3</span><strong>Add a row to the <code>affiliates</code> table</strong> in Supabase (only if the partner doesn't already have one with that exact code). The engineering team can do this in a single SQL command, or you can use the Supabase dashboard:
+    <div class="card" style="background:#0f172a; color:#e2e8f0; border-color:#0f172a; margin-top:6pt;">
+      <code style="background:transparent; color:#e2e8f0; padding:0;">
+INSERT INTO affiliates (code, name, commission_rate, is_active)<br>
+VALUES ('JOHNCHESS', 'John — Podcast partner', 0.30, true);
+      </code>
+    </div>
+  </li>
+  <li><span class="step-num">4</span><strong>Hand the code to the partner</strong> along with the direct-redeem URLs from §4.</li>
+  <li><span class="step-num">5</span><strong>Watch the affiliate dashboard</strong> at <span class="path">aff.chessever.com</span>. Conversions from this code will appear under that partner with status <em>pending</em> and clear after the refund window.</li>
+</ol>
+
+<div class="card warn">
+  <strong>If you skip step 3,</strong> the code still works and unlocks Premium — but no partner gets credited. Use this when the code is internal-only (e.g. press, retention, win-back) and there is no commission to pay out.
+</div>
+
+<h3>What goes into the <code>affiliates</code> row</h3>
+<table>
+  <thead><tr><th>Column</th><th>What to put</th></tr></thead>
+  <tbody>
+    <tr><td><code>code</code></td><td>The exact vanity code string. <strong>Must match</strong> the Play / ASC code character-for-character. Stored uppercase.</td></tr>
+    <tr><td><code>name</code></td><td>Internal label — partner name + campaign. e.g. <em>“John — Podcast partner”</em>.</td></tr>
+    <tr><td><code>commission_rate</code></td><td>Decimal share, default <code>0.30</code> (= 30 %). Edit per deal.</td></tr>
+    <tr><td><code>is_active</code></td><td><code>true</code>. Set to <code>false</code> to retire the code (existing redemptions stay credited; new ones won't credit).</td></tr>
+    <tr><td><code>email</code> / <code>payout_details</code></td><td>Optional. Fill if you'll be paying this partner.</td></tr>
+  </tbody>
+</table>
+
+<div class="card tip">
+  <span class="pill tip">When in doubt, skip it</span>
+  <p style="margin:6pt 0 0;">For everyday giveaways (press kits, internal team, retention save-saves) you don't need any of §6. Just generate codes in App Store Connect / Play Console and share them. The DB only enters the picture when you decide to pay someone for sharing them.</p>
+</div>
+
+<div class="footer">ChessEver · product manager playbook · prepared 2026 · App ID 6752567269</div>
+
+</body>
+</html>

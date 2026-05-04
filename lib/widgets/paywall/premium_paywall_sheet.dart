@@ -82,7 +82,7 @@ class _PremiumPaywallSheet extends HookWidget {
       builder: (BuildContext context, ScrollController scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: kBlack2Color.withOpacity(0.98),
+            color: kBlack2Color.withValues(alpha: 0.98),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
           ),
           child: _PaywallContent(hostContext: hostContext),
@@ -171,7 +171,7 @@ class _PaywallContent extends HookConsumerWidget {
         // resulting entitlement transition can be attributed.
         const source = 'ios_native_sheet';
         final affiliate =
-            await AppsflyerService.instance.getCachedAffiliateContext();
+            await AppsflyerService.instance.getCachedAttributionContext();
         ref
             .read(subscriptionProvider.notifier)
             .markRedemptionPending(source: source);
@@ -213,7 +213,7 @@ class _PaywallContent extends HookConsumerWidget {
               width: 36.w,
               height: 4.h,
               decoration: BoxDecoration(
-                color: kWhiteColor.withOpacity(0.2),
+                color: kWhiteColor.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(2.br),
               ),
             ),
@@ -227,12 +227,12 @@ class _PaywallContent extends HookConsumerWidget {
               child: Container(
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withOpacity(0.08),
+                  color: kWhiteColor.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.close_rounded,
-                  color: kWhiteColor.withOpacity(0.6),
+                  color: kWhiteColor.withValues(alpha: 0.6),
                   size: 20.ic,
                 ),
               ),
@@ -289,7 +289,7 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Restore purchases',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.5),
+                    color: kWhiteColor.withValues(alpha: 0.5),
                   ),
                 ),
               ),
@@ -297,7 +297,7 @@ class _PaywallContent extends HookConsumerWidget {
               Text(
                 '·',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withOpacity(0.3),
+                  color: kWhiteColor.withValues(alpha: 0.3),
                 ),
               ),
               SizedBox(width: 12.w),
@@ -306,7 +306,7 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Have a code?',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.5),
+                    color: kWhiteColor.withValues(alpha: 0.5),
                   ),
                 ),
               ),
@@ -322,9 +322,9 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Privacy Policy',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.4),
+                    color: kWhiteColor.withValues(alpha: 0.4),
                     decoration: TextDecoration.underline,
-                    decorationColor: kWhiteColor.withOpacity(0.4),
+                    decorationColor: kWhiteColor.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -332,7 +332,7 @@ class _PaywallContent extends HookConsumerWidget {
               Text(
                 '|',
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kWhiteColor.withOpacity(0.3),
+                  color: kWhiteColor.withValues(alpha: 0.3),
                 ),
               ),
               SizedBox(width: 16.w),
@@ -341,9 +341,9 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Terms of Use',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.4),
+                    color: kWhiteColor.withValues(alpha: 0.4),
                     decoration: TextDecoration.underline,
-                    decorationColor: kWhiteColor.withOpacity(0.4),
+                    decorationColor: kWhiteColor.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -389,7 +389,7 @@ class _FeatureItem extends StatelessWidget {
           Text(
             text,
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withOpacity(0.9),
+              color: kWhiteColor.withValues(alpha: 0.9),
             ),
           ),
         ],
@@ -519,7 +519,7 @@ class _PricingCard extends HookWidget {
     final showLoading = isLoading || price == null;
 
     final borderColor =
-        isSelected ? kPrimaryColor : kWhiteColor.withOpacity(0.1);
+        isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.1);
 
     final backgroundColor =
         isSelected
@@ -560,7 +560,7 @@ class _PricingCard extends HookWidget {
                     isSelected
                         ? [
                           BoxShadow(
-                            color: kPrimaryColor.withOpacity(0.15),
+                            color: kPrimaryColor.withValues(alpha: 0.15),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -941,13 +941,10 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
           selectedPlan == PlanType.annual ? annualPackage : monthlyPackage;
       final fallback =
           selectedPlan == PlanType.annual ? monthlyPackage : annualPackage;
-      final match = RevenueCatService().findOfferByCode(
-        [
-          if (preferred != null) preferred,
-          if (fallback != null) fallback,
-        ],
-        canonical,
-      );
+      final match = RevenueCatService().findOfferByCode([
+        if (preferred != null) preferred,
+        if (fallback != null) fallback,
+      ], canonical);
       if (match == null) {
         errorMessage.value = 'Invalid or expired code.';
         return;
@@ -960,7 +957,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
         const source = 'android_offer_token';
         final reportedCode = canonical.toUpperCase();
         final affiliate =
-            await AppsflyerService.instance.getCachedAffiliateContext();
+            await AppsflyerService.instance.getCachedAttributionContext();
         parentRef
             .read(subscriptionProvider.notifier)
             .markRedemptionPending(source: source, code: reportedCode);
@@ -1006,7 +1003,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: kBlack2Color.withOpacity(0.98),
+          color: kBlack2Color.withValues(alpha: 0.98),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
         ),
         padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
@@ -1020,7 +1017,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 width: 36.w,
                 height: 4.h,
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withOpacity(0.2),
+                  color: kWhiteColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2.br),
                 ),
               ),
@@ -1034,7 +1031,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             Text(
               'Enter your code to apply your discount. The Play Store purchase sheet will open with the discounted price.',
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withOpacity(0.6),
+                color: kWhiteColor.withValues(alpha: 0.6),
               ),
             ),
             SizedBox(height: 16.h),
@@ -1060,7 +1057,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
               decoration: InputDecoration(
                 hintText: 'XXXXXXXXXX',
                 hintStyle: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor.withOpacity(0.25),
+                  color: kWhiteColor.withValues(alpha: 0.25),
                   letterSpacing: 1.2,
                 ),
                 filled: true,
@@ -1068,13 +1065,13 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.br),
                   borderSide: BorderSide(
-                    color: kWhiteColor.withOpacity(0.08),
+                    color: kWhiteColor.withValues(alpha: 0.08),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.br),
                   borderSide: BorderSide(
-                    color: kWhiteColor.withOpacity(0.08),
+                    color: kWhiteColor.withValues(alpha: 0.08),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -1101,13 +1098,11 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             SizedBox(height: 8.h),
             TextButton(
               onPressed:
-                  isSubmitting.value
-                      ? null
-                      : () => Navigator.of(context).pop(),
+                  isSubmitting.value ? null : () => Navigator.of(context).pop(),
               child: Text(
                 'Cancel',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withOpacity(0.5),
+                  color: kWhiteColor.withValues(alpha: 0.5),
                 ),
               ),
             ),

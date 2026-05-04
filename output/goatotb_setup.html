@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>GOATOTB · 20 % discount setup</title>
+<style>
+  @page { size: A4; margin: 18mm; }
+  * { box-sizing: border-box; }
+  html, body {
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #1d1d1f;
+    line-height: 1.55;
+    font-size: 11.5pt;
+    margin: 0;
+  }
+  h1 {
+    font-size: 22pt;
+    margin: 0 0 4pt;
+    color: #0f172a;
+    letter-spacing: -0.4px;
+  }
+  .lede {
+    color: #475569;
+    margin: 0 0 22pt;
+    font-size: 11pt;
+  }
+  h2 {
+    font-size: 14pt;
+    margin: 22pt 0 8pt;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4pt;
+  }
+  ol { margin: 4pt 0 12pt 22pt; padding: 0; }
+  li { margin: 0 0 6pt; }
+  code {
+    background: #f1f5f9;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10pt;
+    color: #0f172a;
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 9pt;
+    font-weight: 600;
+    margin-right: 6px;
+    letter-spacing: 0.2px;
+  }
+  .ios { background: #eef2ff; color: #3730a3; }
+  .android { background: #ecfdf5; color: #047857; }
+  .card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12pt 14pt;
+    margin: 10pt 0;
+    background: #fbfcfd;
+  }
+  .formula {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 10pt 14pt;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11pt;
+    margin: 8pt 0 14pt;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6pt 0 12pt;
+    font-size: 10.5pt;
+  }
+  th, td {
+    border: 1px solid #e2e8f0;
+    padding: 7pt 9pt;
+    text-align: left;
+  }
+  th { background: #f8fafc; font-weight: 600; }
+  .small { font-size: 10pt; color: #64748b; }
+  .footer {
+    margin-top: 20pt;
+    color: #94a3b8;
+    font-size: 9pt;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>GOATOTB — 20 % Discount Code Setup</h1>
+<p class="lede">Step-by-step to attach a 20 % discount offer (code <code>GOATOTB</code>) to ChessEver's <strong>existing</strong> Premium subscription products on iOS and Android. No new products are created — the offer hangs off the subscriptions you already sell.</p>
+
+<h2>Step 1 — Compute the discounted price</h2>
+<p>You don't enter "20 %" anywhere. Both stores ask for an absolute price. Calculate it once, use it on both:</p>
+<div class="formula">
+  discounted_price = regular_price × 0.80
+</div>
+
+<table>
+  <thead><tr><th>Product</th><th>Regular price</th><th>Enter as discounted price</th></tr></thead>
+  <tbody>
+    <tr><td>Premium Annual</td><td>$ ____.____</td><td>$ ____.____  &nbsp;<span class="small">(× 0.80)</span></td></tr>
+    <tr><td>Premium Monthly <span class="small">(if applicable)</span></td><td>$ ____.____</td><td>$ ____.____  &nbsp;<span class="small">(× 0.80)</span></td></tr>
+  </tbody>
+</table>
+<p class="small">Repeat for every storefront/territory price tier you support. Apple and Google will offer the equivalents in local currencies automatically.</p>
+
+<h2><span class="pill ios">iOS</span> Step 2 — App Store Connect</h2>
+<ol>
+  <li>Sign in to <code>appstoreconnect.apple.com</code> → <strong>Apps</strong> → <strong>ChessEver</strong>.</li>
+  <li>Sidebar → <strong>Subscriptions</strong> → click <strong>Premium Annual</strong> (or whichever subscription this code covers).</li>
+  <li>Scroll to <strong>Subscription Offer Codes</strong> → click <strong>Create Offer Code</strong>.</li>
+  <li>Fill in:
+    <ul>
+      <li><strong>Reference name:</strong> <code>GOATOTB</code></li>
+      <li><strong>Eligibility:</strong> tick <em>New customers</em> and <em>Existing customers (expired)</em></li>
+      <li><strong>Offer type:</strong> <em>Pay as you go</em></li>
+      <li><strong>Duration:</strong> 1 period <span class="small">(= first year if annual, first month if monthly)</span></li>
+      <li><strong>Price:</strong> the discounted price you calculated in Step 1</li>
+    </ul>
+  </li>
+  <li>Add territories (typically <em>All available</em>).</li>
+  <li>Choose <strong>Custom code</strong> → type <code>GOATOTB</code> in caps → set a redemption cap (e.g. 10 000) → save.</li>
+  <li><strong>Repeat steps 2–6 for Premium Monthly</strong> if you want the code to work on monthly too. Use the same string <code>GOATOTB</code> — Apple keys offers per-product and the redemption sheet picks the right one based on what the user is buying.</li>
+</ol>
+
+<h2><span class="pill android">Android</span> Step 3 — Google Play Console</h2>
+<ol>
+  <li>Sign in to <code>play.google.com/console</code> → pick <strong>ChessEver</strong>.</li>
+  <li>Sidebar → <strong>Monetize with Play</strong> → <strong>Subscriptions</strong> → click <strong>Premium Annual</strong>'s base plan.</li>
+  <li>Click <strong>Add offer</strong>.</li>
+  <li>Fill in:
+    <ul>
+      <li><strong>Offer ID:</strong> <code>goatotb-20off</code></li>
+      <li><strong>Eligibility:</strong> <em>Developer-determined</em> <span class="small">(this lets a promo code unlock the offer)</span></li>
+      <li><strong>Phase:</strong> add one phase
+        <ul>
+          <li>Type: regular phase</li>
+          <li>Duration: 1 billing cycle</li>
+          <li>Price: the discounted price from Step 1</li>
+        </ul>
+      </li>
+    </ul>
+    Save the offer.
+  </li>
+  <li>Sidebar → <strong>Promo codes</strong> → <strong>Create promo code</strong>.
+    <ul>
+      <li><strong>Promotion type:</strong> <em>Custom code (vanity)</em></li>
+      <li><strong>Code:</strong> <code>GOATOTB</code></li>
+      <li><strong>Applicable products:</strong> tick the offer you just created (<code>goatotb-20off</code>)</li>
+      <li><strong>Max redemptions:</strong> e.g. 10 000</li>
+      <li><strong>Start / end dates:</strong> set as you like</li>
+    </ul>
+    Create.
+  </li>
+  <li><strong>Repeat steps 3–5 for Premium Monthly</strong> if you want the code to work on monthly too. Same code string, separate offer per base plan.</li>
+</ol>
+
+<h2>Step 4 — Verify</h2>
+<ol>
+  <li>On a real device, sign into a different Apple ID / Google account than your dev one.</li>
+  <li>Open ChessEver → paywall → <strong>Have a code?</strong> → enter <code>GOATOTB</code>.</li>
+  <li>You should see the discounted price in the store's confirmation sheet (e.g. <em>"First year for $X.XX, then $Y.YY/year"</em>).</li>
+  <li>Confirm the redeem. ChessEver should unlock Premium and play the celebration animation when the sheet closes.</li>
+</ol>
+
+<div class="card">
+  <strong>What users will see when they redeem</strong>
+  <p style="margin:6pt 0 0;">First billing cycle at the discounted price (your 80 % number), then auto-renews at the regular price thereafter. The discount applies once — the next renewal is full price. This is how both stores express "% off" subscription codes.</p>
+</div>
+
+<div class="footer">ChessEver · GOATOTB setup · App ID 6752567269</div>
+
+</body>
+</html>
