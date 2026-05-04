@@ -270,6 +270,34 @@ class AppsflyerService {
     }
   }
 
+  /// Forward AppsFlyer install attribution to RevenueCat's campaign-attribution
+  /// subscriber attributes. The RC <> AppsFlyer integration uses these to tag
+  /// the customer in RC and to enrich postbacks back to AppsFlyer. Empty/null
+  /// payload values are skipped so we don't overwrite real data with blanks.
+  Future<void> _forwardAttributionToRevenueCat(Map payload) async {
+    Future<void> setIfPresent(
+      String key,
+      Future<void> Function(String) setter,
+    ) async {
+      final value = payload[key];
+      if (value == null) return;
+      final str = value.toString().trim();
+      if (str.isEmpty || str == 'null') return;
+      try {
+        await setter(str);
+      } catch (e) {
+        debugPrint('AppsflyerService: RC $key forward failed: $e');
+      }
+    }
+
+    await setIfPresent('media_source', Purchases.setMediaSource);
+    await setIfPresent('campaign', Purchases.setCampaign);
+    await setIfPresent('adset', Purchases.setAdGroup);
+    await setIfPresent('af_ad', Purchases.setAd);
+    await setIfPresent('af_keywords', Purchases.setKeyword);
+    await setIfPresent('af_adset', Purchases.setCreative);
+  }
+
   /// Set the Customer User ID (CUID). Call on sign-in so the user's events
   /// tie back to the install attribution.
   void setCustomerUserId(String userId) {
@@ -538,6 +566,11 @@ class AppsflyerService {
       } catch (e) {
         debugPrint('AppsflyerService: Failed to cache conversion data: $e');
       }
+
+      // Forward attribution context to RevenueCat so the customer profile
+      // there carries media_source / campaign / etc. RC then surfaces this
+      // in its dashboard and forwards through the AppsFlyer integration.
+      unawaited(_forwardAttributionToRevenueCat(payload));
     }
 
     if (payload.containsKey('link')) {
