@@ -941,11 +941,17 @@ class MyApp extends HookConsumerWidget {
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
 
-    // Listen to auth state changes to set AppsFlyer Customer User ID
+    // Listen to auth state changes to set AppsFlyer Customer User ID and
+    // ensure the install/launch event fires. startSdk is idempotent — for
+    // new users who completed the onboarding ATT pre-prompt this is a no-op.
+    // For users who skip onboarding by signing in directly from the welcome
+    // page, this is the trigger that gets startSDK to fire so their install
+    // is reported (without IDFA, since they bypassed the ATT prompt).
     ref.listen(authStateProvider, (previous, next) {
       final user = next.value?.user;
       if (user != null) {
         AppsflyerService.instance.setCustomerUserId(user.id);
+        AppsflyerService.instance.startSdkIfNotYetStarted();
       }
     });
 

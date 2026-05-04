@@ -63,9 +63,21 @@ class AppsflyerService {
 
   AppsflyerSdk? _appsflyerSdk;
   bool _isInitialized = false;
+  bool _sdkStarted = false;
+  Timer? _autoStartTimer;
+
+  // Holds a CUID that arrived from the auth listener before the SDK finished
+  // initializing. Flushed when startSDK fires so the install event carries
+  // the identifier.
+  String? _pendingCustomerUserId;
 
   static const String _kCachedAffiliateDataKey = 'appsflyer_cached_affiliate_data';
   static const List<String> _oneLinkCustomDomains = ['get.chessever.com'];
+
+  // Fallback before auto-firing startSDK if no explicit trigger arrives.
+  // Covers: returning users who skip onboarding, and users who close the app
+  // before reaching the ATT pre-prompt.
+  static const Duration _autoStartFallback = Duration(seconds: 120);
 
   static String _resolveDevKey() {
     const releaseKey = String.fromEnvironment('APPSFLYER_DEV_KEY', defaultValue: '');
@@ -97,11 +109,11 @@ class AppsflyerService {
       afDevKey: devKey,
       appId: appId,
       showDebug: kDebugMode,
-      // ATT prompt disabled — influencer OneLink attribution rides on af_sub1
-      // via onInstallConversionData and does not need IDFA. Keep the SDK from
-      // waiting on a dialog that will never appear.
+      // ATT prompt is not shown, so wait time is zero. We deliberately do NOT
+      // set disableAdvertisingIdentifier — that flag also suppresses GAID
+      // collection on Android, which would break deterministic attribution
+      // there. iOS returns a zero IDFA without ATT consent regardless.
       timeToWaitForATTUserAuthorization: 0,
-      disableAdvertisingIdentifier: true,
       disableCollectASA: false,
       manualStart: true, // required to set CUID before first launch event
     );
@@ -111,8 +123,12 @@ class AppsflyerService {
 
     try {
       await _appsflyerSdk?.initSdk(
+        // GCD — fires onInstallConversionData with af_sub1 etc.
         registerConversionDataCallback: true,
-        registerOnAppOpenAttributionCallback: true,
+        // Legacy direct-deeplink callback. Per official docs, registering
+        // the UDL callback below overrides this, so leave it off.
+        registerOnAppOpenAttributionCallback: false,
+        // UDL — modern unified deep-link callback, fires onDeepLinking.
         registerOnDeepLinkingCallback: true,
       );
 
@@ -124,11 +140,6 @@ class AppsflyerService {
         _handleConversionData(data, navigatorKey, ref);
       });
 
-      _appsflyerSdk?.onAppOpenAttribution((data) {
-        debugPrint('AppsflyerService: onAppOpenAttribution: $data');
-        _handleAppOpenAttribution(data, navigatorKey, ref);
-      });
-
       _appsflyerSdk?.onDeepLinking((DeepLinkResult res) {
         debugPrint('AppsflyerService: onDeepLinking status: ${res.status}');
         if (res.status == Status.FOUND) {
@@ -138,50 +149,97 @@ class AppsflyerService {
         }
       });
 
-      // ATT prompt intentionally disabled for affiliate-only attribution.
-      // Re-enable if we start running paid ad campaigns that need IDFA-level
-      // ROAS; otherwise SKAN + af_sub1 covers influencer links.
-      // if (Platform.isIOS) {
-      //   await _requestAttWhenReady();
-      // }
-
-      // Set CUID before startSDK if the user is already authenticated, so the
-      // install / first-launch event carries the identifier.
-      final session = Supabase.instance.client.auth.currentSession;
-      final user = Supabase.instance.client.auth.currentUser;
-      if (session != null && user != null && !session.isExpired) {
-        debugPrint('AppsflyerService: Setting CUID on init: ${user.id}');
-        _appsflyerSdk?.setCustomerUserId(user.id);
-        unawaited(_syncAffiliateDataToSupabase(user.id));
+      // Android-only: flush any pending deep-link resolution through the
+      // onDeepLinking callback. Required when manualStart is true and we
+      // delay startSDK to set CUID first — otherwise the deep-link payload
+      // (and the af_sub1 it carries) can be stranded on the native side.
+      if (Platform.isAndroid) {
+        _appsflyerSdk?.performOnDeepLinking();
       }
 
-      _appsflyerSdk?.startSDK(
-        onSuccess: () async {
-          debugPrint('AppsflyerService: SDK started');
-          await _forwardUidToRevenueCat();
-        },
-        onError: (int errorCode, String errorMessage) {
-          debugPrint('AppsflyerService: startSDK error: $errorCode - $errorMessage');
-        },
-      );
+      // startSDK timing strategy:
+      //  - Returning users (session already restored): fire now so session
+      //    events flow promptly. ATT was decided in a previous launch.
+      //  - New users: defer until the onboarding ATT pre-prompt completes,
+      //    so the install event carries the correct ATT/IDFA state.
+      //  - Auth listener in main.dart calls startSdkIfNotYetStarted on every
+      //    auth-state change, covering users who skip the ATT pre-prompt by
+      //    signing in directly from the welcome page.
+      //  - Fallback timer covers everyone else (guests, app closed early).
+      final existingUser = Supabase.instance.client.auth.currentUser;
+      if (existingUser != null) {
+        debugPrint(
+          'AppsflyerService: Session restored at init — starting SDK now',
+        );
+        startSdkIfNotYetStarted();
+      } else {
+        _autoStartTimer = Timer(_autoStartFallback, () {
+          debugPrint(
+            'AppsflyerService: ATT pre-prompt timeout — auto-starting SDK',
+          );
+          startSdkIfNotYetStarted();
+        });
+      }
     } catch (e, stackTrace) {
       debugPrint('AppsflyerService: Initialization failed: $e');
       unawaited(Sentry.captureException(e, stackTrace: stackTrace));
     }
   }
 
-  /// Request ATT after the current frame and a brief scene-active delay.
-  /// Currently unused — kept so the prompt can be re-enabled if we ever run
-  /// paid ad campaigns that need IDFA-level attribution.
-  // ignore: unused_element
-  Future<void> _requestAttWhenReady() async {
+  /// Fire the install/launch event. Idempotent — safe to call from multiple
+  /// trigger points (post-ATT-decision, fallback timer, manual). The install
+  /// event carries the ATT/IDFA state at the moment this runs, so call it
+  /// AFTER the ATT decision has been made.
+  void startSdkIfNotYetStarted() {
+    if (_sdkStarted) return;
+    if (!_isInitialized || _appsflyerSdk == null) return;
+    _sdkStarted = true;
+    _autoStartTimer?.cancel();
+    _autoStartTimer = null;
+
+    // Resolve CUID at start-time (covers the case where auth completed
+    // between initialize() and now). Buffered ID wins; otherwise read the
+    // current Supabase session.
+    String? cuid = _pendingCustomerUserId;
+    if (cuid == null) {
+      final session = Supabase.instance.client.auth.currentSession;
+      final user = Supabase.instance.client.auth.currentUser;
+      if (session != null && user != null && !session.isExpired) {
+        cuid = user.id;
+      }
+    }
+    if (cuid != null) {
+      debugPrint('AppsflyerService: Setting CUID before startSDK: $cuid');
+      _appsflyerSdk?.setCustomerUserId(cuid);
+      unawaited(_syncAffiliateDataToSupabase(cuid));
+    }
+    _pendingCustomerUserId = null;
+
+    _appsflyerSdk?.startSDK(
+      onSuccess: () async {
+        debugPrint('AppsflyerService: SDK started');
+        await _forwardUidToRevenueCat();
+      },
+      onError: (int errorCode, String errorMessage) {
+        debugPrint('AppsflyerService: startSDK error: $errorCode - $errorMessage');
+      },
+    );
+  }
+
+  /// Trigger Apple's ATT prompt. No-op on Android, no-op if the user has
+  /// already decided. Returns the resulting status (or notDetermined if we
+  /// couldn't ask). Call AFTER showing your own pre-prompt explainer.
+  Future<TrackingStatus> requestAtt() async {
+    if (!Platform.isIOS) return TrackingStatus.notSupported;
     try {
       final current = await AppTrackingTransparency.trackingAuthorizationStatus;
       if (current != TrackingStatus.notDetermined) {
         debugPrint('AppsflyerService: ATT already decided: $current');
-        return;
+        return current;
       }
 
+      // Apple ignores the request if it fires inside a build/layout pass.
+      // Wait for the next frame plus a brief scene-active settle delay.
       final completer = Completer<void>();
       SchedulerBinding.instance.addPostFrameCallback((_) => completer.complete());
       await completer.future;
@@ -189,10 +247,13 @@ class AppsflyerService {
 
       final status = await AppTrackingTransparency.requestTrackingAuthorization();
       debugPrint('AppsflyerService: ATT status: $status');
+      return status;
     } on PlatformException catch (e) {
       debugPrint('AppsflyerService: ATT request failed: $e');
+      return TrackingStatus.notDetermined;
     } catch (e) {
       debugPrint('AppsflyerService: ATT unexpected error: $e');
+      return TrackingStatus.notDetermined;
     }
   }
 
@@ -212,7 +273,15 @@ class AppsflyerService {
   /// Set the Customer User ID (CUID). Call on sign-in so the user's events
   /// tie back to the install attribution.
   void setCustomerUserId(String userId) {
-    if (!_isInitialized || _appsflyerSdk == null) return;
+    // Buffer the ID if the SDK isn't up yet — initialize() will flush it
+    // before startSDK so the install event still carries the CUID. Without
+    // this, an auth listener firing during the init window silently drops
+    // the assignment.
+    if (!_isInitialized || _appsflyerSdk == null) {
+      _pendingCustomerUserId = userId;
+      debugPrint('AppsflyerService: CUID buffered until SDK init: $userId');
+      return;
+    }
     try {
       _appsflyerSdk?.setCustomerUserId(userId);
       debugPrint('AppsflyerService: CUID set: $userId');
@@ -346,7 +415,7 @@ class AppsflyerService {
   /// Returns null if there is no affiliate context (organic install).
   Future<Map<String, String>?> getCachedAffiliateContext() async {
     try {
-      final prefs = SharedPreferencesService.instance.prefsOrNull;
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
       if (prefs == null) return null;
 
       final cachedDataString = prefs.getString(_kCachedAffiliateDataKey);
@@ -376,7 +445,7 @@ class AppsflyerService {
   /// Sync cached affiliate data to Supabase on signup.
   Future<void> _syncAffiliateDataToSupabase(String userId) async {
     try {
-      final prefs = SharedPreferencesService.instance.prefsOrNull;
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
       if (prefs == null) return;
 
       final cachedDataString = prefs.getString(_kCachedAffiliateDataKey);
@@ -409,6 +478,11 @@ class AppsflyerService {
         'network': network,
         'appsflyer_data': cachedData,
         'platform': platform,
+        // Partner / admin dashboards filter `is_sandbox = false`. NULL would
+        // be filtered out and the row would be invisible. Debug builds are
+        // tagged sandbox so my-own-testing rows don't pollute the production
+        // payout view; the admin dashboard's sandbox toggle still surfaces them.
+        'is_sandbox': kDebugMode,
       });
       debugPrint('AppsflyerService: Affiliate synced for $userId / $affiliateCode');
 
@@ -425,7 +499,7 @@ class AppsflyerService {
       if (e is PostgrestException && e.code == '23505') {
         // UNIQUE(referred_user_id) — already attributed; safe to drop cache.
         debugPrint('AppsflyerService: Referral already exists for user.');
-        final prefs = SharedPreferencesService.instance.prefsOrNull;
+        final prefs = await SharedPreferencesService.instance.ensureInitialized();
         await prefs?.remove(_kCachedAffiliateDataKey);
       } else {
         debugPrint('AppsflyerService: Failed to sync affiliate data: $e');
@@ -440,13 +514,20 @@ class AppsflyerService {
   ) async {
     if (data == null) return;
 
-    final bool isFirstLaunch = data['is_first_launch'] == true || data['is_first_launch'] == 'true';
+    // The Flutter plugin wraps the AppsFlyer GCD response as
+    // `{status: 'success', payload: {...attribution fields...}}`. Unwrap it
+    // before reading af_sub1 / is_first_launch — those live on the payload,
+    // not on the outer envelope.
+    final Map payload = data['payload'] is Map ? data['payload'] as Map : data;
+
+    final bool isFirstLaunch = payload['is_first_launch'] == true ||
+        payload['is_first_launch'] == 'true';
     if (isFirstLaunch) {
-      debugPrint('AppsflyerService: First launch attribution: $data');
+      debugPrint('AppsflyerService: First launch attribution: $payload');
       try {
         final prefs = await SharedPreferencesService.instance.ensureInitialized();
         if (prefs != null) {
-          final encodableData = Map<String, dynamic>.from(data);
+          final encodableData = Map<String, dynamic>.from(payload);
           await prefs.setString(_kCachedAffiliateDataKey, jsonEncode(encodableData));
 
           final user = Supabase.instance.client.auth.currentUser;
@@ -459,23 +540,11 @@ class AppsflyerService {
       }
     }
 
-    if (data.containsKey('link')) {
-      final String? link = data['link'] as String?;
+    if (payload.containsKey('link')) {
+      final String? link = payload['link'] as String?;
       if (link != null && link.isNotEmpty) {
         _routeToDeepLink(link, navigatorKey, ref);
       }
-    }
-  }
-
-  void _handleAppOpenAttribution(
-    Map? data,
-    GlobalKey<NavigatorState> navigatorKey,
-    WidgetRef ref,
-  ) {
-    if (data == null) return;
-    final String? link = data['link'] as String?;
-    if (link != null && link.isNotEmpty) {
-      _routeToDeepLink(link, navigatorKey, ref);
     }
   }
 

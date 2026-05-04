@@ -63,10 +63,8 @@
 		</array>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
-		<!-- ATT prompt disabled: affiliate attribution uses OneLink af_sub1 + SKAN, not IDFA.
 		<key>NSUserTrackingUsageDescription</key>
-		<string>This identifier will be used to measure the effectiveness of chess-related advertising and to keep Chessever free for casual users.</string>
-		-->
+		<string>Helps us credit the creator who shared ChessEver with you and measure which marketing campaigns are working.</string>
 
 		<key>NSAdvertisingAttributionReportEndpoint</key>
 		<string>https://appsflyer-skadnetwork.com/</string>
