@@ -565,10 +565,22 @@ class PlayerTourScreenNotifier
         }
       }
 
+      // For chess-results tours, the players array is the canonical standings
+      // payload. Game rows can lag or be synthetic, so only use game-derived
+      // totals as a fallback.
+      final displayScore =
+          useExternalOrder && updatedPlayer.score != null
+              ? updatedPlayer.score
+              : calculatedScore;
+      final displayPlayed =
+          useExternalOrder && updatedPlayer.played > 0
+              ? updatedPlayer.played
+              : gamesPlayed;
+
       enrichedPlayers.add(
         updatedPlayer.copyWith(
-          score: calculatedScore,
-          played: gamesPlayed,
+          score: displayScore,
+          played: displayPlayed,
           ratingDiff:
               updatedPlayer.ratingDiff ??
               (hasCalculatedRatingDiff ? totalRatingDiff.round() : null),
