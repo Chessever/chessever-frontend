@@ -18,6 +18,7 @@
 .env.dev
 .env.local
 .env.production
+opencode.jsonc
 
 lichess_openapi_structure.json
 
