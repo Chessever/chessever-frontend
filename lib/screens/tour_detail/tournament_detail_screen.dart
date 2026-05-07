@@ -22,6 +22,7 @@ import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -98,32 +99,49 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
     if (state == AppLifecycleState.resumed) {
       _handleAppResumed();
-    } else if (state == AppLifecycleState.paused) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
       _handleAppPaused();
+    } else {
+      ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
     }
   }
 
   void _handleAppResumed() {
-    debugPrint('🔥 TournamentDetail: App resumed - refreshing games');
-    // Re-enable streaming when app comes back to foreground
-    ref.read(shouldStreamProvider.notifier).state = true;
-    ref.invalidate(gameUpdatesStreamProvider);
-    ref.invalidate(liveGameUpdateStreamProvider);
-    ref.invalidate(gameUpdatesBatchStreamProvider);
+    ForegroundTaskScheduler.schedule(
+      key: 'tournament_detail_resume_$hashCode',
+      task: () {
+        if (!mounted) return;
+        final route = ModalRoute.of(context);
+        if (route?.isCurrent != true) return;
 
-    // Refresh games data while preserving current UI state
-    // This avoids showing "no games" during the refresh
-    final tourDetailAsync = ref.read(tourDetailScreenProvider);
-    final aboutTourModel = tourDetailAsync.valueOrNull?.aboutTourModel;
-    if (aboutTourModel != null) {
-      // Use refreshGames() instead of invalidate() to preserve current state
-      // while fetching fresh data in the background
-      try {
-        ref.read(gamesTourProvider(aboutTourModel.id).notifier).refreshGames();
-      } catch (e) {
-        debugPrint('🔥 TournamentDetail: Error refreshing games on resume: $e');
-      }
-    }
+        debugPrint('🔥 TournamentDetail: App resumed - refreshing games');
+        // Re-enable streaming when app comes back to foreground
+        ref.read(shouldStreamProvider.notifier).state = true;
+        ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
+
+        // Refresh games data while preserving current UI state
+        // This avoids showing "no games" during the refresh
+        final tourDetailAsync = ref.read(tourDetailScreenProvider);
+        final aboutTourModel = tourDetailAsync.valueOrNull?.aboutTourModel;
+        if (aboutTourModel != null) {
+          // Use refreshGames() instead of invalidate() to preserve current state
+          // while fetching fresh data in the background
+          try {
+            ref
+                .read(gamesTourProvider(aboutTourModel.id).notifier)
+                .refreshGames();
+          } catch (e) {
+            debugPrint(
+              '🔥 TournamentDetail: Error refreshing games on resume: $e',
+            );
+          }
+        }
+      },
+    );
   }
 
   void _handleAppPaused() {
@@ -170,6 +188,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
     pageController.dispose();
     super.dispose();
   }

@@ -26,6 +26,7 @@ import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
@@ -591,15 +592,23 @@ void _initializePostStartupServices() {
         // Engine was disposed on background — it will lazily reinitialize
         // on the next evaluatePosition() call. Only force recovery if a
         // stale engine reference remains in a broken state.
-        final stockfish = StockfishSingleton();
-        if (stockfish.requiresRecovery) {
-          unawaited(stockfish.forceRecovery());
-        }
+        ForegroundTaskScheduler.schedule(
+          key: 'root_stockfish_recovery',
+          delay: kForegroundHeavyRefreshDelay,
+          task: () {
+            final stockfish = StockfishSingleton();
+            if (stockfish.requiresRecovery) {
+              unawaited(stockfish.forceRecovery());
+            } else {
+              unawaited(stockfish.warmUp());
+            }
+          },
+        );
 
-        // Proactively refresh auth token when app resumes from background.
-        // This prevents stale/expired tokens after long background periods.
-        unawaited(
-          Future(() async {
+        ForegroundTaskScheduler.schedule(
+          key: 'root_auth_resume_refresh',
+          delay: kForegroundRefreshDelay,
+          task: () async {
             try {
               final auth = Supabase.instance.client.auth;
               final session = auth.currentSession;
@@ -619,16 +628,22 @@ void _initializePostStartupServices() {
             } catch (e) {
               debugPrint('⚠️ Token refresh on resume failed: $e');
             }
-          }),
+          },
         );
 
-        // Sync purchases when app comes to foreground
-        final revenueCat = RevenueCatService();
-        if (revenueCat.onAppResumeCallback != null) {
-          unawaited(revenueCat.onAppResumeCallback!());
-        } else {
-          unawaited(revenueCat.syncPurchases());
-        }
+        ForegroundTaskScheduler.schedule(
+          key: 'root_revenuecat_resume_sync',
+          delay: kForegroundHeavyRefreshDelay,
+          task: () {
+            // Sync purchases when app comes to foreground.
+            final revenueCat = RevenueCatService();
+            if (revenueCat.onAppResumeCallback != null) {
+              unawaited(revenueCat.onAppResumeCallback!());
+            } else {
+              unawaited(revenueCat.syncPurchases());
+            }
+          },
+        );
       },
     ),
   );
@@ -663,8 +678,17 @@ void _initializePostStartupServices() {
   // Initialize TerminateRestart (for user-triggered Shorebird updates only)
   TerminateRestart.instance.initialize();
 
-  // Non-critical: Load audio assets in background (don't block app startup)
-  unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
+  ForegroundTaskScheduler.schedule(
+    key: 'startup_audio_assets',
+    delay: kStartupWarmupDelay,
+    task: () => AudioPlayerService.instance.initializeAndLoadAllAssets(),
+  );
+
+  ForegroundTaskScheduler.schedule(
+    key: 'startup_stockfish_warmup',
+    delay: kStartupWarmupDelay + const Duration(seconds: 1),
+    task: () => StockfishSingleton().warmUp(),
+  );
 }
 
 class StartupGate extends ConsumerStatefulWidget {
@@ -927,10 +951,7 @@ class _StartupFailureApp extends StatelessWidget {
 }
 
 // Initialize logarte globally
-final logarte = Logarte(
-  password: 'devr0ll',
-  disableDebugConsoleLogs: false,
-);
+final logarte = Logarte(password: 'devr0ll', disableDebugConsoleLogs: false);
 
 class MyApp extends HookConsumerWidget {
   const MyApp({super.key});
@@ -996,32 +1017,9 @@ class MyApp extends HookConsumerWidget {
     );
 
     useEffect(() {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) {
           return;
-        }
-
-        if (!kDebugMode) {
-          try {
-            final clarityConfig = ClarityConfig(
-              projectId: _getEnv('CLARITY_PROJECT_ID'),
-            );
-
-            final initialized = Clarity.initialize(context, clarityConfig);
-            debugPrint('Clarity initialized: $initialized');
-          } catch (e, st) {
-            debugPrint('Failed to initialize Clarity: $e');
-            debugPrintStack(stackTrace: st);
-          }
-        }
-
-        try {
-          await _initializeFavoritesService(ref);
-        } catch (e, st) {
-          if (kDebugMode) {
-            debugPrint('Failed to initialize favorites service: $e');
-            debugPrintStack(stackTrace: st);
-          }
         }
 
         // Handle OneSignal notification taps — route to correct screen.
@@ -1038,18 +1036,61 @@ class MyApp extends HookConsumerWidget {
           }
         });
 
-        // Initialize deep link handling for game sharing URLs
-        try {
-          await DeepLinkService.instance.initialize(navigatorKey, ref);
-          // Handle PGN files opened from Files / file managers / share sheet.
-          await PgnFileIntakeService.instance.initialize(navigatorKey, ref);
-          // Initialize AppsFlyer for marketing attribution and OneLink
-          await AppsflyerService.instance.initialize(navigatorKey, ref);
-        } catch (e, st) {
-          if (kDebugMode) {
-            debugPrint('Failed to initialize deep link or appsflyer service: $e');
-            debugPrintStack(stackTrace: st);
-          }
+        ForegroundTaskScheduler.schedule(
+          key: 'startup_deep_link_services',
+          delay: const Duration(milliseconds: 250),
+          task: () async {
+            try {
+              await DeepLinkService.instance.initialize(navigatorKey, ref);
+              // Handle PGN files opened from Files / file managers / share sheet.
+              await PgnFileIntakeService.instance.initialize(navigatorKey, ref);
+              // Initialize AppsFlyer for marketing attribution and OneLink.
+              await AppsflyerService.instance.initialize(navigatorKey, ref);
+            } catch (e, st) {
+              if (kDebugMode) {
+                debugPrint(
+                  'Failed to initialize deep link or appsflyer service: $e',
+                );
+                debugPrintStack(stackTrace: st);
+              }
+            }
+          },
+        );
+
+        ForegroundTaskScheduler.schedule(
+          key: 'startup_favorites_service',
+          delay: kForegroundHeavyRefreshDelay,
+          task: () async {
+            try {
+              await _initializeFavoritesService(ref);
+            } catch (e, st) {
+              if (kDebugMode) {
+                debugPrint('Failed to initialize favorites service: $e');
+                debugPrintStack(stackTrace: st);
+              }
+            }
+          },
+        );
+
+        if (!kDebugMode) {
+          ForegroundTaskScheduler.schedule(
+            key: 'startup_clarity',
+            delay: kStartupWarmupDelay,
+            task: () {
+              if (!context.mounted) return;
+              try {
+                final clarityConfig = ClarityConfig(
+                  projectId: _getEnv('CLARITY_PROJECT_ID'),
+                );
+
+                final initialized = Clarity.initialize(context, clarityConfig);
+                debugPrint('Clarity initialized: $initialized');
+              } catch (e, st) {
+                debugPrint('Failed to initialize Clarity: $e');
+                debugPrintStack(stackTrace: st);
+              }
+            },
+          );
         }
       });
 

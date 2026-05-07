@@ -9,6 +9,7 @@ import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_car
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
@@ -47,6 +48,7 @@ class _FavoritesCombinedGamesScreenState
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ForegroundTaskScheduler.cancel('favorites_combined_resume_$hashCode');
     _debounceTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -58,12 +60,27 @@ class _FavoritesCombinedGamesScreenState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed || !mounted) return;
+    if (state != AppLifecycleState.resumed) {
+      ForegroundTaskScheduler.cancel('favorites_combined_resume_$hashCode');
+      return;
+    }
+    if (!mounted) return;
 
-    ref.invalidate(gameUpdatesStreamProvider);
-    ref.invalidate(liveGameUpdateStreamProvider);
-    ref.invalidate(gameUpdatesBatchStreamProvider);
-    unawaited(ref.read(favoritesCombinedGamesProvider.notifier).refreshGames());
+    ForegroundTaskScheduler.schedule(
+      key: 'favorites_combined_resume_$hashCode',
+      task: () {
+        if (!mounted) return;
+        final route = ModalRoute.of(context);
+        if (route?.isCurrent != true) return;
+
+        ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
+        unawaited(
+          ref.read(favoritesCombinedGamesProvider.notifier).refreshGames(),
+        );
+      },
+    );
   }
 
   void _onScroll() {

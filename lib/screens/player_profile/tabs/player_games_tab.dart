@@ -9,6 +9,8 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
+    show PlayerProfileTab, selectedPlayerProfileTabProvider;
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -21,6 +23,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -152,6 +155,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
     _debounceTimer?.cancel();
     _hintRotationTimer?.cancel();
     _hintFadeOutTimer?.cancel();
@@ -167,13 +171,32 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed || !mounted) return;
+    if (state != AppLifecycleState.resumed) {
+      ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
+      return;
+    }
+    if (!mounted) return;
 
-    ref.invalidate(gameUpdatesStreamProvider);
-    ref.invalidate(liveGameUpdateStreamProvider);
-    ref.invalidate(gameUpdatesBatchStreamProvider);
-    unawaited(
-      ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).refresh(),
+    ForegroundTaskScheduler.schedule(
+      key: 'player_games_resume_$hashCode',
+      task: () {
+        if (!mounted) return;
+        final route = ModalRoute.of(context);
+        if (route?.isCurrent != true) return;
+        if (ref.read(selectedPlayerProfileTabProvider) !=
+            PlayerProfileTab.games) {
+          return;
+        }
+
+        ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
+        unawaited(
+          ref
+              .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+              .refresh(),
+        );
+      },
     );
   }
 

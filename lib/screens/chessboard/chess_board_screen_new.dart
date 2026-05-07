@@ -42,6 +42,7 @@ import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_wi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
@@ -1531,8 +1532,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void didPopNext() {
     // Route on top was popped — board is visible again.
-    _handleLifecycleResume();
+    _scheduleLifecycleResume();
     super.didPopNext();
+  }
+
+  void _scheduleLifecycleResume() {
+    ForegroundTaskScheduler.schedule(
+      key: 'chessboard_resume_$hashCode',
+      task: () {
+        if (!mounted) return;
+        final route = ModalRoute.of(context);
+        if (route?.isCurrent != true) return;
+        _handleLifecycleResume();
+      },
+    );
   }
 
   @override
@@ -1540,11 +1553,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     super.didChangeAppLifecycleState(state);
     if (!mounted) return;
     if (state == AppLifecycleState.resumed) {
-      _handleLifecycleResume();
-    } else if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
+      _scheduleLifecycleResume();
+    } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
       _handleLifecyclePaused();
+    } else {
+      ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
     }
   }
 
@@ -1552,6 +1567,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void dispose() {
     routeObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
+    ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
     _boardKeepAliveSub?.close();
     _audioSub?.close();
     _pageSettleTimer?.cancel();
