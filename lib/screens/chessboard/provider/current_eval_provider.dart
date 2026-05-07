@@ -43,6 +43,13 @@ const int _minPersistFullMoves = 8;
 const int _gameCardFallbackDepth = 12;
 const int boardEvalSufficientDepth = 20;
 const Duration _localEvalLookupTimeout = Duration(milliseconds: 120);
+const Duration _gameCardEvalKeepAliveDuration = Duration(seconds: 4);
+
+void _keepGameCardEvalAliveBriefly(Ref ref) {
+  final link = ref.keepAlive();
+  final timer = Timer(_gameCardEvalKeepAliveDuration, link.close);
+  ref.onDispose(timer.cancel);
+}
 
 bool _shouldPersistCloudEval(CloudEval eval) {
   return eval.meetsPersistenceThreshold(
@@ -442,6 +449,7 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
   CloudEval,
   String // FEN string
 >((ref, fen) async {
+  _keepGameCardEvalAliveBriefly(ref);
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
@@ -565,6 +573,7 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
 /// frame rendering during a fling.
 final gameCardEvalCacheOnlyProvider = FutureProvider.family
     .autoDispose<CloudEval, String>((ref, fen) async {
+      _keepGameCardEvalAliveBriefly(ref);
       if (fen.isEmpty) {
         return _emptyCloudEval(fen, multiPV: 1);
       }

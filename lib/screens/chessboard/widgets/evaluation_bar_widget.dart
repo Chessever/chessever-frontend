@@ -256,7 +256,7 @@ final _checkmateCacheProvider = Provider.autoDispose.family<bool?, String>((
 /// Evaluation widget used on game cards.
 /// Uses depth-aware local/Gamebase reuse first, then low-priority Stockfish.
 /// Auto-disposes when card scrolls out of view (only evaluates visible boards).
-class EvaluationBarWidgetForGames extends ConsumerWidget {
+class EvaluationBarWidgetForGames extends ConsumerStatefulWidget {
   final double width;
   final double height;
   final String fen;
@@ -275,90 +275,136 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EvaluationBarWidgetForGames> createState() =>
+      _EvaluationBarWidgetForGamesState();
+}
+
+class _EvaluationBarWidgetForGamesState
+    extends ConsumerState<EvaluationBarWidgetForGames> {
+  _EvalBarDisplay? _lastDisplay;
+
+  @override
+  Widget build(BuildContext context) {
     // First, check if position is checkmate - handle immediately without external eval
     // Uses the cached provider for better scroll performance
-    final checkmateResult = ref.watch(_checkmateCacheProvider(fen));
+    final checkmateResult = ref.watch(_checkmateCacheProvider(widget.fen));
     if (checkmateResult != null) {
       // Checkmate detected - show definitive result
       // whiteWon = true means white delivered checkmate (eval +10.0)
       // whiteWon = false means black delivered checkmate (eval -10.0)
       final eval = checkmateResult ? 10.0 : -10.0;
-      return _Bars(
-        width: width,
-        height: height,
-        whiteHeight: _getWhiteHeight(eval, height),
-        blackHeight: _getBlackHeight(eval, height),
-        evaluation: eval,
-        isCheckmate: true,
-        playerView: playerView,
-        isFlipped: isFlipped,
-      );
+      return _remember(
+        _EvalBarDisplay(
+          evaluation: eval,
+          isCheckmate: true,
+          hasEvaluationData: true,
+        ),
+      ).build(widget);
+    }
+
+    if (widget.fen.isEmpty) {
+      return _EvalBarDisplay.neutral(hasEvaluationData: false).build(widget);
     }
 
     // Uses depth-aware cache/server reuse first, then low-priority Stockfish.
     // Auto-disposes when card scrolls out of view.
     final evalAsync =
-        allowStockfishFallback
-            ? ref.watch(gameCardEvalWithStockfishFallbackProvider(fen))
-            : ref.watch(gameCardEvalCacheOnlyProvider(fen));
+        widget.allowStockfishFallback
+            ? ref.watch(gameCardEvalWithStockfishFallbackProvider(widget.fen))
+            : ref.watch(gameCardEvalCacheOnlyProvider(widget.fen));
 
-    return evalAsync.when(
+    final display = evalAsync.when(
       loading:
-          () => _Bars(
-            width: width,
-            height: height,
-            whiteHeight: height * 0.5,
-            blackHeight: height * 0.5,
-            evaluation: 0.0,
-            isEvaluating: true,
-            hasEvaluationData: false,
-            playerView: playerView,
-            isFlipped: isFlipped,
-          ),
+          () =>
+              _lastDisplay?.retainedWhileLoading() ??
+              _EvalBarDisplay.neutral(
+                isEvaluating: true,
+                hasEvaluationData: false,
+              ),
       error:
-          (_, __) => _Bars(
-            width: width,
-            height: height,
-            whiteHeight: height * 0.5,
-            blackHeight: height * 0.5,
-            evaluation: 0.0,
-            hasEvaluationData: false,
-            playerView: playerView,
-            isFlipped: isFlipped,
-          ),
+          (_, __) =>
+              _lastDisplay ?? _EvalBarDisplay.neutral(hasEvaluationData: false),
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
         if (pv == null) {
-          return _Bars(
-            width: width,
-            height: height,
-            whiteHeight: height * 0.5,
-            blackHeight: height * 0.5,
-            evaluation: 0.0,
-            hasEvaluationData: false,
-            playerView: playerView,
-            isFlipped: isFlipped,
-          );
+          return _lastDisplay ??
+              _EvalBarDisplay.neutral(hasEvaluationData: false);
         }
 
         final normalized = _normalizePvToWhitePerspective(pv);
-        final eval = normalized.eval;
-        final isMate = normalized.isMate;
-        final mate = normalized.mate;
-
-        return _Bars(
-          width: width,
-          height: height,
-          whiteHeight: _getWhiteHeight(eval, height),
-          blackHeight: _getBlackHeight(eval, height),
-          evaluation: eval,
-          isMate: isMate,
-          mate: mate,
-          playerView: playerView,
-          isFlipped: isFlipped,
+        return _remember(
+          _EvalBarDisplay(
+            evaluation: normalized.eval,
+            isMate: normalized.isMate,
+            mate: normalized.mate,
+            hasEvaluationData: true,
+          ),
         );
       },
+    );
+
+    return display.build(widget);
+  }
+
+  _EvalBarDisplay _remember(_EvalBarDisplay display) {
+    _lastDisplay = display;
+    return display;
+  }
+}
+
+class _EvalBarDisplay {
+  const _EvalBarDisplay({
+    required this.evaluation,
+    this.isEvaluating = false,
+    this.isMate = false,
+    this.mate = 0,
+    this.isCheckmate = false,
+    this.hasEvaluationData = true,
+  });
+
+  factory _EvalBarDisplay.neutral({
+    bool isEvaluating = false,
+    bool hasEvaluationData = true,
+  }) {
+    return _EvalBarDisplay(
+      evaluation: 0.0,
+      isEvaluating: isEvaluating,
+      hasEvaluationData: hasEvaluationData,
+    );
+  }
+
+  final double evaluation;
+  final bool isEvaluating;
+  final bool isMate;
+  final int mate;
+  final bool isCheckmate;
+  final bool hasEvaluationData;
+
+  _EvalBarDisplay retainedWhileLoading() {
+    return _EvalBarDisplay(
+      evaluation: evaluation,
+      isEvaluating: isEvaluating,
+      isMate: isMate,
+      mate: mate,
+      isCheckmate: isCheckmate,
+      hasEvaluationData: hasEvaluationData,
+    );
+  }
+
+  Widget build(EvaluationBarWidgetForGames widget) {
+    return _Bars(
+      width: widget.width,
+      height: widget.height,
+      whiteHeight: _getWhiteHeight(evaluation, widget.height),
+      blackHeight: _getBlackHeight(evaluation, widget.height),
+      evaluation: evaluation,
+      isEvaluating: isEvaluating,
+      isMate: isMate,
+      mate: mate,
+      isCheckmate: isCheckmate,
+      hasEvaluationData: hasEvaluationData,
+      playerView: widget.playerView,
+      isFlipped: widget.isFlipped,
     );
   }
 
