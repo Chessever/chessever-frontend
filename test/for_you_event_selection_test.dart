@@ -78,7 +78,9 @@ Games _makeGame({
   required List<Player> players,
   int? boardNr,
   String? status = '*',
+  String? lastMove = 'e2e4',
   DateTime? lastMoveTime,
+  DateTime? dateStart,
 }) {
   return Games(
     id: id,
@@ -89,8 +91,9 @@ Games _makeGame({
     players: players,
     boardNr: boardNr,
     status: status,
-    lastMove: 'e2e4',
+    lastMove: lastMove,
     lastMoveTime: lastMoveTime,
+    dateStart: dateStart,
   );
 }
 
@@ -357,6 +360,97 @@ void main() {
       );
 
       expect(snapshot.visibleGames.first.gameId, 'r11-g1');
+    });
+
+    test('preconfigured future placeholders do not override live games', () {
+      final now = DateTime.now();
+      final tour = _makeTour(
+        id: 'tour-1',
+        name: 'GCT: Super Rapid & Blitz Poland 2026 | Rapid',
+        dates: [now.subtract(const Duration(days: 1)), now],
+      );
+      final liveRound = _makeRound(
+        id: 'round-8',
+        tourId: 'tour-1',
+        name: 'Round 8',
+        startsAt: now.subtract(const Duration(minutes: 20)),
+      );
+      final upcomingRound = _makeRound(
+        id: 'round-9',
+        tourId: 'tour-1',
+        name: 'Round 9',
+        startsAt: now.add(const Duration(minutes: 40)),
+      );
+      final games = [
+        _makeGame(
+          id: 'r8-g1',
+          roundId: liveRound.id,
+          roundSlug: 'round-8',
+          tourId: 'tour-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(minutes: 1)),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+        _makeGame(
+          id: 'r8-g2',
+          roundId: liveRound.id,
+          roundSlug: 'round-8',
+          tourId: 'tour-1',
+          boardNr: 2,
+          lastMoveTime: now.subtract(const Duration(minutes: 2)),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+        _makeGame(
+          id: 'r9-g1',
+          roundId: upcomingRound.id,
+          roundSlug: 'round-9',
+          tourId: 'tour-1',
+          boardNr: 1,
+          lastMove: null,
+          lastMoveTime: null,
+          dateStart: upcomingRound.startsAt,
+          players: [
+            _player(name: 'E', fideId: 5),
+            _player(name: 'F', fideId: 6),
+          ],
+        ),
+        _makeGame(
+          id: 'r9-g2',
+          roundId: upcomingRound.id,
+          roundSlug: 'round-9',
+          tourId: 'tour-1',
+          boardNr: 2,
+          lastMove: null,
+          lastMoveTime: null,
+          dateStart: upcomingRound.startsAt,
+          players: [
+            _player(name: 'G', fideId: 7),
+            _player(name: 'H', fideId: 8),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: [liveRound, upcomingRound],
+        roundsByTourId: {
+          'tour-1': [liveRound, upcomingRound],
+        },
+        selectedTourGames: games,
+        gamesByTourId: {'tour-1': games},
+        liveRoundIds: const [],
+        pinnedIds: const [],
+      );
+
+      expect(snapshot.visibleGames.map((game) => game.gameId).take(2), [
+        'r8-g1',
+        'r8-g2',
+      ]);
     });
 
     test('regular event returns Games-tab visible order', () {
