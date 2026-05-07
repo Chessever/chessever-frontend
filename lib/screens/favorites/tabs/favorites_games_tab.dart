@@ -77,6 +77,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     if (state != AppLifecycleState.resumed || !mounted) return;
 
     ref.invalidate(gameUpdatesStreamProvider);
+    ref.invalidate(liveGameUpdateStreamProvider);
+    ref.invalidate(gameUpdatesBatchStreamProvider);
     unawaited(ref.read(favoritesCombinedGamesProvider.notifier).refreshGames());
   }
 
@@ -1145,6 +1147,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       if (mounted) {
         ref.read(shouldStreamProvider.notifier).state = true;
         ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
       }
     });
   }

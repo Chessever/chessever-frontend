@@ -76,6 +76,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     if (state != AppLifecycleState.resumed || !mounted) return;
 
     ref.invalidate(gameUpdatesStreamProvider);
+    ref.invalidate(liveGameUpdateStreamProvider);
+    ref.invalidate(gameUpdatesBatchStreamProvider);
     unawaited(
       ref.read(countrymenCombinedGamesProvider.notifier).refreshGames(),
     );
@@ -937,6 +939,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       if (mounted) {
         ref.read(shouldStreamProvider.notifier).state = true;
         ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
       }
     });
   }

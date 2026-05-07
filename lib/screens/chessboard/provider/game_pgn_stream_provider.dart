@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Stream provider for PGN updates of a specific game.
@@ -19,4 +20,49 @@ final gameUpdatesStreamProvider = AutoDisposeStreamProvider.family<
   String
 >((ref, gameId) {
   return ref.read(gameStreamRepositoryProvider).subscribeToGameUpdates(gameId);
+});
+
+final liveGameUpdateStreamProvider =
+    AutoDisposeStreamProvider.family<LiveGameUpdate?, String>((ref, gameId) {
+      return ref
+          .read(gameStreamRepositoryProvider)
+          .subscribeToLiveGameUpdate(gameId);
+    });
+
+@immutable
+class LiveGamesBatchKey {
+  LiveGamesBatchKey({required this.scopeId, required Iterable<String> gameIds})
+    : gameIds = List.unmodifiable(
+        gameIds.where((id) => id.isNotEmpty).toSet().toList()..sort(),
+      );
+
+  final String scopeId;
+  final List<String> gameIds;
+
+  bool contains(String gameId) => gameIds.contains(gameId);
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! LiveGamesBatchKey) return false;
+    if (other.scopeId != scopeId || other.gameIds.length != gameIds.length) {
+      return false;
+    }
+    for (var i = 0; i < gameIds.length; i++) {
+      if (gameIds[i] != other.gameIds[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(scopeId, Object.hashAll(gameIds));
+}
+
+final gameUpdatesBatchStreamProvider = AutoDisposeStreamProvider.family<
+  Map<String, LiveGameUpdate>,
+  LiveGamesBatchKey
+>((ref, key) {
+  return ref
+      .read(gameStreamRepositoryProvider)
+      .subscribeToLiveGameUpdatesBatch(key.gameIds);
 });

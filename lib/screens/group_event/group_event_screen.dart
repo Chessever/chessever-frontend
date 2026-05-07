@@ -456,11 +456,9 @@ class GroupEventScreen extends HookConsumerWidget {
                             ? searchScrollController
                             : null;
 
-                    // Only load data for the currently selected tab.
-                    // The For You tab is exempted so its widget stays alive
-                    // across category switches (AutomaticKeepAliveClientMixin
-                    // in ForYouGamesWidget preserves its state in the PageView).
-                    if (currentCategory != selectedTourEvent && !isForYou) {
+                    // Only load data for the currently selected tab. Heavy
+                    // tabs keep their provider caches, not their widget trees.
+                    if (currentCategory != selectedTourEvent) {
                       return const SizedBox.shrink();
                     }
 

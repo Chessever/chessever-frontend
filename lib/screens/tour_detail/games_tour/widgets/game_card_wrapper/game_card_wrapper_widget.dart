@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
@@ -20,6 +21,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final ChessboardView viewSource;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
+  final LiveGamesBatchKey? liveBatchKey;
 
   const GameCardWrapperWidget({
     super.key,
@@ -32,13 +34,17 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.viewSource = ChessboardView.tour,
     this.fixedBottomSide,
     this.allowStockfishFallback = true,
+    this.liveBatchKey,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
-    final liveGame = watchLiveGame(ref, game);
+    final liveGame =
+        isChessBoardVisible
+            ? watchLiveGamePosition(ref, game, batchKey: liveBatchKey)
+            : watchLiveGame(ref, game, batchKey: liveBatchKey);
     final keyValue = 'game_${liveGame.gameId}';
 
     // Build updated games list with the live game data for navigation
@@ -79,6 +85,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
           onPinToggle: handlePinToggle,
           fixedBottomSide: fixedBottomSide,
           allowStockfishFallback: allowStockfishFallback,
+          liveBatchKey: liveBatchKey,
         )
         : GameCard(
           key: ValueKey(keyValue),

@@ -170,6 +170,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     if (state != AppLifecycleState.resumed || !mounted) return;
 
     ref.invalidate(gameUpdatesStreamProvider);
+    ref.invalidate(liveGameUpdateStreamProvider);
+    ref.invalidate(gameUpdatesBatchStreamProvider);
     unawaited(
       ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).refresh(),
     );

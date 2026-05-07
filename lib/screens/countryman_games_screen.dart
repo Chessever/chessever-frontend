@@ -109,6 +109,8 @@ class CountrymanGamesList extends ConsumerWidget {
                       ).then((_) {
                         if (context.mounted) {
                           ref.invalidate(gameUpdatesStreamProvider);
+                          ref.invalidate(liveGameUpdateStreamProvider);
+                          ref.invalidate(gameUpdatesBatchStreamProvider);
                         }
                       });
                     },
@@ -137,6 +139,8 @@ class CountrymanGamesList extends ConsumerWidget {
                       ).then((_) {
                         if (context.mounted) {
                           ref.invalidate(gameUpdatesStreamProvider);
+                          ref.invalidate(liveGameUpdateStreamProvider);
+                          ref.invalidate(gameUpdatesBatchStreamProvider);
                         }
                       });
                     },

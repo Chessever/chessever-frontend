@@ -35,6 +35,17 @@ double _forYouCacheExtentForMode(GamesListViewMode mode) {
       : _kForYouBoardCacheExtent;
 }
 
+LiveGamesBatchKey _forYouLiveBatchKey({
+  required String eventId,
+  required String tourId,
+  required List<GamesTourModel> games,
+}) {
+  return LiveGamesBatchKey(
+    scopeId: 'for_you:$eventId:$tourId',
+    gameIds: games.map((game) => game.gameId),
+  );
+}
+
 /// For You tab widget - displays events with their top 4 games
 ///
 /// KEY DESIGN:
@@ -79,13 +90,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Only refresh when For You is the active category. The widget stays
-      // alive offscreen via AutomaticKeepAliveClientMixin, so without this
-      // guard it would trigger background refreshes while the user is on
-      // Current/Past.
+      // Only refresh when For You is the active category.
       final selected = ref.read(selectedGroupCategoryProvider);
       if (selected == GroupEventCategory.forYou) {
         ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
         unawaited(
           ref
               .read(forYouEventsProvider.notifier)
@@ -118,17 +128,14 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   @override
-  bool get wantKeepAlive => true;
+  bool get wantKeepAlive => false;
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // required by AutomaticKeepAliveClientMixin
 
-    // When For You is not the active category, drop all expensive provider
-    // subscriptions by returning early. Riverpod automatically unsubscribes
-    // from providers that were watched in a previous build but not in the
-    // current one — so switching away tears down event snapshot watchers and
-    // live-game stream subscriptions without disposing the widget State.
+    // If PageView keeps this page around briefly while swiping, drop all
+    // expensive provider subscriptions until For You is selected again.
     final selectedCategory = ref.watch(selectedGroupCategoryProvider);
     if (selectedCategory != GroupEventCategory.forYou) {
       return const SizedBox.shrink();
@@ -710,6 +717,12 @@ class _ForYouTabletColumnGames extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
+        final liveBatchKey = _forYouLiveBatchKey(
+          eventId: eventId,
+          tourId: snapshot.tourId,
+          games: gameModels,
+        );
+
         // Build 2-column grid of games (2 per row, max 2 rows = 4 games)
         // Wrap with animated slots for smooth transitions when games change
         final List<Widget> rows = [];
@@ -734,6 +747,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                         eventId: eventId,
                         pinnedIds: snapshot.pinnedIds,
                         isScrolling: isScrolling,
+                        liveBatchKey: liveBatchKey,
                       ),
                     ),
                   ),
@@ -751,6 +765,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                                 eventId: eventId,
                                 pinnedIds: snapshot.pinnedIds,
                                 isScrolling: isScrolling,
+                                liveBatchKey: liveBatchKey,
                               ),
                             )
                             : const SizedBox.shrink(),
@@ -829,6 +844,7 @@ class _TabletGameCard extends ConsumerWidget {
     required this.eventId,
     required this.pinnedIds,
     required this.isScrolling,
+    required this.liveBatchKey,
   });
 
   final GamesTourModel game;
@@ -837,6 +853,7 @@ class _TabletGameCard extends ConsumerWidget {
   final String eventId;
   final List<String> pinnedIds;
   final bool isScrolling;
+  final LiveGamesBatchKey liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -845,6 +862,7 @@ class _TabletGameCard extends ConsumerWidget {
       game: game,
       orderedGames: orderedGames,
       gameIndex: index,
+      liveBatchKey: liveBatchKey,
       allowStockfishFallback: !isScrolling,
       onChangedWithLiveGames:
           (updatedGames) => ref
@@ -902,6 +920,12 @@ class _ForYouEventGames extends ConsumerWidget {
           return const SizedBox.shrink();
         }
 
+        final liveBatchKey = _forYouLiveBatchKey(
+          eventId: eventId,
+          tourId: snapshot.tourId,
+          games: displayedGames,
+        );
+
         final gamesData = GamesScreenModel(
           gamesTourModels: orderedGames,
           pinnedGamedIs: snapshot.pinnedIds,
@@ -916,6 +940,7 @@ class _ForYouEventGames extends ConsumerWidget {
             orderedGames,
             snapshot.pinnedIds,
             isScrolling,
+            liveBatchKey,
           );
         }
 
@@ -935,6 +960,7 @@ class _ForYouEventGames extends ConsumerWidget {
                 animatedGameIds: animatedGameIds,
                 viewMode: viewMode,
                 isScrolling: isScrolling,
+                liveBatchKey: liveBatchKey,
               ),
             );
           }),
@@ -963,6 +989,7 @@ class _ForYouEventGames extends ConsumerWidget {
     List<GamesTourModel> orderedGames,
     List<String> pinnedIds,
     bool isScrolling,
+    LiveGamesBatchKey liveBatchKey,
   ) {
     final rows = <Widget>[];
 
@@ -985,6 +1012,7 @@ class _ForYouEventGames extends ConsumerWidget {
                     game: game1,
                     orderedGames: orderedGames,
                     gameIndex: i,
+                    liveBatchKey: liveBatchKey,
                     allowStockfishFallback: !isScrolling,
                     onChangedWithLiveGames:
                         (updatedGames) => ref
@@ -1020,6 +1048,7 @@ class _ForYouEventGames extends ConsumerWidget {
                             game: game2,
                             orderedGames: orderedGames,
                             gameIndex: i + 1,
+                            liveBatchKey: liveBatchKey,
                             allowStockfishFallback: !isScrolling,
                             onChangedWithLiveGames:
                                 (updatedGames) => ref
@@ -1141,6 +1170,7 @@ class _ForYouGameCard extends ConsumerWidget {
     required this.animatedGameIds,
     required this.viewMode,
     required this.isScrolling,
+    required this.liveBatchKey,
   });
 
   final GamesTourModel game;
@@ -1150,6 +1180,7 @@ class _ForYouGameCard extends ConsumerWidget {
   final Set<String> animatedGameIds;
   final GamesListViewMode viewMode;
   final bool isScrolling;
+  final LiveGamesBatchKey liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1168,6 +1199,7 @@ class _ForYouGameCard extends ConsumerWidget {
         gameIndex: gameIndex,
         isChessBoardVisible: isChessBoardVisible,
         viewSource: ChessboardView.forYou,
+        liveBatchKey: liveBatchKey,
         allowStockfishFallback: !isScrolling,
         onPinToggle:
             (_) => ref

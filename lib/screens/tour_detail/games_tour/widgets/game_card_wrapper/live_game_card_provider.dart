@@ -1,8 +1,10 @@
+import 'dart:async';
+
+import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
-import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Stores the base game model for each game, keyed by gameId.
@@ -19,88 +21,328 @@ final baseGameProvider = StateProvider.family<GamesTourModel?, String>(
 ///
 /// Auto-disposes when the widget is scrolled out of view, which automatically
 /// cleans up the Supabase Realtime subscription for this game.
-final liveGameCardProvider = AutoDisposeProvider.family<
-  GamesTourModel?,
-  String
->((ref, gameId) {
-  final baseGame = ref.watch(baseGameProvider(gameId));
+final liveGameCardProvider =
+    AutoDisposeProvider.family<GamesTourModel?, String>((ref, gameId) {
+      return _watchMergedLiveGame(
+        ref: ref,
+        params: LiveGameWatchParams(gameId: gameId),
+        mode: _LiveGameMergeMode.full,
+      );
+    });
+
+@immutable
+class LiveGameWatchParams {
+  const LiveGameWatchParams({required this.gameId, this.batchKey});
+
+  final String gameId;
+  final LiveGamesBatchKey? batchKey;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is LiveGameWatchParams &&
+            other.gameId == gameId &&
+            other.batchKey == batchKey;
+  }
+
+  @override
+  int get hashCode => Object.hash(gameId, batchKey);
+}
+
+final scopedLiveGameCardProvider =
+    AutoDisposeProvider.family<GamesTourModel?, LiveGameWatchParams>((
+      ref,
+      params,
+    ) {
+      return _watchMergedLiveGame(
+        ref: ref,
+        params: params,
+        mode: _LiveGameMergeMode.full,
+      );
+    });
+
+final liveGamePositionProvider =
+    AutoDisposeProvider.family<GamesTourModel?, LiveGameWatchParams>((
+      ref,
+      params,
+    ) {
+      return _watchMergedLiveGame(
+        ref: ref,
+        params: params,
+        mode: _LiveGameMergeMode.position,
+      );
+    });
+
+final liveGameClockProvider =
+    AutoDisposeProvider.family<GamesTourModel?, LiveGameWatchParams>((
+      ref,
+      params,
+    ) {
+      return _watchMergedLiveGame(
+        ref: ref,
+        params: params,
+        mode: _LiveGameMergeMode.clock,
+      );
+    });
+
+enum _LiveGameMergeMode { full, position, clock }
+
+GamesTourModel? _watchMergedLiveGame({
+  required Ref ref,
+  required LiveGameWatchParams params,
+  required _LiveGameMergeMode mode,
+}) {
+  final update = _watchLiveUpdate(ref, params, mode);
+  final baseGame = _watchBaseGame(ref, params.gameId, mode);
   if (baseGame == null) return null;
+  if (update == null) return baseGame;
 
-  // NO ref.keepAlive() - allow auto-dispose when scrolled out of view
-  // This ensures the Realtime channel is cleaned up properly
-
-  // Watch the game updates stream - individual channel per game
-  final streamAsync = ref.watch(gameUpdatesStreamProvider(gameId));
-
-  return streamAsync.when(
-    data: (gameData) {
-      if (gameData == null) return baseGame;
-
-      // Parse game status from stream
-      GameStatus parseGameStatus(String? status) {
-        switch (status) {
-          case '1-0':
-            return GameStatus.whiteWins;
-          case '0-1':
-            return GameStatus.blackWins;
-          case '1/2-1/2':
-          case '½-½':
-            return GameStatus.draw;
-          case '*':
-            return GameStatus.ongoing;
-          default:
-            return baseGame.gameStatus;
-        }
-      }
-
-      // Merge streamed data with base game
-      final streamedWhiteClock =
-          (gameData['last_clock_white'] as num?)?.round();
-      final streamedBlackClock =
-          (gameData['last_clock_black'] as num?)?.round();
-      final normalizedWhiteClock = GamesTourModel.normalizeClockSeconds(
-        clockSeconds: streamedWhiteClock,
-        clockCentiseconds: baseGame.whiteClockCentiseconds,
-      );
-      final normalizedBlackClock = GamesTourModel.normalizeClockSeconds(
-        clockSeconds: streamedBlackClock,
-        clockCentiseconds: baseGame.blackClockCentiseconds,
-      );
-      final mergedPgn = gameData['pgn'] as String? ?? baseGame.pgn;
-      final mergedLastMove =
-          gameData['last_move'] as String? ?? baseGame.lastMove;
-      final mergedStatus = parseGameStatus(gameData['status'] as String?);
-      final mergedFen = resolveFreshestGameFen(
-        fen: gameData['fen'] as String? ?? baseGame.fen,
-        pgn: mergedPgn,
-        lastMove: mergedLastMove,
-      );
-
-      final mergedGame = baseGame.copyWith(
-        pgn: mergedPgn,
-        fen: mergedFen ?? baseGame.fen,
-        lastMove: mergedLastMove,
-        lastMoveTime:
-            gameData['last_move_time'] != null
-                ? DateTime.tryParse(gameData['last_move_time'] as String)
-                : baseGame.lastMoveTime,
-        whiteClockSeconds: normalizedWhiteClock ?? baseGame.whiteClockSeconds,
-        blackClockSeconds: normalizedBlackClock ?? baseGame.blackClockSeconds,
-        gameStatus: mergedStatus,
-      );
-      if (_hasLiveFieldChanges(baseGame, mergedGame)) {
-        _storeLatestBaseGame(ref, gameId, mergedGame);
-      }
-      return mergedGame;
-    },
-    loading: () => baseGame,
-    error: (_, __) => baseGame,
+  final mergedGame = _mergeLiveUpdate(
+    baseGame: baseGame,
+    update: update,
+    mode: mode,
   );
-});
+  if (_hasLiveFieldChanges(baseGame, mergedGame)) {
+    _storeLatestBaseGame(ref, params.gameId, mergedGame);
+  }
+  return mergedGame;
+}
+
+GamesTourModel? _watchBaseGame(
+  Ref ref,
+  String gameId,
+  _LiveGameMergeMode mode,
+) {
+  return ref
+      .watch(
+        baseGameProvider(
+          gameId,
+        ).select((game) => _ProjectedBaseGame.forMode(game, mode)),
+      )
+      .game;
+}
+
+LiveGameUpdate? _watchLiveUpdate(
+  Ref ref,
+  LiveGameWatchParams params,
+  _LiveGameMergeMode mode,
+) {
+  final batchKey = params.batchKey;
+  if (batchKey != null && batchKey.contains(params.gameId)) {
+    final projectedUpdateAsync = ref.watch(
+      gameUpdatesBatchStreamProvider(batchKey).select((async) {
+        return async.whenData(
+          (updates) =>
+              _ProjectedLiveGameUpdate.forMode(updates[params.gameId], mode),
+        );
+      }),
+    );
+    return projectedUpdateAsync.valueOrNull?.update;
+  }
+
+  final projectedUpdateAsync = ref.watch(
+    liveGameUpdateStreamProvider(params.gameId).select((async) {
+      return async.whenData(
+        (update) => _ProjectedLiveGameUpdate.forMode(update, mode),
+      );
+    }),
+  );
+  return projectedUpdateAsync.valueOrNull?.update;
+}
+
+@immutable
+class _ProjectedBaseGame {
+  const _ProjectedBaseGame._({required this.game, required this.fields});
+
+  factory _ProjectedBaseGame.forMode(
+    GamesTourModel? game,
+    _LiveGameMergeMode mode,
+  ) {
+    if (game == null) {
+      return const _ProjectedBaseGame._(game: null, fields: <Object?>[null]);
+    }
+
+    return _ProjectedBaseGame._(
+      game: game,
+      fields: switch (mode) {
+        _LiveGameMergeMode.position => <Object?>[
+          game.gameId,
+          game.pgn,
+          game.fen,
+          game.lastMove,
+          game.lastMoveTime,
+          game.gameStatus,
+        ],
+        _LiveGameMergeMode.clock => <Object?>[
+          game.gameId,
+          game.whiteClockCentiseconds,
+          game.blackClockCentiseconds,
+          game.whiteClockSeconds,
+          game.blackClockSeconds,
+          game.gameStatus,
+        ],
+        _LiveGameMergeMode.full => <Object?>[game],
+      },
+    );
+  }
+
+  final GamesTourModel? game;
+  final List<Object?> fields;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! _ProjectedBaseGame) return false;
+    return _fieldsEqual(fields, other.fields);
+  }
+
+  @override
+  int get hashCode => Object.hashAll(fields);
+}
+
+@immutable
+class _ProjectedLiveGameUpdate {
+  const _ProjectedLiveGameUpdate._({
+    required this.update,
+    required this.fields,
+  });
+
+  factory _ProjectedLiveGameUpdate.forMode(
+    LiveGameUpdate? update,
+    _LiveGameMergeMode mode,
+  ) {
+    if (update == null) {
+      return const _ProjectedLiveGameUpdate._(
+        update: null,
+        fields: <Object?>[null],
+      );
+    }
+
+    return _ProjectedLiveGameUpdate._(
+      update: update,
+      fields: switch (mode) {
+        _LiveGameMergeMode.position => <Object?>[
+          update.gameId,
+          update.pgn,
+          update.fen,
+          update.lastMove,
+          update.lastMoveTime,
+          update.status,
+        ],
+        _LiveGameMergeMode.clock => <Object?>[
+          update.gameId,
+          update.lastClockWhite,
+          update.lastClockBlack,
+          update.status,
+        ],
+        _LiveGameMergeMode.full => <Object?>[update],
+      },
+    );
+  }
+
+  final LiveGameUpdate? update;
+  final List<Object?> fields;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! _ProjectedLiveGameUpdate) return false;
+    return _fieldsEqual(fields, other.fields);
+  }
+
+  @override
+  int get hashCode => Object.hashAll(fields);
+}
+
+bool _fieldsEqual(List<Object?> a, List<Object?> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+GamesTourModel _mergeLiveUpdate({
+  required GamesTourModel baseGame,
+  required LiveGameUpdate update,
+  required _LiveGameMergeMode mode,
+}) {
+  final includePosition =
+      mode == _LiveGameMergeMode.full || mode == _LiveGameMergeMode.position;
+  final includeClock =
+      mode == _LiveGameMergeMode.full || mode == _LiveGameMergeMode.clock;
+
+  final mergedPgn = includePosition ? update.pgn ?? baseGame.pgn : baseGame.pgn;
+  final mergedLastMove =
+      includePosition
+          ? update.lastMove ?? baseGame.lastMove
+          : baseGame.lastMove;
+  final mergedStatus =
+      includePosition || mode == _LiveGameMergeMode.clock
+          ? _parseGameStatus(update.status, baseGame.gameStatus)
+          : baseGame.gameStatus;
+  final mergedFen =
+      includePosition
+          ? resolveFreshestGameFen(
+            fen: update.fen ?? baseGame.fen,
+            pgn: mergedPgn,
+            lastMove: mergedLastMove,
+          )
+          : baseGame.fen;
+
+  final normalizedWhiteClock =
+      includeClock
+          ? GamesTourModel.normalizeClockSeconds(
+            clockSeconds: update.lastClockWhite?.round(),
+            clockCentiseconds: baseGame.whiteClockCentiseconds,
+          )
+          : baseGame.whiteClockSeconds;
+  final normalizedBlackClock =
+      includeClock
+          ? GamesTourModel.normalizeClockSeconds(
+            clockSeconds: update.lastClockBlack?.round(),
+            clockCentiseconds: baseGame.blackClockCentiseconds,
+          )
+          : baseGame.blackClockSeconds;
+
+  return baseGame.copyWith(
+    pgn: mergedPgn,
+    fen: mergedFen ?? baseGame.fen,
+    lastMove: mergedLastMove,
+    lastMoveTime:
+        includePosition && update.lastMoveTime != null
+            ? DateTime.tryParse(update.lastMoveTime!)
+            : baseGame.lastMoveTime,
+    whiteClockSeconds: normalizedWhiteClock ?? baseGame.whiteClockSeconds,
+    blackClockSeconds: normalizedBlackClock ?? baseGame.blackClockSeconds,
+    gameStatus: mergedStatus,
+  );
+}
+
+GameStatus _parseGameStatus(String? status, GameStatus fallback) {
+  switch (status) {
+    case '1-0':
+      return GameStatus.whiteWins;
+    case '0-1':
+      return GameStatus.blackWins;
+    case '1/2-1/2':
+    case '½-½':
+      return GameStatus.draw;
+    case '*':
+      return GameStatus.ongoing;
+    default:
+      return fallback;
+  }
+}
 
 /// Helper that sets the base game and watches the live provider in one call.
 /// Returns the live game data, falling back to the base game if not yet available.
-GamesTourModel watchLiveGame(WidgetRef ref, GamesTourModel game) {
+GamesTourModel watchLiveGame(
+  WidgetRef ref,
+  GamesTourModel game, {
+  LiveGamesBatchKey? batchKey,
+}) {
   final current = ref.read(baseGameProvider(game.gameId));
   if (_shouldUseIncomingGame(current, game, allowEqualFreshnessUpdate: false)) {
     Future.microtask(() {
@@ -112,7 +354,47 @@ GamesTourModel watchLiveGame(WidgetRef ref, GamesTourModel game) {
       }
     });
   }
-  return ref.watch(liveGameCardProvider(game.gameId)) ?? game;
+  final params = LiveGameWatchParams(gameId: game.gameId, batchKey: batchKey);
+  return ref.watch(scopedLiveGameCardProvider(params)) ?? game;
+}
+
+GamesTourModel watchLiveGamePosition(
+  WidgetRef ref,
+  GamesTourModel game, {
+  LiveGamesBatchKey? batchKey,
+}) {
+  _ensureBaseGame(ref, game);
+  final params = LiveGameWatchParams(gameId: game.gameId, batchKey: batchKey);
+  return ref.watch(liveGamePositionProvider(params)) ?? game;
+}
+
+GamesTourModel watchLiveGameClock(
+  WidgetRef ref,
+  GamesTourModel game, {
+  LiveGamesBatchKey? batchKey,
+}) {
+  _ensureBaseGame(ref, game);
+  final params = LiveGameWatchParams(gameId: game.gameId, batchKey: batchKey);
+  return ref.watch(liveGameClockProvider(params)) ?? game;
+}
+
+void _ensureBaseGame(WidgetRef ref, GamesTourModel game) {
+  final current = ref.read(baseGameProvider(game.gameId));
+  if (!_shouldUseIncomingGame(
+    current,
+    game,
+    allowEqualFreshnessUpdate: false,
+  )) {
+    return;
+  }
+  Future.microtask(() {
+    if (!ref.context.mounted) return;
+    try {
+      ref.read(baseGameProvider(game.gameId).notifier).state = game;
+    } on StateError {
+      // The card can be disposed while navigation is in flight.
+    }
+  });
 }
 
 void _storeLatestBaseGame(Ref ref, String gameId, GamesTourModel game) {

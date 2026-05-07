@@ -4,6 +4,7 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
@@ -392,6 +393,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     required this.onPinToggle,
     this.fixedBottomSide,
     this.allowStockfishFallback = true,
+    this.liveBatchKey,
   });
 
   final GamesTourModel gamesTourModel;
@@ -400,6 +402,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   final void Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
+  final LiveGamesBatchKey? liveBatchKey;
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
@@ -452,6 +455,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                     isPinned: isPinned,
                     fixedBottomSide: fixedBottomSide,
                     allowStockfishFallback: allowStockfishFallback,
+                    liveBatchKey: liveBatchKey,
                   ),
                 ),
 
@@ -518,6 +522,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
               showEvalBar: showEvalBar,
               fixedBottomSide: fixedBottomSide,
               allowStockfishFallback: allowStockfishFallback,
+              liveBatchKey: liveBatchKey,
             ),
           );
         },
@@ -535,6 +540,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     required this.onPinToggle,
     this.fixedBottomSide,
     this.allowStockfishFallback = true,
+    this.liveBatchKey,
   });
 
   final GamesTourModel gamesTourModel;
@@ -543,6 +549,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   final void Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
+  final LiveGamesBatchKey? liveBatchKey;
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
@@ -618,6 +625,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                         isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                         isPinned: isPinned,
                         playerView: PlayerView.gridView,
+                        liveBatchKey: liveBatchKey,
                       ),
                       SizedBox(height: 4.h),
                       SizedBox(
@@ -642,6 +650,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                             gamesTourModel.activePlayer == bottomSide,
                         isPinned: false,
                         playerView: PlayerView.gridView,
+                        liveBatchKey: liveBatchKey,
                       ),
 
                       if (!showAbove)
@@ -717,6 +726,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                 isPinned: isPinned,
                 playerView: PlayerView.gridView,
+                liveBatchKey: liveBatchKey,
               ),
               SizedBox(height: 4.h),
               _ChessBoardWithEvaluation(
@@ -737,6 +747,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
                 isPinned: false,
                 playerView: PlayerView.gridView,
+                liveBatchKey: liveBatchKey,
               ),
             ],
           ),
@@ -776,6 +787,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                 isPinned: isPinned,
                 playerView: PlayerView.gridView,
+                liveBatchKey: liveBatchKey,
               ),
               SizedBox(height: 4.h),
               _ChessBoardWithEvaluation(
@@ -796,6 +808,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
                 isPinned: false,
                 playerView: PlayerView.gridView,
+                liveBatchKey: liveBatchKey,
               ),
             ],
           ),
@@ -846,6 +859,7 @@ class _ChessBoardLayout extends ConsumerWidget {
     required this.showEvalBar,
     required this.fixedBottomSide,
     required this.allowStockfishFallback,
+    required this.liveBatchKey,
   });
 
   final GamesTourModel gamesTourModel;
@@ -856,6 +870,7 @@ class _ChessBoardLayout extends ConsumerWidget {
   final bool showEvalBar;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
+  final LiveGamesBatchKey? liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -870,6 +885,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           isCurrentPlayer: gamesTourModel.activePlayer == topSide,
           isPinned: isPinned,
           playerView: PlayerView.listView,
+          liveBatchKey: liveBatchKey,
         ),
         SizedBox(height: 4.h),
         _ChessBoardWithEvaluation(
@@ -890,6 +906,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
           isPinned: false,
           playerView: PlayerView.listView,
+          liveBatchKey: liveBatchKey,
         ),
       ],
     );
@@ -904,6 +921,7 @@ class _ChessBoardContent extends ConsumerWidget {
     required this.isPinned,
     required this.fixedBottomSide,
     required this.allowStockfishFallback,
+    required this.liveBatchKey,
   });
 
   final GamesTourModel gamesTourModel;
@@ -912,6 +930,7 @@ class _ChessBoardContent extends ConsumerWidget {
   final bool isPinned;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
+  final LiveGamesBatchKey? liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -940,6 +959,7 @@ class _ChessBoardContent extends ConsumerWidget {
                   isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                   isPinned: isPinned,
                   playerView: PlayerView.listView,
+                  liveBatchKey: liveBatchKey,
                 ),
                 SizedBox(height: 4.h),
                 _ChessBoardWithEvaluation(
@@ -960,6 +980,7 @@ class _ChessBoardContent extends ConsumerWidget {
                   isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
                   isPinned: false,
                   playerView: PlayerView.listView,
+                  liveBatchKey: liveBatchKey,
                 ),
               ],
             );
@@ -977,6 +998,7 @@ class _PlayerRow extends StatelessWidget {
     required this.isCurrentPlayer,
     required this.isPinned,
     required this.playerView,
+    this.liveBatchKey,
   });
 
   final GamesTourModel gamesTourModel;
@@ -984,6 +1006,7 @@ class _PlayerRow extends StatelessWidget {
   final bool isCurrentPlayer;
   final bool isPinned;
   final PlayerView playerView;
+  final LiveGamesBatchKey? liveBatchKey;
 
   @override
   Widget build(BuildContext context) {
@@ -994,6 +1017,7 @@ class _PlayerRow extends StatelessWidget {
       playerView: playerView,
       isPinned: isPinned,
       showClock: gamesTourModel.hasStarted,
+      liveBatchKey: liveBatchKey,
     );
   }
 }
