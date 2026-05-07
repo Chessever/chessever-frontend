@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -17,6 +18,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -62,6 +64,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ForegroundTaskScheduler.cancel('countrymen_games_resume_$hashCode');
     _scrollController.removeListener(_onScroll);
     _debounceTimer?.cancel();
     _scrollController.dispose();
@@ -73,13 +76,30 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed || !mounted) return;
+    if (state != AppLifecycleState.resumed) {
+      ForegroundTaskScheduler.cancel('countrymen_games_resume_$hashCode');
+      return;
+    }
+    if (!mounted) return;
 
-    ref.invalidate(gameUpdatesStreamProvider);
-    ref.invalidate(liveGameUpdateStreamProvider);
-    ref.invalidate(gameUpdatesBatchStreamProvider);
-    unawaited(
-      ref.read(countrymenCombinedGamesProvider.notifier).refreshGames(),
+    ForegroundTaskScheduler.schedule(
+      key: 'countrymen_games_resume_$hashCode',
+      task: () {
+        if (!mounted) return;
+        final route = ModalRoute.of(context);
+        if (route?.isCurrent != true) return;
+        if (ref.read(selectedCountrymenModeProvider) !=
+            CountrymenScreenMode.games) {
+          return;
+        }
+
+        ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
+        unawaited(
+          ref.read(countrymenCombinedGamesProvider.notifier).refreshGames(),
+        );
+      },
     );
   }
 

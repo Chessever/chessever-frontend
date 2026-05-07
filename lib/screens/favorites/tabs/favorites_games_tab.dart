@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
@@ -17,6 +18,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
@@ -63,6 +65,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
     _scrollController.removeListener(_onScroll);
     _debounceTimer?.cancel();
     _scrollController.dispose();
@@ -74,12 +77,31 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed || !mounted) return;
+    if (state != AppLifecycleState.resumed) {
+      ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
+      return;
+    }
+    if (!mounted) return;
 
-    ref.invalidate(gameUpdatesStreamProvider);
-    ref.invalidate(liveGameUpdateStreamProvider);
-    ref.invalidate(gameUpdatesBatchStreamProvider);
-    unawaited(ref.read(favoritesCombinedGamesProvider.notifier).refreshGames());
+    ForegroundTaskScheduler.schedule(
+      key: 'favorites_games_resume_$hashCode',
+      task: () {
+        if (!mounted) return;
+        final route = ModalRoute.of(context);
+        if (route?.isCurrent != true) return;
+        if (ref.read(selectedFavoritesModeProvider) !=
+            FavoritesScreenMode.games) {
+          return;
+        }
+
+        ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
+        unawaited(
+          ref.read(favoritesCombinedGamesProvider.notifier).refreshGames(),
+        );
+      },
+    );
   }
 
   void _onScroll() {

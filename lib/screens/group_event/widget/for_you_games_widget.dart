@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
@@ -80,6 +81,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void dispose() {
     _animatedEventIds.clear();
     _animatedGameIds.clear();
+    ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
     widget.scrollController.removeListener(_onScroll);
     WidgetsBinding.instance.removeObserver(this);
@@ -89,19 +91,32 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      // Only refresh when For You is the active category.
-      final selected = ref.read(selectedGroupCategoryProvider);
-      if (selected == GroupEventCategory.forYou) {
-        ref.invalidate(gameUpdatesStreamProvider);
-        ref.invalidate(liveGameUpdateStreamProvider);
-        ref.invalidate(gameUpdatesBatchStreamProvider);
-        unawaited(
-          ref
-              .read(forYouEventsProvider.notifier)
-              .refreshIfStale(maxAge: Duration.zero),
-        );
-      }
+    if (state != AppLifecycleState.resumed) {
+      ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
+      return;
+    }
+    if (!mounted) return;
+
+    ForegroundTaskScheduler.schedule(
+      key: 'for_you_games_resume_$hashCode',
+      task: _refreshRealtimeGamesNow,
+    );
+  }
+
+  void _refreshRealtimeGamesNow() {
+    if (!mounted) return;
+    final route = ModalRoute.of(context);
+    if (route?.isCurrent != true) return;
+    final selected = ref.read(selectedGroupCategoryProvider);
+    if (selected == GroupEventCategory.forYou) {
+      ref.invalidate(gameUpdatesStreamProvider);
+      ref.invalidate(liveGameUpdateStreamProvider);
+      ref.invalidate(gameUpdatesBatchStreamProvider);
+      unawaited(
+        ref
+            .read(forYouEventsProvider.notifier)
+            .refreshIfStale(maxAge: Duration.zero),
+      );
     }
   }
 
