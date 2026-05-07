@@ -24,6 +24,7 @@ class GameCard extends ConsumerWidget {
     required this.onPinToggle,
     required this.pinnedIds,
     required this.onTap,
+    this.allowStockfishFallback = true,
     super.key,
   });
 
@@ -31,6 +32,7 @@ class GameCard extends ConsumerWidget {
   final void Function(GamesTourModel game) onPinToggle;
   final List<String> pinnedIds;
   final Function() onTap;
+  final bool allowStockfishFallback;
 
   bool get isPinned => pinnedIds.contains(matchComparison.game.gameId);
 
@@ -51,7 +53,10 @@ class GameCard extends ConsumerWidget {
           width: double.infinity,
           child: Stack(
             children: [
-              _GameCardContent(matchComparison: matchComparison),
+              _GameCardContent(
+                matchComparison: matchComparison,
+                allowStockfishFallback: allowStockfishFallback,
+              ),
               if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
             ],
           ),
@@ -101,6 +106,7 @@ class GameCard extends ConsumerWidget {
           onPinToggle: () {
             onPinToggle(matchComparison.game);
             Future.microtask(() {
+              if (!buildContext.mounted) return;
               Navigator.pop(buildContext);
             });
           },
@@ -117,16 +123,21 @@ class _GameCardContent extends ConsumerWidget {
   const _GameCardContent({
     required this.matchComparison,
     this.showClock = true,
+    this.allowStockfishFallback = true,
   });
 
   final MatchWithComparison matchComparison;
   final bool showClock;
+  final bool allowStockfishFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       children: [
-        _TopSection(matchComparison: matchComparison),
+        _TopSection(
+          matchComparison: matchComparison,
+          allowStockfishFallback: allowStockfishFallback,
+        ),
         _BottomSection(matchComparison: matchComparison, showClock: showClock),
       ],
     );
@@ -139,12 +150,14 @@ class GamesTourGameCardBody extends ConsumerWidget {
     required this.matchComparison,
     this.eventName,
     this.showClock = true,
+    this.allowStockfishFallback = true,
     super.key,
   });
 
   final MatchWithComparison matchComparison;
   final String? eventName;
   final bool showClock;
+  final bool allowStockfishFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -187,6 +200,7 @@ class GamesTourGameCardBody extends ConsumerWidget {
           child: _GameCardContent(
             matchComparison: matchComparison,
             showClock: showClock,
+            allowStockfishFallback: allowStockfishFallback,
           ),
         ),
       ],
@@ -195,9 +209,13 @@ class GamesTourGameCardBody extends ConsumerWidget {
 }
 
 class _TopSection extends ConsumerWidget {
-  const _TopSection({required this.matchComparison});
+  const _TopSection({
+    required this.matchComparison,
+    required this.allowStockfishFallback,
+  });
 
   final MatchWithComparison matchComparison;
+  final bool allowStockfishFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -223,7 +241,12 @@ class _TopSection extends ConsumerWidget {
       child: Row(
         children: [
           Expanded(child: _GamesRound(player: player1)),
-          Expanded(child: _CenterContent(matchWithComparison: matchComparison)),
+          Expanded(
+            child: _CenterContent(
+              matchWithComparison: matchComparison,
+              allowStockfishFallback: allowStockfishFallback,
+            ),
+          ),
           Expanded(child: _GamesRound(player: player2)),
         ],
       ),
@@ -232,9 +255,13 @@ class _TopSection extends ConsumerWidget {
 }
 
 class _CenterContent extends ConsumerWidget {
-  const _CenterContent({required this.matchWithComparison});
+  const _CenterContent({
+    required this.matchWithComparison,
+    required this.allowStockfishFallback,
+  });
 
   final MatchWithComparison matchWithComparison;
+  final bool allowStockfishFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -269,9 +296,13 @@ class _CenterContent extends ConsumerWidget {
     return Center(
       child:
           matchWithComparison.comparison == MatchComparison.sameOrder
-              ? ChessProgressBar(gamesTourModel: matchWithComparison.game)
+              ? ChessProgressBar(
+                gamesTourModel: matchWithComparison.game,
+                allowStockfishFallback: allowStockfishFallback,
+              )
               : ChessProgressBar.reversedMode(
                 gamesTourModel: matchWithComparison.game,
+                allowStockfishFallback: allowStockfishFallback,
               ),
     );
   }
@@ -369,7 +400,7 @@ class _BottomSection extends ConsumerWidget {
 }
 
 class _GamesRound extends ConsumerWidget {
-  const _GamesRound({required this.player, super.key});
+  const _GamesRound({required this.player});
 
   final PlayerCard player;
 
@@ -436,7 +467,6 @@ class _TimerWidget extends StatelessWidget {
     required this.time,
     required this.gamesTourModel,
     required this.isWhitePlayer,
-    super.key,
   });
 
   final bool turn;

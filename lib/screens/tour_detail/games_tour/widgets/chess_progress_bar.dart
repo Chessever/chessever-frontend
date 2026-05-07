@@ -22,14 +22,21 @@ double normalizePvToProgressValue(Pv? pv) {
 }
 
 class ChessProgressBar extends ConsumerStatefulWidget {
-  const ChessProgressBar({required this.gamesTourModel, super.key})
-    : isReversedMode = false;
+  const ChessProgressBar({
+    required this.gamesTourModel,
+    this.allowStockfishFallback = true,
+    super.key,
+  }) : isReversedMode = false;
 
-  const ChessProgressBar.reversedMode({required this.gamesTourModel, super.key})
-    : isReversedMode = true;
+  const ChessProgressBar.reversedMode({
+    required this.gamesTourModel,
+    this.allowStockfishFallback = true,
+    super.key,
+  }) : isReversedMode = true;
 
   final GamesTourModel gamesTourModel;
   final bool isReversedMode;
+  final bool allowStockfishFallback;
 
   @override
   ConsumerState<ChessProgressBar> createState() => _ChessProgressBarState();
@@ -41,11 +48,13 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
   @override
   Widget build(BuildContext context) {
     // Chess progress bar only needs 1 PV for evaluation
-    final evalAsync = ref.watch(
-      cascadeEvalProvider(
-        CascadeEvalParams(fen: widget.gamesTourModel.fen ?? '', multiPV: 1),
-      ),
-    );
+    final fen = widget.gamesTourModel.fen ?? '';
+    final evalAsync =
+        widget.allowStockfishFallback
+            ? ref.watch(
+              cascadeEvalProvider(CascadeEvalParams(fen: fen, multiPV: 1)),
+            )
+            : ref.watch(gameCardEvalCacheOnlyProvider(fen));
 
     final evaluation = evalAsync.when(
       loading: () => oldEval,

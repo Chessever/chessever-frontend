@@ -262,6 +262,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   final String fen;
   final PlayerView playerView;
   final bool isFlipped;
+  final bool allowStockfishFallback;
 
   const EvaluationBarWidgetForGames({
     required this.width,
@@ -269,6 +270,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
     required this.fen,
     required this.playerView,
     this.isFlipped = false,
+    this.allowStockfishFallback = true,
     super.key,
   });
 
@@ -296,65 +298,68 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
 
     // Uses depth-aware cache/server reuse first, then low-priority Stockfish.
     // Auto-disposes when card scrolls out of view.
-    return ref
-        .watch(gameCardEvalWithStockfishFallbackProvider(fen))
-        .when(
-          loading:
-              () => _Bars(
-                width: width,
-                height: height,
-                whiteHeight: height * 0.5,
-                blackHeight: height * 0.5,
-                evaluation: 0.0,
-                isEvaluating: true,
-                hasEvaluationData: false,
-                playerView: playerView,
-                isFlipped: isFlipped,
-              ),
-          error:
-              (_, __) => _Bars(
-                width: width,
-                height: height,
-                whiteHeight: height * 0.5,
-                blackHeight: height * 0.5,
-                evaluation: 0.0,
-                hasEvaluationData: false,
-                playerView: playerView,
-                isFlipped: isFlipped,
-              ),
-          data: (cloud) {
-            final pv = cloud.pvs.firstOrNull;
-            if (pv == null) {
-              return _Bars(
-                width: width,
-                height: height,
-                whiteHeight: height * 0.5,
-                blackHeight: height * 0.5,
-                evaluation: 0.0,
-                hasEvaluationData: false,
-                playerView: playerView,
-                isFlipped: isFlipped,
-              );
-            }
+    final evalAsync =
+        allowStockfishFallback
+            ? ref.watch(gameCardEvalWithStockfishFallbackProvider(fen))
+            : ref.watch(gameCardEvalCacheOnlyProvider(fen));
 
-            final normalized = _normalizePvToWhitePerspective(pv);
-            final eval = normalized.eval;
-            final isMate = normalized.isMate;
-            final mate = normalized.mate;
+    return evalAsync.when(
+      loading:
+          () => _Bars(
+            width: width,
+            height: height,
+            whiteHeight: height * 0.5,
+            blackHeight: height * 0.5,
+            evaluation: 0.0,
+            isEvaluating: true,
+            hasEvaluationData: false,
+            playerView: playerView,
+            isFlipped: isFlipped,
+          ),
+      error:
+          (_, __) => _Bars(
+            width: width,
+            height: height,
+            whiteHeight: height * 0.5,
+            blackHeight: height * 0.5,
+            evaluation: 0.0,
+            hasEvaluationData: false,
+            playerView: playerView,
+            isFlipped: isFlipped,
+          ),
+      data: (cloud) {
+        final pv = cloud.pvs.firstOrNull;
+        if (pv == null) {
+          return _Bars(
+            width: width,
+            height: height,
+            whiteHeight: height * 0.5,
+            blackHeight: height * 0.5,
+            evaluation: 0.0,
+            hasEvaluationData: false,
+            playerView: playerView,
+            isFlipped: isFlipped,
+          );
+        }
 
-            return _Bars(
-              width: width,
-              height: height,
-              whiteHeight: _getWhiteHeight(eval, height),
-              blackHeight: _getBlackHeight(eval, height),
-              evaluation: eval,
-              isMate: isMate,
-              mate: mate,
-              playerView: playerView,
-              isFlipped: isFlipped,
-            );
-          },
+        final normalized = _normalizePvToWhitePerspective(pv);
+        final eval = normalized.eval;
+        final isMate = normalized.isMate;
+        final mate = normalized.mate;
+
+        return _Bars(
+          width: width,
+          height: height,
+          whiteHeight: _getWhiteHeight(eval, height),
+          blackHeight: _getBlackHeight(eval, height),
+          evaluation: eval,
+          isMate: isMate,
+          mate: mate,
+          playerView: playerView,
+          isFlipped: isFlipped,
         );
+      },
+    );
   }
 
   double _getWhiteHeight(double eval, double totalHeight) {

@@ -18,6 +18,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
+  final bool allowStockfishFallback;
 
   const GridGameCardWrapperWidget({
     super.key,
@@ -28,6 +29,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     required this.pinnedIds,
     required this.onPinToggle,
     this.fixedBottomSide,
+    this.allowStockfishFallback = true,
   });
 
   @override
@@ -52,6 +54,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       pinnedIds: pinnedIds,
       onPinToggle: onPinToggle,
       fixedBottomSide: fixedBottomSide,
+      allowStockfishFallback: allowStockfishFallback,
     );
   }
 }

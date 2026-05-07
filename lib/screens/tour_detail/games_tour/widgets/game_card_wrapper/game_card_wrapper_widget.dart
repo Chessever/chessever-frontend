@@ -19,6 +19,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final void Function(int)? onReturnFromChessboard;
   final ChessboardView viewSource;
   final Side? fixedBottomSide;
+  final bool allowStockfishFallback;
 
   const GameCardWrapperWidget({
     super.key,
@@ -30,6 +31,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.onReturnFromChessboard,
     this.viewSource = ChessboardView.tour,
     this.fixedBottomSide,
+    this.allowStockfishFallback = true,
   });
 
   @override
@@ -76,6 +78,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle: handlePinToggle,
           fixedBottomSide: fixedBottomSide,
+          allowStockfishFallback: allowStockfishFallback,
         )
         : GameCard(
           key: ValueKey(keyValue),
@@ -85,6 +88,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
           ),
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle: handlePinToggle,
+          allowStockfishFallback: allowStockfishFallback,
           onTap:
               () => ref
                   .read(gameCardWrapperProvider)

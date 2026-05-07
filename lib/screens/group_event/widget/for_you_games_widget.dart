@@ -25,6 +25,16 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
+const double _kForYouCompactCacheExtent = 1200;
+const double _kForYouBoardCacheExtent = 500;
+const Duration _kForYouScrollIdleDelay = Duration(milliseconds: 180);
+
+double _forYouCacheExtentForMode(GamesListViewMode mode) {
+  return mode == GamesListViewMode.gamesCard
+      ? _kForYouCompactCacheExtent
+      : _kForYouBoardCacheExtent;
+}
+
 /// For You tab widget - displays events with their top 4 games
 ///
 /// KEY DESIGN:
@@ -45,6 +55,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   final Set<String> _animatedEventIds = <String>{};
   final Set<String> _animatedGameIds = <String>{};
+  Timer? _scrollIdleTimer;
+  bool _isScrolling = false;
 
   @override
   void initState() {
@@ -57,6 +69,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void dispose() {
     _animatedEventIds.clear();
     _animatedGameIds.clear();
+    _scrollIdleTimer?.cancel();
     widget.scrollController.removeListener(_onScroll);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -84,11 +97,24 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   void _onScroll() {
     if (!widget.scrollController.hasClients) return;
+    _markScrolling();
     final max = widget.scrollController.position.maxScrollExtent;
     final current = widget.scrollController.position.pixels;
     if (max - current <= 300) {
       ref.read(forYouEventsProvider.notifier).loadMore();
     }
+  }
+
+  void _markScrolling() {
+    if (!_isScrolling && mounted) {
+      setState(() => _isScrolling = true);
+    }
+
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_kForYouScrollIdleDelay, () {
+      if (!mounted || !_isScrolling) return;
+      setState(() => _isScrolling = false);
+    });
   }
 
   @override
@@ -109,6 +135,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     }
 
     final state = ref.watch(forYouEventsProvider);
+    final viewMode = ref.watch(gamesListViewModeProvider);
     final events = state.events;
 
     if (state.isLoading && events.isEmpty) {
@@ -136,6 +163,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       backgroundColor: kBlack2Color,
       child: _buildEventsList(
         events,
+        viewMode: viewMode,
+        isScrolling: _isScrolling,
         showLoadingMore: state.hasMore && !state.isLoading,
       ),
     );
@@ -203,11 +232,18 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   Widget _buildEventsList(
     List<GroupEventCardModel> events, {
+    required GamesListViewMode viewMode,
+    required bool isScrolling,
     bool showLoadingMore = false,
   }) {
     // On tablet, use a beautiful grid layout
     if (ResponsiveHelper.isTablet) {
-      return _buildTabletGridLayout(events, showLoadingMore: showLoadingMore);
+      return _buildTabletGridLayout(
+        events,
+        viewMode: viewMode,
+        isScrolling: isScrolling,
+        showLoadingMore: showLoadingMore,
+      );
     }
 
     // Phone: vertical list layout
@@ -224,7 +260,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: 2000,
+      cacheExtent: _forYouCacheExtentForMode(viewMode),
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -246,6 +284,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           isFirst: index == 1,
           animatedEventIds: _animatedEventIds,
           animatedGameIds: _animatedGameIds,
+          isScrolling: isScrolling,
         );
       },
     );
@@ -272,6 +311,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   /// Uses ListView.builder for lazy, on-demand rendering
   Widget _buildTabletGridLayout(
     List<GroupEventCardModel> events, {
+    required GamesListViewMode viewMode,
+    required bool isScrolling,
     bool showLoadingMore = false,
   }) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
@@ -290,7 +331,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: 2000,
+      cacheExtent: _forYouCacheExtentForMode(viewMode),
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -322,6 +365,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                   event: event1,
                   animatedEventIds: _animatedEventIds,
                   animatedGameIds: _animatedGameIds,
+                  isScrolling: isScrolling,
                 ),
               ),
               SizedBox(width: columnSpacing),
@@ -334,6 +378,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                           event: event2,
                           animatedEventIds: _animatedEventIds,
                           animatedGameIds: _animatedGameIds,
+                          isScrolling: isScrolling,
                         )
                         : const SizedBox.shrink(),
               ),
@@ -440,12 +485,14 @@ class _ForYouEventSection extends ConsumerWidget {
     required this.isFirst,
     required this.animatedEventIds,
     required this.animatedGameIds,
+    required this.isScrolling,
   });
 
   final GroupEventCardModel event;
   final bool isFirst;
   final Set<String> animatedEventIds;
   final Set<String> animatedGameIds;
+  final bool isScrolling;
 
   /// Builds the EventCard with proper constraints for tablet
   /// Tablet uses image-as-background layout which needs bounded height
@@ -522,6 +569,7 @@ class _ForYouEventSection extends ConsumerWidget {
           eventId: event.id,
           snapshotAsync: snapshotAsync,
           animatedGameIds: animatedGameIds,
+          isScrolling: isScrolling,
         ),
       ],
     );
@@ -545,11 +593,13 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
     required this.event,
     required this.animatedEventIds,
     required this.animatedGameIds,
+    required this.isScrolling,
   });
 
   final GroupEventCardModel event;
   final Set<String> animatedEventIds;
   final Set<String> animatedGameIds;
+  final bool isScrolling;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -613,6 +663,7 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
           eventId: event.id,
           snapshotAsync: snapshotAsync,
           animatedGameIds: animatedGameIds,
+          isScrolling: isScrolling,
         ),
       ],
     );
@@ -635,11 +686,13 @@ class _ForYouTabletColumnGames extends StatelessWidget {
     required this.eventId,
     required this.snapshotAsync,
     required this.animatedGameIds,
+    required this.isScrolling,
   });
 
   final String eventId;
   final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
   final Set<String> animatedGameIds;
+  final bool isScrolling;
 
   @override
   Widget build(BuildContext context) {
@@ -680,6 +733,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                         index: i,
                         eventId: eventId,
                         pinnedIds: snapshot.pinnedIds,
+                        isScrolling: isScrolling,
                       ),
                     ),
                   ),
@@ -696,6 +750,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                                 index: i + 1,
                                 eventId: eventId,
                                 pinnedIds: snapshot.pinnedIds,
+                                isScrolling: isScrolling,
                               ),
                             )
                             : const SizedBox.shrink(),
@@ -773,6 +828,7 @@ class _TabletGameCard extends ConsumerWidget {
     required this.index,
     required this.eventId,
     required this.pinnedIds,
+    required this.isScrolling,
   });
 
   final GamesTourModel game;
@@ -780,6 +836,7 @@ class _TabletGameCard extends ConsumerWidget {
   final int index;
   final String eventId;
   final List<String> pinnedIds;
+  final bool isScrolling;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -788,6 +845,7 @@ class _TabletGameCard extends ConsumerWidget {
       game: game,
       orderedGames: orderedGames,
       gameIndex: index,
+      allowStockfishFallback: !isScrolling,
       onChangedWithLiveGames:
           (updatedGames) => ref
               .read(gameCardWrapperProvider)
@@ -818,11 +876,13 @@ class _ForYouEventGames extends ConsumerWidget {
     required this.eventId,
     required this.snapshotAsync,
     required this.animatedGameIds,
+    required this.isScrolling,
   });
 
   final String eventId;
   final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
   final Set<String> animatedGameIds;
+  final bool isScrolling;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -855,6 +915,7 @@ class _ForYouEventGames extends ConsumerWidget {
             displayedGames,
             orderedGames,
             snapshot.pinnedIds,
+            isScrolling,
           );
         }
 
@@ -873,6 +934,7 @@ class _ForYouEventGames extends ConsumerWidget {
                 eventId: eventId,
                 animatedGameIds: animatedGameIds,
                 viewMode: viewMode,
+                isScrolling: isScrolling,
               ),
             );
           }),
@@ -900,6 +962,7 @@ class _ForYouEventGames extends ConsumerWidget {
     List<GamesTourModel> displayedGames,
     List<GamesTourModel> orderedGames,
     List<String> pinnedIds,
+    bool isScrolling,
   ) {
     final rows = <Widget>[];
 
@@ -922,6 +985,7 @@ class _ForYouEventGames extends ConsumerWidget {
                     game: game1,
                     orderedGames: orderedGames,
                     gameIndex: i,
+                    allowStockfishFallback: !isScrolling,
                     onChangedWithLiveGames:
                         (updatedGames) => ref
                             .read(gameCardWrapperProvider)
@@ -956,6 +1020,7 @@ class _ForYouEventGames extends ConsumerWidget {
                             game: game2,
                             orderedGames: orderedGames,
                             gameIndex: i + 1,
+                            allowStockfishFallback: !isScrolling,
                             onChangedWithLiveGames:
                                 (updatedGames) => ref
                                     .read(gameCardWrapperProvider)
@@ -1075,6 +1140,7 @@ class _ForYouGameCard extends ConsumerWidget {
     required this.eventId,
     required this.animatedGameIds,
     required this.viewMode,
+    required this.isScrolling,
   });
 
   final GamesTourModel game;
@@ -1083,6 +1149,7 @@ class _ForYouGameCard extends ConsumerWidget {
   final String eventId;
   final Set<String> animatedGameIds;
   final GamesListViewMode viewMode;
+  final bool isScrolling;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1101,6 +1168,7 @@ class _ForYouGameCard extends ConsumerWidget {
         gameIndex: gameIndex,
         isChessBoardVisible: isChessBoardVisible,
         viewSource: ChessboardView.forYou,
+        allowStockfishFallback: !isScrolling,
         onPinToggle:
             (_) => ref
                 .read(forYouPinActionProvider)

@@ -4,11 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
-import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
+import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider, Ref;
 import 'stockfish_singleton.dart';
 
 // REMOVED: _LichessRateLimitTracker - Lichess API removed, relying only on Stockfish
@@ -172,7 +171,6 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
   final multiPV = params.multiPV;
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
-  final evalsRepo = ref.watch(evalsRepositoryProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
 
   if (fen.isEmpty) {
@@ -350,7 +348,6 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   final multiPV = params.multiPV;
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
-  final evalsRepo = ref.watch(evalsRepositoryProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
 
   if (fen.isEmpty) {
@@ -447,7 +444,6 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
 >((ref, fen) async {
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
-  final evalsRepo = ref.watch(evalsRepositoryProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
 
   if (fen.isEmpty) {
@@ -560,3 +556,52 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
     return _emptyCloudEval(fen, multiPV: multiPV);
   }
 });
+
+/// Cache/server-only evaluation provider for scroll surfaces.
+///
+/// This intentionally avoids starting Stockfish while a feed is actively
+/// scrolling. Callers can switch back to [gameCardEvalWithStockfishFallbackProvider]
+/// as soon as scrolling settles, preserving eval quality without competing with
+/// frame rendering during a fling.
+final gameCardEvalCacheOnlyProvider = FutureProvider.family
+    .autoDispose<CloudEval, String>((ref, fen) async {
+      if (fen.isEmpty) {
+        return _emptyCloudEval(fen, multiPV: 1);
+      }
+
+      final cached = await _readGameCardCacheOrRemoteEval(
+        ref: ref,
+        fen: fen,
+        sourceTag: 'gameCardScroll',
+      );
+      return cached ?? _emptyCloudEval(fen, multiPV: 1);
+    });
+
+Future<CloudEval?> _readGameCardCacheOrRemoteEval({
+  required Ref ref,
+  required String fen,
+  required String sourceTag,
+}) async {
+  const multiPV = 1;
+  final local = ref.watch(localEvalCacheProvider);
+  final persist = ref.watch(persistCloudEvalProvider);
+  final gamebase = ref.read(gamebaseRepositoryProvider);
+
+  final cachedLocal = await _readLocalEvalFast(
+    local: local,
+    fen: fen,
+    multiPV: multiPV,
+    sourceTag: sourceTag,
+  );
+  if (cachedLocal != null) {
+    return cachedLocal;
+  }
+
+  return _readGamebaseEvalFast(
+    gamebase: gamebase,
+    local: local,
+    persist: persist,
+    fen: fen,
+    sourceTag: sourceTag,
+  );
+}
