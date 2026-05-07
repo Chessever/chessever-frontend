@@ -4,8 +4,9 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
-import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -34,7 +35,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
   late BookGamesColorFilter _color;
   late BookGamesTimeControlFilter _timeControl;
   late RangeValues _yearRange;
-  late RangeValues _ratingRange;
+  late int? _selectedMinRating;
   late final TextEditingController _openingController;
   late final TextEditingController _ecoController;
   late final TextEditingController _eventController;
@@ -53,9 +54,8 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
       widget.initialFilter.minYear.toDouble(),
       widget.initialFilter.maxYear.toDouble(),
     );
-    _ratingRange = RangeValues(
-      widget.initialFilter.minRating.toDouble(),
-      widget.initialFilter.maxRating.toDouble(),
+    _selectedMinRating = RatingTierFilter.normalizeMinRating(
+      widget.initialFilter.minRating,
     );
 
     _openingController = TextEditingController(
@@ -188,17 +188,14 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                     ),
                     SizedBox(height: 16.h),
 
-                    _sectionLabel('Rating'),
+                    _sectionLabel('Level'),
                     SizedBox(height: 8.h),
-                    _rangeSlider(
-                      values: _ratingRange,
-                      min: GameFilter.absoluteMinRating.toDouble(),
-                      max: GameFilter.absoluteMaxRating.toDouble(),
-                      divisions:
-                          (GameFilter.absoluteMaxRating -
-                              GameFilter.absoluteMinRating) ~/
-                          50,
-                      onChanged: (v) => setState(() => _ratingRange = v),
+                    RatingTierFilter(
+                      selectedMinRating: _selectedMinRating,
+                      onChanged: (value) {
+                        HapticFeedbackService.selection();
+                        setState(() => _selectedMinRating = value);
+                      },
                     ),
                     SizedBox(height: 16.h),
 
@@ -334,9 +331,8 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
         defaults.minYear.toDouble(),
         defaults.maxYear.toDouble(),
       );
-      _ratingRange = RangeValues(
-        defaults.minRating.toDouble(),
-        defaults.maxRating.toDouble(),
+      _selectedMinRating = RatingTierFilter.normalizeMinRating(
+        defaults.minRating,
       );
       _openingController.text = defaults.opening;
       _ecoController.text = defaults.eco;
@@ -355,8 +351,8 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
       timeControl: _timeControl,
       minYear: _yearRange.start.round(),
       maxYear: _yearRange.end.round(),
-      minRating: _ratingRange.start.round(),
-      maxRating: _ratingRange.end.round(),
+      minRating: _selectedMinRating ?? GameFilter.defaultMinRating,
+      maxRating: GameFilter.absoluteMaxRating,
       opening: _openingController.text.trim(),
       eco: _ecoController.text.trim(),
       event: _eventController.text.trim(),

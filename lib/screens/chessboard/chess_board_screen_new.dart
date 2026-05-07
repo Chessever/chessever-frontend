@@ -81,6 +81,7 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.da
 import 'package:chessever2/screens/gamebase/models/gamebase_game.dart'
     show TimeControl, TimeControlExtension;
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
@@ -8477,7 +8478,7 @@ class _FenPositionGamesEmpty extends StatelessWidget {
 }
 
 /// Filter sheet for the FEN-position-search table. Visually mirrors the
-/// opening-explorer's `_FilterSheet` (FilterChip + WheelRangeFilter + section
+/// opening-explorer's `_FilterSheet` (FilterChip + tier filter + section
 /// labels in `kSecondaryTextColor`, full-width primary Apply button, "Clear
 /// all" action when any draft filter is active) so the two surfaces stay
 /// consistent. Returns the resulting [GamebaseFilters] via Navigator.pop.
@@ -8492,28 +8493,19 @@ class _FenPositionFiltersSheet extends StatefulWidget {
 }
 
 class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
-  static const double _ratingMin = 0;
-  static const double _ratingMax = 3500;
   static const double _yearMin = 1800;
   static double get _yearMax => DateTime.now().year.toDouble();
 
   late GamebaseFilters _draftFilters;
-  late RangeValues _ratingRange;
+  late int? _selectedMinRating;
   late RangeValues _yearRange;
 
   @override
   void initState() {
     super.initState();
     _draftFilters = widget.initial;
-    _ratingRange = RangeValues(
-      (_draftFilters.minRating?.toDouble() ?? _ratingMin).clamp(
-        _ratingMin,
-        _ratingMax,
-      ),
-      (_draftFilters.maxRating?.toDouble() ?? _ratingMax).clamp(
-        _ratingMin,
-        _ratingMax,
-      ),
+    _selectedMinRating = RatingTierFilter.normalizeMinRating(
+      _draftFilters.minRating,
     );
     _yearRange = RangeValues(
       (_draftFilters.yearFrom?.toDouble() ?? _yearMin).clamp(
@@ -8524,15 +8516,9 @@ class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
     );
   }
 
-  int? get _effectiveMinRating {
-    final v = _ratingRange.start.round();
-    return v <= _ratingMin ? null : v;
-  }
+  int? get _effectiveMinRating => _selectedMinRating;
 
-  int? get _effectiveMaxRating {
-    final v = _ratingRange.end.round();
-    return v >= _ratingMax ? null : v;
-  }
+  int? get _effectiveMaxRating => null;
 
   int? get _effectiveYearFrom {
     final v = _yearRange.start.round();
@@ -8580,7 +8566,7 @@ class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
   void _clearAll() {
     setState(() {
       _draftFilters = const GamebaseFilters();
-      _ratingRange = const RangeValues(_ratingMin, _ratingMax);
+      _selectedMinRating = null;
       _yearRange = RangeValues(_yearMin, _yearMax);
     });
   }
@@ -8702,18 +8688,15 @@ class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
                   ),
                   SizedBox(height: 16.sp),
 
-                  // Rating range
-                  _FilterSectionLabel(label: 'Rating Range'),
+                  // Rating level
+                  _FilterSectionLabel(label: 'Level'),
                   SizedBox(height: 8.sp),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    child: WheelRangeFilter(
-                      minValue: _ratingMin,
-                      maxValue: _ratingMax,
-                      currentStart: _ratingRange.start,
-                      currentEnd: _ratingRange.end,
-                      divisions: 70,
-                      onChanged: (v) => setState(() => _ratingRange = v),
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    child: RatingTierFilter(
+                      selectedMinRating: _selectedMinRating,
+                      onChanged:
+                          (value) => setState(() => _selectedMinRating = value),
                     ),
                   ),
                   SizedBox(height: 24.sp),

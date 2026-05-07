@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class FilterPopup extends ConsumerWidget {
@@ -31,12 +32,6 @@ class FilterPopup extends ConsumerWidget {
     final readableGameState =
         ref.read(groupEventFilterProvider).getReadableGameState();
     final gameStates = ref.read(groupEventFilterProvider).getGameState();
-    const ratingTiers = [
-      _RatingTier(label: 'GM', subtitle: '+2500', minElo: 2500),
-      _RatingTier(label: 'IM', subtitle: '+2400', minElo: 2400),
-      _RatingTier(label: 'FM', subtitle: '+2300', minElo: 2300),
-      _RatingTier(label: 'CM', subtitle: '+2200', minElo: 2200),
-    ];
 
     return GestureDetector(
       onTap: () => Navigator.of(context).pop(),
@@ -184,79 +179,12 @@ class FilterPopup extends ConsumerWidget {
                               ),
                             ),
                             SizedBox(height: 8.h),
-                            GridView.builder(
-                              shrinkWrap: true,
-                              padding: EdgeInsets.zero,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    mainAxisSpacing: 8,
-                                    crossAxisSpacing: 8,
-                                    childAspectRatio: 2.55,
-                                  ),
-                              itemCount: ratingTiers.length,
-                              itemBuilder: (context, index) {
-                                final tier = ratingTiers[index];
-                                final isSelected =
-                                    filterState.minElo == tier.minElo;
-                                return GestureDetector(
-                                  onTap:
-                                      () => ref
-                                          .read(filterPopupProvider.notifier)
-                                          .setMinimumElo(
-                                            isSelected ? null : tier.minElo,
-                                          ),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 150),
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 10.w,
-                                      vertical: 7.h,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          isSelected
-                                              ? kPrimaryColor
-                                              : kBlack2Color,
-                                      borderRadius: BorderRadius.circular(8.br),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          tier.label,
-                                          style: AppTypography.textSmBold
-                                              .copyWith(
-                                                color:
-                                                    isSelected
-                                                        ? kBlackColor
-                                                        : kWhiteColor,
-                                              ),
-                                        ),
-                                        SizedBox(width: 5.w),
-                                        Flexible(
-                                          child: Text(
-                                            tier.subtitle,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: AppTypography.textXsMedium
-                                                .copyWith(
-                                                  color:
-                                                      isSelected
-                                                          ? kBlackColor
-                                                              .withValues(
-                                                                alpha: 0.75,
-                                                              )
-                                                          : kSecondaryTextColor,
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+                            RatingTierFilter(
+                              selectedMinRating: filterState.minElo,
+                              onChanged:
+                                  (value) => ref
+                                      .read(filterPopupProvider.notifier)
+                                      .setMinimumElo(value),
                             ),
                             SizedBox(height: 16.h),
                           ],
@@ -336,16 +264,4 @@ class FilterPopup extends ConsumerWidget {
       ),
     );
   }
-}
-
-class _RatingTier {
-  const _RatingTier({
-    required this.label,
-    required this.subtitle,
-    required this.minElo,
-  });
-
-  final String label;
-  final String subtitle;
-  final int minElo;
 }
