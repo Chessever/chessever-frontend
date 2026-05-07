@@ -398,10 +398,6 @@ List<GroupEventCardModel> _applySearchFilter(
   }.intersection(filterSet);
   final requestedFormats = filterSet.difference(requestedStatuses);
 
-  final hasEloFilter =
-      filter.eloRange.start > defaultFilterPopupState.eloRange.start ||
-      filter.eloRange.end < defaultFilterPopupState.eloRange.end;
-
   return tournaments.where((tour) {
     if (requestedStatuses.isNotEmpty) {
       final isLive =
@@ -418,9 +414,9 @@ List<GroupEventCardModel> _applySearchFilter(
       if (!requestedFormats.contains(tourFormat)) return false;
     }
 
-    if (hasEloFilter && tour.maxAvgElo > 0) {
-      final minElo = filter.eloRange.start.round();
-      final maxElo = filter.eloRange.end.round();
+    if (filter.hasEloFilter && tour.maxAvgElo > 0) {
+      final minElo = filter.minElo ?? kFilterMinElo.round();
+      final maxElo = filter.maxElo ?? kFilterMaxElo.round();
       if (tour.maxAvgElo < minElo || tour.maxAvgElo > maxElo) return false;
     }
 

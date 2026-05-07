@@ -52,26 +52,13 @@ class GroupEventScreen extends HookConsumerWidget {
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
-    final forYouFilterState = ref.watch(forYouAppliedFilterProvider);
-    final currentPastFilterState = ref.watch(currentPastAppliedFilterProvider);
-    final searchFilterState = ref.watch(searchAppliedFilterProvider);
+    final appliedFilterState = ref.watch(eventAppliedFilterProvider);
 
     int activeFilterCount(FilterPopupState state) {
-      final rangeChanged =
-          state.eloRange.start > defaultFilterPopupState.eloRange.start ||
-          state.eloRange.end < defaultFilterPopupState.eloRange.end;
-      return state.formatsAndStates.length + (rangeChanged ? 1 : 0);
+      return state.formatsAndStates.length + (state.hasEloFilter ? 1 : 0);
     }
 
-    final filterBadgeCount =
-        selectedTourEvent == GroupEventCategory.forYou
-            ? activeFilterCount(forYouFilterState)
-            : selectedTourEvent == GroupEventCategory.current ||
-                selectedTourEvent == GroupEventCategory.past
-            ? activeFilterCount(currentPastFilterState)
-            : selectedTourEvent == GroupEventCategory.search
-            ? activeFilterCount(searchFilterState)
-            : 0;
+    final filterBadgeCount = activeFilterCount(appliedFilterState);
 
     // Determine which categories to show (search tab only appears when searching)
     final visibleCategories =
@@ -106,6 +93,16 @@ class GroupEventScreen extends HookConsumerWidget {
       focusNode.addListener(onFocus);
       return () => focusNode.removeListener(onFocus);
     }, [focusNode]);
+
+    useEffect(() {
+      if (!focusNode.hasFocus && searchController.text != searchQuery) {
+        searchController.value = TextEditingValue(
+          text: searchQuery,
+          selection: TextSelection.collapsed(offset: searchQuery.length),
+        );
+      }
+      return null;
+    }, [searchQuery, focusNode]);
 
     useEffect(() {
       final newIndex = visibleCategories.indexOf(selectedTourEvent);
@@ -266,22 +263,9 @@ class GroupEventScreen extends HookConsumerWidget {
                         );
                       },
                       onFilterTap: () {
-                        if (selectedTourEvent == GroupEventCategory.forYou) {
-                          ref
-                              .read(filterPopupProvider.notifier)
-                              .setState(forYouFilterState);
-                        } else if (selectedTourEvent ==
-                                GroupEventCategory.current ||
-                            selectedTourEvent == GroupEventCategory.past) {
-                          ref
-                              .read(filterPopupProvider.notifier)
-                              .setState(currentPastFilterState);
-                        } else if (selectedTourEvent ==
-                            GroupEventCategory.search) {
-                          ref
-                              .read(filterPopupProvider.notifier)
-                              .setState(searchFilterState);
-                        }
+                        ref
+                            .read(filterPopupProvider.notifier)
+                            .setState(appliedFilterState);
 
                         showDialog(
                           context: context,
@@ -290,64 +274,16 @@ class GroupEventScreen extends HookConsumerWidget {
                           builder:
                               (cxt) => FilterPopup(
                                 onApplyFilters: (filterState) {
-                                  if (selectedTourEvent ==
-                                      GroupEventCategory.forYou) {
-                                    ref
-                                        .read(
-                                          forYouAppliedFilterProvider.notifier,
-                                        )
-                                        .state = filterState;
-                                    ref.invalidate(forYouEventsProvider);
-                                    return;
-                                  }
-
-                                  if (selectedTourEvent ==
-                                      GroupEventCategory.search) {
-                                    ref
-                                        .read(
-                                          searchAppliedFilterProvider.notifier,
-                                        )
-                                        .state = filterState;
-                                    return;
-                                  }
-
-                                  // Save filter state — provider watch
-                                  // triggers reload with filter applied
                                   ref
-                                      .read(
-                                        currentPastAppliedFilterProvider
-                                            .notifier,
-                                      )
+                                      .read(eventAppliedFilterProvider.notifier)
                                       .state = filterState;
+                                  ref.invalidate(forYouEventsProvider);
                                 },
                                 onResetFilters: () {
-                                  if (selectedTourEvent ==
-                                      GroupEventCategory.forYou) {
-                                    ref
-                                        .read(
-                                          forYouAppliedFilterProvider.notifier,
-                                        )
-                                        .state = defaultFilterPopupState;
-                                    ref.invalidate(forYouEventsProvider);
-                                    return;
-                                  }
-
-                                  if (selectedTourEvent ==
-                                      GroupEventCategory.search) {
-                                    ref
-                                        .read(
-                                          searchAppliedFilterProvider.notifier,
-                                        )
-                                        .state = defaultFilterPopupState;
-                                    return;
-                                  }
-
                                   ref
-                                      .read(
-                                        currentPastAppliedFilterProvider
-                                            .notifier,
-                                      )
+                                      .read(eventAppliedFilterProvider.notifier)
                                       .state = defaultFilterPopupState;
+                                  ref.invalidate(forYouEventsProvider);
                                 },
                               ),
                         );

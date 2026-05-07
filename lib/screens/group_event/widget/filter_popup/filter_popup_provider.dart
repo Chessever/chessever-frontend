@@ -4,7 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const defaultFilterPopupState = FilterPopupState(
   formatsAndStates: <String>{},
-  eloRange: RangeValues(0, 3200),
+  eloRange: RangeValues(kFilterMinElo, kFilterMaxElo),
 );
 
 final filterPopupProvider =
@@ -12,17 +12,13 @@ final filterPopupProvider =
       (ref) => _FilterPopupController(ref),
     );
 
-final forYouAppliedFilterProvider = StateProvider<FilterPopupState>(
+final eventAppliedFilterProvider = StateProvider<FilterPopupState>(
   (ref) => defaultFilterPopupState,
 );
 
-final currentPastAppliedFilterProvider = StateProvider<FilterPopupState>(
-  (ref) => defaultFilterPopupState,
-);
-
-final searchAppliedFilterProvider = StateProvider<FilterPopupState>(
-  (ref) => defaultFilterPopupState,
-);
+final forYouAppliedFilterProvider = eventAppliedFilterProvider;
+final currentPastAppliedFilterProvider = eventAppliedFilterProvider;
+final searchAppliedFilterProvider = eventAppliedFilterProvider;
 
 class _FilterPopupController extends StateNotifier<FilterPopupState> {
   _FilterPopupController(this.ref) : super(defaultFilterPopupState);
@@ -41,6 +37,15 @@ class _FilterPopupController extends StateNotifier<FilterPopupState> {
 
   void setEloRange(RangeValues newRange) {
     state = state.copyWith(eloRange: newRange);
+  }
+
+  void setMinimumElo(int? minimumElo) {
+    state = state.copyWith(
+      eloRange: RangeValues(
+        minimumElo?.toDouble() ?? kFilterMinElo,
+        kFilterMaxElo,
+      ),
+    );
   }
 
   void setState(FilterPopupState newState) {
