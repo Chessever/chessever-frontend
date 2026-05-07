@@ -220,11 +220,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
               .map((f) => f.toLowerCase())
               .toSet();
 
-      final minElo = appliedFilters.eloRange.start.round();
-      final maxElo = appliedFilters.eloRange.end.round();
-      final hasEloFilter =
-          minElo > defaultFilterPopupState.eloRange.start.round() ||
-          maxElo < defaultFilterPopupState.eloRange.end.round();
+      final minElo = appliedFilters.minElo;
+      final maxElo = appliedFilters.maxElo;
+      final hasEloFilter = appliedFilters.hasEloFilter;
 
       // Query Supabase with filters
       final repo = ref.read(groupBroadcastRepositoryProvider);

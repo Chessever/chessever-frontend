@@ -104,10 +104,7 @@ class _GroupEventScreenController
     if (appliedFilter.formatsAndStates.isNotEmpty) {
       return true;
     }
-    if (appliedFilter.eloRange.start > defaultFilterPopupState.eloRange.start) {
-      return true;
-    }
-    if (appliedFilter.eloRange.end < defaultFilterPopupState.eloRange.end) {
+    if (appliedFilter.hasEloFilter) {
       return true;
     }
     return false;
@@ -148,14 +145,9 @@ class _GroupEventScreenController
         }
       }
 
-      // Only apply ELO filter if user changed the range from default
-      final hasEloFilter =
-          appliedFilter.eloRange.start >
-              defaultFilterPopupState.eloRange.start ||
-          appliedFilter.eloRange.end < defaultFilterPopupState.eloRange.end;
-      if (hasEloFilter && tour.maxAvgElo != null) {
-        final minElo = appliedFilter.eloRange.start.round();
-        final maxElo = appliedFilter.eloRange.end.round();
+      if (appliedFilter.hasEloFilter && tour.maxAvgElo != null) {
+        final minElo = appliedFilter.minElo ?? kFilterMinElo.round();
+        final maxElo = appliedFilter.maxElo ?? kFilterMaxElo.round();
         if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
           return false;
         }
