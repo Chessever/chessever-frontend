@@ -6,13 +6,13 @@ import '../../../revenue_cat_service/subscribe_state.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 import '../../../utils/responsive_helper.dart';
-import '../../../widgets/game_filter/wheel_range_filter.dart';
+import '../../../widgets/game_filter/rating_tier_filter.dart';
 import '../../../widgets/paywall/premium_paywall_sheet.dart';
 import '../models/models.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 
-/// Filter panel for Gamebase explorer with time controls, rating range, and player search.
+/// Filter panel for Gamebase explorer with time controls, rating tiers, and player search.
 class GamebaseFilterPanel extends HookConsumerWidget {
   const GamebaseFilterPanel({super.key});
 
@@ -177,10 +177,10 @@ class _FilterContent extends HookConsumerWidget {
             SizedBox(height: 16.h),
           ],
 
-          // Rating Range Section
-          _SectionLabel(label: 'Rating Range'),
+          // Rating level section
+          _SectionLabel(label: 'Level'),
           SizedBox(height: 8.h),
-          _RatingRangeInputs(
+          _RatingTierInputs(
             minRating: filters.minRating,
             maxRating: filters.maxRating,
           ),
@@ -429,41 +429,16 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-/// Rating range slider.
-class _RatingRangeInputs extends HookConsumerWidget {
-  const _RatingRangeInputs({required this.minRating, required this.maxRating});
-
-  static const double _absMin = 0;
-  static const double _absMax = 3500;
-  static const int _step = 50;
+/// Rating title tier filter.
+class _RatingTierInputs extends ConsumerWidget {
+  const _RatingTierInputs({required this.minRating, required this.maxRating});
 
   final int? minRating;
   final int? maxRating;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final range = useState(
-      RangeValues(
-        (minRating?.toDouble() ?? _absMin).clamp(_absMin, _absMax),
-        (maxRating?.toDouble() ?? _absMax).clamp(_absMin, _absMax),
-      ),
-    );
-
-    // Sync when external state changes (e.g. "Clear all")
-    useEffect(() {
-      final newStart = (minRating?.toDouble() ?? _absMin).clamp(
-        _absMin,
-        _absMax,
-      );
-      final newEnd = (maxRating?.toDouble() ?? _absMax).clamp(_absMin, _absMax);
-      if (range.value.start != newStart || range.value.end != newEnd) {
-        range.value = RangeValues(newStart, newEnd);
-      }
-      return null;
-    }, [minRating, maxRating]);
-
-    final isDefault =
-        range.value.start == _absMin && range.value.end == _absMax;
+    final isDefault = minRating == null && maxRating == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -471,7 +446,6 @@ class _RatingRangeInputs extends HookConsumerWidget {
         if (!isDefault)
           GestureDetector(
             onTap: () {
-              range.value = const RangeValues(_absMin, _absMax);
               ref
                   .read(gamebaseExplorerProvider.notifier)
                   .setRatingRange(null, null);
@@ -486,19 +460,12 @@ class _RatingRangeInputs extends HookConsumerWidget {
               ),
             ),
           ),
-        WheelRangeFilter(
-          minValue: _absMin,
-          maxValue: _absMax,
-          currentStart: range.value.start,
-          currentEnd: range.value.end,
-          divisions: ((_absMax - _absMin) / _step).round(),
-          onChanged: (values) {
-            range.value = values;
-            final min = values.start == _absMin ? null : values.start.round();
-            final max = values.end == _absMax ? null : values.end.round();
+        RatingTierFilter(
+          selectedMinRating: minRating,
+          onChanged: (value) {
             ref
                 .read(gamebaseExplorerProvider.notifier)
-                .setRatingRange(min, max);
+                .setRatingRange(value, null);
           },
         ),
       ],

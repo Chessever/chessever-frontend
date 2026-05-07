@@ -31,6 +31,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
@@ -954,13 +955,11 @@ class _FilterSheet extends ConsumerStatefulWidget {
 }
 
 class _FilterSheetState extends ConsumerState<_FilterSheet> {
-  static const double _ratingMin = 0;
-  static const double _ratingMax = 3500;
   static const double _yearMin = 1800;
   static double get _yearMax => DateTime.now().year.toDouble();
 
   late GamebaseFilters _draftFilters;
-  late RangeValues _ratingRange;
+  late int? _selectedMinRating;
   late RangeValues _yearRange;
   final TextEditingController _playerSearchController = TextEditingController();
   final FocusNode _playerSearchFocusNode = FocusNode();
@@ -977,15 +976,8 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
         selectedPlayers: [scopedPlayer],
       );
     }
-    _ratingRange = RangeValues(
-      (_draftFilters.minRating?.toDouble() ?? _ratingMin).clamp(
-        _ratingMin,
-        _ratingMax,
-      ),
-      (_draftFilters.maxRating?.toDouble() ?? _ratingMax).clamp(
-        _ratingMin,
-        _ratingMax,
-      ),
+    _selectedMinRating = RatingTierFilter.normalizeMinRating(
+      _draftFilters.minRating,
     );
     _yearRange = RangeValues(
       (_draftFilters.yearFrom?.toDouble() ?? _yearMin).clamp(
@@ -1016,25 +1008,13 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     });
   }
 
-  void _onRatingRangeChanged(RangeValues values) {
-    setState(() => _ratingRange = values);
-  }
-
   void _onYearRangeChanged(RangeValues values) {
     setState(() => _yearRange = values);
   }
 
-  /// Converts the current slider range into nullable min/max for [GamebaseFilters].
-  /// Returns null when at the boundary (meaning "no filter").
-  int? get _effectiveMinRating {
-    final v = _ratingRange.start.round();
-    return v <= _ratingMin ? null : v;
-  }
+  int? get _effectiveMinRating => _selectedMinRating;
 
-  int? get _effectiveMaxRating {
-    final v = _ratingRange.end.round();
-    return v >= _ratingMax ? null : v;
-  }
+  int? get _effectiveMaxRating => null;
 
   int? get _effectiveYearFrom {
     final v = _yearRange.start.round();
@@ -1526,9 +1506,9 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 SizedBox(height: 16.sp),
                 */
 
-                // Rating range
+                // Rating level
                 Text(
-                  'Rating Range',
+                  'Level',
                   style: TextStyle(
                     color: kSecondaryTextColor,
                     fontSize: 12.f,
@@ -1537,14 +1517,11 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 ),
                 SizedBox(height: 8.sp),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: WheelRangeFilter(
-                    minValue: _ratingMin,
-                    maxValue: _ratingMax,
-                    currentStart: _ratingRange.start,
-                    currentEnd: _ratingRange.end,
-                    divisions: 70,
-                    onChanged: _onRatingRangeChanged,
+                  padding: EdgeInsets.symmetric(horizontal: 4.w),
+                  child: RatingTierFilter(
+                    selectedMinRating: _selectedMinRating,
+                    onChanged:
+                        (value) => setState(() => _selectedMinRating = value),
                   ),
                 ),
                 SizedBox(height: 24.sp),

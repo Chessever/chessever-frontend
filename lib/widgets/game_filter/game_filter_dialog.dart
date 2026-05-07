@@ -6,6 +6,7 @@ import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
@@ -49,7 +50,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameOnlineFilter _online;
   late GameEcoFilter _eco;
   late RangeValues _yearRange;
-  late RangeValues _ratingRange;
+  late int? _selectedMinRating;
 
   final ScrollController _scrollController = ScrollController();
   double _targetValue = 0.0;
@@ -66,9 +67,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       widget.initialFilter.minYear.toDouble(),
       widget.initialFilter.maxYear.toDouble(),
     );
-    _ratingRange = RangeValues(
-      widget.initialFilter.minRating.toDouble(),
-      widget.initialFilter.maxRating.toDouble(),
+    _selectedMinRating = RatingTierFilter.normalizeMinRating(
+      widget.initialFilter.minRating,
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -217,19 +217,15 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                             DateTime.now().year - GameFilter.absoluteMinYear,
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
-                      // Rating range slider
                       SizedBox(height: 20.h),
-                      _sectionLabel('Rating'),
+                      _sectionLabel('Level'),
                       SizedBox(height: 8.h),
-                      _rangeSliderCard(
-                        values: _ratingRange,
-                        min: GameFilter.absoluteMinRating.toDouble(),
-                        max: GameFilter.absoluteMaxRating.toDouble(),
-                        divisions:
-                            (GameFilter.absoluteMaxRating -
-                                GameFilter.absoluteMinRating) ~/
-                            50,
-                        onChanged: (v) => setState(() => _ratingRange = v),
+                      RatingTierFilter(
+                        selectedMinRating: _selectedMinRating,
+                        onChanged: (value) {
+                          HapticFeedbackService.selection();
+                          setState(() => _selectedMinRating = value);
+                        },
                       ),
                       SizedBox(height: 12.h),
                     ],
@@ -337,8 +333,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       eco: _eco,
       minYear: _yearRange.start.round(),
       maxYear: _yearRange.end.round(),
-      minRating: _ratingRange.start.round(),
-      maxRating: _ratingRange.end.round(),
+      minRating: _selectedMinRating ?? GameFilter.defaultMinRating,
+      maxRating: GameFilter.absoluteMaxRating,
     );
     Navigator.of(context).pop(newFilter);
   }
