@@ -74,8 +74,63 @@ bool _shouldShowEvalBar(WidgetRef ref) {
 }
 
 /// Resolved FEN provider that caches the resolution logic for a game model
+@immutable
+class _ResolvedFenKey {
+  _ResolvedFenKey({
+    required this.gameId,
+    required this.fen,
+    required this.pgn,
+    required this.lastMove,
+    required this.allowGamebaseFallback,
+  }) : pgnHash = pgn?.hashCode ?? 0,
+       pgnLength = pgn?.length ?? 0;
+
+  factory _ResolvedFenKey.fromGame(GamesTourModel game) {
+    return _ResolvedFenKey(
+      gameId: game.gameId,
+      fen: game.fen,
+      pgn: game.pgn,
+      lastMove: game.lastMove,
+      allowGamebaseFallback: _isGamebasePreviewGame(game),
+    );
+  }
+
+  final String gameId;
+  final String? fen;
+  final String? pgn;
+  final int pgnHash;
+  final int pgnLength;
+  final String? lastMove;
+  final bool allowGamebaseFallback;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _ResolvedFenKey &&
+            other.gameId == gameId &&
+            other.fen == fen &&
+            other.pgnHash == pgnHash &&
+            other.pgnLength == pgnLength &&
+            other.pgn == pgn &&
+            other.lastMove == lastMove &&
+            other.allowGamebaseFallback == allowGamebaseFallback;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(
+      gameId,
+      fen,
+      pgnHash,
+      pgnLength,
+      lastMove,
+      allowGamebaseFallback,
+    );
+  }
+}
+
 final _resolvedFenProvider = Provider.autoDispose
-    .family<String, GamesTourModel>((ref, game) {
+    .family<String, _ResolvedFenKey>((ref, key) {
       // Delay disposal by 3 seconds to prevent thrashing during fast scrolling
       final link = ref.keepAlive();
       final timer = Timer(const Duration(seconds: 3), () {
@@ -84,18 +139,18 @@ final _resolvedFenProvider = Provider.autoDispose
       ref.onDispose(() => timer.cancel());
 
       final freshestFen = resolveFreshestGameFen(
-        fen: game.fen,
-        pgn: game.pgn,
-        lastMove: game.lastMove,
+        fen: key.fen,
+        pgn: key.pgn,
+        lastMove: key.lastMove,
       );
       if (freshestFen != null) {
         return freshestFen;
       }
 
       // Gamebase async fallback
-      if (_isGamebasePreviewGame(game) && !pgnHasMoves(game.pgn)) {
+      if (key.allowGamebaseFallback && !pgnHasMoves(key.pgn)) {
         final remoteFen =
-            ref.watch(_gamebaseFinalFenProvider(game.gameId)).valueOrNull;
+            ref.watch(_gamebaseFinalFenProvider(key.gameId)).valueOrNull;
         if (remoteFen != null) return remoteFen;
       }
 
@@ -336,6 +391,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     required this.pinnedIds,
     required this.onPinToggle,
     this.fixedBottomSide,
+    this.allowStockfishFallback = true,
   });
 
   final GamesTourModel gamesTourModel;
@@ -343,6 +399,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
+  final bool allowStockfishFallback;
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
@@ -394,6 +451,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                     boardSize: boardSize,
                     isPinned: isPinned,
                     fixedBottomSide: fixedBottomSide,
+                    allowStockfishFallback: allowStockfishFallback,
                   ),
                 ),
 
@@ -459,6 +517,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
               isPinned: isPinned,
               showEvalBar: showEvalBar,
               fixedBottomSide: fixedBottomSide,
+              allowStockfishFallback: allowStockfishFallback,
             ),
           );
         },
@@ -475,6 +534,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     required this.pinnedIds,
     required this.onPinToggle,
     this.fixedBottomSide,
+    this.allowStockfishFallback = true,
   });
 
   final GamesTourModel gamesTourModel;
@@ -482,6 +542,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
+  final bool allowStockfishFallback;
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
@@ -570,6 +631,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                           showEvalBar: showEvalBar,
                           showCoordinates: false,
                           orientation: bottomSide,
+                          allowStockfishFallback: allowStockfishFallback,
                         ),
                       ),
                       SizedBox(height: 4.h),
@@ -666,6 +728,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 showEvalBar: showEvalBar,
                 showCoordinates: false,
                 orientation: bottomSide,
+                allowStockfishFallback: allowStockfishFallback,
               ),
               SizedBox(height: 4.h),
               _PlayerRow(
@@ -724,6 +787,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 showEvalBar: showEvalBar,
                 showCoordinates: false,
                 orientation: bottomSide,
+                allowStockfishFallback: allowStockfishFallback,
               ),
               SizedBox(height: 4.h),
               _PlayerRow(
@@ -781,6 +845,7 @@ class _ChessBoardLayout extends ConsumerWidget {
     required this.isPinned,
     required this.showEvalBar,
     required this.fixedBottomSide,
+    required this.allowStockfishFallback,
   });
 
   final GamesTourModel gamesTourModel;
@@ -790,6 +855,7 @@ class _ChessBoardLayout extends ConsumerWidget {
   final bool isPinned;
   final bool showEvalBar;
   final Side? fixedBottomSide;
+  final bool allowStockfishFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -815,6 +881,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           showEvalBar: showEvalBar,
           showCoordinates: false,
           orientation: bottomSide,
+          allowStockfishFallback: allowStockfishFallback,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -836,6 +903,7 @@ class _ChessBoardContent extends ConsumerWidget {
     required this.boardSize,
     required this.isPinned,
     required this.fixedBottomSide,
+    required this.allowStockfishFallback,
   });
 
   final GamesTourModel gamesTourModel;
@@ -843,6 +911,7 @@ class _ChessBoardContent extends ConsumerWidget {
   final Size boardSize;
   final bool isPinned;
   final Side? fixedBottomSide;
+  final bool allowStockfishFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -882,6 +951,7 @@ class _ChessBoardContent extends ConsumerWidget {
                   showEvalBar: showEvalBar,
                   showCoordinates: false,
                   orientation: bottomSide,
+                  allowStockfishFallback: allowStockfishFallback,
                 ),
                 SizedBox(height: 4.h),
                 _PlayerRow(
@@ -938,6 +1008,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     required this.showEvalBar,
     required this.orientation,
     this.showCoordinates = true,
+    this.allowStockfishFallback = true,
   });
 
   final GamesTourModel gamesTourModel;
@@ -948,12 +1019,15 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   final bool showEvalBar;
   final Side orientation;
   final bool showCoordinates;
+  final bool allowStockfishFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Get effective game status for ended games
     final gameStatus = gamesTourModel.gameStatus;
-    final resolvedFen = ref.watch(_resolvedFenProvider(gamesTourModel));
+    final resolvedFen = ref.watch(
+      _resolvedFenProvider(_ResolvedFenKey.fromGame(gamesTourModel)),
+    );
 
     if (!showEvalBar || !gamesTourModel.hasStarted) {
       return _ChessBoardWidget(
@@ -974,6 +1048,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           fen: resolvedFen,
           playerView: playerView,
           isFlipped: orientation == Side.black,
+          allowStockfishFallback: allowStockfishFallback,
         ),
         _ChessBoardWidget(
           fen: resolvedFen,

@@ -9,7 +9,7 @@ final gamesListViewModeProvider = Provider<GamesListViewMode>((ref) {
   final boardSettings = ref.watch(boardSettingsProviderNew);
   final index =
       boardSettings.valueOrNull?.gamesListViewModeIndex ??
-      1; // Default to chessBoardGrid
+      0; // Safe loading fallback: compact cards until persisted settings resolve
   return GamesListViewMode.values[index.clamp(
     0,
     GamesListViewMode.values.length - 1,
