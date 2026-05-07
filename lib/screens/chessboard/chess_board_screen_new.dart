@@ -7606,6 +7606,7 @@ class _FenPositionGamesTableState
   int _nextPageNumber = 0;
   int _requestToken = 0;
   String? _error;
+  int? _totalCount;
 
   // Filters drive both the table fetch and the per-row / header bottom sheets,
   // so the user sees a consistent set of games. `/api/game-position/fen/games`
@@ -7684,6 +7685,7 @@ class _FenPositionGamesTableState
         _isLoadingMore = false;
         _hasMore = true;
         _nextPageNumber = 0;
+        _totalCount = null;
         _error = null;
       });
     } else {
@@ -7749,6 +7751,7 @@ class _FenPositionGamesTableState
           ..addAll(mergedGames);
         _hasMore = response.metadata.hasMore && addedCount > 0;
         _nextPageNumber = pageNumber + 1;
+        _totalCount = response.metadata.totalCount ?? _totalCount;
         _isInitialLoading = false;
         _isLoadingMore = false;
       });
@@ -7934,7 +7937,7 @@ class _FenPositionGamesTableState
       builder:
           (_) => PositionGamesSheet(
             fen: widget.fen,
-            title: 'Position games',
+            title: 'Games',
             filters: _filters,
           ),
     );
@@ -7972,6 +7975,7 @@ class _FenPositionGamesTableState
         children: [
           _FenPositionGamesHeader(
             loadedCount: _games.length,
+            totalCount: _totalCount,
             hasMore: _hasMore,
             isLoading: _isInitialLoading,
             hasActiveFilters: _hasActiveFilters,
@@ -7997,7 +8001,7 @@ class _FenPositionGamesTableState
                     )
                     : (_games.isEmpty)
                     ? _FenPositionGamesEmpty(
-                      message: 'No games found for this position',
+                      message: 'No Games Found',
                       onRetry: () => _fetchPage(reset: true),
                     )
                     : ListView.separated(
@@ -8015,6 +8019,7 @@ class _FenPositionGamesTableState
                             isLoadingMore: _isLoadingMore,
                             hasMore: _hasMore,
                             loadedCount: _games.length,
+                            totalCount: _totalCount,
                             onLoadMore: _fetchPage,
                           );
                         }
@@ -8035,6 +8040,7 @@ class _FenPositionGamesTableState
 class _FenPositionGamesHeader extends StatelessWidget {
   const _FenPositionGamesHeader({
     required this.loadedCount,
+    required this.totalCount,
     required this.hasMore,
     required this.isLoading,
     required this.hasActiveFilters,
@@ -8043,6 +8049,7 @@ class _FenPositionGamesHeader extends StatelessWidget {
   });
 
   final int loadedCount;
+  final int? totalCount;
   final bool hasMore;
   final bool isLoading;
   final bool hasActiveFilters;
@@ -8056,6 +8063,8 @@ class _FenPositionGamesHeader extends StatelessWidget {
             ? 'Searching'
             : loadedCount == 0
             ? '0 games'
+            : totalCount != null
+            ? '$totalCount games'
             : hasMore
             ? '$loadedCount+ games'
             : '$loadedCount games';
@@ -8067,7 +8076,7 @@ class _FenPositionGamesHeader extends StatelessWidget {
           SizedBox(width: 14.w),
           Expanded(
             child: Text(
-              'Position games',
+              'Games',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textSmMedium.copyWith(
@@ -8337,12 +8346,14 @@ class _FenPositionGamesFooter extends StatelessWidget {
     required this.isLoadingMore,
     required this.hasMore,
     required this.loadedCount,
+    required this.totalCount,
     required this.onLoadMore,
   });
 
   final bool isLoadingMore;
   final bool hasMore;
   final int loadedCount;
+  final int? totalCount;
   final VoidCallback onLoadMore;
 
   @override
@@ -8385,7 +8396,9 @@ class _FenPositionGamesFooter extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 12.h),
       child: Text(
-        'Showing $loadedCount games',
+        totalCount != null
+            ? 'Showing $loadedCount of $totalCount games'
+            : 'Showing $loadedCount games',
         textAlign: TextAlign.center,
         style: AppTypography.textXsMedium.copyWith(
           color: kWhiteColor.withValues(alpha: 0.45),
