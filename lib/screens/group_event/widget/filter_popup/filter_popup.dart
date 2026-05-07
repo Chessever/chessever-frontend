@@ -193,7 +193,7 @@ class FilterPopup extends ConsumerWidget {
                                     crossAxisCount: 2,
                                     mainAxisSpacing: 8,
                                     crossAxisSpacing: 8,
-                                    childAspectRatio: 2.8,
+                                    childAspectRatio: 2.55,
                                   ),
                               itemCount: ratingTiers.length,
                               itemBuilder: (context, index) {
@@ -220,7 +220,7 @@ class FilterPopup extends ConsumerWidget {
                                               : kBlack2Color,
                                       borderRadius: BorderRadius.circular(8.br),
                                     ),
-                                    child: Column(
+                                    child: Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: [
@@ -234,19 +234,23 @@ class FilterPopup extends ConsumerWidget {
                                                         : kWhiteColor,
                                               ),
                                         ),
-                                        SizedBox(height: 1.h),
-                                        Text(
-                                          tier.subtitle,
-                                          style: AppTypography.textXsMedium
-                                              .copyWith(
-                                                color:
-                                                    isSelected
-                                                        ? kBlackColor
-                                                            .withValues(
-                                                              alpha: 0.75,
-                                                            )
-                                                        : kSecondaryTextColor,
-                                              ),
+                                        SizedBox(width: 5.w),
+                                        Flexible(
+                                          child: Text(
+                                            tier.subtitle,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: AppTypography.textXsMedium
+                                                .copyWith(
+                                                  color:
+                                                      isSelected
+                                                          ? kBlackColor
+                                                              .withValues(
+                                                                alpha: 0.75,
+                                                              )
+                                                          : kSecondaryTextColor,
+                                                ),
+                                          ),
                                         ),
                                       ],
                                     ),
