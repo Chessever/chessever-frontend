@@ -2985,6 +2985,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   Widget _buildSaveButton() {
+    final isEditableLibraryGame =
+        widget.game.source == GameSource.savedAnalysis &&
+        widget.savedAnalysisData?.analysisId != null;
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
@@ -3028,13 +3031,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
             .fadeIn(duration: 200.ms);
         break;
       case AutoSaveStatus.idle:
-        icon = Icon(Icons.edit_outlined, color: kWhiteColor, size: 20.sp);
+        icon = Icon(
+          isEditableLibraryGame ? Icons.edit_outlined : Icons.save_outlined,
+          color: kWhiteColor,
+          size: 20.sp,
+        );
         break;
     }
 
     return IconButton(
       icon: icon,
-      tooltip: 'Edit details',
+      tooltip: isEditableLibraryGame ? 'Edit details' : 'Save analysis',
       onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
     );
   }

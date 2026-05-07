@@ -130,7 +130,7 @@ ForYouEventGamesSnapshot buildForYouEventGamesSnapshot({
   List<String> unpinnedOverrideIds = const [],
 }) {
   final primaryGames = _mapGames(selectedTourGames);
-  final actualLiveRoundIds = _actualLiveRoundIdsFromGames(primaryGames);
+  final actualLiveRoundIds = _actualLiveRoundIdsFromGameRows(selectedTourGames);
   final effectiveLiveRoundIds =
       actualLiveRoundIds.isNotEmpty ? actualLiveRoundIds : liveRoundIds;
   final isKnockoutTournament =
@@ -320,17 +320,22 @@ List<GamesTourModel> _mapGames(List<Games> games) {
   return models;
 }
 
-List<String> _actualLiveRoundIdsFromGames(List<GamesTourModel> games) {
+List<String> _actualLiveRoundIdsFromGameRows(List<Games> games) {
   final now = DateTime.now();
   final activityByRound = <String, DateTime?>{};
 
   for (final game in games) {
-    if (!game.gameStatus.isOngoing) {
+    if (!GameStatus.fromString(game.status).isOngoing) {
+      continue;
+    }
+
+    if (game.lastMove == null || game.lastMove!.trim().isEmpty) {
       continue;
     }
 
     final activity = game.lastMoveTime;
     if (activity == null ||
+        activity.isAfter(now.add(const Duration(minutes: 2))) ||
         now.difference(activity) > _kActualLiveGameActivityWindow) {
       continue;
     }
