@@ -577,32 +577,46 @@ class GamesTourModel {
         other.pgn == pgn &&
         other.boardNr == boardNr &&
         other.roundId == roundId &&
+        other.roundSlug == roundSlug &&
         other.tourId == tourId &&
-        other.timeControl == timeControl;
+        other.tourSlug == tourSlug &&
+        other.eco == eco &&
+        other.openingName == openingName &&
+        other.timeControl == timeControl &&
+        other.avgElo == avgElo &&
+        other.isOnline == isOnline;
   }
 
   @override
   int get hashCode {
-    return gameId.hashCode ^
-        source.hashCode ^
-        whitePlayer.hashCode ^
-        blackPlayer.hashCode ^
-        whiteTimeDisplay.hashCode ^
-        blackTimeDisplay.hashCode ^
-        whiteClockCentiseconds.hashCode ^
-        blackClockCentiseconds.hashCode ^
-        (whiteClockSeconds?.hashCode ?? 0) ^
-        (blackClockSeconds?.hashCode ?? 0) ^
-        (lastMoveTime?.hashCode ?? 0) ^
-        (dateStart?.hashCode ?? 0) ^
-        gameStatus.hashCode ^
-        (lastMove?.hashCode ?? 0) ^
-        (fen?.hashCode ?? 0) ^
-        (pgn?.hashCode ?? 0) ^
-        (boardNr?.hashCode ?? 0) ^
-        roundId.hashCode ^
-        tourId.hashCode ^
-        (timeControl?.hashCode ?? 0);
+    return Object.hashAll([
+      gameId,
+      source,
+      whitePlayer,
+      blackPlayer,
+      whiteTimeDisplay,
+      blackTimeDisplay,
+      whiteClockCentiseconds,
+      blackClockCentiseconds,
+      whiteClockSeconds,
+      blackClockSeconds,
+      lastMoveTime,
+      dateStart,
+      gameStatus,
+      lastMove,
+      fen,
+      pgn,
+      boardNr,
+      roundId,
+      roundSlug,
+      tourId,
+      tourSlug,
+      eco,
+      openingName,
+      timeControl,
+      avgElo,
+      isOnline,
+    ]);
   }
 }
 
@@ -680,17 +694,23 @@ class PlayerCard {
         other.title == title &&
         other.rating == rating &&
         other.countryCode == countryCode &&
+        other.fideId == fideId &&
+        other.team == team &&
         other.gamebasePlayerId == gamebasePlayerId;
   }
 
   @override
   int get hashCode {
-    return name.hashCode ^
-        federation.hashCode ^
-        title.hashCode ^
-        rating.hashCode ^
-        countryCode.hashCode ^
-        (gamebasePlayerId?.hashCode ?? 0);
+    return Object.hash(
+      name,
+      federation,
+      title,
+      rating,
+      countryCode,
+      fideId,
+      team,
+      gamebasePlayerId,
+    );
   }
 }
 

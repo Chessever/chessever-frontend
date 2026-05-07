@@ -1392,6 +1392,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void _handleLifecycleResume() {
     if (!mounted || widget.games.isEmpty) return;
     ref.invalidate(gameUpdatesStreamProvider);
+    ref.invalidate(liveGameUpdateStreamProvider);
+    ref.invalidate(gameUpdatesBatchStreamProvider);
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);

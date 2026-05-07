@@ -66,6 +66,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       debugPrint('🔥 TournamentDetail: didPopNext - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
       ref.invalidate(gameUpdatesStreamProvider);
+      ref.invalidate(liveGameUpdateStreamProvider);
+      ref.invalidate(gameUpdatesBatchStreamProvider);
     });
     super.didPopNext();
   }
@@ -106,6 +108,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     // Re-enable streaming when app comes back to foreground
     ref.read(shouldStreamProvider.notifier).state = true;
     ref.invalidate(gameUpdatesStreamProvider);
+    ref.invalidate(liveGameUpdateStreamProvider);
+    ref.invalidate(gameUpdatesBatchStreamProvider);
 
     // Refresh games data while preserving current UI state
     // This avoids showing "no games" during the refresh

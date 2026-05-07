@@ -9,6 +9,7 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -38,6 +39,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final bool isPinned;
   final PlayerProfileDataSource playerProfileDataSource;
   final bool showClock;
+  final LiveGamesBatchKey? liveBatchKey;
   final ValueChanged<String>? onEditName;
 
   const PlayerFirstRowDetailWidget({
@@ -50,53 +52,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.isPinned = false,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showClock = true,
+    this.liveBatchKey,
     this.onEditName,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final baseGameModel = chessBoardState?.game ?? gamesTourModel;
-    final shouldWatchDirectLiveClock =
-        playerView == PlayerView.boardView &&
-        chessBoardState != null &&
-        baseGameModel.gameStatus.isOngoing;
-    final liveGameData =
-        shouldWatchDirectLiveClock
-            ? ref
-                .watch(gameUpdatesStreamProvider(baseGameModel.gameId))
-                .valueOrNull
+    final scopedClockGame =
+        showClock && baseGameModel.gameStatus.isOngoing
+            ? watchLiveGameClock(ref, baseGameModel, batchKey: liveBatchKey)
             : null;
-    final effectiveGameModel =
-        liveGameData != null
-            ? baseGameModel.copyWith(
-              pgn: liveGameData['pgn'] as String? ?? baseGameModel.pgn,
-              fen: liveGameData['fen'] as String? ?? baseGameModel.fen,
-              lastMove:
-                  liveGameData['last_move'] as String? ??
-                  baseGameModel.lastMove,
-              lastMoveTime:
-                  liveGameData['last_move_time'] != null
-                      ? (DateTime.tryParse(
-                            liveGameData['last_move_time'] as String,
-                          ) ??
-                          baseGameModel.lastMoveTime)
-                      : baseGameModel.lastMoveTime,
-              whiteClockSeconds:
-                  GamesTourModel.normalizeClockSeconds(
-                    clockSeconds:
-                        (liveGameData['last_clock_white'] as num?)?.round(),
-                    clockCentiseconds: baseGameModel.whiteClockCentiseconds,
-                  ) ??
-                  baseGameModel.whiteClockSeconds,
-              blackClockSeconds:
-                  GamesTourModel.normalizeClockSeconds(
-                    clockSeconds:
-                        (liveGameData['last_clock_black'] as num?)?.round(),
-                    clockCentiseconds: baseGameModel.blackClockCentiseconds,
-                  ) ??
-                  baseGameModel.blackClockSeconds,
-            )
-            : baseGameModel;
+    final effectiveGameModel = scopedClockGame ?? baseGameModel;
     final playerCard = useMemoized(() {
       return isWhitePlayer
           ? effectiveGameModel.whitePlayer

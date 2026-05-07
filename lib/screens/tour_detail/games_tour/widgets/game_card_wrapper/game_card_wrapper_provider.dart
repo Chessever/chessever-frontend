@@ -79,6 +79,8 @@ class _GameCardWrapperProvider {
     // Re-enable streaming when coming back to the tournament screen
     _ref.read(shouldStreamProvider.notifier).state = true;
     _ref.invalidate(gameUpdatesStreamProvider);
+    _ref.invalidate(liveGameUpdateStreamProvider);
+    _ref.invalidate(gameUpdatesBatchStreamProvider);
 
     // If a different index was returned from the chessboard, notify the parent
     if (returnedIndex != null &&

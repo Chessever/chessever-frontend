@@ -61,6 +61,8 @@ class _FavoritesCombinedGamesScreenState
     if (state != AppLifecycleState.resumed || !mounted) return;
 
     ref.invalidate(gameUpdatesStreamProvider);
+    ref.invalidate(liveGameUpdateStreamProvider);
+    ref.invalidate(gameUpdatesBatchStreamProvider);
     unawaited(ref.read(favoritesCombinedGamesProvider.notifier).refreshGames());
   }
 

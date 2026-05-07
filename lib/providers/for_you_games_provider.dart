@@ -1478,17 +1478,27 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
               .where((game) => game.gameStatus == GameStatus.ongoing)
               .toList();
 
-      for (final game in liveGames) {
-        final updatesAsync = ref.watch(gameUpdatesStreamProvider(game.gameId));
-        updatesAsync.whenData((data) {
-          final status = data?['status'] as String?;
-          if (status != null && _isFinishedStatus(status)) {
-            debugPrint(
-              '[ForYou] Game ${game.gameId} finished ($status), refreshing snapshot for event $eventId',
-            );
-            Future.microtask(() {
-              bumpEventPinRefreshSignal(ref, eventId);
-            });
+      if (liveGames.isNotEmpty) {
+        final updatesAsync = ref.watch(
+          gameUpdatesBatchStreamProvider(
+            LiveGamesBatchKey(
+              scopeId: 'for_you_refresh:$eventId:${snapshot.tourId}',
+              gameIds: liveGames.map((game) => game.gameId),
+            ),
+          ),
+        );
+
+        updatesAsync.whenData((updates) {
+          for (final game in liveGames) {
+            final status = updates[game.gameId]?.status;
+            if (status != null && _isFinishedStatus(status)) {
+              debugPrint(
+                '[ForYou] Game ${game.gameId} finished ($status), refreshing snapshot for event $eventId',
+              );
+              Future.microtask(() {
+                bumpEventPinRefreshSignal(ref, eventId);
+              });
+            }
           }
         });
       }

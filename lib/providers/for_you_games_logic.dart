@@ -133,17 +133,16 @@ ForYouEventGamesSnapshot buildForYouEventGamesSnapshot({
   final actualLiveRoundIds = _actualLiveRoundIdsFromGames(primaryGames);
   final effectiveLiveRoundIds =
       actualLiveRoundIds.isNotEmpty ? actualLiveRoundIds : liveRoundIds;
-  final isKnockoutTournament = isKnockoutTour(
-    tour: selectedTour,
-    games: selectedTourGames,
-  );
+  final isKnockoutTournament =
+      _formatSuggestsKnockout(selectedTour.info.format) ||
+      KnockoutMatchDetector.isKnockoutMatchFormat(primaryGames);
   final isGroupEvent =
       !isKnockoutTournament &&
       selectedTour.players.isNotEmpty &&
       selectedTour.players.every((player) => player.team != null);
 
-  final sortedPrimaryGames = sortGamesForGamesTab(
-    games: selectedTourGames,
+  final sortedPrimaryGames = sortGameModelsForGamesTab(
+    games: primaryGames,
     pinnedIds: pinnedIds,
   );
 
@@ -236,7 +235,18 @@ List<GamesTourModel> sortGamesForGamesTab({
     }
   }
 
-  final sortedGames = List<GamesTourModel>.from(parsedGames);
+  return sortGameModelsForGamesTab(games: parsedGames, pinnedIds: pinnedIds);
+}
+
+List<GamesTourModel> sortGameModelsForGamesTab({
+  required List<GamesTourModel> games,
+  required List<String> pinnedIds,
+}) {
+  if (games.isEmpty) {
+    return const [];
+  }
+
+  final sortedGames = List<GamesTourModel>.from(games);
   sortedGames.sort((a, b) {
     final aPinned = pinnedIds.contains(a.gameId);
     final bPinned = pinnedIds.contains(b.gameId);
@@ -611,10 +621,7 @@ Map<String, List<GamesTourModel>> _buildGamesByRound({
   }
 
   final selectedStageId = '$kKnockoutStagePrefix-${selectedTour.id}';
-  result[selectedStageId] = _pinOnlySort(
-    _mapGames(selectedTourGames),
-    pinnedIds,
-  );
+  result[selectedStageId] = _pinOnlySort(selectedTourSortedGames, pinnedIds);
   return result;
 }
 
