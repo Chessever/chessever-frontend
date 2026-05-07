@@ -174,7 +174,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
           ..addAll(mergedGames);
         _hasMore = hasMoreRows;
         _nextPageNumber += 1;
-        _totalCount = response.metadata.totalCount;
+        _totalCount = response.metadata.totalCount ?? _totalCount;
         _isInitialLoading = false;
         _isLoadingMore = false;
       });
@@ -326,6 +326,13 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     _fetchPage(reset: true);
   }
 
+  String get _countText {
+    if (_isInitialLoading && _games.isEmpty) return 'Searching';
+    if (_totalCount != null) return '$_totalCount games';
+    if (_games.isEmpty) return '0 games';
+    return _hasMore ? '${_games.length}+ games' : '${_games.length} games';
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -341,7 +348,11 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(title: widget.title, onSort: _showSortOptions),
+            _Header(
+              title: widget.title,
+              countText: _countText,
+              onSort: _showSortOptions,
+            ),
             Divider(color: kDividerColor, height: 1),
             Expanded(
               child:
@@ -355,9 +366,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                       : (_error != null && _games.isEmpty)
                       ? _Empty(message: 'Failed to load games.\n$_error')
                       : (_games.isEmpty)
-                      ? const _Empty(
-                        message: 'No games found for this position.',
-                      )
+                      ? const _Empty(message: 'No Games Found')
                       : ListView.separated(
                         controller: _scrollController,
                         padding: EdgeInsets.only(
@@ -709,9 +718,10 @@ class _PositionGamesFooter extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, this.onSort});
+  const _Header({required this.title, required this.countText, this.onSort});
 
   final String title;
+  final String countText;
   final VoidCallback? onSort;
 
   @override
@@ -732,7 +742,18 @@ class _Header extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          SizedBox(width: 8.w),
+          Text(
+            countText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textXsRegular.copyWith(
+              color: kWhiteColor70,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           if (onSort != null) ...[
+            SizedBox(width: 10.w),
             GestureDetector(
               onTap: onSort,
               child: Container(
