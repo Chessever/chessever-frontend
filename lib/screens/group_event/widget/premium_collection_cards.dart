@@ -117,7 +117,7 @@ class _PremiumCollectionCard extends ConsumerWidget {
                     Text(
                       'Tap to view→',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(alpha: 0.7),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -417,7 +417,7 @@ class _PlayerPhotoCell extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.35),
+          color: context.colors.textPrimary.withValues(alpha: 0.35),
           width: 1.5,
         ),
       ),
@@ -434,23 +434,23 @@ class _PlayerPhotoCell extends StatelessWidget {
                       (size * MediaQuery.devicePixelRatioOf(context)).toInt(),
                   fadeInDuration: Duration.zero,
                   fadeOutDuration: Duration.zero,
-                  placeholder: (_, __) => _buildPlaceholder(),
-                  errorWidget: (_, __, ___) => _buildInitials(),
+                  placeholder: (_, __) => _buildPlaceholder(context),
+                  errorWidget: (_, __, ___) => _buildInitials(context),
                 )
-                : _buildInitials(),
+                : _buildInitials(context),
       ),
     );
   }
 
-  Widget _buildPlaceholder() {
+  Widget _buildPlaceholder(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            kWhiteColor.withValues(alpha: 0.15),
-            kWhiteColor.withValues(alpha: 0.08),
+            context.colors.textPrimary.withValues(alpha: 0.15),
+            context.colors.textPrimary.withValues(alpha: 0.08),
           ],
         ),
       ),
@@ -458,13 +458,13 @@ class _PlayerPhotoCell extends StatelessWidget {
         child: Icon(
           Icons.person_rounded,
           size: size * 0.5,
-          color: kWhiteColor.withValues(alpha: 0.4),
+          color: context.colors.textPrimary.withValues(alpha: 0.4),
         ),
       ),
     );
   }
 
-  Widget _buildInitials() {
+  Widget _buildInitials(BuildContext context) {
     // Parse initials from "Lastname, Firstname" format
     final nameParts = player.playerName.split(',');
     String initials;
@@ -490,8 +490,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            kWhiteColor.withValues(alpha: 0.2),
-            kWhiteColor.withValues(alpha: 0.1),
+            context.colors.textPrimary.withValues(alpha: 0.2),
+            context.colors.textPrimary.withValues(alpha: 0.1),
           ],
         ),
       ),
@@ -522,9 +522,9 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            kWhiteColor.withValues(alpha: 0.1),
-            kWhiteColor.withValues(alpha: 0.05),
-            kWhiteColor.withValues(alpha: 0.07),
+            context.colors.textPrimary.withValues(alpha: 0.1),
+            context.colors.textPrimary.withValues(alpha: 0.05),
+            context.colors.textPrimary.withValues(alpha: 0.07),
           ],
         ),
       ),
@@ -636,8 +636,8 @@ class _FlagPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            kWhiteColor.withValues(alpha: 0.1),
-            kWhiteColor.withValues(alpha: 0.05),
+            context.colors.textPrimary.withValues(alpha: 0.1),
+            context.colors.textPrimary.withValues(alpha: 0.05),
           ],
         ),
       ),
@@ -645,7 +645,7 @@ class _FlagPlaceholder extends StatelessWidget {
         child: Icon(
           Icons.public_rounded,
           size: 48.sp,
-          color: kWhiteColor.withValues(alpha: 0.15),
+          color: context.colors.textPrimary.withValues(alpha: 0.15),
         ),
       ),
     );

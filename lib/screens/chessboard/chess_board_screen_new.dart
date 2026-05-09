@@ -654,7 +654,7 @@ Future<bool?> _showAnalysisConfirmationDialog({
         content: Text(
           message,
           style: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.7),
+            color: context.colors.textPrimary.withValues(alpha: 0.7),
           ),
         ),
         actions: [
@@ -663,7 +663,7 @@ Future<bool?> _showAnalysisConfirmationDialog({
             child: Text(
               'Cancel',
               style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -2514,7 +2514,7 @@ class _LoadingScreen extends StatelessWidget {
                         width: 40.w,
                         height: 40.h,
                         decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.1),
+                          color: context.colors.textPrimary.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -2527,7 +2527,7 @@ class _LoadingScreen extends StatelessWidget {
                               width: 120.w,
                               height: 14.h,
                               decoration: BoxDecoration(
-                                color: kWhiteColor.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2536,7 +2536,7 @@ class _LoadingScreen extends StatelessWidget {
                               width: 60.w,
                               height: 12.h,
                               decoration: BoxDecoration(
-                                color: kWhiteColor.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2557,7 +2557,7 @@ class _LoadingScreen extends StatelessWidget {
                         width: sideBarWidth,
                         height: boardSize,
                         decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.05),
+                          color: context.colors.textPrimary.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                       ),
@@ -2566,7 +2566,7 @@ class _LoadingScreen extends StatelessWidget {
                         width: boardSize,
                         height: boardSize,
                         decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.05),
+                          color: context.colors.textPrimary.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                       ),
@@ -2588,7 +2588,7 @@ class _LoadingScreen extends StatelessWidget {
                         width: 40.w,
                         height: 40.h,
                         decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.1),
+                          color: context.colors.textPrimary.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -2601,7 +2601,7 @@ class _LoadingScreen extends StatelessWidget {
                               width: 120.w,
                               height: 14.h,
                               decoration: BoxDecoration(
-                                color: kWhiteColor.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2610,7 +2610,7 @@ class _LoadingScreen extends StatelessWidget {
                               width: 60.w,
                               height: 12.h,
                               decoration: BoxDecoration(
-                                color: kWhiteColor.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2641,7 +2641,7 @@ class _LoadingScreen extends StatelessWidget {
                           width: (35 + (index % 5) * 20).w,
                           height: 14.h,
                           decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.05),
+                            color: context.colors.textPrimary.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(3.sp),
                           ),
                         );
@@ -2881,7 +2881,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
               'No PGN available for this game',
               style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ),
@@ -2897,7 +2897,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             'PGN copied to clipboard',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
         ),
@@ -2910,7 +2910,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             'Failed to copy PGN',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
         ),
@@ -2943,7 +2943,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             'Failed to prepare game share',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
         ),
@@ -3012,7 +3012,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
           child: CircularProgressIndicator(
             strokeWidth: 2,
             valueColor: AlwaysStoppedAnimation(
-              kWhiteColor.withValues(alpha: 0.7),
+              context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
         );
@@ -3529,7 +3529,7 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
                               } else if (item is PopupMenuDivider) {
                                 return Divider(
                                   height: 1,
-                                  color: kWhiteColor.withValues(alpha: 0.1),
+                                  color: context.colors.textPrimary.withValues(alpha: 0.1),
                                 );
                               }
                               return const SizedBox.shrink();
@@ -4041,12 +4041,12 @@ class _GameChipButton extends StatelessWidget {
           color:
               isOpen
                   ? kPrimaryColor.withValues(alpha: 0.15)
-                  : kWhiteColor.withValues(alpha: 0.06),
+                  : context.colors.textPrimary.withValues(alpha: 0.06),
           border: Border.all(
             color:
                 isOpen
                     ? kPrimaryColor.withValues(alpha: 0.4)
-                    : kWhiteColor.withValues(alpha: 0.12),
+                    : context.colors.textPrimary.withValues(alpha: 0.12),
             width: 1.0,
           ),
         ),
@@ -4081,7 +4081,7 @@ class _GameChipButton extends StatelessWidget {
                   color:
                       isOpen
                           ? kPrimaryColor
-                          : kWhiteColor.withValues(alpha: 0.7),
+                          : context.colors.textPrimary.withValues(alpha: 0.7),
                   size: 16.ic,
                 ),
               ),
@@ -4113,7 +4113,7 @@ class _GameStatusIndicator extends StatelessWidget {
       );
     }
 
-    final color = _getStatusColor();
+    final color = _getStatusColor(context);
     final isLive = status == GameStatus.ongoing;
 
     return Container(
@@ -4128,16 +4128,16 @@ class _GameStatusIndicator extends StatelessWidget {
     );
   }
 
-  Color _getStatusColor() {
+  Color _getStatusColor(BuildContext context) {
     switch (status) {
       case GameStatus.ongoing:
         return kPrimaryColor;
       case GameStatus.whiteWins:
       case GameStatus.blackWins:
       case GameStatus.draw:
-        return kWhiteColor70;
+        return context.colors.textPrimaryMuted;
       case GameStatus.unknown:
-        return kWhiteColor70;
+        return context.colors.textPrimaryMuted;
     }
   }
 }
@@ -4292,7 +4292,7 @@ class _GameDropdownOverlay extends StatelessWidget {
                     color: const Color(0xFF1A1A1A),
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
-                      color: kWhiteColor.withValues(alpha: 0.08),
+                      color: context.colors.textPrimary.withValues(alpha: 0.08),
                       width: 1.0,
                     ),
                   ),
@@ -4899,7 +4899,7 @@ class _GameItemSimple extends StatelessWidget {
                     Text(
                       roundLabel!,
                       style: AppTypography.textXxsMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.35),
+                        color: context.colors.textPrimary.withValues(alpha: 0.35),
                         letterSpacing: 0.5,
                         fontSize: 9.sp,
                       ),
@@ -4908,7 +4908,7 @@ class _GameItemSimple extends StatelessWidget {
                     Expanded(
                       child: Container(
                         height: 0.5,
-                        color: kWhiteColor.withValues(alpha: 0.06),
+                        color: context.colors.textPrimary.withValues(alpha: 0.06),
                       ),
                     ),
                   ],
@@ -4944,7 +4944,7 @@ class _GameItemSimple extends StatelessWidget {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : kWhiteColor.withValues(alpha: 0.9),
+                                : context.colors.textPrimary.withValues(alpha: 0.9),
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w500,
                       ),
@@ -4961,14 +4961,14 @@ class _GameItemSimple extends StatelessWidget {
                             ? Text(
                               resultText,
                               style: AppTypography.textXxsMedium.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.5),
+                                color: context.colors.textPrimary.withValues(alpha: 0.5),
                                 fontWeight: FontWeight.w500,
                               ),
                             )
                             : Text(
                               'vs',
                               style: AppTypography.textXxsRegular.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.35),
+                                color: context.colors.textPrimary.withValues(alpha: 0.35),
                                 fontStyle: FontStyle.italic,
                               ),
                             ),
@@ -4981,7 +4981,7 @@ class _GameItemSimple extends StatelessWidget {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : kWhiteColor.withValues(alpha: 0.9),
+                                : context.colors.textPrimary.withValues(alpha: 0.9),
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w500,
                       ),
@@ -5111,7 +5111,7 @@ class _RoundSeparator extends StatelessWidget {
             Text(
               _formatRoundName(roundSlug),
               style: AppTypography.textXxsMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.4),
+                color: context.colors.textPrimary.withValues(alpha: 0.4),
                 letterSpacing: 0.8,
                 fontSize: 9.sp,
               ),
@@ -5120,7 +5120,7 @@ class _RoundSeparator extends StatelessWidget {
             Expanded(
               child: Container(
                 height: 0.5,
-                color: kWhiteColor.withValues(alpha: 0.06),
+                color: context.colors.textPrimary.withValues(alpha: 0.06),
               ),
             ),
           ],
@@ -5283,7 +5283,7 @@ class _GameItemState extends State<_GameItem> {
               widget.isSelected
                   ? kPrimaryColor.withValues(alpha: 0.1)
                   : _isPressed
-                  ? kWhiteColor.withValues(alpha: 0.03)
+                  ? context.colors.textPrimary.withValues(alpha: 0.03)
                   : Colors.transparent,
         ),
         child: Row(
@@ -5318,7 +5318,7 @@ class _GameItemState extends State<_GameItem> {
                   color:
                       widget.isSelected
                           ? kPrimaryColor
-                          : kWhiteColor.withValues(alpha: 0.9),
+                          : context.colors.textPrimary.withValues(alpha: 0.9),
                   fontWeight:
                       widget.isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
@@ -5335,7 +5335,7 @@ class _GameItemState extends State<_GameItem> {
                       ? Text(
                         resultText,
                         style: AppTypography.textXxsMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(alpha: 0.5),
                           fontWeight: FontWeight.w500,
                           letterSpacing: -0.2,
                         ),
@@ -5343,7 +5343,7 @@ class _GameItemState extends State<_GameItem> {
                       : Text(
                         'vs',
                         style: AppTypography.textXxsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.35),
+                          color: context.colors.textPrimary.withValues(alpha: 0.35),
                           fontStyle: FontStyle.italic,
                         ),
                       ),
@@ -5356,7 +5356,7 @@ class _GameItemState extends State<_GameItem> {
                   color:
                       widget.isSelected
                           ? kPrimaryColor
-                          : kWhiteColor.withValues(alpha: 0.9),
+                          : context.colors.textPrimary.withValues(alpha: 0.9),
                   fontWeight:
                       widget.isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
@@ -7315,7 +7315,7 @@ class _SkeletonContainer extends StatelessWidget {
       height: height,
       width: width,
       decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.08),
+        color: context.colors.textPrimary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(borderRadius),
       ),
     );
@@ -7984,7 +7984,7 @@ class _FenPositionGamesTableState
             onShowGames: _showAllGamesSheet,
             onShowFilters: _showFiltersSheet,
           ),
-          Divider(height: 1, color: kWhiteColor.withValues(alpha: 0.08)),
+          Divider(height: 1, color: context.colors.textPrimary.withValues(alpha: 0.08)),
           _FenPositionGamesColumnHeader(),
           Expanded(
             child:
@@ -8012,7 +8012,7 @@ class _FenPositionGamesTableState
                       separatorBuilder:
                           (_, __) => Divider(
                             height: 1,
-                            color: kWhiteColor.withValues(alpha: 0.06),
+                            color: context.colors.textPrimary.withValues(alpha: 0.06),
                           ),
                       itemBuilder: (context, index) {
                         if (index == _games.length) {
@@ -8117,7 +8117,7 @@ class _FenPositionGamesHeader extends StatelessWidget {
               children: [
                 Icon(
                   Icons.tune_rounded,
-                  color: hasActiveFilters ? kPrimaryColor : kWhiteColor70,
+                  color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimaryMuted,
                   size: 18.sp,
                 ),
                 if (hasActiveFilters)
@@ -8146,14 +8146,14 @@ class _FenPositionGamesColumnHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor.withValues(alpha: 0.45),
+      color: context.colors.textPrimary.withValues(alpha: 0.45),
       fontWeight: FontWeight.w600,
     );
 
     return Container(
       height: 28.h,
       padding: EdgeInsets.symmetric(horizontal: 14.w),
-      color: kBlack2Color.withValues(alpha: 0.24),
+      color: context.colors.surface.withValues(alpha: 0.24),
       child: Row(
         children: [
           Expanded(flex: 5, child: Text('White', style: style)),
@@ -8209,7 +8209,7 @@ class _FenPositionGameRow extends StatelessWidget {
                   constraints: BoxConstraints(minWidth: 38.w),
                   padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.08),
+                    color: context.colors.textPrimary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(6.br),
                   ),
                   child: Text(
@@ -8332,7 +8332,7 @@ class _FenPositionPlayerCell extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.48),
+              color: context.colors.textPrimary.withValues(alpha: 0.48),
               fontWeight: FontWeight.normal,
             ),
           ),
@@ -8381,7 +8381,7 @@ class _FenPositionGamesFooter extends StatelessWidget {
         child: OutlinedButton(
           onPressed: onLoadMore,
           style: OutlinedButton.styleFrom(
-            side: BorderSide(color: kWhiteColor.withValues(alpha: 0.18)),
+            side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.18)),
             foregroundColor: kWhiteColor,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8.br),
@@ -8402,7 +8402,7 @@ class _FenPositionGamesFooter extends StatelessWidget {
             : 'Showing $loadedCount games',
         textAlign: TextAlign.center,
         style: AppTypography.textXsMedium.copyWith(
-          color: kWhiteColor.withValues(alpha: 0.45),
+          color: context.colors.textPrimary.withValues(alpha: 0.45),
           fontWeight: FontWeight.normal,
         ),
       ),
@@ -8433,7 +8433,7 @@ class _FenPositionGamesEmpty extends StatelessWidget {
           children: [
             Icon(
               Icons.manage_search_rounded,
-              color: kWhiteColor.withValues(alpha: 0.45),
+              color: context.colors.textPrimary.withValues(alpha: 0.45),
               size: 22.sp,
             ),
             SizedBox(height: 6.h),
@@ -8455,7 +8455,7 @@ class _FenPositionGamesEmpty extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.42),
+                  color: context.colors.textPrimary.withValues(alpha: 0.42),
                   fontWeight: FontWeight.normal,
                 ),
               ),
@@ -8479,7 +8479,7 @@ class _FenPositionGamesEmpty extends StatelessWidget {
 
 /// Filter sheet for the FEN-position-search table. Visually mirrors the
 /// opening-explorer's `_FilterSheet` (FilterChip + tier filter + section
-/// labels in `kSecondaryTextColor`, full-width primary Apply button, "Clear
+/// labels in `context.colors.textSecondary`, full-width primary Apply button, "Clear
 /// all" action when any draft filter is active) so the two surfaces stay
 /// consistent. Returns the resulting [GamebaseFilters] via Navigator.pop.
 class _FenPositionFiltersSheet extends StatefulWidget {
@@ -9003,7 +9003,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             children: [
               Icon(
                 Icons.south_east_rounded,
-                color: kWhiteColor.withValues(alpha: 0.45),
+                color: context.colors.textPrimary.withValues(alpha: 0.45),
                 size: 22.sp,
               ),
               SizedBox(height: 8.h),
@@ -9011,7 +9011,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 'No moves played yet',
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -9020,7 +9020,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 'Tap → to play the engine’s top move, or swipe ← to see games at this position.',
                 textAlign: TextAlign.center,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.45),
+                  color: context.colors.textPrimary.withValues(alpha: 0.45),
                   fontWeight: FontWeight.normal,
                 ),
               ),
@@ -9423,7 +9423,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       height: 1.2,
     );
     final numberStyle = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor.withValues(alpha: ladder.numberAlpha),
+      color: context.colors.textPrimary.withValues(alpha: ladder.numberAlpha),
       fontSize: ladder.numberSize,
       fontWeight: FontWeight.w500,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -9572,7 +9572,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             decoration: BoxDecoration(
               color:
                   isCurrent
-                      ? kWhiteColor70.withValues(alpha: 0.25)
+                      ? context.colors.textPrimaryMuted.withValues(alpha: 0.25)
                       : Colors.transparent,
               borderRadius: BorderRadius.circular(4.sp),
               border: Border.all(
@@ -9933,7 +9933,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           width: double.infinity,
           padding: EdgeInsets.fromLTRB(11.sp, 8.sp, 11.sp, 8.sp),
           decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.045),
+            color: context.colors.textPrimary.withValues(alpha: 0.045),
             borderRadius: BorderRadius.only(
               topRight: Radius.circular(6.sp),
               bottomRight: Radius.circular(6.sp),
@@ -9948,7 +9948,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 TextSpan(
                   text: displayText,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.86),
+                    color: context.colors.textPrimary.withValues(alpha: 0.86),
                     fontSize: 13.sp,
                     height: 1.45,
                     letterSpacing: 0.05,
@@ -9981,14 +9981,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         width: double.infinity,
         padding: EdgeInsets.fromLTRB(11.sp, 7.sp, 11.sp, 7.sp),
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.025),
+          color: context.colors.textPrimary.withValues(alpha: 0.025),
           borderRadius: BorderRadius.only(
             topRight: Radius.circular(6.sp),
             bottomRight: Radius.circular(6.sp),
           ),
           border: Border(
             left: BorderSide(
-              color: kWhiteColor.withValues(alpha: 0.18),
+              color: context.colors.textPrimary.withValues(alpha: 0.18),
               width: 2,
             ),
           ),
@@ -9996,7 +9996,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         child: Text(
           text,
           style: AppTypography.textXsRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.6),
+            color: context.colors.textPrimary.withValues(alpha: 0.6),
             fontSize: 12.sp,
             height: 1.4,
             fontStyle: FontStyle.italic,
@@ -10177,7 +10177,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
     if (node.isMainline || token.depth <= 0) {
-      return kWhiteColor.withValues(alpha: isPast ? 0.95 : 0.95);
+      return context.colors.textPrimary.withValues(alpha: isPast ? 0.95 : 0.95);
     }
 
     // Variation moves: white with alpha that decays by depth — readable
@@ -10187,7 +10187,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       2 => isPast ? 0.70 : 0.62,
       _ => isPast ? 0.58 : 0.50,
     };
-    return kWhiteColor.withValues(alpha: alpha);
+    return context.colors.textPrimary.withValues(alpha: alpha);
   }
 
   /// Typography ladder per variation depth — the visual hierarchy that lets
@@ -10906,12 +10906,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       SnackBar(
         duration: const Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         elevation: 2,
         margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.sp),
-          side: BorderSide(color: kWhiteColor.withValues(alpha: 0.1), width: 1),
+          side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.1), width: 1),
         ),
         content: Row(
           children: [
@@ -10960,13 +10960,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         elevation: 0,
         duration: const Duration(seconds: 2),
         margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18.sp),
-          side: BorderSide(color: kWhiteColor.withValues(alpha: 0.08)),
+          side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.08)),
         ),
         content: Row(
           children: [
@@ -11406,7 +11406,7 @@ class _PrincipalVariationListState
     ) {
       final spans = <InlineSpan>[];
       final baseStyle = AppTypography.textXsMedium.copyWith(
-        color: kWhiteColor.withValues(alpha: 0.95),
+        color: context.colors.textPrimary.withValues(alpha: 0.95),
         fontWeight: FontWeight.w600,
       );
 
@@ -11606,7 +11606,7 @@ class _PrincipalVariationListState
                               child: RichText(
                                 text: TextSpan(
                                   style: AppTypography.textXsMedium.copyWith(
-                                    color: kWhiteColor.withValues(alpha: 0.95),
+                                    color: context.colors.textPrimary.withValues(alpha: 0.95),
                                     fontWeight: FontWeight.w600,
                                   ),
                                   children: buildPreviewCardSpans(
@@ -11771,7 +11771,7 @@ class _PrincipalVariationListState
                         child: RichText(
                           text: TextSpan(
                             style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.95),
+                              color: context.colors.textPrimary.withValues(alpha: 0.95),
                               fontWeight: FontWeight.w600,
                             ),
                             children: _buildPvSpans(
@@ -11827,7 +11827,7 @@ class _PrincipalVariationListState
                           child: Center(
                             child: Icon(
                               Icons.add_rounded,
-                              color: kWhiteColor.withValues(alpha: 0.9),
+                              color: context.colors.textPrimary.withValues(alpha: 0.9),
                               size: 20.sp,
                             ),
                           ),
@@ -11967,7 +11967,7 @@ class _PrincipalVariationListState
                           return Skeletonizer(
                             enabled: true,
                             effect: ShimmerEffect(
-                              baseColor: kWhiteColor.withValues(alpha: 0.05),
+                              baseColor: context.colors.textPrimary.withValues(alpha: 0.05),
                               highlightColor: kWhiteColor.withValues(
                                 alpha: 0.1,
                               ),
@@ -12009,7 +12009,7 @@ class _PrincipalVariationListState
                 height: 6.w,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: kWhiteColor.withValues(alpha: 0.1),
+                  color: context.colors.textPrimary.withValues(alpha: 0.1),
                 ),
               );
             }
@@ -12023,10 +12023,10 @@ class _PrincipalVariationListState
             if (isLockedDot) {
               dotColor =
                   isActive
-                      ? kWhiteColor.withValues(alpha: 0.95)
-                      : kWhiteColor.withValues(alpha: 0.35);
+                      ? context.colors.textPrimary.withValues(alpha: 0.95)
+                      : context.colors.textPrimary.withValues(alpha: 0.35);
               border = Border.all(
-                color: kWhiteColor.withValues(alpha: isActive ? 1.0 : 0.65),
+                color: context.colors.textPrimary.withValues(alpha: isActive ? 1.0 : 0.65),
                 width: isActive ? 1.5 : 1,
               );
             } else if (displayLines.isNotEmpty) {
@@ -12041,8 +12041,8 @@ class _PrincipalVariationListState
             } else {
               dotColor =
                   isActive
-                      ? kWhiteColor.withValues(alpha: 0.85)
-                      : kWhiteColor.withValues(alpha: 0.3);
+                      ? context.colors.textPrimary.withValues(alpha: 0.85)
+                      : context.colors.textPrimary.withValues(alpha: 0.3);
             }
 
             final double size = isLockedDot ? 8.w : 6.w;
@@ -12113,7 +12113,7 @@ class _PrincipalVariationListState
     final spans = <InlineSpan>[];
     // Use consistent styling for all text in PV notation
     final baseStyle = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor.withValues(alpha: 0.95),
+      color: context.colors.textPrimary.withValues(alpha: 0.95),
       fontWeight: FontWeight.w600,
     );
 
@@ -12766,7 +12766,7 @@ class _NotationActionListPage extends ConsumerWidget {
               width: 40.w,
               height: 4.h,
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.2),
+                color: context.colors.textPrimary.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
@@ -12916,7 +12916,7 @@ class _NotationActionTileState extends State<_NotationActionTile>
                   vertical: 14.sp,
                 ),
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: _glowAnimation.value),
+                  color: context.colors.textPrimary.withValues(alpha: _glowAnimation.value),
                   borderRadius: BorderRadius.circular(14.sp),
                   border: Border.all(
                     color: kWhiteColor.withValues(
@@ -12953,7 +12953,7 @@ class _NotationActionTileState extends State<_NotationActionTile>
                       widget.action.triggersCommentEditor
                           ? Icons.drive_file_rename_outline
                           : Icons.arrow_forward_ios_rounded,
-                      color: kWhiteColor.withValues(alpha: 0.35),
+                      color: context.colors.textPrimary.withValues(alpha: 0.35),
                       size: 14.ic,
                     ),
                   ],
@@ -13099,7 +13099,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
             ],
           ),
           SizedBox(height: 12.h),
-          Divider(color: kWhiteColor.withValues(alpha: 0.08)),
+          Divider(color: context.colors.textPrimary.withValues(alpha: 0.08)),
           SizedBox(height: 12.h),
 
           // Text field - flexible height but not taking all space
@@ -13115,7 +13115,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: kBlack2Color.withValues(alpha: 0.6),
+                fillColor: context.colors.surface.withValues(alpha: 0.6),
                 hintText: 'Add a quick thought…',
                 hintStyle: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textPrimaryMuted,
@@ -13123,7 +13123,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.sp),
                   borderSide: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.1),
+                    color: context.colors.textPrimary.withValues(alpha: 0.1),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -13433,7 +13433,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
               width: 36.w,
               height: 4.h,
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.25),
+                color: context.colors.textPrimary.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(2.sp),
               ),
             ),
@@ -13469,7 +13469,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                       Text(
                         'Share your thoughts on this position',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.6),
+                          color: context.colors.textPrimary.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -13485,7 +13485,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
               gradient: LinearGradient(
                 colors: [
                   Colors.transparent,
-                  kWhiteColor.withValues(alpha: 0.1),
+                  context.colors.textPrimary.withValues(alpha: 0.1),
                   Colors.transparent,
                 ],
               ),
@@ -13508,18 +13508,18 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                 decoration: InputDecoration(
                   hintText: 'What do you think about this position?',
                   hintStyle: AppTypography.textMdRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.4),
+                    color: context.colors.textPrimary.withValues(alpha: 0.4),
                   ),
                   filled: true,
-                  fillColor: kWhiteColor.withValues(alpha: 0.03),
+                  fillColor: context.colors.textPrimary.withValues(alpha: 0.03),
                   contentPadding: EdgeInsets.all(16.sp),
                   counterStyle: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16.sp),
                     borderSide: BorderSide(
-                      color: kWhiteColor.withValues(alpha: 0.1),
+                      color: context.colors.textPrimary.withValues(alpha: 0.1),
                       width: 1.5,
                     ),
                   ),
@@ -13544,7 +13544,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
             decoration: BoxDecoration(
               border: Border(
                 top: BorderSide(
-                  color: kWhiteColor.withValues(alpha: 0.05),
+                  color: context.colors.textPrimary.withValues(alpha: 0.05),
                   width: 1,
                 ),
               ),
@@ -13559,7 +13559,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                         _controller.clear();
                       },
                       style: TextButton.styleFrom(
-                        foregroundColor: kWhiteColor.withValues(alpha: 0.7),
+                        foregroundColor: context.colors.textPrimary.withValues(alpha: 0.7),
                         padding: EdgeInsets.symmetric(vertical: 14.sp),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.sp),
@@ -13577,12 +13577,12 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                   child: TextButton(
                     onPressed: _handleCancel,
                     style: TextButton.styleFrom(
-                      foregroundColor: kWhiteColor.withValues(alpha: 0.8),
+                      foregroundColor: context.colors.textPrimary.withValues(alpha: 0.8),
                       padding: EdgeInsets.symmetric(vertical: 14.sp),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12.sp),
                         side: BorderSide(
-                          color: kWhiteColor.withValues(alpha: 0.15),
+                          color: context.colors.textPrimary.withValues(alpha: 0.15),
                         ),
                       ),
                     ),
@@ -13600,10 +13600,10 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                     style: FilledButton.styleFrom(
                       backgroundColor: _hasChanges
                           ? kPrimaryColor
-                          : kWhiteColor.withValues(alpha: 0.1),
+                          : context.colors.textPrimary.withValues(alpha: 0.1),
                       foregroundColor: _hasChanges
                           ? kWhiteColor
-                          : kWhiteColor.withValues(alpha: 0.4),
+                          : context.colors.textPrimary.withValues(alpha: 0.4),
                       padding: EdgeInsets.symmetric(vertical: 14.sp),
                       elevation: _hasChanges ? 4 : 0,
                       shadowColor: _hasChanges
@@ -13792,7 +13792,7 @@ class _EventInfoSheet extends ConsumerWidget {
                   height: 4.sp,
                   margin: EdgeInsets.symmetric(vertical: 12.sp),
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.3),
+                    color: context.colors.textPrimary.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2.sp),
                   ),
                 ),
@@ -13932,15 +13932,15 @@ class _EventInfoSheet extends ConsumerWidget {
         Text(
           'Players',
           style: AppTypography.textSmMedium.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.6),
+            color: context.colors.textPrimary.withValues(alpha: 0.6),
           ),
         ),
         SizedBox(height: 12.h),
         // White player
-        _buildPlayerRow(game.whitePlayer, 'White', locationService),
+        _buildPlayerRow(context, game.whitePlayer, 'White', locationService),
         SizedBox(height: 8.h),
         // Black player
-        _buildPlayerRow(game.blackPlayer, 'Black', locationService),
+        _buildPlayerRow(context, game.blackPlayer, 'Black', locationService),
         SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 16.h),
       ],
     );
@@ -13981,6 +13981,7 @@ class _EventInfoSheet extends ConsumerWidget {
   }
 
   Widget _buildPlayerRow(
+    BuildContext context,
     PlayerCard player,
     String side,
     LocationService locationService,
@@ -14004,7 +14005,7 @@ class _EventInfoSheet extends ConsumerWidget {
             height: 8.sp,
             decoration: BoxDecoration(
               color: side == 'White' ? kWhiteColor : kBlack2Color,
-              border: Border.all(color: kWhiteColor.withValues(alpha: 0.3)),
+              border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.3)),
               borderRadius: BorderRadius.circular(2.sp),
             ),
           ),
@@ -14047,7 +14048,7 @@ class _EventInfoSheet extends ConsumerWidget {
           Text(
             player.displayRating,
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -14088,7 +14089,7 @@ class _EventInfoSheet extends ConsumerWidget {
                       child: Center(
                         child: Icon(
                           Icons.image,
-                          color: kWhiteColor.withValues(alpha: 0.3),
+                          color: context.colors.textPrimary.withValues(alpha: 0.3),
                           size: 40.sp,
                         ),
                       ),
@@ -14111,7 +14112,7 @@ class _EventInfoSheet extends ConsumerWidget {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
                 size: 20.sp,
               ),
             ],
@@ -14144,7 +14145,7 @@ class _EventInfoSheet extends ConsumerWidget {
           Text(
             aboutModel.description,
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
           SizedBox(height: 16.h),
@@ -14180,22 +14181,22 @@ class _EventInfoSheet extends ConsumerWidget {
         Text(
           'Players',
           style: AppTypography.textSmMedium.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.6),
+            color: context.colors.textPrimary.withValues(alpha: 0.6),
           ),
         ),
         SizedBox(height: 8.h),
         // White player
-        _buildPlayerRow(game.whitePlayer, 'White', locationService),
+        _buildPlayerRow(context, game.whitePlayer, 'White', locationService),
         SizedBox(height: 8.h),
         // Black player
-        _buildPlayerRow(game.blackPlayer, 'Black', locationService),
+        _buildPlayerRow(context, game.blackPlayer, 'Black', locationService),
         // Top players from tournament
         if (aboutModel.players.isNotEmpty) ...[
           SizedBox(height: 16.h),
           Text(
             'Top Players in Event',
             style: AppTypography.textSmMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
             ),
           ),
           SizedBox(height: 8.h),
@@ -14272,7 +14273,7 @@ class _EventInfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: kWhiteColor.withValues(alpha: 0.5), size: 18.sp),
+        Icon(icon, color: context.colors.textPrimary.withValues(alpha: 0.5), size: 18.sp),
         SizedBox(width: 10.w),
         Expanded(
           child: Column(
@@ -14281,7 +14282,7 @@ class _EventInfoRow extends StatelessWidget {
               Text(
                 label,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                 ),
               ),
               SizedBox(height: 2.h),
@@ -14355,7 +14356,7 @@ class _NagPickerSheet extends ConsumerWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
-            color: kBlack2Color.withValues(alpha: 0.92),
+            color: context.colors.surface.withValues(alpha: 0.92),
             padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 18.sp),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -14367,7 +14368,7 @@ class _NagPickerSheet extends ConsumerWidget {
                     height: 4.sp,
                     margin: EdgeInsets.only(bottom: 14.sp),
                     decoration: BoxDecoration(
-                      color: kWhiteColor.withValues(alpha: 0.18),
+                      color: context.colors.textPrimary.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(99),
                     ),
                   ),
@@ -14384,7 +14385,7 @@ class _NagPickerSheet extends ConsumerWidget {
                     Text(
                       'Annotate',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.55),
+                        color: context.colors.textPrimary.withValues(alpha: 0.55),
                         letterSpacing: 1.2,
                         fontSize: 11.sp,
                       ),
@@ -14419,7 +14420,7 @@ class _NagPickerSheet extends ConsumerWidget {
                       icon: Icon(
                         Icons.check_rounded,
                         size: 18.sp,
-                        color: kWhiteColor.withValues(alpha: 0.82),
+                        color: context.colors.textPrimary.withValues(alpha: 0.82),
                       ),
                     ),
                   ],
@@ -14462,7 +14463,7 @@ class _NagPickerSheet extends ConsumerWidget {
                   child: Text(
                     'One glyph per category. Tap a glyph again to remove it.',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.4),
+                      color: context.colors.textPrimary.withValues(alpha: 0.4),
                       fontSize: 10.5.sp,
                       letterSpacing: 0.1,
                     ),
@@ -14489,7 +14490,7 @@ class _NagPickerClearButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 9.sp, vertical: 5.sp),
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.06),
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(99),
         ),
         child: Row(
@@ -14498,13 +14499,13 @@ class _NagPickerClearButton extends StatelessWidget {
             Icon(
               Icons.close_rounded,
               size: 12.sp,
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
             SizedBox(width: 3.sp),
             Text(
               'Clear',
               style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
                 fontSize: 11.sp,
                 letterSpacing: 0.2,
               ),
@@ -14545,7 +14546,7 @@ class _NagGroup extends StatelessWidget {
               Text(
                 label.toUpperCase(),
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.55),
+                  color: context.colors.textPrimary.withValues(alpha: 0.55),
                   fontSize: 10.sp,
                   letterSpacing: 1.4,
                 ),
@@ -14555,7 +14556,7 @@ class _NagGroup extends StatelessWidget {
                 child: Text(
                   hint,
                   style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.32),
+                    color: context.colors.textPrimary.withValues(alpha: 0.32),
                     fontSize: 10.sp,
                     letterSpacing: 0.0,
                   ),

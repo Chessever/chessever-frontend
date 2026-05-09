@@ -108,7 +108,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                             child: Text(
                               'Error: $error',
                               style: AppTypography.textSmRegular.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.7),
+                                color: context.colors.textPrimary.withValues(alpha: 0.7),
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -185,7 +185,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                 Text(
                   'All Games',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.7),
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -214,7 +214,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
               child: Text(
                 error,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -328,13 +328,13 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
           Icon(
             Icons.sports_esports_outlined,
             size: 48.ic,
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
           SizedBox(height: 16.h),
           Text(
             'No games found',
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
           SizedBox(height: 8.h),
@@ -343,7 +343,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
             child: Text(
               'This player has not played any games yet',
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
               textAlign: TextAlign.center,
             ),

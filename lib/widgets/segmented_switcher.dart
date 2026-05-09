@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_typography.dart';
@@ -80,7 +81,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
     final backgroundColor = widget.backgroundColor ?? kBackgroundColor;
     final selectedBackgroundColor =
         widget.selectedBackgroundColor ?? kBackgroundColor;
-    final textColor = widget.textColor ?? kInactiveTabColor;
+    final textColor = widget.textColor ?? context.colors.tabInactive;
     final selectedTextColor = widget.selectedTextColor ?? kWhiteColor;
     final borderRadius = widget.borderRadius ?? 8.br;
 

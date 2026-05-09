@@ -131,7 +131,7 @@ class _TierGrid extends StatelessWidget {
                       color:
                           isSelected
                               ? kBlackColor.withValues(alpha: 0.75)
-                              : kSecondaryTextColor,
+                              : context.colors.textSecondary,
                     ),
                   ),
                 ),

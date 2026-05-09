@@ -195,7 +195,7 @@ class _ImportPgnToFolderPageState
             'Database "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -231,7 +231,7 @@ class _ImportPgnToFolderPageState
             'Select at least one database',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -297,7 +297,7 @@ class _ImportPgnToFolderPageState
                 : 'No games were imported',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -390,7 +390,7 @@ class _ImportPgnToFolderPageState
                   Text(
                     '${widget.games.length} games from $sourceLabel',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.7),
+                      color: context.colors.textPrimary.withValues(alpha: 0.7),
                     ),
                   ),
                 ],
@@ -411,7 +411,7 @@ class _ImportPgnToFolderPageState
                         child: Text(
                           'No databases yet. Create one below.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -461,7 +461,7 @@ class _ImportPgnToFolderPageState
                       child: LinearProgressIndicator(
                         minHeight: 8.h,
                         color: kPrimaryColor,
-                        backgroundColor: kWhiteColor.withValues(alpha: 0.08),
+                        backgroundColor: context.colors.textPrimary.withValues(alpha: 0.08),
                         value:
                             totalRows == 0
                                 ? null
@@ -472,7 +472,7 @@ class _ImportPgnToFolderPageState
                     Text(
                       'Saved $_savedEntries / $totalRows',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.72),
+                        color: context.colors.textPrimary.withValues(alpha: 0.72),
                       ),
                     ),
                   ],
@@ -491,10 +491,10 @@ class _ImportPgnToFolderPageState
                         child: Container(
                           padding: EdgeInsets.symmetric(vertical: 14.h),
                           decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.10),
+                            color: context.colors.textPrimary.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(12.br),
                             border: Border.all(
-                              color: kWhiteColor.withValues(alpha: 0.14),
+                              color: context.colors.textPrimary.withValues(alpha: 0.14),
                             ),
                           ),
                           child: Row(
@@ -614,7 +614,7 @@ class _ImportFolderTile extends StatelessWidget {
             color:
                 selected
                     ? kPrimaryColor.withValues(alpha: 0.55)
-                    : kWhiteColor.withValues(alpha: 0.05),
+                    : context.colors.textPrimary.withValues(alpha: 0.05),
           ),
         ),
         child: Row(
@@ -623,7 +623,7 @@ class _ImportFolderTile extends StatelessWidget {
               Icon(
                 Icons.subdirectory_arrow_right_rounded,
                 size: 16.sp,
-                color: kWhiteColor.withValues(alpha: 0.3),
+                color: context.colors.textPrimary.withValues(alpha: 0.3),
               ),
               SizedBox(width: 8.w),
             ],
@@ -642,7 +642,7 @@ class _ImportFolderTile extends StatelessWidget {
               color:
                   selected
                       ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.35),
+                      : context.colors.textPrimary.withValues(alpha: 0.35),
               size: 20.sp,
             ),
           ],

@@ -59,7 +59,7 @@ class MatchHeader extends ConsumerWidget {
                 width: 3.w,
                 height: 48.h,
                 decoration: BoxDecoration(
-                  color: _getStatusColor(),
+                  color: _getStatusColor(context),
                   borderRadius: BorderRadius.circular(1.5),
                 ),
               ),
@@ -175,7 +175,7 @@ class MatchHeader extends ConsumerWidget {
                   isExpanded
                       ? Icons.keyboard_arrow_up_rounded
                       : Icons.keyboard_arrow_down_rounded,
-                  color: kWhiteColor.withValues(alpha: 0.5),
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                   size: 20.sp,
                 ),
               ],
@@ -186,7 +186,7 @@ class MatchHeader extends ConsumerWidget {
     );
   }
 
-  Color _getStatusColor() {
+  Color _getStatusColor(BuildContext context) {
     if (match.isComplete) {
       return kPrimaryColor.withValues(alpha: 0.5);
     }
@@ -201,7 +201,7 @@ class MatchHeader extends ConsumerWidget {
     }
 
     // Matches with all games finished (draws) or scheduled
-    return kWhiteColor.withValues(alpha: 0.25);
+    return context.colors.textPrimary.withValues(alpha: 0.25);
   }
 }
 
@@ -222,7 +222,7 @@ class CompactMatchHeader extends ConsumerWidget {
       margin: EdgeInsets.zero,
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color.withValues(alpha: 0.6),
+        color: context.colors.surface.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(10.br),
       ),
       child: Row(
@@ -255,7 +255,7 @@ class CompactMatchHeader extends ConsumerWidget {
                 Text(
                   'vs',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w500,
                   ),
                 ),

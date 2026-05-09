@@ -219,7 +219,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     Text(
                       'Selected: $selectedCount of $kFreeFavoriteLimit',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withOpacity(0.6),
+                        color: context.colors.textPrimary.withValues(alpha: 0.6),
                       ),
                     ).animate().fadeIn(duration: 320.ms, curve: _springCurve),
                     SizedBox(height: 16.h),
@@ -237,7 +237,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                         children: [
                           Icon(
                             Icons.search,
-                            color: kWhiteColor.withOpacity(0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                             size: 20.ic,
                           ),
                           SizedBox(width: 10.w),
@@ -251,7 +251,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                               decoration: InputDecoration(
                                 hintText: 'Find any player...',
                                 hintStyle: AppTypography.textSmRegular.copyWith(
-                                  color: kWhiteColor.withOpacity(0.4),
+                                  color: context.colors.textPrimary.withValues(alpha: 0.4),
                                 ),
                                 border: InputBorder.none,
                                 isDense: true,
@@ -269,7 +269,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                                 padding: EdgeInsets.only(left: 8.w),
                                 child: Icon(
                                   Icons.close_rounded,
-                                  color: kWhiteColor.withOpacity(0.5),
+                                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                                   size: 20.ic,
                                 ),
                               ),
@@ -282,7 +282,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     Text(
                       subtitle,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withOpacity(0.6),
+                        color: context.colors.textPrimary.withValues(alpha: 0.6),
                       ),
                     ).animate().fadeIn(duration: 340.ms, curve: _springCurve),
                   ],
@@ -353,11 +353,11 @@ class PlayerSelectionContent extends HookConsumerWidget {
                         backgroundColor:
                             selectedCount >= kFreeFavoriteLimit
                                 ? kWhiteColor
-                                : kWhiteColor.withOpacity(0.16),
+                                : context.colors.textPrimary.withValues(alpha: 0.16),
                         foregroundColor:
                             selectedCount >= kFreeFavoriteLimit
                                 ? kBlackColor
-                                : kWhiteColor.withOpacity(0.6),
+                                : context.colors.textPrimary.withValues(alpha: 0.6),
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14.br),
@@ -546,7 +546,7 @@ Widget _buildPlayerList(
       child: Text(
         isSearching ? 'No players found' : 'No players available yet.',
         style: AppTypography.textSmRegular.copyWith(
-          color: kWhiteColor.withOpacity(0.6),
+          color: context.colors.textPrimary.withValues(alpha: 0.6),
         ),
       ),
     );
@@ -570,7 +570,7 @@ Widget _buildPlayerList(
                 width: 24.w,
                 height: 24.h,
                 child: CircularProgressIndicator(
-                  color: kWhiteColor.withOpacity(0.6),
+                  color: context.colors.textPrimary.withValues(alpha: 0.6),
                   strokeWidth: 2.5,
                 ),
               ),
@@ -876,7 +876,7 @@ class _PlayerTile extends HookWidget {
                     Text(
                       '$rating',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withOpacity(0.5),
+                        color: context.colors.textPrimary.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
@@ -895,7 +895,7 @@ class _PlayerTile extends HookWidget {
                     color:
                         isSelected
                             ? kGreenColor
-                            : kWhiteColor.withOpacity(0.18),
+                            : context.colors.textPrimary.withValues(alpha: 0.18),
                     width: isSelected ? 0 : 1,
                   ),
                 ),
@@ -903,7 +903,7 @@ class _PlayerTile extends HookWidget {
                   isSelected ? Icons.check : Icons.add,
                   size: isSelected ? 14.ic : 12.ic,
                   color:
-                      isSelected ? kWhiteColor : kWhiteColor.withOpacity(0.3),
+                      isSelected ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.3),
                 ),
               ),
             ],

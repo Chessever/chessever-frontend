@@ -115,7 +115,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             'Removed from "${widget.folder.name}"',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Undo',
@@ -227,7 +227,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             'Clipboard is empty. Copy a PGN first.',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -287,7 +287,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             'Sub-database "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -332,7 +332,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             'Renamed to "$name"',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -609,7 +609,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   Text(
                     totalCount == 1 ? '1 game' : '$totalCount games',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.5),
+                      color: context.colors.textPrimary.withValues(alpha: 0.5),
                       height: 1.2,
                     ),
                   ),
@@ -627,7 +627,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       child: Container(
         height: 38.h,
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.06),
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(10.br),
         ),
         child: Row(
@@ -834,7 +834,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           Icon(
             Icons.folder_open_rounded,
             size: 64.sp,
-            color: kWhiteColor.withValues(alpha: 0.1),
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
           ),
           SizedBox(height: 16.h),
           Text(
@@ -846,7 +846,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             Text(
               'Save your first game here!',
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -863,7 +863,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           Icon(
             Icons.search_off_rounded,
             size: 64.sp,
-            color: kWhiteColor.withValues(alpha: 0.1),
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
           ),
           SizedBox(height: 16.h),
           Text(
@@ -874,7 +874,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           Text(
             'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
+              color: context.colors.textPrimary.withValues(alpha: 0.5),
             ),
           ),
         ],
@@ -1000,7 +1000,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               borderRadius: BorderRadius.circular(4.br),
               child: LinearProgressIndicator(
                 value: progress.total > 0 ? progress.fraction : null,
-                backgroundColor: kWhiteColor.withValues(alpha: 0.08),
+                backgroundColor: context.colors.textPrimary.withValues(alpha: 0.08),
                 valueColor:
                     const AlwaysStoppedAnimation<Color>(kPrimaryColor),
                 minHeight: 6.h,
@@ -1012,7 +1012,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
                   ? '${(progress.fraction * 100).toStringAsFixed(0)}%'
                   : '',
               style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.55),
+                color: context.colors.textPrimary.withValues(alpha: 0.55),
               ),
             ),
           ],

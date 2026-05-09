@@ -1,6 +1,7 @@
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
@@ -220,7 +221,7 @@ widget.countryCode,
                 child: Icon(
                   Icons.library_add_outlined,
                   size: 16.h,
-                  color: kWhiteColor.withValues(alpha: 0.5),
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                 ),
               ),
             ),

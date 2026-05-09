@@ -294,9 +294,9 @@ class _AuthButtonWidget extends ConsumerWidget {
           child: Text(
             'Continue as Guest',
             style: AppTypography.textSmMedium.copyWith(
-              color: kWhiteColor.withOpacity(0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
               decoration: TextDecoration.underline,
-              decorationColor: kWhiteColor.withOpacity(0.7),
+              decorationColor: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -599,19 +599,19 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: kWhiteColor.withOpacity(0.8),
+            color: context.colors.textPrimary.withValues(alpha: 0.8),
             blurRadius: 8,
             spreadRadius: 2,
             offset: const Offset(-1, 0),
           ),
           BoxShadow(
-            color: kWhiteColor.withOpacity(0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
             blurRadius: 20,
             spreadRadius: 2,
             offset: const Offset(0, 2),
           ),
           BoxShadow(
-            color: kWhiteColor.withOpacity(0.3),
+            color: context.colors.textPrimary.withValues(alpha: 0.3),
             blurRadius: 35,
             spreadRadius: 2,
             offset: const Offset(0, 4),
@@ -652,7 +652,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: countryState.maybeWhen(
-            loading: () => kWhiteColor.withOpacity(0.4),
+            loading: () => context.colors.textPrimary.withValues(alpha: 0.4),
             orElse: () => kWhiteColor,
           ),
           foregroundColor: kBlackColor,

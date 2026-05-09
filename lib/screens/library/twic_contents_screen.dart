@@ -246,7 +246,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
               },
               icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
                 size: 20.ic,
               ),
             ),
@@ -340,7 +340,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         child: Text(
           '${isEstimate ? '~' : ''}${formatCompactCount(totalCount)} games',
           style: AppTypography.textXsRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
         ),
       ),
@@ -483,7 +483,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
               Icon(
                 Icons.error_outline_rounded,
                 size: 40.sp,
-                color: kWhiteColor.withValues(alpha: 0.3),
+                color: context.colors.textPrimary.withValues(alpha: 0.3),
               ),
               SizedBox(height: 12.h),
               Text(
@@ -731,10 +731,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     double horizontalPadding,
   ) {
     final infoStyle = AppTypography.textXsRegular.copyWith(
-      color: kWhiteColor.withValues(alpha: 0.55),
+      color: context.colors.textPrimary.withValues(alpha: 0.55),
     );
     final separatorStyle = infoStyle.copyWith(
-      color: kWhiteColor.withValues(alpha: 0.3),
+      color: context.colors.textPrimary.withValues(alpha: 0.3),
     );
 
     final infoParts = <Widget>[];
@@ -747,7 +747,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             Icon(
               Icons.location_on_rounded,
               size: 11.ic,
-              color: kWhiteColor.withValues(alpha: 0.45),
+              color: context.colors.textPrimary.withValues(alpha: 0.45),
             ),
             SizedBox(width: 2.w),
             ConstrainedBox(
@@ -832,13 +832,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                     child: Container(
                       padding: EdgeInsets.all(4.w),
                       decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.08),
+                        color: context.colors.textPrimary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(6.br),
                       ),
                       child: Icon(
                         Icons.close_rounded,
                         size: 14.ic,
-                        color: kWhiteColor.withValues(alpha: 0.6),
+                        color: context.colors.textPrimary.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
@@ -1129,7 +1129,7 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                   )!;
               final labelColor =
                   Color.lerp(
-                    kWhiteColor.withValues(alpha: 0.7),
+                    context.colors.textPrimary.withValues(alpha: 0.7),
                     kPrimaryColor,
                     selectProgress,
                   )!;

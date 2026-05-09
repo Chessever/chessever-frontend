@@ -386,7 +386,7 @@ class _TitleDescWidget extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
         ),
         SizedBox(height: 8),
         Text(
@@ -459,7 +459,7 @@ class _CountryFlag extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
         ),
         SizedBox(height: 8.w),
         Row(

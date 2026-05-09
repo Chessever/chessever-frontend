@@ -4,6 +4,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_f
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';

@@ -597,7 +597,7 @@ class _TapTitleSegment extends StatelessWidget {
             color:
                 isActive
                     ? kWhiteColor
-                    : kSecondaryTextColor.withValues(alpha: 0.7),
+                    : context.colors.textSecondary.withValues(alpha: 0.7),
             fontSize: 13.f,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
@@ -623,7 +623,7 @@ class _TapTitleDot extends StatelessWidget {
         color:
             isSelected
                 ? kWhiteColor
-                : kSecondaryTextColor.withValues(alpha: 0.4),
+                : context.colors.textSecondary.withValues(alpha: 0.4),
       ),
     );
   }

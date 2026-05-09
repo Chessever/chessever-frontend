@@ -1,6 +1,7 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -42,7 +43,7 @@ class BoardColorDialog extends ConsumerWidget {
         borderRadius: BorderRadius.circular(20.sp),
         boxShadow: [
           BoxShadow(
-            color: kBlack2Color.withValues(alpha: 0.3),
+            color: context.colors.surface.withValues(alpha: 0.3),
             blurRadius: 10,
             spreadRadius: 1,
           ),

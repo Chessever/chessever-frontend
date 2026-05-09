@@ -1055,7 +1055,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       decoration: InputDecoration(
         hintText: 'Search player',
         hintStyle: TextStyle(
-          color: kSecondaryTextColor.withValues(alpha: 0.65),
+          color: context.colors.textSecondary.withValues(alpha: 0.65),
           fontSize: 13.f,
         ),
         prefixIcon: Icon(
@@ -1796,7 +1796,7 @@ class _ExplorerEngineLines extends ConsumerWidget {
           if (i > 0)
             Divider(
               height: 1,
-              color: kDividerColor.withValues(alpha: 0.3),
+              color: context.colors.divider.withValues(alpha: 0.3),
               indent: 12.sp,
               endIndent: 12.sp,
             ),
@@ -1861,7 +1861,7 @@ class _EngineLinePlaceholder extends StatelessWidget {
             width: 44.w,
             padding: EdgeInsets.symmetric(vertical: 2.sp),
             decoration: BoxDecoration(
-              color: kSecondaryTextColor.withValues(alpha: 0.2),
+              color: context.colors.textSecondary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(3.br),
             ),
             child: Text(
@@ -1884,7 +1884,7 @@ class _EngineLinePlaceholder extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: kWhiteColor.withValues(alpha: isPrimary ? 0.65 : 0.18),
+                color: context.colors.textPrimary.withValues(alpha: isPrimary ? 0.65 : 0.18),
                 fontSize: 12.f,
                 fontWeight: FontWeight.w500,
               ),
@@ -1937,13 +1937,13 @@ class _EngineLine extends StatelessWidget {
       evalBgColor = kDividerColor;
       evalTextColor = kWhiteColor;
     } else {
-      evalBgColor = kSecondaryTextColor.withValues(alpha: 0.3);
+      evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
       evalTextColor = kWhiteColor;
     }
 
     final moveText = _formatMoveText();
     final moveStyle = TextStyle(
-      color: kWhiteColor.withValues(alpha: lineIndex == 0 ? 0.9 : 0.6),
+      color: context.colors.textPrimary.withValues(alpha: lineIndex == 0 ? 0.9 : 0.6),
       fontSize: 12.f,
       fontWeight: lineIndex == 0 ? FontWeight.w500 : FontWeight.w400,
     );
@@ -2099,7 +2099,7 @@ class _SegmentLabel extends StatelessWidget {
         color:
             isActive
                 ? kWhiteColor
-                : kSecondaryTextColor.withValues(alpha: 0.7),
+                : context.colors.textSecondary.withValues(alpha: 0.7),
         fontSize: isLarge ? 17.f : 13.f,
         // Constant weight prevents layout shift as the active label changes.
         fontWeight: FontWeight.w600,
@@ -2125,8 +2125,8 @@ class _ExplorerPageDot extends StatelessWidget {
       decoration: BoxDecoration(
         color:
             isSelected
-                ? kWhiteColor.withValues(alpha: 0.92)
-                : kSecondaryTextColor.withValues(alpha: 0.65),
+                ? context.colors.textPrimary.withValues(alpha: 0.92)
+                : context.colors.textSecondary.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(999.br),
       ),
     );
@@ -2536,7 +2536,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                     child: Text(
                       token.text,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor70.withValues(alpha: 0.65),
+                        color: context.colors.textPrimaryMuted.withValues(alpha: 0.65),
                         fontStyle: FontStyle.italic,
                         height: 1.35,
                       ),
@@ -2606,7 +2606,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
     );
     final numberStyle = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor.withValues(alpha: 0.5),
+      color: context.colors.textPrimary.withValues(alpha: 0.5),
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
     );
 
@@ -2688,7 +2688,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
         decoration: BoxDecoration(
           color:
               isCurrent
-                  ? kWhiteColor70.withValues(alpha: 0.25)
+                  ? context.colors.textPrimaryMuted.withValues(alpha: 0.25)
                   : Colors.transparent,
           borderRadius: BorderRadius.circular(4.sp),
           border: Border.all(
@@ -2711,7 +2711,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     } else if (token.depth > 0) {
       depthColor = _colorForVariationDepth(token.depth);
     } else {
-      depthColor = kWhiteColor.withValues(alpha: 0.75);
+      depthColor = context.colors.textPrimary.withValues(alpha: 0.75);
     }
 
     if (token.type == NotationTokenType.variationPlaceholder) {
@@ -2826,7 +2826,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
       style: AppTypography.textXsMedium.copyWith(
         color:
             token.type == NotationTokenType.ellipsis
-                ? kWhiteColor70
+                ? context.colors.textPrimaryMuted
                 : depthColor.withValues(alpha: 0.85),
         fontStyle:
             token.type == NotationTokenType.ellipsis

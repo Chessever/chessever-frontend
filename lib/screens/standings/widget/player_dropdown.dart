@@ -33,7 +33,7 @@ class PlayerDropDown extends ConsumerWidget {
         ),
         child: Text(
           selectedPlayer?.name ?? 'Unknown Player',
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimaryMuted),
           overflow: TextOverflow.ellipsis,
         ),
       );
@@ -113,7 +113,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
         ),
         child: Text(
           'No players',
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
           overflow: TextOverflow.ellipsis,
         ),
       );

@@ -226,7 +226,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     return Container(
       padding: EdgeInsets.all(4.sp),
       decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.04),
+        color: context.colors.textPrimary.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(14.br),
       ),
       child: Row(
@@ -278,7 +278,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         Text(
           'PARENT DATABASE',
           style: AppTypography.textXsBold.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
             letterSpacing: 1.0,
           ),
         ),
@@ -286,9 +286,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         Container(
           padding: EdgeInsets.symmetric(horizontal: 16.w),
           decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.06),
+            color: context.colors.textPrimary.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
@@ -297,7 +297,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
               borderRadius: BorderRadius.circular(12.br),
               icon: Icon(
                 Icons.keyboard_arrow_down_rounded,
-                color: kWhiteColor.withValues(alpha: 0.4),
+                color: context.colors.textPrimary.withValues(alpha: 0.4),
               ),
               isExpanded: true,
               items:
@@ -343,7 +343,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
             child: Text(
               'Inside database "${parent.name}"',
               style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -359,7 +359,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         Text(
           'NAME',
           style: AppTypography.textXsBold.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
             letterSpacing: 1.0,
           ),
         ),
@@ -373,10 +373,10 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           decoration: InputDecoration(
             hintText: 'e.g. My Openings',
             hintStyle: AppTypography.textMdRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.2),
+              color: context.colors.textPrimary.withValues(alpha: 0.2),
             ),
             filled: true,
-            fillColor: kWhiteColor.withValues(alpha: 0.04),
+            fillColor: context.colors.textPrimary.withValues(alpha: 0.04),
             contentPadding: EdgeInsets.symmetric(
               horizontal: 16.w,
               vertical: 16.h,
@@ -412,7 +412,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
             child: Text(
               'Cancel',
               style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -460,13 +460,13 @@ class _TypeButton extends StatelessWidget {
         decoration: BoxDecoration(
           color:
               isSelected
-                  ? kWhiteColor.withValues(alpha: 0.08)
+                  ? context.colors.textPrimary.withValues(alpha: 0.08)
                   : Colors.transparent,
           borderRadius: BorderRadius.circular(10.br),
           border: Border.all(
             color:
                 isSelected
-                    ? kWhiteColor.withValues(alpha: 0.1)
+                    ? context.colors.textPrimary.withValues(alpha: 0.1)
                     : Colors.transparent,
           ),
         ),
@@ -475,7 +475,7 @@ class _TypeButton extends StatelessWidget {
             label,
             style: AppTypography.textXsBold.copyWith(
               color:
-                  isSelected ? kWhiteColor : kWhiteColor.withValues(alpha: 0.4),
+                  isSelected ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.4),
             ),
           ),
         ),

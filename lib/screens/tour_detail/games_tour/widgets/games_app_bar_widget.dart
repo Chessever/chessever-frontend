@@ -64,7 +64,7 @@ class GamesAppBarWidget extends ConsumerWidget {
           (e, _) => Center(
             child: Text(
               'Error loading tours',
-              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
             ),
           ),
     );

@@ -73,7 +73,7 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                   width: 42.w,
                   height: 4.h,
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.22),
+                    color: context.colors.textPrimary.withValues(alpha: 0.22),
                     borderRadius: BorderRadius.circular(10.br),
                   ),
                 ),
@@ -104,7 +104,7 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                     Text(
                       'Match',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(alpha: 0.7),
                       ),
                     ),
                     SizedBox(width: 10.w),
@@ -199,7 +199,7 @@ class _FilterRuleCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
       ),
       child: Column(
         children: [
@@ -318,7 +318,7 @@ class _ValueEditor extends StatelessWidget {
       return Text(
         'No value',
         style: AppTypography.textSmRegular.copyWith(
-          color: kWhiteColor.withValues(alpha: 0.55),
+          color: context.colors.textPrimary.withValues(alpha: 0.55),
         ),
       );
     }
@@ -403,19 +403,19 @@ class _ToggleChip extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
         decoration: BoxDecoration(
-          color: isActive ? kWhiteColor.withValues(alpha: 0.14) : kBlack2Color,
+          color: isActive ? context.colors.textPrimary.withValues(alpha: 0.14) : kBlack2Color,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color:
                 isActive
-                    ? kWhiteColor.withValues(alpha: 0.35)
-                    : kWhiteColor.withValues(alpha: 0.08),
+                    ? context.colors.textPrimary.withValues(alpha: 0.35)
+                    : context.colors.textPrimary.withValues(alpha: 0.08),
           ),
         ),
         child: Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: isActive ? kWhiteColor : kWhiteColor.withValues(alpha: 0.7),
+            color: isActive ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.7),
           ),
         ),
       ),
@@ -442,7 +442,7 @@ class _SegmentedControl<T> extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -456,7 +456,7 @@ class _SegmentedControl<T> extends StatelessWidget {
               decoration: BoxDecoration(
                 color:
                     selected
-                        ? kWhiteColor.withValues(alpha: 0.16)
+                        ? context.colors.textPrimary.withValues(alpha: 0.16)
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(10.br),
               ),
@@ -466,7 +466,7 @@ class _SegmentedControl<T> extends StatelessWidget {
                   color:
                       selected
                           ? kWhiteColor
-                          : kWhiteColor.withValues(alpha: 0.75),
+                          : context.colors.textPrimary.withValues(alpha: 0.75),
                 ),
               ),
             ),
@@ -504,21 +504,21 @@ class _Dropdown<T> extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: value,
           isExpanded: true,
           dropdownColor: kBlack2Color,
-          iconEnabledColor: kWhiteColor.withValues(alpha: 0.7),
+          iconEnabledColor: context.colors.textPrimary.withValues(alpha: 0.7),
           hint:
               hint == null
                   ? null
                   : Text(
                     hint!,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.55),
+                      color: context.colors.textPrimary.withValues(alpha: 0.55),
                     ),
                   ),
           items: [
@@ -567,7 +567,7 @@ class _TextInput extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
       ),
       child: TextField(
         controller: controller,
@@ -577,7 +577,7 @@ class _TextInput extends StatelessWidget {
           isDense: true,
           hintText: hint,
           hintStyle: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
           border: InputBorder.none,
         ),
@@ -600,9 +600,9 @@ class _PrimaryButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 12.h),
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.12),
+          color: context.colors.textPrimary.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kWhiteColor.withValues(alpha: 0.12)),
+          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.12)),
         ),
         child: Center(
           child: Text(
@@ -635,7 +635,7 @@ class _SmallTextButton extends StatelessWidget {
         child: Text(
           label,
           style: AppTypography.textSmMedium.copyWith(
-            color: color ?? kWhiteColor.withValues(alpha: 0.75),
+            color: color ?? context.colors.textPrimary.withValues(alpha: 0.75),
           ),
         ),
       ),

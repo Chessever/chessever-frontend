@@ -196,9 +196,9 @@ class _PlayerSearchCard extends ConsumerWidget {
                       end: Alignment.centerLeft,
                       colors: [
                         Colors.transparent,
-                        kBlack2Color.withValues(alpha: 0.5),
-                        kBlack2Color.withValues(alpha: 0.85),
-                        kBlack2Color.withValues(alpha: 0.95),
+                        context.colors.surface.withValues(alpha: 0.5),
+                        context.colors.surface.withValues(alpha: 0.85),
+                        context.colors.surface.withValues(alpha: 0.95),
                       ],
                       stops: const [0.0, 0.25, 0.55, 1.0],
                     ),
@@ -266,7 +266,7 @@ countryCode,
                           child: Text(
                             _buildSubtitle(),
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(alpha: 0.7),
                               fontSize: isCompact ? 10.sp : 11.sp,
                             ),
                             maxLines: 1,

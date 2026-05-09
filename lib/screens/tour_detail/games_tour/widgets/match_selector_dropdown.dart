@@ -356,7 +356,7 @@ class _MatchDropdown extends HookConsumerWidget {
                   padding: EdgeInsets.all(2.sp),
                   decoration: BoxDecoration(
                     boxShadow: kElevationToShadow[9],
-                    color: kWhiteColor.withValues(alpha: 0.1),
+                    color: context.colors.textPrimary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(

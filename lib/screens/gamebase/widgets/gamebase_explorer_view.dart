@@ -222,7 +222,7 @@ class _HorizontalPvLines extends ConsumerWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         border: Border(
-          bottom: BorderSide(color: kWhiteColor.withValues(alpha: 0.05)),
+          bottom: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.05)),
         ),
       ),
       child: ListView.separated(
@@ -255,12 +255,12 @@ class _HorizontalPvLines extends ConsumerWidget {
             evalBgColor = kDividerColor;
             evalTextColor = kWhiteColor;
           } else {
-            evalBgColor = kSecondaryTextColor.withValues(alpha: 0.3);
+            evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
             evalTextColor = kWhiteColor;
           }
 
           final movesStyle = AppTypography.textXsRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.8),
+            color: context.colors.textPrimary.withValues(alpha: 0.8),
           );
 
           return InkWell(
@@ -335,6 +335,9 @@ class _GamebaseMovesTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final headerStyle = AppTypography.textSmMedium.copyWith(
+      color: context.colors.textPrimary.withValues(alpha: 0.5),
+    );
     return Column(
       children: [
         // Header
@@ -343,12 +346,12 @@ class _GamebaseMovesTable extends StatelessWidget {
           color: kBlackColor,
           child: Row(
             children: [
-              Expanded(flex: 2, child: Text('Move', style: _headerStyle)),
+              Expanded(flex: 2, child: Text('Move', style: headerStyle)),
               Expanded(
                 flex: 3,
                 child: Text(
                   '#',
-                  style: _headerStyle,
+                  style: headerStyle,
                   textAlign: TextAlign.right,
                 ),
               ),
@@ -356,7 +359,7 @@ class _GamebaseMovesTable extends StatelessWidget {
                 flex: 3,
                 child: Text(
                   'Score',
-                  style: _headerStyle,
+                  style: headerStyle,
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -364,7 +367,7 @@ class _GamebaseMovesTable extends StatelessWidget {
                 flex: 3,
                 child: Text(
                   'Last played',
-                  style: _headerStyle,
+                  style: headerStyle,
                   textAlign: TextAlign.right,
                 ),
               ),
@@ -401,9 +404,6 @@ class _GamebaseMovesTable extends StatelessWidget {
     );
   }
 
-  TextStyle get _headerStyle => AppTypography.textSmMedium.copyWith(
-    color: kWhiteColor.withValues(alpha: 0.5),
-  );
 }
 
 class _GamebaseEmptyStateAction {
@@ -441,14 +441,14 @@ class _GamebaseEmptyState extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(14.sp),
             decoration: BoxDecoration(
-              color: kWhiteColor.withValues(alpha: 0.08),
+              color: context.colors.textPrimary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(14.br),
-              border: Border.all(color: kWhiteColor.withValues(alpha: 0.10)),
+              border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.10)),
             ),
             child: Icon(
               icon,
               size: 22.sp,
-              color: kWhiteColor.withValues(alpha: 0.85),
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
             ),
           ),
           SizedBox(height: 12.h),
@@ -462,7 +462,7 @@ class _GamebaseEmptyState extends StatelessWidget {
             subtitle,
             textAlign: TextAlign.center,
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
             ),
           ),
           if (primaryAction != null) ...[
@@ -475,11 +475,11 @@ class _GamebaseEmptyState extends StatelessWidget {
                 style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
               style: TextButton.styleFrom(
-                backgroundColor: kWhiteColor.withValues(alpha: 0.08),
+                backgroundColor: context.colors.textPrimary.withValues(alpha: 0.08),
                 padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12.br),
-                  side: BorderSide(color: kWhiteColor.withValues(alpha: 0.12)),
+                  side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.12)),
                 ),
               ),
             ),
@@ -558,7 +558,7 @@ class _MoveRow extends ConsumerWidget {
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
         decoration: BoxDecoration(
           border: Border(
-            bottom: BorderSide(color: kWhiteColor.withValues(alpha: 0.05)),
+            bottom: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.05)),
           ),
         ),
         child: Row(
@@ -571,7 +571,7 @@ class _MoveRow extends ConsumerWidget {
                   Text(
                     moveNumberLabel,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.55),
+                      color: context.colors.textPrimary.withValues(alpha: 0.55),
                     ),
                   ),
                   SizedBox(width: 4.w),
@@ -599,7 +599,7 @@ class _MoveRow extends ConsumerWidget {
               child: Text(
                 NumberFormat.decimalPattern().format(total),
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.right,
               ),
@@ -616,7 +616,7 @@ class _MoveRow extends ConsumerWidget {
                     Text(
                       '${whitePct + drawPct}%',
                       style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -630,7 +630,7 @@ class _MoveRow extends ConsumerWidget {
               child: Text(
                 lastPlayedText,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.right,
               ),
@@ -645,16 +645,16 @@ class _MoveRow extends ConsumerWidget {
                   height: 28.h,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.08),
+                    color: context.colors.textPrimary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8.br),
                     border: Border.all(
-                      color: kWhiteColor.withValues(alpha: 0.10),
+                      color: context.colors.textPrimary.withValues(alpha: 0.10),
                     ),
                   ),
                   child: Icon(
                     Icons.open_in_new_rounded,
                     size: 16.sp,
-                    color: kWhiteColor.withValues(alpha: 0.8),
+                    color: context.colors.textPrimary.withValues(alpha: 0.8),
                   ),
                 ),
               ),

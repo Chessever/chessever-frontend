@@ -215,7 +215,7 @@ class _PlayerList extends ConsumerWidget {
                       Text(
                         'Pull down to retry',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withOpacity(0.7),
+                          color: context.colors.textPrimary.withValues(alpha: 0.7),
                         ),
                       ),
                     ],
@@ -247,7 +247,7 @@ class _PlayerList extends ConsumerWidget {
                         Text(
                           'Pull down to refresh',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withOpacity(0.7),
+                            color: context.colors.textPrimary.withValues(alpha: 0.7),
                           ),
                         ),
                       ],

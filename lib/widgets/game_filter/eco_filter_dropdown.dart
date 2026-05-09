@@ -140,7 +140,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               border: Border.all(
                 color:
                     _isExpanded
-                        ? kWhiteColor.withValues(alpha: 0.2)
+                        ? context.colors.textPrimary.withValues(alpha: 0.2)
                         : kDividerColor,
               ),
             ),
@@ -176,7 +176,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                             color:
                                 _isExpanded
                                     ? kBlackColor.withValues(alpha: 0.6)
-                                    : kSecondaryTextColor,
+                                    : context.colors.textSecondary,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -194,7 +194,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                     color:
                         _isExpanded
                             ? kBlackColor.withValues(alpha: 0.7)
-                            : kSecondaryTextColor,
+                            : context.colors.textSecondary,
                   ),
                 ),
               ],
@@ -239,7 +239,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: kDividerColor.withValues(alpha: 0.5)),
+          bottom: BorderSide(color: context.colors.divider.withValues(alpha: 0.5)),
         ),
       ),
       child: TextField(
@@ -250,7 +250,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         decoration: InputDecoration(
           hintText: 'Search',
           hintStyle: AppTypography.textSmRegular.copyWith(
-            color: kSecondaryTextColor.withValues(alpha: 0.6),
+            color: context.colors.textSecondary.withValues(alpha: 0.6),
           ),
           prefixIcon: Icon(
             Icons.search_rounded,
@@ -329,9 +329,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
         decoration: BoxDecoration(
-          color: isSelected ? kWhiteColor.withValues(alpha: 0.05) : null,
+          color: isSelected ? context.colors.textPrimary.withValues(alpha: 0.05) : null,
           border: Border(
-            bottom: BorderSide(color: kDividerColor.withValues(alpha: 0.5)),
+            bottom: BorderSide(color: context.colors.divider.withValues(alpha: 0.5)),
           ),
         ),
         child: Row(
@@ -340,13 +340,13 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               width: 28.w,
               height: 28.w,
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.1),
+                color: context.colors.textPrimary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6.br),
               ),
               child: Icon(
                 Icons.grid_view_rounded,
                 size: 16.ic,
-                color: kWhiteColor.withValues(alpha: 0.8),
+                color: context.colors.textPrimary.withValues(alpha: 0.8),
               ),
             ),
             SizedBox(width: 12.w),
@@ -434,7 +434,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
           color: isSelected ? color.withValues(alpha: 0.08) : null,
           border: Border(
             bottom: BorderSide(
-              color: kDividerColor.withValues(alpha: 0.3),
+              color: context.colors.divider.withValues(alpha: 0.3),
               width: 0.5,
             ),
           ),
@@ -473,7 +473,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               child: Text(
                 name,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: isSelected ? 1.0 : 0.85),
+                  color: context.colors.textPrimary.withValues(alpha: isSelected ? 1.0 : 0.85),
                   fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
                 ),
                 maxLines: 2,

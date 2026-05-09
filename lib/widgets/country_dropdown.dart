@@ -186,12 +186,12 @@ selectedCountryCode,
                     ),
                     hintText: 'Search',
                     hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.5),
+                      color: context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
                     prefixIcon: Icon(
                       Icons.search,
                       size: 20.ic,
-                      color: kWhiteColor.withValues(alpha: 0.5),
+                      color: context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
                     filled: true,
                     fillColor: kBackgroundColor,
@@ -206,7 +206,7 @@ selectedCountryCode,
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.br),
                       borderSide: BorderSide(
-                        color: kWhiteColor.withValues(alpha: 0.3),
+                        color: context.colors.textPrimary.withValues(alpha: 0.3),
                         width: 1,
                       ),
                     ),

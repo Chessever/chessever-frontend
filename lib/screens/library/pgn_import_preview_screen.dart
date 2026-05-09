@@ -219,7 +219,7 @@ class _PgnImportPreviewScreenState
                       ? '1 game'
                       : '${widget.games.length} games',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                     height: 1.2,
                   ),
                 ),
@@ -237,7 +237,7 @@ class _PgnImportPreviewScreenState
       child: Container(
         height: 38.h,
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.06),
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(10.br),
         ),
         child: Row(
@@ -296,7 +296,7 @@ class _PgnImportPreviewScreenState
                   ? Icons.inbox_outlined
                   : Icons.search_off_rounded,
               size: 64.sp,
-              color: kWhiteColor.withValues(alpha: 0.1),
+              color: context.colors.textPrimary.withValues(alpha: 0.1),
             ),
             SizedBox(height: 16.h),
             Text(

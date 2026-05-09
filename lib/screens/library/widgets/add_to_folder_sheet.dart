@@ -228,7 +228,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
             'Database "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -290,7 +290,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
             'Select at least one database',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -345,7 +345,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                 : 'Added to $successCount databases',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -410,7 +410,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                           child: Text(
                             'No databases yet.',
                             style: AppTypography.textSmRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.5),
+                              color: context.colors.textPrimary.withValues(alpha: 0.5),
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -459,7 +459,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
           child: Text(
             'RECENT',
             style: AppTypography.textXsBold.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.4),
+              color: context.colors.textPrimary.withValues(alpha: 0.4),
               letterSpacing: 1.2,
             ),
           ),
@@ -483,13 +483,13 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                     color:
                         isSelected
                             ? kPrimaryColor.withValues(alpha: 0.2)
-                            : kWhiteColor.withValues(alpha: 0.05),
+                            : context.colors.textPrimary.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(20.br),
                     border: Border.all(
                       color:
                           isSelected
                               ? kPrimaryColor.withValues(alpha: 0.6)
-                              : kWhiteColor.withValues(alpha: 0.1),
+                              : context.colors.textPrimary.withValues(alpha: 0.1),
                     ),
                   ),
                   child: Row(
@@ -500,7 +500,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : kWhiteColor.withValues(alpha: 0.6),
+                                : context.colors.textPrimary.withValues(alpha: 0.6),
                       ),
                       SizedBox(width: 6.w),
                       Text(
@@ -509,7 +509,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                           color:
                               isSelected
                                   ? kWhiteColor
-                                  : kWhiteColor.withValues(alpha: 0.8),
+                                  : context.colors.textPrimary.withValues(alpha: 0.8),
                         ),
                       ),
                     ],
@@ -536,10 +536,10 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                 child: Container(
                   padding: EdgeInsets.symmetric(vertical: 14.h),
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.10),
+                    color: context.colors.textPrimary.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(12.br),
                     border: Border.all(
-                      color: kWhiteColor.withValues(alpha: 0.14),
+                      color: context.colors.textPrimary.withValues(alpha: 0.14),
                     ),
                   ),
                   child: Row(
@@ -653,7 +653,7 @@ class _ExpandableFolderTile extends ConsumerWidget {
                       isExpanded
                           ? Icons.keyboard_arrow_up_rounded
                           : Icons.keyboard_arrow_down_rounded,
-                      color: kWhiteColor.withValues(alpha: 0.5),
+                      color: context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
                   )
                   : null,
@@ -714,7 +714,7 @@ class _FolderSelectionTile extends StatelessWidget {
             color:
                 selected
                     ? kPrimaryColor.withValues(alpha: 0.55)
-                    : kWhiteColor.withValues(alpha: 0.05),
+                    : context.colors.textPrimary.withValues(alpha: 0.05),
           ),
         ),
         child: Row(
@@ -723,7 +723,7 @@ class _FolderSelectionTile extends StatelessWidget {
               Icon(
                 Icons.subdirectory_arrow_right_rounded,
                 size: 16.sp,
-                color: kWhiteColor.withValues(alpha: 0.3),
+                color: context.colors.textPrimary.withValues(alpha: 0.3),
               ),
               SizedBox(width: 8.w),
             ],
@@ -731,7 +731,7 @@ class _FolderSelectionTile extends StatelessWidget {
               folder.parentId == null
                   ? Icons.folder_rounded
                   : Icons.folder_open_rounded,
-              color: kWhiteColor.withValues(alpha: isSmall ? 0.6 : 1.0),
+              color: context.colors.textPrimary.withValues(alpha: isSmall ? 0.6 : 1.0),
               size: isSmall ? 20.sp : 24.sp,
             ),
             SizedBox(width: 12.w),
@@ -742,7 +742,7 @@ class _FolderSelectionTile extends StatelessWidget {
                         ? AppTypography.textSmMedium
                         : AppTypography.textSmMedium)
                     .copyWith(
-                      color: kWhiteColor.withValues(alpha: isSmall ? 0.8 : 1.0),
+                      color: context.colors.textPrimary.withValues(alpha: isSmall ? 0.8 : 1.0),
                     ),
               ),
             ),
@@ -755,7 +755,7 @@ class _FolderSelectionTile extends StatelessWidget {
               color:
                   selected
                       ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.35),
+                      : context.colors.textPrimary.withValues(alpha: 0.35),
               size: isSmall ? 18.sp : 20.sp,
             ),
           ],

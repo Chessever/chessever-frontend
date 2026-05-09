@@ -1,5 +1,6 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../theme/app_theme.dart';
@@ -63,7 +64,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                   ? null
                   : Border(
                     bottom: BorderSide(
-                      color: kWhiteColor.withValues(alpha: 0.08),
+                      color: context.colors.textPrimary.withValues(alpha: 0.08),
                       width: 0.7,
                     ),
                   ),
@@ -147,7 +148,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                       isWhite!
                           ? null
                           : Border.all(
-                            color: kWhiteColor.withValues(alpha: 0.35),
+                            color: context.colors.textPrimary.withValues(alpha: 0.35),
                             width: 1.1,
                           ),
                 ),

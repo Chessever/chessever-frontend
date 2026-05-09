@@ -59,7 +59,7 @@ class _AuthUpgradeSheet extends HookWidget {
       builder: (BuildContext context, ScrollController scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: kBlack2Color.withValues(alpha: 0.98),
+            color: context.colors.surface.withValues(alpha: 0.98),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
           ),
           child: _AuthUpgradePage(
@@ -105,7 +105,7 @@ class _AuthUpgradePage extends HookWidget {
                       width: 36.w,
                       height: 4.h,
                       decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.2),
+                        color: context.colors.textPrimary.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(2.br),
                       ),
                     ),
@@ -114,7 +114,7 @@ class _AuthUpgradePage extends HookWidget {
                       child: IconButton(
                         icon: Icon(
                           Icons.close_rounded,
-                          color: kWhiteColor.withValues(alpha: 0.7),
+                          color: context.colors.textPrimary.withValues(alpha: 0.7),
                           size: 22.ic,
                         ),
                         onPressed: () => Navigator.of(hostContext).pop(),
@@ -149,7 +149,7 @@ class _AuthUpgradePage extends HookWidget {
                   'Create an account to access all features',
                   textAlign: TextAlign.center,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                   ),
                 ),
                 SizedBox(height: 24.h),
@@ -177,7 +177,7 @@ class _AuthUpgradePage extends HookWidget {
                     Text(
                       'Guest data can\'t be recovered if lost',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
+                        color: context.colors.textPrimary.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
@@ -230,7 +230,7 @@ class _UnlockVisual extends HookWidget {
             height: 100.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kBlack2Color.withValues(alpha: 0.9),
+              color: context.colors.surface.withValues(alpha: 0.9),
               border: Border.all(
                 color: kPrimaryColor.withValues(alpha: 0.3),
                 width: 2,
@@ -291,15 +291,15 @@ class _FeaturesList extends StatelessWidget {
       padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20.br),
-        color: kBlack2Color.withValues(alpha: 0.5),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+        color: context.colors.surface.withValues(alpha: 0.5),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
       ),
       child: Column(
         children: [
           Text(
             'What you\'ll miss as a guest:',
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
+              color: context.colors.textPrimary.withValues(alpha: 0.5),
               letterSpacing: 0.5,
             ),
           ),
@@ -358,7 +358,7 @@ class _FeatureItem extends StatelessWidget {
               Text(
                 subtitle,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                 ),
               ),
             ],
@@ -367,7 +367,7 @@ class _FeatureItem extends StatelessWidget {
         Icon(
           Icons.lock_outline_rounded,
           size: 16.ic,
-          color: kWhiteColor.withValues(alpha: 0.25),
+          color: context.colors.textPrimary.withValues(alpha: 0.25),
         ),
       ],
     );
@@ -464,13 +464,13 @@ class _SecondaryButton extends HookWidget {
           height: 52.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.15)),
+            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.15)),
           ),
           child: Center(
             child: Text(
               label,
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
             ),
           ),

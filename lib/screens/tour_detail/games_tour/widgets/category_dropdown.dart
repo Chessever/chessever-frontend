@@ -455,12 +455,12 @@ class _StadiumChipButton extends HookWidget {
           color:
               isOpen
                   ? kPrimaryColor.withValues(alpha: 0.15)
-                  : kWhiteColor.withValues(alpha: 0.06),
+                  : context.colors.textPrimary.withValues(alpha: 0.06),
           border: Border.all(
             color:
                 isOpen
                     ? kPrimaryColor.withValues(alpha: 0.4)
-                    : kWhiteColor.withValues(alpha: 0.12),
+                    : context.colors.textPrimary.withValues(alpha: 0.12),
             width: 1.0,
           ),
         ),
@@ -492,7 +492,7 @@ class _StadiumChipButton extends HookWidget {
                   color:
                       isOpen
                           ? kPrimaryColor
-                          : kWhiteColor.withValues(alpha: 0.7),
+                          : context.colors.textPrimary.withValues(alpha: 0.7),
                   size: 18.ic,
                 ),
               ),
@@ -888,7 +888,7 @@ class _DropdownOverlay extends ConsumerWidget {
                       color: const Color(0xFF1A1A1A),
                       borderRadius: BorderRadius.circular(16.br),
                       border: Border.all(
-                        color: kWhiteColor.withValues(alpha: 0.08),
+                        color: context.colors.textPrimary.withValues(alpha: 0.08),
                         width: 1.0,
                       ),
                     ),
@@ -1648,7 +1648,7 @@ class _CategoryRow extends StatelessWidget {
                       color:
                           isExpanded
                               ? kWhiteColor
-                              : kWhiteColor.withValues(alpha: 0.5),
+                              : context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -1761,7 +1761,7 @@ class _RoundRow extends StatelessWidget {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : kWhiteColor.withValues(alpha: 0.85),
+                                : context.colors.textPrimary.withValues(alpha: 0.85),
                         fontWeight:
                             isSelected ? FontWeight.w500 : FontWeight.w400,
                       ),
@@ -1774,7 +1774,7 @@ class _RoundRow extends StatelessWidget {
                           color:
                               isSelected
                                   ? kPrimaryColor.withValues(alpha: 0.7)
-                                  : kWhiteColor.withValues(alpha: 0.5),
+                                  : context.colors.textPrimary.withValues(alpha: 0.5),
                           fontSize: 10.sp,
                         ),
                         maxLines: 1,
