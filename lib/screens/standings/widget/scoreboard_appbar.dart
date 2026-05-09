@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -138,7 +139,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
           icon: Icon(
             Icons.arrow_back_ios_new_outlined,
             size: 24.ic,
-            color: Colors.white,
+            color: context.colors.iconPrimary,
           ),
         ),
         SizedBox(width: 16.w),

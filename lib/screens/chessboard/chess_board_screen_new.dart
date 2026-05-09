@@ -6156,14 +6156,14 @@ class _TabletPlayerCard extends StatelessWidget {
     // For tablet, wrap in a refined container (no horizontal margin - parent controls spacing)
     return Container(
       decoration: BoxDecoration(
-        color:
-            isCurrentPlayer ? context.colors.surface : const Color(0xFF141414),
+        color: isCurrentPlayer
+            ? context.colors.surface
+            : context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(10.sp),
         border: Border.all(
-          color:
-              isCurrentPlayer
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.white.withValues(alpha: 0.04),
+          color: isCurrentPlayer
+              ? context.colors.divider
+              : context.colors.divider.withValues(alpha: 0.4),
           width: 1,
         ),
       ),

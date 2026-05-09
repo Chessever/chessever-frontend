@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -97,10 +98,10 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
   @override
   Widget build(BuildContext context) {
     if (widget.filteredEvents.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'No tournaments found',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: context.colors.textPrimaryMuted),
         ),
       );
     }
