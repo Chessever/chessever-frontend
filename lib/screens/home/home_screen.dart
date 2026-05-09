@@ -237,7 +237,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // Navigation rail for tablets
             TabletNavRail(scaffoldKey: _scaffoldKey),
             // Vertical divider
-            Container(width: 1, color: kDarkGreyColor),
+            Container(width: 1, color: context.colors.divider),
             // Main content
             Expanded(
               child: KeyedSubtree(

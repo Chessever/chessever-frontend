@@ -234,10 +234,14 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                   duration: const Duration(milliseconds: 300),
                   padding: EdgeInsets.all(4.sp),
                   decoration: BoxDecoration(
-                    color: Colors.grey[700],
+                    color: context.colors.surfaceRecessed,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.close, size: 16.ic, color: context.colors.textPrimary),
+                  child: Icon(
+                    Icons.close,
+                    size: 16.ic,
+                    color: context.colors.textPrimary,
+                  ),
                 ),
               );
             },
@@ -252,7 +256,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                 duration: const Duration(milliseconds: 300),
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
-                  color: kDarkGreyColor.withOpacity(0.5),
+                  color: context.colors.surfaceRecessed,
                   borderRadius: BorderRadius.circular(8.br),
                 ),
                 child: Stack(
