@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -56,7 +57,7 @@ class FullPageLoading extends StatelessWidget {
             Text(
               message!,
               style: TextStyle(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textSecondary,
                 fontSize: 14.sp,
               ),
             ),
