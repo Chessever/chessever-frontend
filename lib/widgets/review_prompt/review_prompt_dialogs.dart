@@ -267,7 +267,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 12.sp),
                     backgroundColor:
-                        _rating == 0 ? kDarkGreyColor : kPrimaryColor,
+                        _rating == 0 ? context.colors.surfaceRecessed : kPrimaryColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.br),
                     ),
@@ -403,7 +403,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                           backgroundColor:
                               _canSubmitFeedback
                                   ? kPrimaryColor
-                                  : kDarkGreyColor,
+                                  : context.colors.surfaceRecessed,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.br),
                           ),
@@ -528,7 +528,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                           backgroundColor:
                               _canSubmitFeature
                                   ? kPrimaryColor
-                                  : kDarkGreyColor,
+                                  : context.colors.surfaceRecessed,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.br),
                           ),

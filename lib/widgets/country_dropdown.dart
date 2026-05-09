@@ -100,7 +100,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                   ? null
                   : isCompact
                   ? null
-                  : Border.all(color: kDarkGreyColor, width: 1.w),
+                  : Border.all(color: context.colors.surfaceRecessed, width: 1.w),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton2<String>(
@@ -156,7 +156,7 @@ selectedCountryCode,
               decoration: BoxDecoration(
                 color: context.colors.surface,
                 borderRadius: dropDownBorderRadius,
-                border: Border.all(color: kDarkGreyColor),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               maxHeight: 300.h,
             ),
@@ -197,11 +197,11 @@ selectedCountryCode,
                     fillColor: context.colors.background,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.br),
-                      borderSide: BorderSide(color: kDarkGreyColor, width: 1),
+                      borderSide: BorderSide(color: context.colors.surfaceRecessed, width: 1),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.br),
-                      borderSide: BorderSide(color: kDarkGreyColor, width: 1),
+                      borderSide: BorderSide(color: context.colors.surfaceRecessed, width: 1),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.br),
@@ -292,7 +292,7 @@ selectedCountryCode,
                           decoration: BoxDecoration(
                             border: Border(
                               bottom: BorderSide(
-                                color: kDarkGreyColor,
+                                color: context.colors.surfaceRecessed,
                                 width: 1.w,
                               ),
                             ),

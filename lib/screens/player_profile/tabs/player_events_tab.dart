@@ -1160,7 +1160,7 @@ class _FallbackEventCard extends StatelessWidget {
                                     width: 60.w,
                                     height: 12.h,
                                     decoration: BoxDecoration(
-                                      color: kLightBlack,
+                                      color: context.colors.surface,
                                       borderRadius: BorderRadius.circular(4.br),
                                     ),
                                   ),
@@ -1182,7 +1182,7 @@ class _FallbackEventCard extends StatelessWidget {
                             width: 20.w,
                             height: 20.h,
                             decoration: BoxDecoration(
-                              color: kLightBlack,
+                              color: context.colors.surface,
                               borderRadius: BorderRadius.circular(4.br),
                             ),
                           ),
@@ -1321,7 +1321,7 @@ class _SkeletonEventImage extends StatelessWidget {
             ),
             child: Container(
               decoration: BoxDecoration(
-                color: kLightBlack,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(6.br),
               ),
             ),

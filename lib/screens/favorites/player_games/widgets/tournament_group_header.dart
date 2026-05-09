@@ -106,7 +106,7 @@ class TournamentGroupHeader extends StatelessWidget {
       width: 56.w,
       height: 56.h,
       decoration: BoxDecoration(
-        color: kDarkGreyColor,
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(6.br),
       ),
       child: Icon(

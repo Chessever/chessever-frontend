@@ -365,7 +365,7 @@ class _EmptyState extends StatelessWidget {
                 color: kBlackColor,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: kDarkGreyColor.withValues(alpha: 0.3),
+                  color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
                   width: 1,
                 ),
               ),

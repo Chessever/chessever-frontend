@@ -266,7 +266,7 @@ countryCode,
   Widget _buildHeroPlaceholder() {
     return Container(
       height: 240.h,
-      color: kLightBlack,
+      color: context.colors.surface,
       alignment: Alignment.center,
       child: Image.asset(
         PngAsset.premiumIcon,

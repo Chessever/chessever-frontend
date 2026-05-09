@@ -2508,7 +2508,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
 
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(color: kDarkGreyColor.withValues(alpha: 0.22)),
+      decoration: BoxDecoration(color: context.colors.surfaceRecessed.withValues(alpha: 0.22)),
       child: SingleChildScrollView(
         controller: _scrollController,
         padding: EdgeInsets.all(18.sp),

@@ -1534,7 +1534,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
             ],
           ),
         ),
-        Divider(color: kDarkGreyColor, height: 1.h),
+        Divider(color: context.colors.surfaceRecessed, height: 1.h),
         // Player list
         Expanded(
           child: ListView.separated(
@@ -1542,7 +1542,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
             itemCount: players.length,
             separatorBuilder:
                 (_, __) => Divider(
-                  color: kDarkGreyColor,
+                  color: context.colors.surfaceRecessed,
                   height: 1.h,
                   indent: 16.w,
                   endIndent: 16.w,

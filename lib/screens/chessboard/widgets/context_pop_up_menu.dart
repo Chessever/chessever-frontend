@@ -32,7 +32,7 @@ class ContextPopupMenu extends StatelessWidget {
       color: Colors.transparent,
       child: Container(
         width: width.w,
-        decoration: _buildMenuDecoration(),
+        decoration: _buildMenuDecoration(context),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -92,9 +92,9 @@ class ContextPopupMenu extends StatelessWidget {
     );
   }
 
-  BoxDecoration _buildMenuDecoration() {
+  BoxDecoration _buildMenuDecoration(BuildContext context) {
     return BoxDecoration(
-      color: kDarkGreyColor,
+      color: context.colors.surfaceRecessed,
       borderRadius: BorderRadius.circular(12.br),
       boxShadow: [
         BoxShadow(

@@ -200,7 +200,7 @@ event.countryCode!,
     if (event.countryCode != null && event.countryCode!.isNotEmpty) {
       return Container(
         height: 240.h,
-        color: kLightBlack,
+        color: context.colors.surface,
         alignment: Alignment.center,
         child: SizedBox(
           width: 120.w,
@@ -215,7 +215,7 @@ event.countryCode!,
     }
     return Container(
       height: 240.h,
-      color: kLightBlack,
+      color: context.colors.surface,
       alignment: Alignment.center,
       child: Image.asset(
         PngAsset.premiumIcon,

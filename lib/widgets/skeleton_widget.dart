@@ -20,7 +20,7 @@ class SkeletonWidget extends StatelessWidget {
       ignorePointers: true,
       effect: ShimmerEffect(
         baseColor: kBlackColor,
-        highlightColor: kDarkGreyColor,
+        highlightColor: context.colors.surfaceRecessed,
       ),
       child: child,
     );

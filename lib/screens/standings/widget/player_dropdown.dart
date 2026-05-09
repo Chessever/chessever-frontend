@@ -29,7 +29,7 @@ class PlayerDropDown extends ConsumerWidget {
         decoration: BoxDecoration(
           color: context.colors.background,
           borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: kDarkGreyColor, width: 1.w),
+          border: Border.all(color: context.colors.surfaceRecessed, width: 1.w),
         ),
         child: Text(
           selectedPlayer?.name ?? 'Unknown Player',
@@ -53,7 +53,7 @@ class PlayerDropDown extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color: context.colors.background,
                     borderRadius: BorderRadius.circular(8.br),
-                    border: Border.all(color: kDarkGreyColor, width: 1.w),
+                    border: Border.all(color: context.colors.surfaceRecessed, width: 1.w),
                   ),
                   child: Text(
                     'Error loading players',
@@ -109,7 +109,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
         decoration: BoxDecoration(
           color: context.colors.background,
           borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: kDarkGreyColor, width: 1.w),
+          border: Border.all(color: context.colors.surfaceRecessed, width: 1.w),
         ),
         child: Text(
           'No players',
@@ -142,7 +142,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
           border:
               isDropDownOpen
                   ? null
-                  : Border.all(color: kDarkGreyColor, width: 1.w),
+                  : Border.all(color: context.colors.surfaceRecessed, width: 1.w),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton2<PlayerStandingModel>(
@@ -187,7 +187,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
               decoration: BoxDecoration(
                 color: context.colors.surface,
                 borderRadius: dropDownBorderRadius,
-                border: Border.all(color: kDarkGreyColor),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               maxHeight: 240.h,
             ),
@@ -231,7 +231,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
                                     ? null
                                     : Border(
                                       bottom: BorderSide(
-                                        color: kDarkGreyColor,
+                                        color: context.colors.surfaceRecessed,
                                         width: 1.w,
                                       ),
                                     ),

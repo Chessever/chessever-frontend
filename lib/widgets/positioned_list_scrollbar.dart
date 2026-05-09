@@ -212,7 +212,7 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
                             kPrimaryColor.withValues(alpha: 0.7),
                         trackColor:
                             widget.trackColor ??
-                            kDarkGreyColor.withValues(alpha: 0.3),
+                            context.colors.surfaceRecessed.withValues(alpha: 0.3),
                         trackBorderRadius: widget.trackBorderRadius ?? 8.0,
                         isDragging: _isDragging,
                       ),

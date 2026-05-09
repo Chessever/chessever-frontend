@@ -1064,7 +1064,7 @@ countryCode,
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                 decoration: BoxDecoration(
-                  color: kDarkGreyColor,
+                  color: context.colors.surfaceRecessed,
                   borderRadius: BorderRadius.circular(8.br),
                 ),
                 child: Column(
@@ -2566,7 +2566,7 @@ class _OpeningRowState extends State<_OpeningRow> {
   }
 
   Color _getEcoColor(String eco) {
-    if (eco.isEmpty) return kDarkGreyColor;
+    if (eco.isEmpty) return context.colors.surfaceRecessed;
     switch (eco[0].toUpperCase()) {
       case 'A':
         return const Color(0xFF4A90A4);
@@ -2579,7 +2579,7 @@ class _OpeningRowState extends State<_OpeningRow> {
       case 'E':
         return const Color(0xFFB8860B);
       default:
-        return kDarkGreyColor;
+        return context.colors.surfaceRecessed;
     }
   }
 
@@ -2651,7 +2651,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                   final ecoColor =
                       Color.lerp(
                         baseEcoColor,
-                        kDarkGreyColor.withValues(alpha: 0.5),
+                        context.colors.surfaceRecessed.withValues(alpha: 0.5),
                         inactiveAmount * 0.7,
                       )!;
 

@@ -90,7 +90,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             return RefreshIndicator(
               onRefresh: _handleRefresh,
               color: context.colors.textPrimaryMuted,
-              backgroundColor: kDarkGreyColor,
+              backgroundColor: context.colors.surfaceRecessed,
               displacement: 60.h,
               strokeWidth: 3.w,
               child:
