@@ -565,7 +565,9 @@ class _LibraryGamebaseFilterDialogState
                 alignment: Alignment.center,
                 child: Text(
                   'Apply Filters',
-                  style: AppTypography.textSmBold.copyWith(color: kBlackColor),
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.textInverse,
+                  ),
                 ),
               ),
             ),

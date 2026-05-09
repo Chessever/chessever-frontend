@@ -76,10 +76,10 @@ class _PremiumGamesFilterDialogState
                 width: dialogWidth,
                 constraints: BoxConstraints(maxHeight: 520.h),
                 decoration: BoxDecoration(
-                  color: kBlackColor,
+                  color: context.colors.surface,
                   borderRadius: BorderRadius.circular(12.br),
                   border: Border.all(
-                    color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
+                    color: context.colors.divider,
                     width: 1,
                   ),
                 ),
