@@ -2,6 +2,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter_svg/svg.dart';
@@ -30,8 +31,8 @@ class SettingsMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     Widget buildMenuIcon(Widget? icon, IconData fallback) {
-      final Widget resolved =
-          icon ?? Icon(fallback, color: Colors.white, size: 16.ic);
+      final Widget resolved = icon ??
+          Icon(fallback, color: context.colors.iconPrimary, size: 16.ic);
       return Center(
         child: SizedBox.square(
           dimension: 16.ic,
@@ -50,14 +51,16 @@ class SettingsMenu extends ConsumerWidget {
             height: 5.h,
             width: 40.w,
             decoration: BoxDecoration(
-              color: kWhiteColor,
+              color: context.colors.divider,
               borderRadius: BorderRadius.circular(20.br),
             ),
           ),
           SizedBox(height: 15.h),
           Text(
             'Settings',
-            style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textLgMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 25.h),
           // Board settings
@@ -84,7 +87,7 @@ class SettingsMenu extends ConsumerWidget {
                     child: Text(
                       'Board settings',
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                   ),
@@ -128,7 +131,7 @@ class SettingsMenu extends ConsumerWidget {
                     child: Text(
                       'Notification settings',
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                   ),

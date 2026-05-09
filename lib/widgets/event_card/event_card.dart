@@ -3,6 +3,7 @@ import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -103,7 +104,7 @@ class EventCard extends ConsumerWidget {
   Widget _buildTabletGridCard(BuildContext context, WidgetRef ref) {
     return Container(
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       clipBehavior: Clip.antiAlias,
@@ -203,7 +204,7 @@ class EventCard extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
       ),
       padding: EdgeInsets.all(6.sp),
@@ -232,7 +233,7 @@ class EventCard extends ConsumerWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontSize: 14.sp,
                       height: 1.2,
                     ),
@@ -244,7 +245,9 @@ class EventCard extends ConsumerWidget {
                   _MetaLine(
                     dates: _compactDates(tourEventCardModel),
                     timeControlSpan: _timeControlSpan(
-                      AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+                      AppTypography.textXsMedium.copyWith(
+                        color: context.colors.textPrimaryMuted,
+                      ),
                     ),
                     showLocation:
                         tourEventCardModel.eventSource ==
@@ -343,19 +346,19 @@ class _MetaLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor =
-        onLight ? kWhiteColor.withValues(alpha: 0.9) : kWhiteColor70;
+    final baseColor = onLight
+        ? kWhiteColor.withValues(alpha: 0.9)
+        : context.colors.textPrimaryMuted;
     final style = AppTypography.textXsMedium.copyWith(
       color: baseColor,
-      shadows:
-          onLight
-              ? [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 3,
-                ),
-              ]
-              : null,
+      shadows: onLight
+          ? [
+              Shadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 3,
+              ),
+            ]
+          : null,
     );
 
     final spans = <InlineSpan>[];
@@ -455,7 +458,7 @@ class _EventImage extends ConsumerWidget {
       height: imageHeight,
       child: Container(
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(6.br),
         ),
         clipBehavior: Clip.antiAlias,
@@ -476,7 +479,7 @@ class _EventImage extends ConsumerWidget {
                         highlightColor: Color(0xFF3A3A3A),
                         duration: Duration(seconds: 1),
                       ),
-                      child: Container(color: kBlack2Color),
+                      child: Container(color: context.colors.surfaceRecessed),
                     ),
                 errorWidget:
                     (context, url, error) =>
@@ -485,16 +488,15 @@ class _EventImage extends ConsumerWidget {
             }
             return _buildFallbackFlag(imageData.fallbackCountryCode);
           },
-          loading:
-              () => Skeletonizer(
-                enabled: true,
-                effect: const ShimmerEffect(
-                  baseColor: Color(0xFF2A2A2A),
-                  highlightColor: Color(0xFF3A3A3A),
-                  duration: Duration(seconds: 1),
-                ),
-                child: Container(color: kBlack2Color),
-              ),
+          loading: () => Skeletonizer(
+            enabled: true,
+            effect: ShimmerEffect(
+              baseColor: context.colors.skeleton,
+              highlightColor: context.colors.divider,
+              duration: const Duration(seconds: 1),
+            ),
+            child: Container(color: context.colors.surfaceRecessed),
+          ),
           error: (_, __) => const LogoPatternFallback(),
         ),
       ),
@@ -1033,8 +1035,9 @@ class _NextRoundLine extends ConsumerWidget {
     final roundName = (nextRound?.name ?? 'Round 1').trim();
     final showName = roundName.isNotEmpty;
 
-    final baseColor =
-        onLight ? kWhiteColor.withValues(alpha: 0.9) : kWhiteColor70;
+    final baseColor = onLight
+        ? kWhiteColor.withValues(alpha: 0.9)
+        : context.colors.textPrimaryMuted;
 
     final textStyle = AppTypography.textXxsMedium.copyWith(
       color: baseColor,

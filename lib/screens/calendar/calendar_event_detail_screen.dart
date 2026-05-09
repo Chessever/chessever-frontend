@@ -1,6 +1,7 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -82,14 +83,16 @@ class CalendarEventDetailScreen extends StatelessWidget {
 
     return Scaffold(
       key: e2eKey(E2eIds.calendarEventDetailRoot),
-      backgroundColor: kBlackColor,
+      backgroundColor: context.colors.background,
       appBar: AppBar(
         title: Text(
           event.name,
-          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textLgBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
-        backgroundColor: kBlack2Color,
-        iconTheme: const IconThemeData(color: kWhiteColor),
+        backgroundColor: context.colors.surface,
+        iconTheme: IconThemeData(color: context.colors.iconPrimary),
       ),
       bottomNavigationBar: _buildBottomBar(context, domain),
       body: Center(
@@ -128,7 +131,7 @@ class CalendarEventDetailScreen extends StatelessWidget {
                     SelectableText(
                       event.description!,
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                       ),
                     ),
                     SizedBox(height: 12.h),
@@ -269,12 +272,16 @@ class _TitleDescWidget extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
           description,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
       ],
     );
@@ -299,7 +306,9 @@ class _CountryFlag extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
         ),
         SizedBox(height: 8.h),
         Row(
@@ -310,7 +319,9 @@ class _CountryFlag extends StatelessWidget {
               child: Text(
                 description,
                 maxLines: 1,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
               ),
             ),
           ],

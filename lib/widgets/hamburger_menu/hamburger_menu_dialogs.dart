@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -29,7 +30,7 @@ void showSettingsDialog(BuildContext context) {
         child: ClipRRect(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           child: Container(
-            color: kPopUpColor,
+            color: bottomSheetContext.colors.popup,
             child: IntrinsicHeight(
               // Prevent it from expanding full height
               child: SingleChildScrollView(child: const SettingsDialog()),
@@ -100,25 +101,21 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
               // Removed maxHeight constraint to let it size by content, but kept it minimal
             ),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF1A1A1A), Color(0xFF0D0D0D)],
-              ),
+              color: context.colors.surfaceElevated,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.red.withOpacity(0.2),
+                color: context.colors.danger.withValues(alpha: 0.25),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.red.withOpacity(0.1),
+                  color: context.colors.danger.withValues(alpha: 0.1),
                   blurRadius: 30,
                   spreadRadius: -5,
                   offset: Offset(0, 15),
                 ),
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
+                  color: context.colors.shadow,
                   blurRadius: 20,
                   offset: Offset(0, 10),
                 ),
@@ -130,7 +127,14 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                 children: [
                   // Background pattern
                   Positioned.fill(
-                    child: CustomPaint(painter: _ChessPatternPainter()),
+                    child: CustomPaint(
+                      painter: _ChessPatternPainter(
+                        dangerColor: context.colors.danger,
+                        scrimColor: context.isLightTheme
+                            ? context.colors.textPrimary
+                            : Colors.black,
+                      ),
+                    ),
                   ),
 
                   // Main content
@@ -144,12 +148,14 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                               padding: EdgeInsets.all(16.sp),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.red.withOpacity(0.1),
+                                color: context.colors.danger.withValues(
+                                  alpha: 0.12,
+                                ),
                               ),
                               child: Icon(
                                 Icons.delete_forever_rounded,
                                 size: 32.ic,
-                                color: Colors.red.shade400,
+                                color: context.colors.danger,
                               ),
                             )
                             .animate()
@@ -161,7 +167,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                         Text(
                               'Delete Account?',
                               style: AppTypography.textLgBold.copyWith(
-                                color: Colors.white,
+                                color: context.colors.textPrimary,
                                 fontWeight: FontWeight.w700,
                               ),
                             )
@@ -175,7 +181,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                           'This action is permanent and cannot be undone. All your data, history, and preferences will be lost forever.',
                           textAlign: TextAlign.center,
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withOpacity(0.7),
+                            color: context.colors.textPrimary.withValues(alpha:0.7),
                             height: 1.4,
                           ),
                         ).animate().fadeIn(delay: 200.ms),
@@ -189,10 +195,10 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                 vertical: 12.sp,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.05),
+                                color: context.colors.danger.withValues(alpha:0.05),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: Colors.red.withOpacity(0.15),
+                                  color: context.colors.danger.withValues(alpha:0.15),
                                   width: 1,
                                 ),
                               ),
@@ -215,15 +221,15 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                         border: Border.all(
                                           color:
                                               _hasReadWarning
-                                                  ? Colors.red.shade400
-                                                  : kWhiteColor.withOpacity(
+                                                  ? context.colors.danger
+                                                  : context.colors.textPrimary.withValues(alpha:
                                                     0.3,
                                                   ),
                                           width: 2,
                                         ),
                                         color:
                                             _hasReadWarning
-                                                ? Colors.red.withOpacity(0.2)
+                                                ? context.colors.danger.withValues(alpha:0.2)
                                                 : Colors.transparent,
                                       ),
                                       child:
@@ -231,7 +237,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                               ? Icon(
                                                 Icons.check,
                                                 size: 12.ic,
-                                                color: Colors.red.shade300,
+                                                color: context.colors.danger,
                                               ).animate().scale(
                                                 begin: Offset(0, 0),
                                                 duration: 200.ms,
@@ -247,8 +253,8 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                             .copyWith(
                                               color:
                                                   _hasReadWarning
-                                                      ? Colors.red.shade300
-                                                      : kWhiteColor.withOpacity(
+                                                      ? context.colors.danger
+                                                      : context.colors.textPrimary.withValues(alpha:
                                                         0.8,
                                                       ),
                                               fontWeight: FontWeight.w500,
@@ -271,7 +277,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                               _errorMessage!,
                               textAlign: TextAlign.center,
                               style: AppTypography.textXsRegular.copyWith(
-                                color: Colors.red.shade300,
+                                color: context.colors.danger,
                               ),
                             ),
                           ).animate().fadeIn(),
@@ -295,7 +301,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                       padding: EdgeInsets.symmetric(
                                         vertical: 12.h,
                                       ),
-                                      backgroundColor: kWhiteColor.withOpacity(
+                                      backgroundColor: context.colors.textPrimary.withValues(alpha:
                                         0.05,
                                       ),
                                       shape: RoundedRectangleBorder(
@@ -306,7 +312,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                       'Cancel',
                                       style: AppTypography.textSmMedium
                                           .copyWith(
-                                            color: kWhiteColor.withOpacity(0.8),
+                                            color: context.colors.textPrimary.withValues(alpha:0.8),
                                           ),
                                     ),
                                   ),
@@ -331,7 +337,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                         padding: EdgeInsets.symmetric(
                                           vertical: 12.h,
                                         ),
-                                        backgroundColor: Colors.red.withOpacity(
+                                        backgroundColor: context.colors.danger.withValues(alpha:
                                           0.15,
                                         ),
                                         shape: RoundedRectangleBorder(
@@ -339,7 +345,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                             12,
                                           ),
                                           side: BorderSide(
-                                            color: Colors.red.withOpacity(0.3),
+                                            color: context.colors.danger.withValues(alpha:0.3),
                                             width: 1,
                                           ),
                                         ),
@@ -354,7 +360,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                                   valueColor:
                                                       AlwaysStoppedAnimation<
                                                         Color
-                                                      >(Colors.red.shade300),
+                                                      >(context.colors.danger),
                                                 ),
                                               )
                                               : Text(
@@ -363,7 +369,7 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
                                                     .textSmMedium
                                                     .copyWith(
                                                       color:
-                                                          Colors.red.shade300,
+                                                          context.colors.danger,
                                                       fontWeight:
                                                           FontWeight.w600,
                                                     ),
@@ -396,6 +402,11 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
 
 // Custom painter for chess board pattern background
 class _ChessPatternPainter extends CustomPainter {
+  _ChessPatternPainter({required this.dangerColor, required this.scrimColor});
+
+  final Color dangerColor;
+  final Color scrimColor;
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint();
@@ -404,7 +415,7 @@ class _ChessPatternPainter extends CustomPainter {
     for (var i = 0; i < size.width / squareSize; i++) {
       for (var j = 0; j < size.height / squareSize; j++) {
         if ((i + j) % 2 == 0) {
-          paint.color = Colors.red.withOpacity(0.02);
+          paint.color = dangerColor.withValues(alpha: 0.02);
           canvas.drawRect(
             Rect.fromLTWH(
               i * squareSize,
@@ -418,22 +429,22 @@ class _ChessPatternPainter extends CustomPainter {
       }
     }
 
-    // Add gradient overlay
-    final gradient =
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withOpacity(0.3),
-              Colors.transparent,
-              Colors.black.withOpacity(0.4),
-            ],
-          ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    final gradient = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          scrimColor.withValues(alpha: 0.3),
+          Colors.transparent,
+          scrimColor.withValues(alpha: 0.4),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
 
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), gradient);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _ChessPatternPainter oldDelegate) =>
+      oldDelegate.dangerColor != dangerColor ||
+      oldDelegate.scrimColor != scrimColor;
 }

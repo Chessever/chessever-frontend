@@ -12,6 +12,7 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -172,7 +173,7 @@ class GroupEventScreen extends HookConsumerWidget {
 
     return Material(
       key: e2eKey(E2eIds.eventsRoot),
-      color: kBackgroundColor,
+      color: context.colors.background,
       child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -472,8 +473,8 @@ class GroupEventScreen extends HookConsumerWidget {
                             return RefreshIndicator(
                               onRefresh:
                                   ref.read(homeScreenProvider).onPullRefresh,
-                              color: kWhiteColor70,
-                              backgroundColor: kDarkGreyColor,
+                              color: context.colors.textSecondary,
+                              backgroundColor: context.colors.surface,
                               displacement: 60.h,
                               strokeWidth: 3.w,
                               child: AllEventsTabWidget(

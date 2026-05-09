@@ -1,4 +1,4 @@
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -20,7 +20,9 @@ class EmptyWidget extends StatelessWidget {
         SizedBox(height: 12.h),
         Text(
           title,
-          style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsRegular.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
           textAlign: TextAlign.center,
         ),
       ],
