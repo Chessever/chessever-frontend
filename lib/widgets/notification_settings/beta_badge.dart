@@ -1,5 +1,6 @@
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 /// Small pill badge — used to mark features as "BETA" or similar.
@@ -13,7 +14,7 @@ class BetaBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(4.br),
       ),
       child: Text(

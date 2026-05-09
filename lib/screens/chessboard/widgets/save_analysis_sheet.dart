@@ -429,7 +429,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           SnackBar(
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: const Color(0xFF1A1A1C).withValues(alpha: 0.95),
+            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12.br),
             ),
@@ -910,7 +910,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         child: DropdownButton<String>(
           value: _selectedResult,
           isExpanded: true,
-          dropdownColor: const Color(0xFF1A1A1C),
+          dropdownColor: context.colors.surface,
           icon: Icon(
             Icons.arrow_drop_down,
             color: context.colors.textPrimary.withValues(alpha: 0.4),

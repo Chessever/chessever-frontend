@@ -234,7 +234,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                   scale: 0.98 + (clamped * 0.02),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1C),
+                      color: context.colors.surface,
                       borderRadius: BorderRadius.circular(12.br),
                     ),
                     child: child,
@@ -398,7 +398,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                     width: 32.h,
                     height: 32.h,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1C),
+                      color: context.colors.surface,
                       borderRadius: BorderRadius.circular(4.br),
                     ),
                     child: Center(

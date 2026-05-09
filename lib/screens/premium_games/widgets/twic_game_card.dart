@@ -153,7 +153,7 @@ class _PlayerInfo extends StatelessWidget {
         Text(
           player.name,
           style: AppTypography.textSmMedium.copyWith(
-            color: isWinner ? const Color(0xFF1A1A1C) : const Color(0xFF3A3A3C),
+            color: isWinner ? context.colors.surface : context.colors.dividerStrong,
             fontWeight: isWinner ? FontWeight.w700 : FontWeight.w500,
           ),
           maxLines: 1,
@@ -168,14 +168,14 @@ class _PlayerInfo extends StatelessWidget {
                 TextSpan(
                   text: '${player.title} ',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: const Color(0xFF666666),
+                    color: context.colors.textSecondary,
                     fontSize: 12.sp,
                   ),
                 ),
               TextSpan(
                 text: player.displayRating,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: const Color(0xFF666666),
+                  color: context.colors.textSecondary,
                   fontSize: 12.sp,
                 ),
               ),
@@ -200,17 +200,17 @@ class _ResultBadge extends StatelessWidget {
 
     switch (status) {
       case GameStatus.whiteWins:
-        backgroundColor = const Color(0xFF2D2D2D);
+        backgroundColor = context.colors.surfaceRecessed;
         textColor = context.colors.textPrimary;
         text = '1-0';
         break;
       case GameStatus.blackWins:
-        backgroundColor = const Color(0xFF2D2D2D);
+        backgroundColor = context.colors.surfaceRecessed;
         textColor = context.colors.textPrimary;
         text = '0-1';
         break;
       case GameStatus.draw:
-        backgroundColor = const Color(0xFF666666);
+        backgroundColor = context.colors.textSecondary;
         textColor = context.colors.textPrimary;
         text = '½-½';
         break;
@@ -221,7 +221,7 @@ class _ResultBadge extends StatelessWidget {
         break;
       case GameStatus.unknown:
         backgroundColor = const Color(0xFFE0E0E0);
-        textColor = const Color(0xFF666666);
+        textColor = context.colors.textSecondary;
         text = '-';
         break;
     }
@@ -270,7 +270,7 @@ class _MetaRow extends StatelessWidget {
                 child: Text(
                   tournamentName,
                   style: AppTypography.textXsRegular.copyWith(
-                    color: const Color(0xFF666666),
+                    color: context.colors.textSecondary,
                     fontSize: 11.sp,
                   ),
                   maxLines: 1,
@@ -293,7 +293,7 @@ class _MetaRow extends StatelessWidget {
             Text(
               date,
               style: AppTypography.textXsRegular.copyWith(
-                color: const Color(0xFF666666),
+                color: context.colors.textSecondary,
                 fontSize: 11.sp,
               ),
             ),

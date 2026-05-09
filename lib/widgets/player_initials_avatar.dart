@@ -516,6 +516,6 @@ Color getTitleBadgeColor(String title) {
     case 'WNM':
       return const Color(0xFF8B5CF6); // Purple - Woman National Master
     default:
-      return const Color(0xFF71717A); // Gray - Unknown/Other
+      return const Color(0xFF8E8E93); // Gray - Unknown/Other
   }
 }

@@ -293,7 +293,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: _selectedParentId,
-              dropdownColor: const Color(0xFF1A1A1C),
+              dropdownColor: context.colors.surface,
               borderRadius: BorderRadius.circular(12.br),
               icon: Icon(
                 Icons.keyboard_arrow_down_rounded,

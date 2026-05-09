@@ -35,7 +35,7 @@ class NotifFilterChip extends StatelessWidget {
           curve: Curves.easeInOut,
           padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 7.sp),
           decoration: BoxDecoration(
-            color: selected ? kPrimaryColor : const Color(0xFF2A2A2A),
+            color: selected ? kPrimaryColor : context.colors.surfaceRecessed,
             borderRadius: BorderRadius.circular(30.br),
           ),
           child: Text(

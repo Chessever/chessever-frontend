@@ -70,7 +70,7 @@ class LibraryGameCard extends ConsumerWidget {
                 : null,
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF2E2E2E),
+            color: context.colors.surfaceRecessed,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Column(
@@ -132,7 +132,7 @@ class LibraryGameCard extends ConsumerWidget {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1C),
+                  color: context.colors.surface,
                   borderRadius: BorderRadius.vertical(
                     bottom: Radius.circular(12.br),
                   ),
@@ -274,7 +274,7 @@ class _PlayerInfo extends StatelessWidget {
               child: Text(
                 name,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: const Color(0xFF09090B),
+                  color: context.colors.background,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -294,7 +294,7 @@ class _PlayerInfo extends StatelessWidget {
         Text(
           rank,
           style: AppTypography.textXsRegular.copyWith(
-            color: const Color(0xFF71717A),
+            color: context.colors.textTertiary,
             fontSize: 12.sp,
           ),
           maxLines: 1,

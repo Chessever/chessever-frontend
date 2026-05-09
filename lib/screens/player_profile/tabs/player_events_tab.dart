@@ -1314,9 +1314,9 @@ class _SkeletonEventImage extends StatelessWidget {
           borderRadius: BorderRadius.circular(6.br),
           child: Skeletonizer(
             enabled: true,
-            effect: const ShimmerEffect(
-              baseColor: Color(0xFF2A2A2A),
-              highlightColor: Color(0xFF3A3A3A),
+            effect:  ShimmerEffect(
+              baseColor: context.colors.surfaceRecessed,
+              highlightColor: context.colors.divider,
               duration: Duration(seconds: 1),
             ),
             child: Container(

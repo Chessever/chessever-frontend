@@ -266,7 +266,7 @@ class _LibrarySearchResultsViewState
         child: Text(
           'No results found',
           style: AppTypography.textSmRegular.copyWith(
-            color: const Color(0xFFA1A1AA),
+            color: context.colors.textSecondary,
           ),
         ),
       );
@@ -546,9 +546,9 @@ class _LoadMoreButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 20.w),
         decoration: BoxDecoration(
-          color: const Color(0xFF18181B),
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: const Color(0xFF27272A)),
+          border: Border.all(color: context.colors.surfaceRecessed),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -686,13 +686,13 @@ class _SectionHeader extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
               decoration: BoxDecoration(
-                color: const Color(0xFF27272A),
+                color: context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(10.br),
               ),
               child: Text(
                 formatCompactCount(count!),
                 style: AppTypography.textXsRegular.copyWith(
-                  color: const Color(0xFFA1A1AA),
+                  color: context.colors.textSecondary,
                 ),
               ),
             ),

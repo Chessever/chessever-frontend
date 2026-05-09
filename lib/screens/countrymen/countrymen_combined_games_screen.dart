@@ -226,7 +226,7 @@ class _CountrymenCombinedGamesScreenState
                 Text(
                   'Games with players from your country',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
+                    color: context.colors.textSecondary,
                   ),
                 ),
               ],
@@ -246,7 +246,7 @@ class _CountrymenCombinedGamesScreenState
                     color:
                         hasActiveFilters
                             ? context.colors.textPrimary
-                            : const Color(0xFFA1A1AA),
+                            : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -310,14 +310,14 @@ class _CountrymenCombinedGamesScreenState
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF09090B),
+          color: context.colors.background,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: const Color(0xFF27272A)),
+          border: Border.all(color: context.colors.surfaceRecessed),
         ),
         child: Row(
           children: [
             SizedBox(width: 12.w),
-            Icon(Icons.search, size: 20.sp, color: const Color(0xFFA1A1AA)),
+            Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
@@ -331,7 +331,7 @@ class _CountrymenCombinedGamesScreenState
                   isDense: true,
                   hintText: 'Search',
                   hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
+                    color: context.colors.textSecondary,
                   ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(vertical: 14.h),
@@ -344,7 +344,7 @@ class _CountrymenCombinedGamesScreenState
                 child: Icon(
                   Icons.close,
                   size: 20.sp,
-                  color: const Color(0xFFA1A1AA),
+                  color: context.colors.textSecondary,
                 ),
               ),
               SizedBox(width: 8.w),
@@ -431,7 +431,7 @@ class _CountrymenCombinedGamesScreenState
                             Text(
                               'Loading more games...',
                               style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF71717A),
+                                color: context.colors.textTertiary,
                               ),
                             ),
                           ],
@@ -483,14 +483,14 @@ class _CountrymenCombinedGamesScreenState
           Text(
             'Loading games...',
             style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFA1A1AA),
+              color: context.colors.textSecondary,
             ),
           ),
           SizedBox(height: 8.h),
           Text(
             'Finding games from $countryName',
             style: AppTypography.textXsRegular.copyWith(
-              color: const Color(0xFF71717A),
+              color: context.colors.textTertiary,
             ),
           ),
         ],
@@ -527,7 +527,7 @@ class _CountrymenCombinedGamesScreenState
             child: Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -592,7 +592,7 @@ class _CountrymenCombinedGamesScreenState
             child: Text(
               'No recent games found for players from $countryName',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),

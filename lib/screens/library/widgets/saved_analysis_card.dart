@@ -2,6 +2,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -44,10 +45,10 @@ class SavedAnalysisCard extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.all(16.sp),
         decoration: BoxDecoration(
-          color: const Color(0xFF09090B), // Zinc 950
+          color: context.colors.background, // Zinc 950
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(
-            color: const Color(0xFF27272A), // Zinc 800
+            color: context.colors.surfaceRecessed, // Zinc 800
             width: 1,
           ),
         ),
@@ -88,7 +89,7 @@ class SavedAnalysisCard extends StatelessWidget {
                   child: Text(
                     '$whiteName vs $blackName',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: const Color(0xFFA1A1AA), // Zinc 400
+                      color: context.colors.textSecondary, // Zinc 400
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -106,13 +107,13 @@ class SavedAnalysisCard extends StatelessWidget {
                 Icon(
                   Icons.access_time,
                   size: 14.sp,
-                  color: const Color(0xFFA1A1AA), // Zinc 400
+                  color: context.colors.textSecondary, // Zinc 400
                 ),
                 SizedBox(width: 4.w),
                 Text(
                   _formatDate(lastViewed),
                   style: AppTypography.textXsRegular.copyWith(
-                    color: const Color(0xFFA1A1AA), // Zinc 400
+                    color: context.colors.textSecondary, // Zinc 400
                   ),
                 ),
 
@@ -122,13 +123,13 @@ class SavedAnalysisCard extends StatelessWidget {
                 Icon(
                   Icons.analytics_outlined,
                   size: 14.sp,
-                  color: const Color(0xFFA1A1AA), // Zinc 400
+                  color: context.colors.textSecondary, // Zinc 400
                 ),
                 SizedBox(width: 4.w),
                 Text(
                   '${game.mainline.length} moves',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: const Color(0xFFA1A1AA), // Zinc 400
+                    color: context.colors.textSecondary, // Zinc 400
                   ),
                 ),
 
@@ -139,13 +140,13 @@ class SavedAnalysisCard extends StatelessWidget {
                   Icon(
                     Icons.comment_outlined,
                     size: 14.sp,
-                    color: const Color(0xFFA1A1AA), // Zinc 400
+                    color: context.colors.textSecondary, // Zinc 400
                   ),
                   SizedBox(width: 4.w),
                   Text(
                     '${analysis.variationComments.length}',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFA1A1AA), // Zinc 400
+                      color: context.colors.textSecondary, // Zinc 400
                     ),
                   ),
                 ],
@@ -166,7 +167,7 @@ class SavedAnalysisCard extends StatelessWidget {
                           vertical: 2.h,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF27272A), // Zinc 800
+                          color: context.colors.surfaceRecessed, // Zinc 800
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                         child: Text(

@@ -848,7 +848,7 @@ void _showEditNameDialog(
     context: context,
     builder:
         (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: context.colors.surface,
           title: Text(
             'Edit Player Name',
             style: TextStyle(color: Colors.white, fontSize: 16.f),

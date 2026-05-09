@@ -631,7 +631,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ? ''
             : _rotatingHints[_hintIndex % _rotatingHints.length];
     final style = AppTypography.textSmRegular.copyWith(
-      color: const Color(0xFFA1A1AA),
+      color: context.colors.textSecondary,
     );
     return IgnorePointer(
       child: Row(
@@ -657,9 +657,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF09090B),
+                color: context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               child: Row(
                 children: [
@@ -667,7 +667,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   Icon(
                     Icons.search,
                     size: 20.sp,
-                    color: const Color(0xFFA1A1AA),
+                    color: context.colors.textSecondary,
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
@@ -695,7 +695,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                                 // while the rotating overlay is driving it.
                                 hintText: showRotating ? null : 'Search',
                                 hintStyle: AppTypography.textSmRegular.copyWith(
-                                  color: const Color(0xFFA1A1AA),
+                                  color: context.colors.textSecondary,
                                 ),
                                 border: InputBorder.none,
                                 contentPadding: EdgeInsets.symmetric(
@@ -715,7 +715,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                       child: Icon(
                         Icons.close,
                         size: 20.sp,
-                        color: const Color(0xFFA1A1AA),
+                        color: context.colors.textSecondary,
                       ),
                     ),
                     SizedBox(width: 8.w),
@@ -738,13 +738,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 color:
                     hasActiveFilters
                         ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : const Color(0xFF09090B),
+                        : context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
                   color:
                       hasActiveFilters
                           ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : const Color(0xFF27272A),
+                          : context.colors.surfaceRecessed,
                 ),
               ),
               child: Stack(
@@ -756,7 +756,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                     color:
                         hasActiveFilters
                             ? const Color(0xFFEF4444)
-                            : const Color(0xFFA1A1AA),
+                            : context.colors.textSecondary,
                   ),
                   if (hasActiveFilters)
                     Positioned(
@@ -794,17 +794,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color: const Color(0xFF09090B),
+                color: context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               child: Center(
                 child: SvgPicture.asset(
                   SvgAsset.chase_grid,
                   width: 20.sp,
                   height: 20.sp,
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xFFA1A1AA),
+                  colorFilter:  ColorFilter.mode(
+                    context.colors.textSecondary,
                     BlendMode.srcIn,
                   ),
                 ),
@@ -1451,7 +1451,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               Text(
                 'Loading games...',
                 style: AppTypography.textSmRegular.copyWith(
-                  color: const Color(0xFFA1A1AA),
+                  color: context.colors.textSecondary,
                 ),
               ),
             ],
@@ -1490,7 +1490,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             child: Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1557,7 +1557,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             child: Text(
               'This player has no recorded games yet.',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),

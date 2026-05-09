@@ -20,7 +20,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 class AboutTourScreen extends ConsumerStatefulWidget {
-  const AboutTourScreen({super.key});
+   AboutTourScreen({super.key});
 
   @override
   ConsumerState<AboutTourScreen> createState() => _AboutTourScreenState();

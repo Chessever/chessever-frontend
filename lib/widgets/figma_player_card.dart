@@ -72,7 +72,7 @@ class FigmaPlayerCard extends ConsumerWidget {
       onLongPressStart: onLongPress,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-        decoration: const BoxDecoration(
+        decoration:  BoxDecoration(
           border: Border(
             bottom: BorderSide(color: Color(0xFF1F1F1F), width: 1),
           ),
@@ -87,7 +87,7 @@ class FigmaPlayerCard extends ConsumerWidget {
                   ? Text(
                       rank.toString(),
                       style: AppTypography.textSmMedium.copyWith(
-                        color: const Color(0xFF71717A),
+                        color: context.colors.textTertiary,
                       ),
                       textAlign: TextAlign.center,
                     )
@@ -100,7 +100,7 @@ class FigmaPlayerCard extends ConsumerWidget {
                       child: Text(
                         '00',
                         style: AppTypography.textSmMedium.copyWith(
-                          color: const Color(0xFF71717A),
+                          color: context.colors.textTertiary,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -128,7 +128,7 @@ class FigmaPlayerCard extends ConsumerWidget {
                       width: avatarSize,
                       height: avatarSize,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2A2A2A),
+                        color: context.colors.surfaceRecessed,
                         borderRadius: BorderRadius.circular(8.br),
                       ),
                     ),
@@ -193,7 +193,7 @@ validCountryCode,
                       Text(
                         player.score.toString(),
                         style: AppTypography.textSmRegular.copyWith(
-                          color: const Color(0xFFA1A1AA),
+                          color: context.colors.textSecondary,
                         ),
                       ),
                       // Rating change (if any)
@@ -226,7 +226,7 @@ validCountryCode,
                     color:
                         isFavorite
                             ? const Color(0xFFEF4444)
-                            : const Color(0xFF71717A),
+                            : context.colors.textTertiary,
                     size: 24.ic,
                   ),
                 ),
@@ -266,7 +266,7 @@ class FigmaStandingsHeader extends StatelessWidget {
             child: Text(
               '#',
               style: AppTypography.textXsMedium.copyWith(
-                color: const Color(0xFF71717A),
+                color: context.colors.textTertiary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -277,7 +277,7 @@ class FigmaStandingsHeader extends StatelessWidget {
             child: Text(
               'Player',
               style: AppTypography.textXsMedium.copyWith(
-                color: const Color(0xFF71717A),
+                color: context.colors.textTertiary,
               ),
             ),
           ),
@@ -288,7 +288,7 @@ class FigmaStandingsHeader extends StatelessWidget {
               child: Text(
                 'Score',
                 style: AppTypography.textXsMedium.copyWith(
-                  color: const Color(0xFF71717A),
+                  color: context.colors.textTertiary,
                 ),
               ),
             ),
