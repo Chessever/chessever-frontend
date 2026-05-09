@@ -665,7 +665,7 @@ class _TabletEventBackground extends ConsumerWidget {
             memCacheWidth: cacheWidth,
             fadeInDuration: const Duration(milliseconds: 300),
             fadeOutDuration: const Duration(milliseconds: 200),
-            placeholder: (context, url) => _buildLoadingBackground(),
+            placeholder: (context, url) => _buildLoadingBackground(context),
             errorWidget:
                 (context, url, error) =>
                     _buildFlagBackground(imageData.fallbackCountryCode),
@@ -673,20 +673,20 @@ class _TabletEventBackground extends ConsumerWidget {
         }
         return _buildFlagBackground(imageData.fallbackCountryCode);
       },
-      loading: () => _buildLoadingBackground(),
+      loading: () => _buildLoadingBackground(context),
       error: (_, __) =>  LogoPatternFallback(),
     );
   }
 
-  Widget _buildLoadingBackground() {
-    return const Skeletonizer(
+  Widget _buildLoadingBackground(BuildContext context) {
+    return Skeletonizer(
       enabled: true,
-      effect: ShimmerEffect(
+      effect: const ShimmerEffect(
         baseColor: Color(0xFF2A2A2A),
         highlightColor: Color(0xFF3A3A3A),
         duration: Duration(seconds: 1),
       ),
-      child: ColoredBox(color: kLightBlack),
+      child: ColoredBox(color: context.colors.surface),
     );
   }
 

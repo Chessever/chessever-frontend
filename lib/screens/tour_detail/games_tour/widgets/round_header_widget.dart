@@ -35,7 +35,7 @@ class RoundHeader extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
         decoration: BoxDecoration(
-          color: kDarkGreyColor,
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
           boxShadow: [

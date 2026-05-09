@@ -130,7 +130,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
           color: kBlackColor,
           borderRadius: BorderRadius.circular(16.br),
           border: Border.all(
-            color: kDarkGreyColor.withValues(alpha: 0.3),
+            color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
             width: 1,
           ),
         ),

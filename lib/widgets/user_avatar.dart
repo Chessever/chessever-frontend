@@ -66,7 +66,7 @@ class UserAvatar extends HookConsumerWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: avatarUrl == null ? kProfileInitialsGradient : null,
-        color: avatarUrl != null ? kGrey900 : null,
+        color: avatarUrl != null ? context.colors.surfaceRecessed : null,
         boxShadow: [
           BoxShadow(
             color: kPrimaryColor.withAlpha(7),

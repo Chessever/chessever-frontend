@@ -6,6 +6,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/calendar/provider/calendar_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/month_provider.dart';
@@ -108,7 +109,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                       curve: Curves.easeInOut,
                                       padding: EdgeInsets.all(2.sp),
                                       decoration: BoxDecoration(
-                                        color: kGrey900,
+                                        color: context.colors.surfaceRecessed,
                                         borderRadius: BorderRadius.circular(
                                           8.br,
                                         ),

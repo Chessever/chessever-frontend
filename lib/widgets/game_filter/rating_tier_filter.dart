@@ -106,7 +106,7 @@ class _TierGrid extends StatelessWidget {
                 color:
                     isSelected
                         ? kPrimaryColor
-                        : kDarkGreyColor.withValues(alpha: 0.35),
+                        : context.colors.surfaceRecessed.withValues(alpha: 0.35),
               ),
             ),
             child: Row(

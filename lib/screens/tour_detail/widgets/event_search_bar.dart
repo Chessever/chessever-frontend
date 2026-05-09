@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
@@ -89,7 +90,7 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 4.h),
         decoration: BoxDecoration(
-          color: kGrey900,
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
         ),
         child: SimpleSearchBar(

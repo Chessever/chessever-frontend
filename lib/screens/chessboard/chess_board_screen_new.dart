@@ -2630,7 +2630,7 @@ class _LoadingScreen extends StatelessWidget {
                     width: double.infinity,
                     margin: EdgeInsets.only(top: 8.h),
                     decoration: BoxDecoration(
-                      color: kDarkGreyColor.withValues(alpha: 0.3),
+                      color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(12.sp),
                         topRight: Radius.circular(12.sp),
@@ -7970,7 +7970,7 @@ class _FenPositionGamesTableState
 
     return Container(
       decoration: BoxDecoration(
-        color: kDarkGreyColor.withValues(alpha: 0.3),
+        color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(12.sp),
           topRight: Radius.circular(12.sp),
@@ -9035,7 +9035,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       Widget content = Container(
         key: e2eKey(E2eIds.boardNotationRoot),
         decoration: BoxDecoration(
-          color: kDarkGreyColor.withValues(alpha: 0.3),
+          color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(12.sp),
             topRight: Radius.circular(12.sp),
@@ -9078,7 +9078,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     Widget content = Container(
       key: e2eKey(E2eIds.boardNotationRoot),
       decoration: BoxDecoration(
-        color: kDarkGreyColor.withValues(alpha: 0.3),
+        color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(12.sp),
           topRight: Radius.circular(12.sp),
@@ -13998,7 +13998,7 @@ class _EventInfoSheet extends ConsumerWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
       decoration: BoxDecoration(
-        color: kLightBlack.withValues(alpha: 0.5),
+        color: context.colors.surface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8.sp),
       ),
       child: Row(
@@ -14089,7 +14089,7 @@ class _EventInfoSheet extends ConsumerWidget {
                 alignment: Alignment.topCenter,
                 placeholder:
                     (_, __) => Container(
-                      color: kLightBlack,
+                      color: context.colors.surface,
                       child: Center(
                         child: Icon(
                           Icons.image,

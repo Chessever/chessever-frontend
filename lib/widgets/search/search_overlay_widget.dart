@@ -53,7 +53,7 @@ class SearchOverlay extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: kDarkGreyColor,
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(16.br),
         border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
       ),

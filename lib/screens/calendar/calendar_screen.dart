@@ -99,7 +99,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               vertical: 4.sp,
                             ),
                             decoration: BoxDecoration(
-                              color: kGrey900,
+                              color: context.colors.surfaceRecessed,
                               borderRadius: BorderRadius.circular(8.br),
                               border: Border.all(
                                 color:

@@ -238,7 +238,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
             .refreshGames();
       },
       color: context.colors.textPrimaryMuted,
-      backgroundColor: kDarkGreyColor,
+      backgroundColor: context.colors.surfaceRecessed,
       child: ListView.builder(
         controller: _scrollController,
         padding: EdgeInsets.only(
