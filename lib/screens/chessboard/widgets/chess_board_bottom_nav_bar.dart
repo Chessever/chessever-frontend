@@ -176,7 +176,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     final bar = Container(
       width: fullWidth,
       decoration: BoxDecoration(
-        color: kBlackColor,
+        color: context.colors.background,
         // Add subtle top border for visual separation on tablets
         border:
             isTablet

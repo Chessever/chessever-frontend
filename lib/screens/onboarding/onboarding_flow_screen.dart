@@ -69,7 +69,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
     return ScreenWrapper(
       child: Scaffold(
         key: e2eKey(E2eIds.onboardingRoot),
-        backgroundColor: kBlackColor,
+        backgroundColor: context.colors.background,
         body: Stack(
           children: [
             // Progress indicator at top
