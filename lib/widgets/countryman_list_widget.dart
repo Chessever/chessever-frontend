@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter/material.dart';
 import '../widgets/countryman_card.dart';
@@ -56,7 +57,7 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: context.colors.background,
 
       body: SafeArea(
         child: Padding(

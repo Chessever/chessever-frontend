@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +26,7 @@ class CountrymanCard extends StatelessWidget {
     return Container(
       height: 48.h,
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1C),
+        color: context.colors.surface,
         borderRadius: BorderRadius.zero,
       ),
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
@@ -36,7 +37,7 @@ class CountrymanCard extends StatelessWidget {
             width: 24.w,
             child: Text(
               '$rank.',
-              style: AppTypography.textXsMedium.copyWith(color: Colors.white),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
 
@@ -54,13 +55,13 @@ class CountrymanCard extends StatelessWidget {
                   TextSpan(
                     text: 'GM ',
                     style: AppTypography.textXsMedium.copyWith(
-                      color: Colors.white,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                   TextSpan(
                     text: playerName,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: Colors.white,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                 ],
@@ -74,7 +75,7 @@ class CountrymanCard extends StatelessWidget {
             child: Text(
               elo.toString(),
               textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: Colors.white),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
 
@@ -84,7 +85,7 @@ class CountrymanCard extends StatelessWidget {
             child: Text(
               age.toString(),
               textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: Colors.white),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
           // Container(
@@ -140,9 +141,6 @@ Widget getCountryFlag(String countryCode) {
                 Text('🇺🇿', style: TextStyle(fontSize: 16.sp)),
       );
     default:
-      return Text(
-        countryCode,
-        style: TextStyle(fontSize: 12.sp, color: Colors.white),
-      );
+      return Text(countryCode, style: TextStyle(fontSize: 12.sp));
   }
 }
