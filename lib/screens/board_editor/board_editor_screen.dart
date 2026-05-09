@@ -936,7 +936,7 @@ class _SideOption extends StatelessWidget {
         width: 36.h,
         height: 36.h,
         decoration: BoxDecoration(
-          color: isSelected ? context.colors.textPrimary : const Color(0xFF333333),
+          color: isSelected ? context.colors.textPrimary : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Center(
@@ -1194,7 +1194,7 @@ class _TrayActionButton extends StatelessWidget {
         child: Center(
           child: Icon(
             icon,
-            color: isActive ? context.colors.background : const Color(0xFF333333),
+            color: isActive ? context.colors.background : context.colors.surfaceRecessed,
             size: size * 0.6,
           ),
         ),
@@ -1278,7 +1278,7 @@ class _FenBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFF333333),
+      color: context.colors.surfaceRecessed,
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
       child: Row(
         children: [

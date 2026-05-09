@@ -228,7 +228,7 @@ class _TcCard extends StatelessWidget {
                         : context.colors.surface,
                 borderRadius: BorderRadius.circular(10.br),
                 border: Border.all(
-                  color: selected ? kPrimaryColor : const Color(0xFF333333),
+                  color: selected ? kPrimaryColor : context.colors.surfaceRecessed,
                   width: selected ? 1.5 : 1.0,
                 ),
                 boxShadow:
