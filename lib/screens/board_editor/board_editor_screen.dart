@@ -883,7 +883,7 @@ class _SmallButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: AppTypography.textSmMedium.copyWith(color: kBackgroundColor),
+          style: AppTypography.textSmMedium.copyWith(color: context.colors.background),
         ),
       ),
     );
@@ -944,7 +944,7 @@ class _SideOption extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 20.f,
-              color: isSelected ? kBackgroundColor : context.colors.textPrimary,
+              color: isSelected ? context.colors.background : context.colors.textPrimary,
             ),
           ),
         ),
@@ -1024,7 +1024,7 @@ class _CastlingCheck extends StatelessWidget {
               value: value,
               onChanged: (v) => onChanged(v ?? false),
               activeColor: context.colors.textPrimary,
-              checkColor: kBackgroundColor,
+              checkColor: context.colors.background,
               side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.5)),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
@@ -1194,7 +1194,7 @@ class _TrayActionButton extends StatelessWidget {
         child: Center(
           child: Icon(
             icon,
-            color: isActive ? kBackgroundColor : const Color(0xFF333333),
+            color: isActive ? context.colors.background : const Color(0xFF333333),
             size: size * 0.6,
           ),
         ),
@@ -1351,7 +1351,7 @@ class _ActionButton extends StatelessWidget {
         child: Center(
           child: Text(
             label,
-            style: AppTypography.textSmMedium.copyWith(color: kBackgroundColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.background),
           ),
         ),
       ),

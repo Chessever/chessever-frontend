@@ -806,7 +806,7 @@ countryCode,
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: context.colors.popup,
-        selectedBackgroundColor: kPopUpColor,
+        selectedBackgroundColor: context.colors.popup,
         options: playerProfileTabNames.values.toList(),
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
         currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
@@ -1193,7 +1193,7 @@ class _SourceTabState extends State<_SourceTab> {
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = widget.accentColor ?? kWhiteColor;
+    final activeColor = widget.accentColor ?? context.colors.textPrimary;
 
     return GestureDetector(
       onTapDown:
@@ -1491,7 +1491,7 @@ class _ActionCardState extends State<_ActionCard> {
                                                     ? _filterRed.withValues(
                                                       alpha: 0.9,
                                                     )
-                                                    : kWhiteColor.withValues(
+                                                    : context.colors.textPrimary.withValues(
                                                       alpha: 0.5,
                                                     ),
                                           ),

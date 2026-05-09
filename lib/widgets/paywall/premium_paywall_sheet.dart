@@ -584,7 +584,7 @@ class _PricingCard extends HookWidget {
                             style: AppTypography.textMdBold.copyWith(
                               color:
                                   isSelected
-                                      ? kWhiteColor
+                                      ? context.colors.textPrimary
                                       : context.colors.textPrimary.withValues(alpha: 0.7),
                             ),
                           ),
@@ -1026,7 +1026,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             SizedBox(height: 20.h),
             Text(
               'Redeem a code',
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+              style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(height: 6.h),
             Text(
@@ -1062,7 +1062,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                   letterSpacing: 1.2,
                 ),
                 filled: true,
-                fillColor: kBlack2Color,
+                fillColor: context.colors.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.br),
                   borderSide: BorderSide(

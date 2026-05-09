@@ -352,7 +352,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
                             selectedCount >= kFreeFavoriteLimit
-                                ? kWhiteColor
+                                ? context.colors.textPrimary
                                 : context.colors.textPrimary.withValues(alpha: 0.16),
                         foregroundColor:
                             selectedCount >= kFreeFavoriteLimit
@@ -538,7 +538,7 @@ Widget _buildPlayerList(
   required bool isFetchingMore,
 }) {
   if (isLoading) {
-    return const Center(child: CircularProgressIndicator(color: kWhiteColor));
+    return  Center(child: CircularProgressIndicator(color: context.colors.textPrimary));
   }
 
   if (players.isEmpty) {
@@ -903,7 +903,7 @@ class _PlayerTile extends HookWidget {
                   isSelected ? Icons.check : Icons.add,
                   size: isSelected ? 14.ic : 12.ic,
                   color:
-                      isSelected ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.3),
+                      isSelected ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.3),
                 ),
               ),
             ],

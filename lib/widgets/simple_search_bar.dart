@@ -237,7 +237,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                     color: Colors.grey[700],
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.close, size: 16.ic, color: kWhiteColor),
+                  child: Icon(Icons.close, size: 16.ic, color: context.colors.textPrimary),
                 ),
               );
             },
@@ -264,7 +264,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                       width: 20.w,
                       colorFilter: ColorFilter.mode(
                         widget.filterBadgeCount > 0
-                            ? kWhiteColor
+                            ? context.colors.textPrimary
                             : widget.focusNode.hasFocus
                             ? kPrimaryColor
                             : Colors.grey[400]!,

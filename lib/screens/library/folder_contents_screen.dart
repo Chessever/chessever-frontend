@@ -490,11 +490,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     return Container(
       padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration: const BoxDecoration(
+      decoration:  BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [kBlackColor, kBackgroundColor],
+          colors: [kBlackColor, context.colors.background],
         ),
       ),
       child: Column(

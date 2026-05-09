@@ -56,9 +56,6 @@ class _PremiumCollectionCard extends ConsumerWidget {
   final PremiumGamesType type;
   final String title;
 
-  // Neutral accent color for all card types
-  Color get _accentColor => kWhiteColor;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
@@ -68,7 +65,7 @@ class _PremiumCollectionCard extends ConsumerWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color: _accentColor.withValues(alpha: 0.25),
+            color: context.colors.divider,
             width: 1,
           ),
         ),
@@ -109,7 +106,7 @@ class _PremiumCollectionCard extends ConsumerWidget {
                     Text(
                       title,
                       style: AppTypography.textMdBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         letterSpacing: 0.3,
                       ),
                     ),
@@ -529,7 +526,7 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
         ),
       ),
       child: CustomPaint(
-        painter: _FloatingHeartsPainter(accentColor: kWhiteColor),
+        painter: _FloatingHeartsPainter(accentColor: context.colors.textPrimary),
         size: Size.infinite,
       ),
     );

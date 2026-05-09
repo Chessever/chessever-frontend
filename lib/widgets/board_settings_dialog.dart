@@ -217,7 +217,7 @@ class _SwitchItem extends StatelessWidget {
                     onChanged: onChanged,
                     activeColor: context.colors.textPrimary,
                     activeTrackColor: kPrimaryColor,
-                    inactiveThumbColor: kWhiteColor,
+                    inactiveThumbColor: context.colors.textPrimary,
                     inactiveTrackColor: kDarkGreyColor,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),

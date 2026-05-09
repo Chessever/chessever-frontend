@@ -56,8 +56,8 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 );
               },
               loading:
-                  () => const Center(
-                    child: CircularProgressIndicator(color: kWhiteColor),
+                  () =>  Center(
+                    child: CircularProgressIndicator(color: context.colors.textPrimary),
                   ),
               error: (error, _) => _buildError(error.toString()),
             ),
@@ -270,7 +270,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
             e.toString().contains('Duplicate')
                 ? 'Already in your library'
                 : 'Failed to add: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,

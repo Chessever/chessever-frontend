@@ -102,7 +102,7 @@ class FilterPopup extends ConsumerWidget {
                                       color:
                                           isSelected
                                               ? kPrimaryColor
-                                              : kBlack2Color,
+                                              : context.colors.surface,
                                       borderRadius: BorderRadius.circular(8.br),
                                     ),
                                     child: Text(
@@ -155,7 +155,7 @@ class FilterPopup extends ConsumerWidget {
                                       color:
                                           isSelected
                                               ? kPrimaryColor
-                                              : kBlack2Color,
+                                              : context.colors.surface,
                                       borderRadius: BorderRadius.circular(8.br),
                                     ),
                                     child: Text(
@@ -207,7 +207,7 @@ class FilterPopup extends ConsumerWidget {
                                   },
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: context.colors.textPrimary,
-                                    backgroundColor: kBlack2Color,
+                                    backgroundColor: context.colors.surface,
                                     side: BorderSide.none,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(4.br),

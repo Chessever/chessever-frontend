@@ -269,7 +269,7 @@ class _RoundDropdown extends HookConsumerWidget {
                                     child: Container(
                                       color:
                                           isSelected
-                                              ? kBlack2Color.withOpacity(0.5)
+                                              ? context.colors.surface.withOpacity(0.5)
                                               : Colors.transparent,
                                       padding: EdgeInsets.symmetric(
                                         horizontal: 12.w,

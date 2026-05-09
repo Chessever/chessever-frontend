@@ -55,7 +55,7 @@ class CustomUpgradeAlert extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20.sp),
           ),
-          titleTextStyle: AppTypography.textXlBold.copyWith(color: kWhiteColor),
+          titleTextStyle: AppTypography.textXlBold.copyWith(color: context.colors.textPrimary),
           contentTextStyle: AppTypography.textSmRegular.copyWith(
             color: context.colors.textPrimaryMuted,
           ),

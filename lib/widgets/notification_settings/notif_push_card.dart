@@ -72,7 +72,7 @@ class NotifPushCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kDividerColor.withValues(alpha: 0.5)),
+        border: Border.all(color: context.colors.divider.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,7 +109,7 @@ class NotifPushCard extends StatelessWidget {
                   (states) =>
                       states.contains(WidgetState.selected)
                           ? kPrimaryColor.withValues(alpha: 0.35)
-                          : kDividerColor.withValues(alpha: 0.5),
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: onChanged,
               ),
@@ -144,7 +144,7 @@ class NotifPushCard extends StatelessWidget {
 
                         SizedBox(height: 14.h),
                         Divider(
-                          color: kDividerColor.withValues(alpha: 0.3),
+                          color: context.colors.divider.withValues(alpha: 0.3),
                           height: 1,
                         ),
                         SizedBox(height: 14.h),

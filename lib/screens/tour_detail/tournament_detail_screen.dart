@@ -240,7 +240,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                           return Center(
                             child: Text(
                               'Invalid page index: $index',
-                              style: TextStyle(color: kWhiteColor),
+                              style: TextStyle(color: context.colors.textPrimary),
                             ),
                           );
                         }
@@ -305,7 +305,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       child: SegmentedSwitcher(
         key: UniqueKey(),
         backgroundColor: context.colors.popup,
-        selectedBackgroundColor: kPopUpColor,
+        selectedBackgroundColor: context.colors.popup,
         options: _mappedName.values.toList(),
         initialSelection: _mappedName.values.toList().indexOf(
           _mappedName[selectedTourMode]!,
@@ -410,7 +410,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         const Spacer(),
         Text(
           errorMessage,
-          style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+          style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
         ),
         const Spacer(),
         SizedBox(width: 44.w),
@@ -445,7 +445,7 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
         SkeletonWidget(
           child: Text(
             title,
-            style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
           ),
         ),
         SizedBox(width: 44.w),

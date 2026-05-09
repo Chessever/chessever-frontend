@@ -876,7 +876,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(20.br),
-        border: Border.all(color: kBlack3Color),
+        border: Border.all(color: context.colors.surfaceRecessed),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -904,10 +904,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               width: 40.w,
               height: 22.h,
               decoration: BoxDecoration(
-                color: _showEvalBar ? kPrimaryColor : kBlack3Color,
+                color: _showEvalBar ? kPrimaryColor : context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(11.br),
                 border: Border.all(
-                  color: _showEvalBar ? kPrimaryColor : kDividerColor,
+                  color: _showEvalBar ? kPrimaryColor : context.colors.divider,
                   width: 1,
                 ),
               ),
@@ -956,7 +956,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     final content = Container(
       padding: EdgeInsets.symmetric(vertical: 12.h),
       decoration: BoxDecoration(
-        color: isPrimary ? kPrimaryColor : kBlack3Color,
+        color: isPrimary ? kPrimaryColor : context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(8.br),
         border: isPrimary ? null : Border.all(color: context.colors.divider, width: 1),
       ),
@@ -992,7 +992,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kBlack3Color),
+        border: Border.all(color: context.colors.surfaceRecessed),
       ),
       child: Row(
         children: [
@@ -1026,7 +1026,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kBlack3Color),
+        border: Border.all(color: context.colors.surfaceRecessed),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

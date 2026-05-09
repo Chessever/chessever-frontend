@@ -99,7 +99,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
             child: Text(
               text,
               maxLines: 2,
-              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimary),
               overflow: TextOverflow.visible,
               softWrap: true,
             ),
@@ -153,7 +153,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
         color: context.colors.textPrimary,
         size: 20.ic,
       ),
-      dropdownColor: kBlack2Color,
+      dropdownColor: context.colors.surface,
       borderRadius: BorderRadius.circular(20.br),
       isExpanded: true,
       menuMaxHeight: 400.h, // Adaptive height to prevent overflow
@@ -165,7 +165,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
             alignment: Alignment.center,
             child: Text(
               item['value']!,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
               maxLines: 2,
               overflow: TextOverflow.visible,
               softWrap: true,

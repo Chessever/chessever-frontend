@@ -141,7 +141,7 @@ class TimezoneSettingsDialog extends ConsumerWidget {
                             child: Text(
                               option.display,
                               style: AppTypography.textSmMedium.copyWith(
-                                color: isSelected ? kPrimaryColor : kWhiteColor,
+                                color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                               ),
                             ),
                           ),

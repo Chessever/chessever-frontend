@@ -255,7 +255,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
         children: [
           Text(
             'Filters',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
           ),
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -290,7 +290,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                 ),
                 child: Text(
                   'Reset',
-                  style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
                 ),
               ),
             ),
@@ -302,7 +302,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
               child: ElevatedButton(
                 onPressed: _applyFilters,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: kWhiteColor,
+                  backgroundColor: context.colors.textPrimary,
                   foregroundColor: kBlackColor,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -384,13 +384,13 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: kDividerColor),
+        border: Border.all(color: context.colors.divider),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: value,
           isExpanded: true,
-          dropdownColor: kBlack2Color,
+          dropdownColor: context.colors.surface,
           icon: Icon(
             Icons.keyboard_arrow_down_rounded,
             color: context.colors.textSecondary,
@@ -428,11 +428,11 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: kDividerColor),
+        border: Border.all(color: context.colors.divider),
       ),
       child: TextField(
         controller: controller,
-        style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+        style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: AppTypography.textSmRegular.copyWith(

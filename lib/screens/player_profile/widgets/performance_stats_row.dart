@@ -71,7 +71,7 @@ class PerformanceStatsRow extends StatelessWidget {
         SizedBox(height: 4.h),
         Text(
           value,
-          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
         ),
       ],
     );

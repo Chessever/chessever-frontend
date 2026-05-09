@@ -112,7 +112,7 @@ class _MatchDropdown extends HookConsumerWidget {
                   Text(
                     _shortenMatchTitle(match.matchTitle),
                     style: AppTypography.textXsRegular.copyWith(
-                      color: isSelected ? kPrimaryColor : kWhiteColor,
+                      color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.w400,
                     ),
@@ -277,7 +277,7 @@ class _MatchDropdown extends HookConsumerWidget {
                                     child: Container(
                                       color:
                                           isSelected
-                                              ? kBlack2Color.withValues(
+                                              ? context.colors.surface.withValues(
                                                 alpha: 0.5,
                                               )
                                               : Colors.transparent,

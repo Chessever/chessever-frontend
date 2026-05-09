@@ -506,7 +506,7 @@ class _LibraryGamebaseFilterDialogState
             children: [
               Text(
                 'Filters',
-                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
               ),
               IconButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -546,7 +546,7 @@ class _LibraryGamebaseFilterDialogState
                 alignment: Alignment.center,
                 child: Text(
                   'Reset',
-                  style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
                 ),
               ),
             ),

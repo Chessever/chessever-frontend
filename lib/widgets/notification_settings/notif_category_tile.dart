@@ -118,7 +118,7 @@ class _NotifCategoryTileState extends State<NotifCategoryTile>
               child: Text(
                 widget.label,
                 style: AppTypography.textMdMedium.copyWith(
-                  color: widget.interactive ? kWhiteColor : context.colors.textPrimaryMuted,
+                  color: widget.interactive ? context.colors.textPrimary : context.colors.textPrimaryMuted,
                   fontSize: 13.f,
                 ),
               ),
@@ -286,7 +286,7 @@ class _TcCard extends StatelessWidget {
                     label,
                     style: AppTypography.textSmRegular.copyWith(
                       fontSize: 10.f,
-                      color: selected ? kWhiteColor : const Color(0xFF888888),
+                      color: selected ? context.colors.textPrimary : const Color(0xFF888888),
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),

@@ -152,7 +152,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                         return Center(
                           child: Text(
                             'Invalid page index: $index',
-                            style: const TextStyle(color: kWhiteColor),
+                            style:  TextStyle(color: context.colors.textPrimary),
                           ),
                         );
                     }
@@ -303,7 +303,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: context.colors.popup,
-        selectedBackgroundColor: kPopUpColor,
+        selectedBackgroundColor: context.colors.popup,
         options: countrymenModeNames.values.toList(),
         initialSelection: countrymenModeNames.values.toList().indexOf(
           countrymenModeNames[selectedMode]!,

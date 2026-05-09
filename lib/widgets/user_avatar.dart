@@ -140,7 +140,7 @@ class UserAvatar extends HookConsumerWidget {
       child: Center(
         child: Text(
           content,
-          style: effectiveStyle.copyWith(color: kBlack2Color),
+          style: effectiveStyle.copyWith(color: context.colors.surface),
         ),
       ),
     );

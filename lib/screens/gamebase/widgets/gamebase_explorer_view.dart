@@ -254,14 +254,14 @@ class _HorizontalPvLines extends ConsumerWidget {
           final Color evalBgColor;
           final Color evalTextColor;
           if (isWhiteWinning) {
-            evalBgColor = kWhiteColor;
-            evalTextColor = kBlack2Color;
+            evalBgColor = context.colors.textPrimary;
+            evalTextColor = context.colors.surface;
           } else if (isBlackWinning) {
-            evalBgColor = kDividerColor;
-            evalTextColor = kWhiteColor;
+            evalBgColor = context.colors.divider;
+            evalTextColor = context.colors.textPrimary;
           } else {
             evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
-            evalTextColor = kWhiteColor;
+            evalTextColor = context.colors.textPrimary;
           }
 
           final movesStyle = AppTypography.textXsRegular.copyWith(

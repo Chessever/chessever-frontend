@@ -110,7 +110,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             return Center(
               child: Text(
                 'Error: $e',
-                style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
                 textAlign: TextAlign.center,
               ),
             );
@@ -122,7 +122,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
         return Center(
           child: Text(
             'Error: $e',
-            style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
             textAlign: TextAlign.center,
           ),
         );

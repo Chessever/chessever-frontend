@@ -187,7 +187,7 @@ class _SmoothBottomSheetWrapperState<T>
                       color: Colors.transparent,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: widget.backgroundColor ?? kBlack2Color,
+                          color: widget.backgroundColor ?? context.colors.surface,
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(20.br),
                             topRight: Radius.circular(20.br),

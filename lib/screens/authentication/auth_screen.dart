@@ -552,7 +552,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
             padding: EdgeInsets.symmetric(horizontal: 10.sp),
             child: Text(
               'Select your Country',
-              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
             ),
           ),
           Container(
@@ -653,7 +653,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
         style: ElevatedButton.styleFrom(
           backgroundColor: countryState.maybeWhen(
             loading: () => context.colors.textPrimary.withValues(alpha: 0.4),
-            orElse: () => kWhiteColor,
+            orElse: () => context.colors.textPrimary,
           ),
           foregroundColor: kBlackColor,
           padding: EdgeInsets.symmetric(vertical: 16.sp),

@@ -55,7 +55,7 @@ class MiniEvalBar extends ConsumerWidget {
                   style: TextStyle(
                     color:
                         effectiveEval >= 0
-                            ? kWhiteColor
+                            ? context.colors.textPrimary
                             : context.colors.textPrimary.withValues(alpha: 0.6),
                     fontSize: 9.f,
                     fontWeight: FontWeight.w600,
@@ -76,11 +76,11 @@ class MiniEvalBar extends ConsumerWidget {
                       children: [
                         Expanded(
                           flex: (whiteRatio * 100).round(),
-                          child: Container(color: kWhiteColor),
+                          child: Container(color: context.colors.textPrimary),
                         ),
                         Expanded(
                           flex: ((1.0 - whiteRatio) * 100).round(),
-                          child: Container(color: kPopUpColor),
+                          child: Container(color: context.colors.popup),
                         ),
                       ],
                     ),

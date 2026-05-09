@@ -301,7 +301,7 @@ class ReviewPromptService {
       SnackBar(
         content: Text(
           'ChessEver grows and improves with your feedback. Thank you!',
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
         ),
         backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,

@@ -691,7 +691,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load players',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -717,7 +717,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -753,7 +753,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           SizedBox(height: 20.h),
           Text(
             'No players found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
         ],
       ),

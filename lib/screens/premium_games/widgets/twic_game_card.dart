@@ -201,17 +201,17 @@ class _ResultBadge extends StatelessWidget {
     switch (status) {
       case GameStatus.whiteWins:
         backgroundColor = const Color(0xFF2D2D2D);
-        textColor = kWhiteColor;
+        textColor = context.colors.textPrimary;
         text = '1-0';
         break;
       case GameStatus.blackWins:
         backgroundColor = const Color(0xFF2D2D2D);
-        textColor = kWhiteColor;
+        textColor = context.colors.textPrimary;
         text = '0-1';
         break;
       case GameStatus.draw:
         backgroundColor = const Color(0xFF666666);
-        textColor = kWhiteColor;
+        textColor = context.colors.textPrimary;
         text = '½-½';
         break;
       case GameStatus.ongoing:

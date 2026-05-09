@@ -449,7 +449,7 @@ class _UnlockVisual extends HookWidget {
             height: 72.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kBlack2Color.withOpacity(0.9),
+              color: context.colors.surface.withOpacity(0.9),
               border: Border.all(
                 color: kPrimaryColor.withOpacity(0.3),
                 width: 2,
@@ -510,7 +510,7 @@ class _FeaturesList extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.br),
-        color: kBlack2Color.withOpacity(0.5),
+        color: context.colors.surface.withOpacity(0.5),
         border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
       ),
       child: Column(
@@ -815,7 +815,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                             'Synced across all your devices',
                                             style: AppTypography.textXsRegular
                                                 .copyWith(
-                                                  color: kWhiteColor
+                                                  color: context.colors.textPrimary
                                                       .withOpacity(0.5),
                                                 ),
                                           ),
@@ -961,7 +961,7 @@ class _UserAvatarVisual extends HookWidget {
             height: 110.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kBlack2Color.withOpacity(0.9),
+              color: context.colors.surface.withOpacity(0.9),
               border: Border.all(
                 color: kGreenColor.withOpacity(0.4),
                 width: 2.5,
@@ -1451,7 +1451,7 @@ class _GlobeVisual extends StatelessWidget {
     return Container(
       width: 100.w,
       height: 100.h,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: kBlack2Color),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: context.colors.surface),
       child: countryState.when(
         loading:
             () => Center(

@@ -328,7 +328,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                                 style: TextStyle(
                                   color:
                                       _isHovered
-                                          ? kWhiteColor
+                                          ? context.colors.textPrimary
                                           : context.colors.textPrimary.withValues(alpha: 0.9),
                                   fontSize: 12.f,
                                   fontWeight: FontWeight.w500,

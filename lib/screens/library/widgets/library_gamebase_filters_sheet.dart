@@ -405,7 +405,7 @@ class _ToggleChip extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
         decoration: BoxDecoration(
-          color: isActive ? context.colors.textPrimary.withValues(alpha: 0.14) : kBlack2Color,
+          color: isActive ? context.colors.textPrimary.withValues(alpha: 0.14) : context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color:
@@ -512,7 +512,7 @@ class _Dropdown<T> extends StatelessWidget {
         child: DropdownButton<T>(
           value: value,
           isExpanded: true,
-          dropdownColor: kBlack2Color,
+          dropdownColor: context.colors.surface,
           iconEnabledColor: context.colors.textPrimary.withValues(alpha: 0.7),
           hint:
               hint == null

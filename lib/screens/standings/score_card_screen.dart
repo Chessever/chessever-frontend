@@ -1021,12 +1021,12 @@ class _ProfileNavigationButtonState extends State<_ProfileNavigationButton> {
             child: Container(
               height: 40.h,
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(
+                color: context.colors.textPrimary.withValues(
                   alpha: 0.05 + 0.04 * pressProgress,
                 ),
                 borderRadius: BorderRadius.circular(10.br),
                 border: Border.all(
-                  color: kWhiteColor.withValues(
+                  color: context.colors.textPrimary.withValues(
                     alpha: 0.10 + 0.06 * pressProgress,
                   ),
                 ),
@@ -1105,7 +1105,7 @@ class _PlayerHeaderRow extends StatelessWidget {
                   ),
                 TextSpan(
                   text: name,
-                  style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
                 ),
               ],
             ),
@@ -1524,7 +1524,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
             children: [
               Text(
                 'Select Player',
-                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
               ),
               const Spacer(),
               GestureDetector(
@@ -1564,7 +1564,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                     horizontal: 16.sp,
                     vertical: 10.h,
                   ),
-                  color: isSelected ? kBlack2Color : Colors.transparent,
+                  color: isSelected ? context.colors.surface : Colors.transparent,
                   child: Row(
                     children: [
                       // Country flag
@@ -1587,7 +1587,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                         child: Text(
                           '${player.title != null && player.title!.isNotEmpty ? '${player.title} ' : ''}${player.name}',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: isSelected ? kGreenColor : kWhiteColor,
+                            color: isSelected ? kGreenColor : context.colors.textPrimary,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),

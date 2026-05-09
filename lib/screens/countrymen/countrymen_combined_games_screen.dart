@@ -219,7 +219,7 @@ class _CountrymenCombinedGamesScreenState
               children: [
                 Text(
                   countryName,
-                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -245,7 +245,7 @@ class _CountrymenCombinedGamesScreenState
                     size: 22.ic,
                     color:
                         hasActiveFilters
-                            ? kWhiteColor
+                            ? context.colors.textPrimary
                             : const Color(0xFFA1A1AA),
                   ),
                   // Badge showing active filter count
@@ -519,7 +519,7 @@ class _CountrymenCombinedGamesScreenState
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -548,7 +548,7 @@ class _CountrymenCombinedGamesScreenState
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -584,7 +584,7 @@ class _CountrymenCombinedGamesScreenState
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -613,7 +613,7 @@ class _CountrymenCombinedGamesScreenState
             ),
             child: Text(
               'Refresh',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -690,7 +690,7 @@ class _CountrymenCombinedGamesScreenState
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ),

@@ -93,7 +93,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
         padding: EdgeInsets.symmetric(vertical: verticalPadding),
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: isCompact ? kBlack2Color : kBackgroundColor,
+          color: isCompact ? context.colors.surface : context.colors.background,
           borderRadius: borderRadius,
           border:
               isDropDownOpen
@@ -135,7 +135,7 @@ selectedCountryCode,
                               style: (isCompact
                                       ? AppTypography.textXsMedium
                                       : AppTypography.textSmMedium)
-                                  .copyWith(color: kWhiteColor),
+                                  .copyWith(color: context.colors.textPrimary),
                               overflow: TextOverflow.ellipsis,
                             ),
                   ),
@@ -194,7 +194,7 @@ selectedCountryCode,
                       color: context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
                     filled: true,
-                    fillColor: kBackgroundColor,
+                    fillColor: context.colors.background,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.br),
                       borderSide: BorderSide(color: kDarkGreyColor, width: 1),

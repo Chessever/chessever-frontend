@@ -30,7 +30,7 @@ class PlanToggleButton extends StatelessWidget {
         child: Text(
           text,
           style: TextStyle(
-            color: isSelected ? kBoardColorGrey : kWhiteColor,
+            color: isSelected ? kBoardColorGrey : context.colors.textPrimary,
             fontWeight: FontWeight.w600,
           ),
         ),

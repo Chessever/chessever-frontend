@@ -305,7 +305,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
-              color: isCurrentPlayer ? context.colors.textPrimaryMuted : kWhiteColor,
+              color: isCurrentPlayer ? context.colors.textPrimaryMuted : context.colors.textPrimary,
               height: 1.15,
               letterSpacing: 0,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -314,13 +314,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.f,
               fontWeight: FontWeight.w600,
-              color: isCurrentPlayer ? context.colors.textPrimaryMuted : kWhiteColor,
+              color: isCurrentPlayer ? context.colors.textPrimaryMuted : context.colors.textPrimary,
               height: 1.15,
               letterSpacing: -0.2,
               fontFeatures: const [FontFeature.tabularFigures()],
             )
             : AppTypography.textXsMedium.copyWith(
-              color: isCurrentPlayer ? context.colors.textPrimaryMuted : kWhiteColor,
+              color: isCurrentPlayer ? context.colors.textPrimaryMuted : context.colors.textPrimary,
               fontSize: 14.f,
               fontWeight: FontWeight.w500,
               fontFeatures: const [FontFeature.tabularFigures()],

@@ -113,7 +113,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
                         return Center(
                           child: Text(
                             'Invalid page index: $index',
-                            style: const TextStyle(color: kWhiteColor),
+                            style:  TextStyle(color: context.colors.textPrimary),
                           ),
                         );
                     }
@@ -178,7 +178,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: context.colors.popup,
-        selectedBackgroundColor: kPopUpColor,
+        selectedBackgroundColor: context.colors.popup,
         options: favoritesModeNames.values.toList(),
         initialSelection: favoritesModeNames.values.toList().indexOf(
           favoritesModeNames[selectedMode]!,

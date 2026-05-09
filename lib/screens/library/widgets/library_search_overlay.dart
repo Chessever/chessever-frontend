@@ -72,7 +72,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxH),
           child: searchAsync.when(
-            loading: () => _buildLoadingState(maxH),
+            loading: () => _buildLoadingState(context, maxH),
             error: (e, _) => _buildErrorState(e.toString(), maxH),
             data: (result) {
               if (result.isEmpty) return _buildEmptyState(maxH);
@@ -319,10 +319,12 @@ class LibrarySearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildLoadingState(double h) {
+  Widget _buildLoadingState(BuildContext context, double h) {
     return SizedBox(
       height: math.min(h, 160.h),
-      child: const Center(child: CircularProgressIndicator(color: kWhiteColor)),
+      child: Center(
+        child: CircularProgressIndicator(color: context.colors.textPrimary),
+      ),
     );
   }
 

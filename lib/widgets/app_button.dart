@@ -75,7 +75,6 @@ class AppButton extends StatefulWidget {
       height: height,
       width: width,
       isOutlined: true,
-      textColor: kWhiteColor,
       isLoading: isLoading,
       icon: icon,
     );
@@ -124,8 +123,12 @@ class _AppButtonState extends State<AppButton> {
   @override
   Widget build(BuildContext context) {
     final height = widget.height ?? 52.h;
-    final bgColor = widget.backgroundColor ?? kWhiteColor;
-    final txtColor = widget.textColor ?? kBlackColor;
+    final bgColor = widget.backgroundColor ?? context.colors.textPrimary;
+    final txtColor =
+        widget.textColor ??
+        (widget.isOutlined
+            ? context.colors.textPrimary
+            : context.colors.textInverse);
 
     return GestureDetector(
       onTapDown: widget.isLoading ? null : _onTapDown,
@@ -233,14 +236,14 @@ class _AppIconButtonState extends State<AppIconButton> {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: widget.backgroundColor ?? kBlack2Color,
+            color: widget.backgroundColor ?? context.colors.surface,
             borderRadius: BorderRadius.circular(size / 2),
           ),
           child: Center(
             child: Icon(
               widget.icon,
               size: size * 0.5,
-              color: widget.iconColor ?? kWhiteColor,
+              color: widget.iconColor ?? context.colors.textPrimary,
             ),
           ),
         ),

@@ -64,8 +64,8 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
                 return _buildContent(filteredPlayers);
               },
               loading:
-                  () => const Center(
-                    child: CircularProgressIndicator(color: kWhiteColor),
+                  () =>  Center(
+                    child: CircularProgressIndicator(color: context.colors.textPrimary),
                   ),
               error: (error, stack) => _buildErrorState(error.toString()),
             ),
@@ -326,7 +326,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
           ),
           title: Text(
             'Remove from favorites?',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
           ),
           content: Text(
             'Are you sure you want to remove ${player.name} from your favorites?',

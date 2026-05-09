@@ -38,7 +38,7 @@ class BoardColorDialog extends ConsumerWidget {
       key: e2eKey(E2eIds.boardColorDialogRoot),
       // height: 259, // Fixed height of 259px as requested
       decoration: BoxDecoration(
-        color: kPopUpColor,
+        color: context.colors.popup,
 
         borderRadius: BorderRadius.circular(20.sp),
         boxShadow: [
@@ -58,7 +58,7 @@ class BoardColorDialog extends ConsumerWidget {
             height: 5.h,
             width: 40.w,
             decoration: BoxDecoration(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               borderRadius: BorderRadius.circular(20.br),
             ),
           ),
@@ -74,7 +74,7 @@ class BoardColorDialog extends ConsumerWidget {
                 Text(
                   'Board Colour',
                   style: AppTypography.textLgMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
 
                   textAlign: TextAlign.center,
@@ -160,7 +160,7 @@ class BoardColorDialog extends ConsumerWidget {
           SizedBox(height: 8.h),
           Text(
             label,
-            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           // Selection indicator - changed to 20x20

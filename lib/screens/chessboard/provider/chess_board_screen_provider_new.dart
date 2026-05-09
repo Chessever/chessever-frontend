@@ -4615,23 +4615,6 @@ class ChessBoardScreenNotifierNew
     _updateEvaluation(force: force);
   }
 
-  Color getMoveColor(String move, int moveIndex) {
-    final currentState = state.value!;
-    if (currentState.isLoadingMoves) {
-      return kWhiteColor.withValues(alpha: 0.3);
-    }
-
-    final referenceIndex =
-        currentState.isAnalysisMode
-            ? currentState.analysisState.currentMoveIndex
-            : currentState.currentMoveIndex;
-
-    if (referenceIndex >= 0 && moveIndex <= referenceIndex) {
-      return kWhiteColor;
-    }
-
-    return kWhiteColor70;
-  }
 
   String _getSamplePgnData() {
     return '''

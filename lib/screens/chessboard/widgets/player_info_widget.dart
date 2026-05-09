@@ -47,13 +47,13 @@ class PlayerInfoWidget extends StatelessWidget {
             ),
             Text(
               time,
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ] else ...[
             // For bottom player (white)
             Text(
               time,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,

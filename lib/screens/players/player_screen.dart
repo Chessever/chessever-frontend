@@ -191,8 +191,8 @@ class _PlayerList extends ConsumerWidget {
       onRefresh: () => _handleRefresh(ref),
       child: playersState.when(
         loading:
-            () => const Center(
-              child: CircularProgressIndicator(color: kWhiteColor),
+            () =>  Center(
+              child: CircularProgressIndicator(color: context.colors.textPrimary),
             ),
         error: (error, stack) {
           return RefreshIndicator(
@@ -264,10 +264,10 @@ class _PlayerList extends ConsumerWidget {
             itemCount: filteredPlayers.length + (notifier.hasMore ? 1 : 0),
             itemBuilder: (context, index) {
               if (index >= filteredPlayers.length) {
-                return const Center(
+                return  Center(
                   child: Padding(
                     padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(color: kWhiteColor),
+                    child: CircularProgressIndicator(color: context.colors.textPrimary),
                   ),
                 );
               }

@@ -74,7 +74,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
           children: [
             Text(
               '${index + 1}.',
-              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(width: 10.w),
             if (countryCode.trim().isNotEmpty) ...[
@@ -106,7 +106,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                     TextSpan(
                       text: name,
                       style: AppTypography.textMdBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                   ],
@@ -120,7 +120,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                 Text(
                   score.toString(),
                   style: AppTypography.textMdMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
                 if (scoreChange != null && scoreChange != 0.0) ...[
@@ -157,7 +157,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                     matchScore!,
                     textAlign: TextAlign.center,
                     style: AppTypography.textMdBold.copyWith(
-                      color: isWhite! ? Colors.black : kWhiteColor,
+                      color: isWhite! ? Colors.black : context.colors.textPrimary,
                     ),
                   ),
                 ),
@@ -166,7 +166,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
               Text(
                 matchScore!,
                 textAlign: TextAlign.start,
-                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
               ),
           ],
         ),

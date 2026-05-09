@@ -193,9 +193,9 @@ class PgnFileIntakeService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text(
+            content:  Text(
               'That file does not contain a valid PGN',
-              style: TextStyle(color: kWhiteColor),
+              style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,
@@ -231,9 +231,9 @@ class PgnFileIntakeService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text(
+            content:  Text(
               'Could not read that file.',
-              style: TextStyle(color: kWhiteColor),
+              style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,

@@ -166,8 +166,8 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 
         final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
         final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
-        final topColor = widget.isFlipped ? kWhiteColor : kPopUpColor;
-        final bottomColor = widget.isFlipped ? kPopUpColor : kWhiteColor;
+        final topColor = widget.isFlipped ? context.colors.textPrimary : context.colors.popup;
+        final bottomColor = widget.isFlipped ? context.colors.popup : context.colors.textPrimary;
 
         return SizedBox(
           width: widget.width,
@@ -460,7 +460,7 @@ class _Bars extends StatelessWidget {
             child: Container(
               width: width,
               height: isFlipped ? whiteHeight : blackHeight,
-              color: isFlipped ? kWhiteColor : kPopUpColor,
+              color: isFlipped ? context.colors.textPrimary : context.colors.popup,
             ),
           ),
           Align(
@@ -468,7 +468,7 @@ class _Bars extends StatelessWidget {
             child: Container(
               width: width,
               height: isFlipped ? blackHeight : whiteHeight,
-              color: isFlipped ? kPopUpColor : kWhiteColor,
+              color: isFlipped ? context.colors.popup : context.colors.textPrimary,
             ),
           ),
           // Evaluation text positioned at the meeting point of black/white
