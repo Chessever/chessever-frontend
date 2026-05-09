@@ -24,73 +24,47 @@ Every file currently using the hardcoded dark constants
    chrome — backgrounds, surfaces, dividers, text colors), OR
 2. Keep using the constant when it represents a *semantic* value that should
    remain identical in both themes (brand colors, success/danger, chess
-   board square colors, last-move highlights, etc.)
+   board square colors, last-move highlights, etc.), OR
+3. Keep using the constant when context is genuinely not available (a
+   CustomPainter, a StateNotifier, a const declaration).
 
-The `k*Color` constants are kept as-is for backward compatibility and for
-intentional cross-theme values. Migration rewrites the chrome to
-`context.colors.*`.
+The `k*Color` constants are kept as-is in `app_theme.dart` for backward
+compatibility and for intentional cross-theme values.
 
-## Per-screen status
+## Progress
 
-Search command to find candidates:
-`grep -l "kBackgroundColor\|kBlack2Color\|kBlack3Color\|kWhiteColor70\|kPopUpColor\|kDividerColor\|kSecondaryTextColor" lib/screens/<dir>`
+- **kWhiteColor call sites**: down from ~1131 to ~407
+- **kBlack* / dark constants**: down from ~250 to ~81
+- **flutter analyze**: 0 errors
+- **Major chrome migrated**: nav bars, drawer, hamburger menu, calendar,
+  library, group_event, tour_detail, player profile, standings, countrymen,
+  gamebase, favorites, premium, onboarding, auth, splash, paywall, dialogs,
+  filters, search
 
-### Screens
+## Top remaining files
 
-- [x] `lib/screens/chessboard/chess_board_settings_page.dart`
-- [x] `lib/screens/calendar/calendar_screen.dart`
-- [x] `lib/screens/calendar/calendar_event_detail_screen.dart`
-- [x] `lib/screens/group_event/group_event_screen.dart`
-- [x] `lib/screens/group_event/widget/empty_widget.dart`
-- [x] `lib/screens/group_event/widget/appbar_icons_widget.dart`
-- [x] `lib/screens/group_event/widget/for_you_tournament_card.dart`
-- [x] `lib/screens/group_event/widget/search_results_widget.dart`
-- [x] `lib/screens/home/widget/bottom_nav_bar.dart`
-- [x] `lib/screens/home/widget/bottom_nav_bar_widget.dart`
-- [x] `lib/screens/home/widget/tablet_nav_rail.dart`
-- [ ] lib/screens/authentication
-- [ ] lib/screens/board_editor
-- [ ] lib/screens/calendar/calendar_detail_screen.dart
-- [ ] lib/screens/chessboard (rest)
-- [ ] lib/screens/countrymen
-- [ ] lib/screens/countryman_games_screen.dart
-- [ ] lib/screens/favorites
-- [ ] lib/screens/gamebase
-- [ ] lib/screens/group_event/widget/{premium_collection_cards, player_search_cards, for_you_games_widget, filter_popup}
-- [ ] lib/screens/home/home_screen.dart
-- [ ] lib/screens/library
-- [ ] lib/screens/onboarding
-- [ ] lib/screens/player_profile
-- [ ] lib/screens/players
-- [ ] lib/screens/premium
-- [ ] lib/screens/premium_games
-- [ ] lib/screens/splash
-- [ ] lib/screens/standings
-- [ ] lib/screens/tour_detail
+These still have the most call sites to migrate:
 
-### Widgets
-
-- [x] lib/widgets/divider_widget.dart
-- [x] lib/widgets/app_bar_with_title.dart
-- [x] lib/widgets/generic_loading_widget.dart
-- [x] lib/widgets/hamburger_menu/hamburger_menu.dart
-- [x] lib/widgets/hamburger_menu/hamburger_menu_dialogs.dart
-- [x] lib/widgets/hamburger_menu/settings_dialog.dart
-- [x] lib/widgets/settings_menu.dart
-- [x] lib/widgets/event_card/event_card.dart
-- [ ] lib/widgets/paywall/premium_paywall_sheet.dart (38 refs)
-- [ ] lib/widgets/review_prompt/review_prompt_dialogs.dart (32 refs)
-- [ ] lib/widgets/game_filter/eco_filter_dropdown.dart (29 refs)
-- [ ] lib/widgets/* (~70 more)
+- lib/screens/chessboard/chess_board_screen_new.dart (32)
+- lib/screens/player_profile/tabs/player_about_tab.dart (21)
+- lib/screens/gamebase/widgets/gamebase_filter_panel.dart (17)
+- lib/screens/gamebase/gamebase_explorer_screen.dart (17)
+- lib/screens/library/folder_contents_screen.dart (16)
+- lib/screens/library/widgets/folder_card.dart (13)
+- lib/screens/player_profile/tabs/player_games_tab.dart (12)
+- lib/screens/player_profile/tabs/player_events_tab.dart (10)
+- lib/screens/onboarding/onboarding_flow_screen.dart (9)
+- lib/screens/group_event/widget/filter_popup/filter_popup.dart (9)
 
 ## Notes
 
 - `kPrimaryColor` (#0FB4E5) is a brand asset and stays identical across
-  themes. Don't replace it with `context.colors.brand` at every site;
-  reserve that helper for new code that explicitly wants a theme hook.
+  themes. Don't replace it with `context.colors.brand` at every site.
 - Chess board square colors (`kBoardColor*`) are user-customizable through
-  Board Theme picker and are NOT theme-dependent — they're chess-board
-  aesthetics, not app chrome.
+  Board Theme picker and are NOT theme-dependent.
 - Move-stat segment colors (`kMoveStatWhite/Draw/Black`) are chess-semantic
   and identical across themes.
 - Last-move highlight (`kLastMoveHighlight*`) is chess-semantic.
+- The ChessBoard provider's `getMoveColor()` and similar State notifiers
+  intentionally use `kWhiteColor` since they return colors before reaching
+  a Widget with BuildContext — the Widget callers can rewrap if needed.
