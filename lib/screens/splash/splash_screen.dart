@@ -122,7 +122,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                     // Error icon
                     Icon(
                       Icons.wifi_off_rounded,
-                      color: kWhiteColor.withOpacity(0.7),
+                      color: context.colors.textPrimary.withValues(alpha: 0.7),
                       size: 32.h,
                     ),
                     SizedBox(height: 12.h),
@@ -131,7 +131,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                       _errorMessage!,
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: kWhiteColor.withOpacity(0.8),
+                        color: context.colors.textPrimary.withValues(alpha: 0.8),
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w400,
                       ),
@@ -161,7 +161,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                                   height: 20.h,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: kWhiteColor.withOpacity(0.8),
+                                    color: context.colors.textPrimary.withValues(alpha: 0.8),
                                   ),
                                 )
                                 : Text(

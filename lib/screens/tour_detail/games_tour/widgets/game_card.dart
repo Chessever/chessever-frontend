@@ -180,7 +180,7 @@ class GamesTourGameCardBody extends ConsumerWidget {
             child: Text(
               eventName!,
               style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -803,7 +803,7 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                           child: Container(
-                            color: kBackgroundColor.withValues(alpha: 0.72),
+                            color: context.colors.background.withValues(alpha: 0.72),
                           ),
                         ),
                       ),

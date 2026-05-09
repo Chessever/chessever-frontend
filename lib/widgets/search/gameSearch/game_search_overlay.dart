@@ -96,7 +96,7 @@ class _GamesSearchOverlayState extends ConsumerState<GamesSearchOverlay>
                 decoration: BoxDecoration(
                   color: Colors.grey[900],
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: kWhiteColor.withOpacity(0.1)),
+                  border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
                   boxShadow: [
                     BoxShadow(
                       color: kBlackColor.withOpacity(0.3),
@@ -246,7 +246,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
 
     _colorAnimation = ColorTween(
       begin: Colors.transparent,
-      end: kWhiteColor.withOpacity(0.05),
+      end: context.colors.textPrimary.withValues(alpha: 0.05),
     ).animate(_hoverController);
   }
 
@@ -310,7 +310,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                           !widget.isLast
                               ? Border(
                                 bottom: BorderSide(
-                                  color: kWhiteColor.withOpacity(0.1),
+                                  color: context.colors.textPrimary.withValues(alpha: 0.1),
                                   width: 1.w,
                                 ),
                               )
@@ -329,7 +329,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                                   color:
                                       _isHovered
                                           ? kWhiteColor
-                                          : kWhiteColor.withOpacity(0.9),
+                                          : context.colors.textPrimary.withValues(alpha: 0.9),
                                   fontSize: 12.f,
                                   fontWeight: FontWeight.w500,
                                   letterSpacing: 0.2,

@@ -32,36 +32,41 @@ class PerformanceStatsRow extends StatelessWidget {
         children: [
           // Performance Rating - always show, "-" when no data
           _buildStatItem(
+            context,
             label: 'Performance',
             value: performanceRating?.toString() ?? '-',
           ),
 
           // Score - always show, "-" when no data
           _buildStatItem(
+            context,
             label: 'Score',
-            value:
-                (score != null && totalGames != null)
-                    ? _formatScore(score!, totalGames!)
-                    : '-',
+            value: (score != null && totalGames != null)
+                ? _formatScore(score!, totalGames!)
+                : '-',
           ),
 
           // Rating Diff - always show, "-" when no data
           if (ratingDiff != null)
-            _buildRatingDiffItem(label: 'Rating', diff: ratingDiff!)
+            _buildRatingDiffItem(context, label: 'Rating', diff: ratingDiff!)
           else
-            _buildStatItem(label: 'Rating', value: '-'),
+            _buildStatItem(context, label: 'Rating', value: '-'),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem({required String label, required String value}) {
+  Widget _buildStatItem(
+    BuildContext context, {
+    required String label,
+    required String value,
+  }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
         ),
         SizedBox(height: 4.h),
         Text(
@@ -72,7 +77,11 @@ class PerformanceStatsRow extends StatelessWidget {
     );
   }
 
-  Widget _buildRatingDiffItem({required String label, required int diff}) {
+  Widget _buildRatingDiffItem(
+    BuildContext context, {
+    required String label,
+    required int diff,
+  }) {
     final isPositive = diff >= 0;
     final displayText = isPositive ? '+$diff' : '$diff';
     final color = isPositive ? kGreenColor : kRedColor;
@@ -82,7 +91,7 @@ class PerformanceStatsRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
         ),
         SizedBox(height: 4.h),
         Text(

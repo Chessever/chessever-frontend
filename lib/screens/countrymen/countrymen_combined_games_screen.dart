@@ -540,7 +540,7 @@ class _CountrymenCombinedGamesScreenState
                         .read(countrymenCombinedGamesProvider.notifier)
                         .refreshGames(),
             style: TextButton.styleFrom(
-              backgroundColor: kWhiteColor.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -569,15 +569,15 @@ class _CountrymenCombinedGamesScreenState
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  kWhiteColor.withValues(alpha: 0.15),
-                  kWhiteColor.withValues(alpha: 0.05),
+                  context.colors.textPrimary.withValues(alpha: 0.15),
+                  context.colors.textPrimary.withValues(alpha: 0.05),
                 ],
               ),
               borderRadius: BorderRadius.circular(20.br),
             ),
             child: Icon(
               Icons.public_outlined,
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
               size: 40.ic,
             ),
           ),
@@ -605,7 +605,7 @@ class _CountrymenCombinedGamesScreenState
                         .read(countrymenCombinedGamesProvider.notifier)
                         .refreshGames(),
             style: TextButton.styleFrom(
-              backgroundColor: kWhiteColor.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -629,20 +629,20 @@ class _CountrymenCombinedGamesScreenState
           Icon(
             Icons.search_off_outlined,
             size: 56.sp,
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
           SizedBox(height: 12.h),
           Text(
             'No results',
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.85),
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
             ),
           ),
           SizedBox(height: 6.h),
           Text(
             'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.55),
+              color: context.colors.textPrimary.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -659,20 +659,20 @@ class _CountrymenCombinedGamesScreenState
           Icon(
             Icons.filter_alt_off_outlined,
             size: 56.sp,
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
           SizedBox(height: 12.h),
           Text(
             'No matching games',
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.85),
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
             ),
           ),
           SizedBox(height: 6.h),
           Text(
             'Try adjusting your filters',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.55),
+              color: context.colors.textPrimary.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -685,7 +685,7 @@ class _CountrymenCombinedGamesScreenState
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.1),
+                color: context.colors.textPrimary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Text(

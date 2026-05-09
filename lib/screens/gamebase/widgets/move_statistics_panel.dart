@@ -6,6 +6,7 @@ import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -84,7 +85,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
           padding: EdgeInsets.all(16.sp),
           child: Text(
             'No games found for this position',
-            style: TextStyle(color: kSecondaryTextColor, fontSize: 14.f),
+            style: TextStyle(color: context.colors.textSecondary, fontSize: 14.f),
             textAlign: TextAlign.center,
           ),
         ),
@@ -109,7 +110,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 child: Text(
                   'Move',
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 11.f,
                     fontWeight: FontWeight.w600,
                   ),
@@ -121,7 +122,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   'Score',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 11.f,
                     fontWeight: FontWeight.w600,
                   ),
@@ -134,7 +135,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   'Games',
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 11.f,
                     fontWeight: FontWeight.w600,
                   ),
@@ -147,7 +148,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   'Last',
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 11.f,
                     fontWeight: FontWeight.w600,
                   ),
@@ -247,7 +248,7 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
                   width: 20.w,
                   height: 12.h,
                   decoration: BoxDecoration(
-                    color: kSecondaryTextColor.withValues(alpha: 0.15),
+                    color: context.colors.textSecondary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(2.br),
                   ),
                 ),
@@ -256,7 +257,7 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
                   width: 30.w,
                   height: 14.h,
                   decoration: BoxDecoration(
-                    color: kSecondaryTextColor.withValues(alpha: 0.25),
+                    color: context.colors.textSecondary.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(2.br),
                   ),
                 ),
@@ -268,7 +269,7 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
             child: Container(
               height: 14.h,
               decoration: BoxDecoration(
-                color: kSecondaryTextColor.withValues(alpha: 0.1),
+                color: context.colors.textSecondary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16.br),
               ),
             ),
@@ -278,7 +279,7 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
             width: _kGamesColumnWidth.w,
             height: 12.h,
             decoration: BoxDecoration(
-              color: kSecondaryTextColor.withValues(alpha: 0.15),
+              color: context.colors.textSecondary.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(2.br),
             ),
           ),
@@ -287,7 +288,7 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
             width: _kLastColumnWidth.w,
             height: 12.h,
             decoration: BoxDecoration(
-              color: kSecondaryTextColor.withValues(alpha: 0.15),
+              color: context.colors.textSecondary.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(2.br),
             ),
           ),
@@ -354,7 +355,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                   Text(
                     moveNumberLabel,
                     style: TextStyle(
-                      color: kSecondaryTextColor,
+                      color: context.colors.textSecondary,
                       fontSize: 12.f,
                       fontWeight: FontWeight.w500,
                     ),
@@ -404,7 +405,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                       aggregate.formattedTotal,
                       textAlign: TextAlign.right,
                       style: TextStyle(
-                        color: kSecondaryTextColor,
+                        color: context.colors.textSecondary,
                         fontSize: 12.f,
                       ),
                     ),
@@ -419,7 +420,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                     ),
                     icon: Icon(
                       Icons.list_alt_rounded,
-                      color: kSecondaryTextColor,
+                      color: context.colors.textSecondary,
                       size: 15.ic,
                     ),
                     tooltip: 'Games',
@@ -451,7 +452,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
               child: Text(
                 _formatLastPlayed(aggregate.lastPlayed),
                 textAlign: TextAlign.right,
-                style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 12.f),
               ),
             ),
           ],
@@ -641,7 +642,7 @@ class _ExplorerPremiumGate extends ConsumerWidget {
               'beyond move 10.',
               textAlign: TextAlign.center,
               style: AppTypography.textSmMedium.copyWith(
-                color: kSecondaryTextColor,
+                color: context.colors.textSecondary,
                 height: 1.35,
               ),
             ),

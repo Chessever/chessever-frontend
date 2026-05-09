@@ -1139,7 +1139,7 @@ class _DataSourceBanner extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(3.sp),
       decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.06),
+        color: context.colors.textPrimary.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10.br),
       ),
       child: Row(
@@ -1223,7 +1223,7 @@ class _SourceTabState extends State<_SourceTab> {
                     widget.isActive
                         ? (widget.accentColor != null
                             ? activeColor.withValues(alpha: 0.12)
-                            : kWhiteColor.withValues(alpha: 0.10))
+                            : context.colors.textPrimary.withValues(alpha: 0.10))
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(8.br),
                 border: Border.all(
@@ -1231,7 +1231,7 @@ class _SourceTabState extends State<_SourceTab> {
                       widget.isActive
                           ? (widget.accentColor != null
                               ? activeColor.withValues(alpha: 0.30)
-                              : kWhiteColor.withValues(alpha: 0.12))
+                              : context.colors.textPrimary.withValues(alpha: 0.12))
                           : Colors.transparent,
                 ),
               ),
@@ -1259,8 +1259,8 @@ class _SourceTabState extends State<_SourceTab> {
                             widget.isActive
                                 ? (widget.accentColor != null
                                     ? activeColor.withValues(alpha: 0.95)
-                                    : kWhiteColor.withValues(alpha: 0.95))
-                                : kWhiteColor.withValues(alpha: 0.40),
+                                    : context.colors.textPrimary.withValues(alpha: 0.95))
+                                : context.colors.textPrimary.withValues(alpha: 0.40),
                         fontWeight:
                             widget.isActive ? FontWeight.w600 : FontWeight.w500,
                       ),
@@ -1327,14 +1327,14 @@ class _StudyOpeningPillState extends State<_StudyOpeningPill> {
                   Text(
                     'Build Tree',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.92),
+                      color: context.colors.textPrimary.withValues(alpha: 0.92),
                     ),
                   ),
                   const Spacer(),
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 18.ic,
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
                 ],
               ),
@@ -1398,13 +1398,13 @@ class _ActionCardState extends State<_ActionCard> {
                     )!;
                 final iconBg =
                     Color.lerp(
-                      kWhiteColor.withValues(alpha: 0.08),
+                      context.colors.textPrimary.withValues(alpha: 0.08),
                       _filterRed.withValues(alpha: 0.18),
                       h,
                     )!;
                 final iconColor =
                     Color.lerp(
-                      kWhiteColor.withValues(alpha: 0.85),
+                      context.colors.textPrimary.withValues(alpha: 0.85),
                       _filterRed,
                       h,
                     )!;

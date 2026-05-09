@@ -588,7 +588,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         width: 40.w,
         height: 4.h,
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.2),
+          color: context.colors.textPrimary.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(2.br),
         ),
       ),
@@ -647,7 +647,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                           ? 'Update title, folder & metadata'
                           : 'Keep your variations & comments',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
+                        color: context.colors.textPrimary.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
@@ -674,15 +674,15 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             child: Container(
               padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.04),
+                color: context.colors.textPrimary.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+                border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
               ),
               child: Row(
                 children: [
                   Icon(
                     Icons.edit_note_rounded,
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                     size: 20.sp,
                   ),
                   SizedBox(width: 12.w),
@@ -690,7 +690,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     child: Text(
                       'Game Details',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.9),
+                        color: context.colors.textPrimary.withValues(alpha: 0.9),
                       ),
                     ),
                   ),
@@ -784,12 +784,12 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 icon: Icon(
                   Icons.refresh_rounded,
                   size: 14.sp,
-                  color: kWhiteColor.withValues(alpha: 0.4),
+                  color: context.colors.textPrimary.withValues(alpha: 0.4),
                 ),
                 label: Text(
                   'Reset Details',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.4),
+                    color: context.colors.textPrimary.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -811,7 +811,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
             letterSpacing: 0.5,
           ),
         ),
@@ -831,9 +831,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     return Container(
       height: 40.h,
       decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.03),
+        color: context.colors.textPrimary.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
       ),
       child: TextField(
         controller: controller,
@@ -842,7 +842,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: AppTypography.textXsRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.2),
+            color: context.colors.textPrimary.withValues(alpha: 0.2),
           ),
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
@@ -863,16 +863,16 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
         ),
         SizedBox(height: 6.h),
         Container(
           height: 44.h,
           decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.03),
+            color: context.colors.textPrimary.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(10.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
           ),
           child:
               isResult
@@ -913,7 +913,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           dropdownColor: const Color(0xFF1A1A1C),
           icon: Icon(
             Icons.arrow_drop_down,
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
           style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
           onChanged:
@@ -942,7 +942,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           'Date (YYYY.MM.DD)',
           style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
         ),
         SizedBox(height: 6.h),
@@ -1012,7 +1012,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               Text(
                 'Save to Folder',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.8),
+                  color: context.colors.textPrimary.withValues(alpha: 0.8),
                   letterSpacing: 0.3,
                 ),
               ),
@@ -1029,13 +1029,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     color:
                         _isCreatingNewFolder
                             ? kPrimaryColor.withValues(alpha: 0.15)
-                            : kWhiteColor.withValues(alpha: 0.05),
+                            : context.colors.textPrimary.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(20.br),
                     border: Border.all(
                       color:
                           _isCreatingNewFolder
                               ? kPrimaryColor.withValues(alpha: 0.4)
-                              : kWhiteColor.withValues(alpha: 0.1),
+                              : context.colors.textPrimary.withValues(alpha: 0.1),
                       width: 1,
                     ),
                   ),
@@ -1050,7 +1050,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         color:
                             _isCreatingNewFolder
                                 ? kPrimaryColor
-                                : kWhiteColor.withValues(alpha: 0.6),
+                                : context.colors.textPrimary.withValues(alpha: 0.6),
                       ),
                       SizedBox(width: 6.w),
                       Text(
@@ -1059,7 +1059,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                           color:
                               _isCreatingNewFolder
                                   ? kPrimaryColor
-                                  : kWhiteColor.withValues(alpha: 0.6),
+                                  : context.colors.textPrimary.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -1102,13 +1102,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         // Folder name input
         Container(
           decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.04),
+            color: context.colors.textPrimary.withValues(alpha: 0.04),
             borderRadius: BorderRadius.circular(14.br),
             border: Border.all(
               color:
                   _newFolderNameFocusNode.hasFocus
                       ? kPrimaryColor.withValues(alpha: 0.5)
-                      : kWhiteColor.withValues(alpha: 0.08),
+                      : context.colors.textPrimary.withValues(alpha: 0.08),
               width: 1.5,
             ),
           ),
@@ -1121,7 +1121,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             decoration: InputDecoration(
               hintText: 'Folder name',
               hintStyle: AppTypography.textMdRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.3),
+                color: context.colors.textPrimary.withValues(alpha: 0.3),
               ),
               border: InputBorder.none,
               contentPadding: EdgeInsets.symmetric(
@@ -1161,7 +1161,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           'Folder Color',
           style: AppTypography.textXsRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
         ),
         SizedBox(height: 10.h),
@@ -1309,9 +1309,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         key: key,
         padding: EdgeInsets.all(20.sp),
         decoration: BoxDecoration(
-          color: kWhiteColor.withValues(alpha: 0.03),
+          color: context.colors.textPrimary.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
         ),
         child: Column(
           children: [
@@ -1331,14 +1331,14 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             Text(
               'No folders yet',
               style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.9),
+                color: context.colors.textPrimary.withValues(alpha: 0.9),
               ),
             ),
             SizedBox(height: 6.h),
             Text(
               'Create a folder to organize your analyses',
               style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
               textAlign: TextAlign.center,
             ),
@@ -1379,9 +1379,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     return Container(
       key: key,
       decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.03),
+        color: context.colors.textPrimary.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16.br),
@@ -1414,7 +1414,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         margin: EdgeInsets.only(
                           left: isSubdatabase ? 80.w : 56.w,
                         ),
-                        color: kWhiteColor.withValues(alpha: 0.05),
+                        color: context.colors.textPrimary.withValues(alpha: 0.05),
                       ),
                   ],
                 );
@@ -1429,9 +1429,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       key: key,
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
       decoration: BoxDecoration(
-        color: kWhiteColor.withValues(alpha: 0.03),
+        color: context.colors.textPrimary.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1450,7 +1450,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           Text(
             'Loading folders...',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
+              color: context.colors.textPrimary.withValues(alpha: 0.5),
             ),
           ),
         ],
@@ -1561,15 +1561,15 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               child: Container(
                 padding: EdgeInsets.symmetric(vertical: 16.h),
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.05),
+                  color: context.colors.textPrimary.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(14.br),
-                  border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
+                  border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
                 ),
                 child: Center(
                   child: Text(
                     'Cancel',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.7),
+                      color: context.colors.textPrimary.withValues(alpha: 0.7),
                     ),
                   ),
                 ),
@@ -1607,7 +1607,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         color:
                             canSave
                                 ? null
-                                : kWhiteColor.withValues(alpha: 0.08),
+                                : context.colors.textPrimary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(14.br),
                         boxShadow:
                             canSave
@@ -1737,7 +1737,7 @@ class _FolderListItem extends StatelessWidget {
                   Icon(
                     Icons.subdirectory_arrow_right_rounded,
                     size: 16.sp,
-                    color: kWhiteColor.withValues(alpha: 0.3),
+                    color: context.colors.textPrimary.withValues(alpha: 0.3),
                   ),
                   SizedBox(width: 8.w),
                 ],
@@ -1769,7 +1769,7 @@ class _FolderListItem extends StatelessWidget {
                   child: Text(
                     folder.name,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.9),
+                      color: context.colors.textPrimary.withValues(alpha: 0.9),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1785,13 +1785,13 @@ class _FolderListItem extends StatelessWidget {
                     color:
                         isSelected
                             ? kPrimaryColor
-                            : kWhiteColor.withValues(alpha: 0.05),
+                            : context.colors.textPrimary.withValues(alpha: 0.05),
                     shape: BoxShape.circle,
                     border: Border.all(
                       color:
                           isSelected
                               ? kPrimaryColor
-                              : kWhiteColor.withValues(alpha: 0.15),
+                              : context.colors.textPrimary.withValues(alpha: 0.15),
                       width: 2,
                     ),
                   ),

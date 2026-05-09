@@ -512,7 +512,7 @@ class _LibraryGamebaseFilterDialogState
                 onPressed: () => Navigator.of(context).pop(),
                 icon: Icon(
                   Icons.close_rounded,
-                  color: kWhiteColor.withValues(alpha: 0.6),
+                  color: context.colors.textPrimary.withValues(alpha: 0.6),
                   size: 20.ic,
                 ),
               ),

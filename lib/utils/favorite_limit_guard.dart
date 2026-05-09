@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
@@ -33,7 +34,7 @@ Future<bool> canAddMoreFavorites(
             'You can follow more players after signing in',
             style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );

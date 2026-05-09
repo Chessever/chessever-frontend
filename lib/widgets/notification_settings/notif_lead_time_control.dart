@@ -33,7 +33,7 @@ class NotifLeadTimeControl extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: kDividerColor.withValues(alpha: 0.4)),
+          border: Border.all(color: context.colors.divider.withValues(alpha: 0.4)),
         ),
         child: Stack(
           clipBehavior: Clip.hardEdge,

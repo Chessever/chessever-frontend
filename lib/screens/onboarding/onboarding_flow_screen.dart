@@ -317,7 +317,7 @@ class _AuthStep extends HookWidget {
                           'Create an account to access all features',
                           textAlign: TextAlign.center,
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withOpacity(0.6),
+                            color: context.colors.textPrimary.withValues(alpha: 0.6),
                           ),
                         )
                         .animate(delay: 300.ms)
@@ -376,7 +376,7 @@ class _AuthStep extends HookWidget {
                           Text(
                             'Guest data can\'t be recovered if lost',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withOpacity(0.5),
+                              color: context.colors.textPrimary.withValues(alpha: 0.5),
                             ),
                           ),
                         ],
@@ -511,7 +511,7 @@ class _FeaturesList extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.br),
         color: kBlack2Color.withOpacity(0.5),
-        border: Border.all(color: kWhiteColor.withOpacity(0.06)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -519,7 +519,7 @@ class _FeaturesList extends StatelessWidget {
           Text(
             'What you\'ll miss as a guest:',
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withOpacity(0.5),
+              color: context.colors.textPrimary.withValues(alpha: 0.5),
               letterSpacing: 0.5,
             ),
           ),
@@ -581,7 +581,7 @@ class _FeatureItem extends StatelessWidget {
               Text(
                 subtitle,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withOpacity(0.5),
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                 ),
               ),
             ],
@@ -591,7 +591,7 @@ class _FeatureItem extends StatelessWidget {
         Icon(
           Icons.lock_outline_rounded,
           size: 14.ic,
-          color: kWhiteColor.withOpacity(0.25),
+          color: context.colors.textPrimary.withValues(alpha: 0.25),
         ),
       ],
     );
@@ -625,13 +625,13 @@ class _SecondaryButton extends HookWidget {
           height: 48.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(color: kWhiteColor.withOpacity(0.15)),
+            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.15)),
           ),
           child: Center(
             child: Text(
               label,
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withOpacity(0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -746,7 +746,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                 'Welcome back,',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.textMdRegular.copyWith(
-                                  color: kWhiteColor.withOpacity(0.6),
+                                  color: context.colors.textPrimary.withValues(alpha: 0.6),
                                 ),
                               )
                               .animate(delay: 200.ms)
@@ -881,7 +881,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                   Text(
                                     'Your chess journey continues',
                                     style: AppTypography.textXsRegular.copyWith(
-                                      color: kWhiteColor.withOpacity(0.4),
+                                      color: context.colors.textPrimary.withValues(alpha: 0.4),
                                     ),
                                   ),
                                 ],
@@ -1137,11 +1137,10 @@ class _ParticlePainter extends CustomPainter {
           particle.x +
           math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
 
-      final paint =
-          Paint()
-            ..color = kWhiteColor.withOpacity(
-              particle.opacity * (1 - y.abs() * 0.5),
-            );
+      final paint = Paint()
+        ..color = Colors.white.withValues(
+          alpha: particle.opacity * (1 - y.abs() * 0.5),
+        );
 
       canvas.drawCircle(
         Offset(x * size.width, y * size.height),
@@ -1191,7 +1190,7 @@ class _PageIndicator extends StatelessWidget {
             height: 4.h,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2.br),
-              color: isActive ? kPrimaryColor : kWhiteColor.withOpacity(0.12),
+              color: isActive ? kPrimaryColor : context.colors.textPrimary.withValues(alpha: 0.12),
             ),
           ),
         );
@@ -1291,7 +1290,7 @@ class _WelcomeStep extends HookWidget {
                     'Follow players, Track Events, Analyze games',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withOpacity(0.6),
+                      color: context.colors.textPrimary.withValues(alpha: 0.6),
                       letterSpacing: 0.3,
                     ),
                   )
@@ -1403,7 +1402,7 @@ class _CountryStep extends HookConsumerWidget {
                     'We\'ll show you players from your region',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withOpacity(0.6),
+                      color: context.colors.textPrimary.withValues(alpha: 0.6),
                     ),
                   )
                   .animate(delay: 300.ms)
@@ -1461,7 +1460,7 @@ class _GlobeVisual extends StatelessWidget {
                 height: 24.h,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: kWhiteColor.withOpacity(0.6),
+                  color: context.colors.textPrimary.withValues(alpha: 0.6),
                 ),
               ),
             ),
@@ -1469,7 +1468,7 @@ class _GlobeVisual extends StatelessWidget {
             (_, __) => Icon(
               Icons.public,
               size: 48.ic,
-              color: kWhiteColor.withOpacity(0.5),
+              color: context.colors.textPrimary.withValues(alpha: 0.5),
             ),
         data:
             (country) => Center(
@@ -1509,14 +1508,14 @@ class _CountryCard extends StatelessWidget {
                   height: 18.h,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: kWhiteColor.withOpacity(0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
                 ),
                 SizedBox(width: 12.w),
                 Text(
                   'Finding your location...',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                   ),
                 ),
               ],
@@ -1528,7 +1527,7 @@ class _CountryCard extends StatelessWidget {
                 Text(
                   'Couldn\'t detect location',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                   ),
                 ),
                 SizedBox(width: 12.w),
@@ -1599,7 +1598,7 @@ class _PrimaryButton extends HookWidget {
           height: 52.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color: onTap != null ? kWhiteColor : kWhiteColor.withOpacity(0.2),
+            color: onTap != null ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.2),
           ),
           child: Center(
             child:
@@ -1618,7 +1617,7 @@ class _PrimaryButton extends HookWidget {
                         color:
                             onTap != null
                                 ? kBlackColor
-                                : kWhiteColor.withOpacity(0.5),
+                                : context.colors.textPrimary.withValues(alpha: 0.5),
                       ),
                     ),
           ),
@@ -1684,7 +1683,7 @@ class _AttPrePromptSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: kWhiteColor.withOpacity(0.18),
+                color: context.colors.textPrimary.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1720,7 +1719,7 @@ class _AttPrePromptSheet extends StatelessWidget {
             'working. We don\'t sell your data and don\'t use it for anything '
             'else.',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withOpacity(0.78),
+              color: context.colors.textPrimary.withValues(alpha: 0.78),
               height: 1.5,
               fontSize: 14,
             ),
@@ -1747,7 +1746,7 @@ class _AttPrePromptSheet extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             style: TextButton.styleFrom(
-              foregroundColor: kWhiteColor.withOpacity(0.55),
+              foregroundColor: context.colors.textPrimary.withValues(alpha: 0.55),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
             child: const Text('Not now'),

@@ -326,7 +326,7 @@ class FolderCard extends ConsumerWidget {
           'Link copied',
           style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
         ),
-        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -346,7 +346,7 @@ class FolderCard extends ConsumerWidget {
             'Sharing stopped',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -381,7 +381,7 @@ class FolderCard extends ConsumerWidget {
             'Unsubscribed from "${folder.name}"',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -432,7 +432,7 @@ class FolderCard extends ConsumerWidget {
             'Renamed to "$name"',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -473,7 +473,7 @@ class FolderCard extends ConsumerWidget {
                 content: Text(
                   'This removes the database. Games in it will stay saved but become unassigned.',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.7),
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
                 ),
                 actions: [
@@ -482,7 +482,7 @@ class FolderCard extends ConsumerWidget {
                     child: Text(
                       'Cancel',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(alpha: 0.7),
                       ),
                     ),
                   ),
@@ -515,7 +515,7 @@ class FolderCard extends ConsumerWidget {
             'Database deleted',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );

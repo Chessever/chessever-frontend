@@ -116,7 +116,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                     child: Icon(
                       Icons.menu_book_rounded,
                       size: 40.sp,
-                      color: kWhiteColor.withValues(alpha: 0.85),
+                      color: context.colors.textPrimary.withValues(alpha: 0.85),
                     ),
                   ),
                 ),
@@ -140,7 +140,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                   Text(
                     'by $ownerDisplayName',
                     style: AppTypography.textMdRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.6),
+                      color: context.colors.textPrimary.withValues(alpha: 0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -150,7 +150,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Text(
                   gameCount == 1 ? '1 game' : '$gameCount games',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
                 ),
                 SizedBox(height: 32.h),
@@ -294,25 +294,25 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
         decoration: BoxDecoration(
           color:
               isPrimary
-                  ? kWhiteColor.withValues(alpha: 0.15)
-                  : kWhiteColor.withValues(alpha: 0.07),
+                  ? context.colors.textPrimary.withValues(alpha: 0.15)
+                  : context.colors.textPrimary.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color:
                 isPrimary
-                    ? kWhiteColor.withValues(alpha: 0.3)
-                    : kWhiteColor.withValues(alpha: 0.1),
+                    ? context.colors.textPrimary.withValues(alpha: 0.3)
+                    : context.colors.textPrimary.withValues(alpha: 0.1),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 20.sp, color: kWhiteColor.withValues(alpha: 0.85)),
+            Icon(icon, size: 20.sp, color: context.colors.textPrimary.withValues(alpha: 0.85)),
             SizedBox(width: 10.w),
             Text(
               label,
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.85),
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
               ),
             ),
           ],
@@ -350,20 +350,20 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Icon(
                   Icons.menu_book_outlined,
                   size: 64.sp,
-                  color: kWhiteColor.withValues(alpha: 0.35),
+                  color: context.colors.textPrimary.withValues(alpha: 0.35),
                 ),
                 SizedBox(height: 12.h),
                 Text(
                   'Database not found',
                   style: AppTypography.textLgMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.85),
+                    color: context.colors.textPrimary.withValues(alpha: 0.85),
                   ),
                 ),
                 SizedBox(height: 6.h),
                 Text(
                   'This database may have been removed or the link is invalid.',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.55),
+                    color: context.colors.textPrimary.withValues(alpha: 0.55),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -419,7 +419,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                   child: Text(
                     error,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.6),
+                      color: context.colors.textPrimary.withValues(alpha: 0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),

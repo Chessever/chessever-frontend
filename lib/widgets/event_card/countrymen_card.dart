@@ -64,7 +64,7 @@ class CountrymenCardWidget extends ConsumerWidget {
                       TextSpan(
                         text: dropDownSelectedCountry.capitalizeEachWord(),
                       ),
-                      _buildDot(),
+                      _buildDot(context),
                       // TODO: Replace with actual value
                       TextSpan(text: "Ø 2700"),
                     ],
@@ -89,14 +89,14 @@ class CountrymenCardWidget extends ConsumerWidget {
     );
   }
 
-  WidgetSpan _buildDot() {
+  WidgetSpan _buildDot(BuildContext context) {
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
       child: Container(
         margin: EdgeInsets.symmetric(horizontal: 6.w),
         height: 6.h,
         width: 6.w,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: kWhiteColor70),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: context.colors.textPrimaryMuted),
       ),
     );
   }

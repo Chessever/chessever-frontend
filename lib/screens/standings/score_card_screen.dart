@@ -748,7 +748,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           Icon(
                             Icons.info_outline,
                             size: 40.ic,
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                           SizedBox(height: 12.h),
                           Text(
@@ -756,7 +756,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                 ? 'No games in this tournament'
                                 : 'No games available',
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(alpha: 0.7),
                             ),
                           ),
                           SizedBox(height: 6.h),
@@ -766,7 +766,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                 : 'Games will appear once they are played',
                             textAlign: TextAlign.center,
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.5),
+                              color: context.colors.textPrimary.withValues(alpha: 0.5),
                             ),
                           ),
                         ],
@@ -1037,13 +1037,13 @@ class _ProfileNavigationButtonState extends State<_ProfileNavigationButton> {
                   Icon(
                     Icons.person_outline_rounded,
                     size: 16.ic,
-                    color: kWhiteColor.withValues(alpha: 0.75),
+                    color: context.colors.textPrimary.withValues(alpha: 0.75),
                   ),
                   SizedBox(width: 7.w),
                   Text(
                     'Open Player Profile',
                     style: AppTypography.textSmBold.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.75),
+                      color: context.colors.textPrimary.withValues(alpha: 0.75),
                     ),
                   ),
                 ],
@@ -1513,7 +1513,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
           width: 36.w,
           height: 3.h,
           decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.3),
+            color: context.colors.textPrimary.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(2.br),
           ),
         ),

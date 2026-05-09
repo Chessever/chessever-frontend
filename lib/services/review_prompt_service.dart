@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/telegram_notification_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/review_prompt/review_prompt_dialogs.dart';
@@ -302,7 +303,7 @@ class ReviewPromptService {
           'ChessEver grows and improves with your feedback. Thank you!',
           style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
         ),
-        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
       ),

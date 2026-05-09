@@ -67,7 +67,7 @@ class RecentOpponentsList extends StatelessWidget {
             width: 24.w,
             child: Text(
               '$index',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor70),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimaryMuted),
             ),
           ),
 
@@ -109,7 +109,7 @@ class RecentOpponentsList extends StatelessWidget {
           // Rating
           Text(
             opponent.rating.toString(),
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor70),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimaryMuted),
           ),
         ],
       ),
@@ -120,7 +120,7 @@ class RecentOpponentsList extends StatelessWidget {
     // The indicator shows:
     // - Top half: player's color (white if playedAsWhite, black otherwise)
     // - Bottom half: result color (green=win, gray=draw, red=loss)
-    final resultColor = _getResultColor(opponent.result);
+    final resultColor = _getResultColor(context, opponent.result);
     final playerColor = opponent.playedAsWhite ? kWhiteColor : kBlackColor;
 
     return Container(
@@ -142,11 +142,11 @@ class RecentOpponentsList extends StatelessWidget {
     );
   }
 
-  Color _getResultColor(double result) {
+  Color _getResultColor(BuildContext context, double result) {
     if (result == 1.0) {
       return kGreenColor; // Win
     } else if (result == 0.5) {
-      return kWhiteColor70; // Draw
+      return context.colors.textPrimaryMuted; // Draw
     } else {
       return kRedColor; // Loss
     }

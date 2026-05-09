@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -25,7 +26,7 @@ class GamebaseFilterPanel extends HookConsumerWidget {
       decoration: BoxDecoration(
         color: kBlack2Color,
         border: Border(
-          bottom: BorderSide(color: kWhiteColor.withOpacity(0.05)),
+          bottom: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.05)),
         ),
       ),
       child: Column(
@@ -82,7 +83,7 @@ class _FilterHeader extends StatelessWidget {
             Icon(
               Icons.filter_list_rounded,
               size: 20.sp,
-              color: hasActiveFilters ? kWhiteColor : kSecondaryTextColor,
+              color: hasActiveFilters ? kWhiteColor : context.colors.textSecondary,
             ),
             SizedBox(width: 8.w),
             Text(
@@ -94,7 +95,7 @@ class _FilterHeader extends StatelessWidget {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withOpacity(0.12),
+                  color: context.colors.textPrimary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10.br),
                 ),
                 child: Text(
@@ -126,7 +127,7 @@ class _FilterHeader extends StatelessWidget {
               child: Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 20.sp,
-                color: kSecondaryTextColor,
+                color: context.colors.textSecondary,
               ),
             ),
           ],
@@ -208,7 +209,7 @@ class _SectionLabel extends StatelessWidget {
     return Text(
       label,
       style: AppTypography.textXsMedium.copyWith(
-        color: kSecondaryTextColor,
+        color: context.colors.textSecondary,
         letterSpacing: 0.5,
       ),
     );
@@ -364,7 +365,7 @@ class _PlayerColorChips extends ConsumerWidget {
           label: 'Black',
           icon: Icons.circle_outlined,
           isSelected: selectedColor == GamebasePlayerColor.black,
-          iconColor: kSecondaryTextColor,
+          iconColor: context.colors.textSecondary,
           onTap: () {
             ref
                 .read(gamebaseExplorerProvider.notifier)
@@ -400,11 +401,11 @@ class _FilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: isSelected ? kWhiteColor.withOpacity(0.12) : kBlack3Color,
+          color: isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : kBlack3Color,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(
             color:
-                isSelected ? kWhiteColor.withOpacity(0.25) : Colors.transparent,
+                isSelected ? context.colors.textPrimary.withValues(alpha: 0.25) : Colors.transparent,
             width: 1,
           ),
         ),
@@ -415,7 +416,7 @@ class _FilterChip extends StatelessWidget {
               icon,
               size: 16.sp,
               color:
-                  iconColor ?? (isSelected ? kWhiteColor : kSecondaryTextColor),
+                  iconColor ?? (isSelected ? kWhiteColor : context.colors.textSecondary),
             ),
             SizedBox(width: 6.w),
             Text(
@@ -455,7 +456,7 @@ class _RatingTierInputs extends ConsumerWidget {
               child: Text(
                 'Reset',
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kSecondaryTextColor,
+                  color: context.colors.textSecondary,
                 ),
               ),
             ),
@@ -492,7 +493,7 @@ class _PlayerSearchField extends HookConsumerWidget {
         decoration: BoxDecoration(
           color: kBlack3Color,
           borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: kWhiteColor.withOpacity(0.25)),
+          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.25)),
         ),
         child: Row(
           children: [
@@ -517,7 +518,7 @@ class _PlayerSearchField extends HookConsumerWidget {
                 child: Icon(
                   Icons.close_rounded,
                   size: 18.sp,
-                  color: kSecondaryTextColor,
+                  color: context.colors.textSecondary,
                 ),
               ),
             ),
@@ -586,12 +587,12 @@ class _PlayerSearchInput extends HookConsumerWidget {
             decoration: InputDecoration(
               hintText: 'Search player...',
               hintStyle: AppTypography.textSmRegular.copyWith(
-                color: kSecondaryTextColor.withOpacity(0.5),
+                color: context.colors.textSecondary.withOpacity(0.5),
               ),
               prefixIcon: Icon(
                 Icons.search_rounded,
                 size: 20.sp,
-                color: kSecondaryTextColor,
+                color: context.colors.textSecondary,
               ),
               filled: true,
               fillColor: kBlack3Color,
@@ -610,7 +611,7 @@ class _PlayerSearchInput extends HookConsumerWidget {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.br),
                 borderSide: BorderSide(
-                  color: kWhiteColor.withOpacity(0.25),
+                  color: context.colors.textPrimary.withValues(alpha: 0.25),
                   width: 1,
                 ),
               ),
@@ -637,7 +638,7 @@ class _PlayerSearchInput extends HookConsumerWidget {
                     child: Text(
                       'No players found',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kSecondaryTextColor,
+                        color: context.colors.textSecondary,
                       ),
                     ),
                   );
@@ -722,7 +723,7 @@ class _PlayerSearchResult extends StatelessWidget {
               child: Text(
                 player.fed,
                 style: AppTypography.textXsBold.copyWith(
-                  color: kSecondaryTextColor,
+                  color: context.colors.textSecondary,
                   fontSize: 8.f,
                 ),
               ),
@@ -745,7 +746,7 @@ class _PlayerSearchResult extends StatelessWidget {
                     Text(
                       '${player.highestRating}',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kSecondaryTextColor,
+                        color: context.colors.textSecondary,
                       ),
                     ),
                 ],

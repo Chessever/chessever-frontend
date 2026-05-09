@@ -118,7 +118,7 @@ class _NotifCategoryTileState extends State<NotifCategoryTile>
               child: Text(
                 widget.label,
                 style: AppTypography.textMdMedium.copyWith(
-                  color: widget.interactive ? kWhiteColor : kWhiteColor70,
+                  color: widget.interactive ? kWhiteColor : context.colors.textPrimaryMuted,
                   fontSize: 13.f,
                 ),
               ),
@@ -130,7 +130,7 @@ class _NotifCategoryTileState extends State<NotifCategoryTile>
                 (states) =>
                     states.contains(WidgetState.selected)
                         ? kPrimaryColor.withValues(alpha: 0.35)
-                        : kDividerColor.withValues(alpha: 0.5),
+                        : context.colors.divider.withValues(alpha: 0.5),
               ),
               onChanged: widget.interactive ? (_) => widget.onToggle() : null,
             ),

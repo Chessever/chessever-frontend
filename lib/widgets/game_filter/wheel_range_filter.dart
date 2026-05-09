@@ -112,7 +112,7 @@ class _WheelRangeFilterState extends State<WheelRangeFilter> {
           child: Text(
             '-',
             style: AppTypography.textSmMedium.copyWith(
-              color: kSecondaryTextColor.withValues(alpha: 0.5),
+              color: context.colors.textSecondary.withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -399,7 +399,7 @@ class _WheelInputState extends State<_WheelInput> {
                             final opacity = 0.5 + (0.5 * value);
                             final color =
                                 Color.lerp(
-                                  kSecondaryTextColor,
+                                  context.colors.textSecondary,
                                   kWhiteColor,
                                   value,
                                 )!;
@@ -437,7 +437,7 @@ class _WheelInputState extends State<_WheelInput> {
                               end: Alignment.bottomCenter,
                               colors: [
                                 kBlack2Color,
-                                kBlack2Color.withValues(alpha: 0),
+                                context.colors.surface.withValues(alpha: 0),
                               ],
                             ),
                           ),
@@ -452,7 +452,7 @@ class _WheelInputState extends State<_WheelInput> {
                               end: Alignment.topCenter,
                               colors: [
                                 kBlack2Color,
-                                kBlack2Color.withValues(alpha: 0),
+                                context.colors.surface.withValues(alpha: 0),
                               ],
                             ),
                           ),
@@ -468,7 +468,7 @@ class _WheelInputState extends State<_WheelInput> {
                   child: IgnorePointer(
                     child: Icon(
                       Icons.unfold_more_rounded,
-                      color: kSecondaryTextColor.withValues(alpha: 0.3),
+                      color: context.colors.textSecondary.withValues(alpha: 0.3),
                       size: 16.ic,
                     ),
                   ),

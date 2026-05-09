@@ -108,7 +108,7 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('No games found to save.'),
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           ),
         );
       }
@@ -210,7 +210,7 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
                               Text(
                                 'Choose how you want to save ${widget.playerKey.playerName}\'s games.',
                                 style: AppTypography.textSmRegular.copyWith(
-                                  color: kWhiteColor.withValues(alpha: 0.7),
+                                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                                 ),
                               ),
                               SizedBox(height: 24.h),
@@ -269,9 +269,9 @@ class _ActionTile extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
           decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.08),
+            color: context.colors.textPrimary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.12)),
+            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.12)),
           ),
           child: Row(
             children: [
@@ -308,7 +308,7 @@ class _ActionTile extends StatelessWidget {
                     Text(
                       subtitle,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.6),
+                        color: context.colors.textPrimary.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -316,7 +316,7 @@ class _ActionTile extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: kWhiteColor.withValues(alpha: 0.4),
+                color: context.colors.textPrimary.withValues(alpha: 0.4),
               ),
             ],
           ),

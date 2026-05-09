@@ -98,7 +98,7 @@ class _ExpandableFilterDropdownState<T>
               border: Border.all(
                 color:
                     _isExpanded
-                        ? kWhiteColor.withValues(alpha: 0.2)
+                        ? context.colors.textPrimary.withValues(alpha: 0.2)
                         : kDividerColor,
               ),
             ),
@@ -142,7 +142,7 @@ class _ExpandableFilterDropdownState<T>
                     color:
                         _isExpanded
                             ? kBlackColor.withValues(alpha: 0.7)
-                            : kSecondaryTextColor,
+                            : context.colors.textSecondary,
                   ),
                 ),
               ],

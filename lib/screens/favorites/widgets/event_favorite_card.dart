@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -93,13 +94,13 @@ class EventFavoriteCard extends ConsumerWidget {
                           Icon(
                             Icons.calendar_today,
                             size: 14.ic,
-                            color: kWhiteColor.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(alpha: 0.7),
                           ),
                           SizedBox(width: 4.w),
                           Text(
                             dates,
                             style: AppTypography.textSmRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(alpha: 0.7),
                             ),
                           ),
                         ],
@@ -113,17 +114,17 @@ class EventFavoriteCard extends ConsumerWidget {
                               height: 4.h,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: kWhiteColor.withValues(alpha: 0.5),
+                                color: context.colors.textPrimary.withValues(alpha: 0.5),
                               ),
                             ),
                             SizedBox(width: 8.w),
                           ],
-                          _buildTimeControlIcon(timeControl),
+                          _buildTimeControlIcon(context, timeControl),
                           SizedBox(width: 4.w),
                           Text(
                             timeControl,
                             style: AppTypography.textSmRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(alpha: 0.7),
                             ),
                           ),
                         ],
@@ -138,13 +139,13 @@ class EventFavoriteCard extends ConsumerWidget {
                           Icon(
                             Icons.trending_up,
                             size: 14.ic,
-                            color: kWhiteColor.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(alpha: 0.7),
                           ),
                           SizedBox(width: 4.w),
                           Text(
                             'Avg ELO: $maxAvgElo',
                             style: AppTypography.textSmRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(alpha: 0.7),
                             ),
                           ),
                         ],
@@ -235,7 +236,7 @@ class EventFavoriteCard extends ConsumerWidget {
           content: Text(
             'Are you sure you want to remove $eventTitle from your favorites?',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
           actions: [
@@ -244,7 +245,7 @@ class EventFavoriteCard extends ConsumerWidget {
               child: Text(
                 'Cancel',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
               ),
             ),
@@ -261,7 +262,7 @@ class EventFavoriteCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildTimeControlIcon(String timeControl) {
+  Widget _buildTimeControlIcon(BuildContext context, String timeControl) {
     final lowerTimeControl = timeControl.toLowerCase();
     String? assetPath;
 
@@ -277,7 +278,7 @@ class EventFavoriteCard extends ConsumerWidget {
       return Icon(
         Icons.timer,
         size: 14.ic,
-        color: kWhiteColor.withValues(alpha: 0.7),
+        color: context.colors.textPrimary.withValues(alpha: 0.7),
       );
     }
 

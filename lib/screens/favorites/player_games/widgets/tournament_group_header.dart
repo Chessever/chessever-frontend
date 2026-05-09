@@ -32,10 +32,10 @@ class TournamentGroupHeader extends StatelessWidget {
                 height: 56.h,
                 fit: BoxFit.cover,
                 errorBuilder:
-                    (context, error, stackTrace) => _buildPlaceholderImage(),
+                    (context, error, stackTrace) => _buildPlaceholderImage(context),
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
-                  return _buildPlaceholderImage();
+                  return _buildPlaceholderImage(context);
                 },
               ),
             ),
@@ -65,7 +65,7 @@ class TournamentGroupHeader extends StatelessWidget {
                     Text(
                       '${tournamentGroup.games.length} game${tournamentGroup.games.length == 1 ? '' : 's'}',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(alpha: 0.7),
                       ),
                     ),
 
@@ -74,7 +74,7 @@ class TournamentGroupHeader extends StatelessWidget {
                       Text(
                         ' • ',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(alpha: 0.5),
                         ),
                       ),
                       Flexible(
@@ -84,7 +84,7 @@ class TournamentGroupHeader extends StatelessWidget {
                             tournamentGroup.endDate,
                           ),
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.6),
+                            color: context.colors.textPrimary.withValues(alpha: 0.6),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -101,7 +101,7 @@ class TournamentGroupHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholderImage() {
+  Widget _buildPlaceholderImage(BuildContext context) {
     return Container(
       width: 56.w,
       height: 56.h,
@@ -111,7 +111,7 @@ class TournamentGroupHeader extends StatelessWidget {
       ),
       child: Icon(
         Icons.emoji_events,
-        color: kWhiteColor.withValues(alpha: 0.5),
+        color: context.colors.textPrimary.withValues(alpha: 0.5),
         size: 28.ic,
       ),
     );

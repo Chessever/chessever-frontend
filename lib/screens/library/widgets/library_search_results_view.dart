@@ -571,7 +571,7 @@ class _LoadMoreButton extends StatelessWidget {
                   ? 'Load more (${formatCompactCount(remainingCount!)} remaining)'
                   : 'Load more games',
               style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.9),
+                color: context.colors.textPrimary.withValues(alpha: 0.9),
               ),
             ),
           ],

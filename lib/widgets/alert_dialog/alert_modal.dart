@@ -160,7 +160,7 @@ Future<bool?> showSmoothConfirmDialog({
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.1), width: 1),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1), width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -178,7 +178,7 @@ Future<bool?> showSmoothConfirmDialog({
           Text(
             message,
             style: TextStyle(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
               fontSize: 14.sp,
             ),
             textAlign: TextAlign.center,
@@ -254,7 +254,7 @@ class _DialogButtonState extends State<_DialogButton> {
             border:
                 widget.isOutlined
                     ? Border.all(
-                      color: kWhiteColor.withValues(alpha: 0.3),
+                      color: context.colors.textPrimary.withValues(alpha: 0.3),
                       width: 1,
                     )
                     : null,

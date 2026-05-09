@@ -228,7 +228,7 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                   Text(
                         'You now have access to all features',
                         style: AppTypography.textMdMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
+                          color: context.colors.textPrimary.withValues(alpha: 0.7),
                         ),
                       )
                       .animate()
@@ -263,10 +263,10 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                             vertical: 12.sp,
                           ),
                           decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.1),
+                            color: context.colors.textPrimary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8.br),
                             border: Border.all(
-                              color: kWhiteColor.withValues(alpha: 0.2),
+                              color: context.colors.textPrimary.withValues(alpha: 0.2),
                               width: 1,
                             ),
                           ),
@@ -275,14 +275,14 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                             children: [
                               Icon(
                                 Icons.settings_outlined,
-                                color: kWhiteColor.withValues(alpha: 0.8),
+                                color: context.colors.textPrimary.withValues(alpha: 0.8),
                                 size: 18.ic,
                               ),
                               SizedBox(width: 8.w),
                               Text(
                                 'Manage subscription',
                                 style: AppTypography.textSmMedium.copyWith(
-                                  color: kWhiteColor.withValues(alpha: 0.8),
+                                  color: context.colors.textPrimary.withValues(alpha: 0.8),
                                 ),
                               ),
                             ],
@@ -299,7 +299,7 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                   Text(
                         'Tap anywhere to continue',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.4),
+                          color: context.colors.textPrimary.withValues(alpha: 0.4),
                         ),
                       )
                       .animate(

@@ -62,7 +62,7 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                   Divider(
                     height: 1,
                     thickness: 0.5,
-                    color: kWhiteColor.withValues(alpha: 0.05),
+                    color: context.colors.textPrimary.withValues(alpha: 0.05),
                   ),
                 ],
                 _AddSourceTile(
@@ -77,7 +77,7 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                 Divider(
                   height: 1,
                   thickness: 0.5,
-                  color: kWhiteColor.withValues(alpha: 0.05),
+                  color: context.colors.textPrimary.withValues(alpha: 0.05),
                 ),
                 _AddSourceTile(
                   icon: Icons.folder_open_rounded,
@@ -141,7 +141,7 @@ class _AddSourceTile extends StatelessWidget {
                   Text(
                     subtitle,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.55),
+                      color: context.colors.textPrimary.withValues(alpha: 0.55),
                     ),
                   ),
                 ],
@@ -149,7 +149,7 @@ class _AddSourceTile extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right_rounded,
-              color: kWhiteColor.withValues(alpha: 0.35),
+              color: context.colors.textPrimary.withValues(alpha: 0.35),
               size: 20.sp,
             ),
           ],

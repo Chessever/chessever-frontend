@@ -85,13 +85,13 @@ class NotifToggleTile extends StatelessWidget {
                 (states) =>
                     states.contains(WidgetState.selected)
                         ? kPrimaryColor
-                        : kWhiteColor.withValues(alpha: 0.6),
+                        : context.colors.textPrimary.withValues(alpha: 0.6),
               ),
               trackColor: WidgetStateProperty.resolveWith(
                 (states) =>
                     states.contains(WidgetState.selected)
                         ? kPrimaryColor.withValues(alpha: 0.35)
-                        : kDividerColor.withValues(alpha: 0.5),
+                        : context.colors.divider.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -107,7 +107,7 @@ class NotifToggleTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kDividerColor.withValues(alpha: 0.5)),
+        border: Border.all(color: context.colors.divider.withValues(alpha: 0.5)),
       ),
       child: content,
     );

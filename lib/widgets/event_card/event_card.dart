@@ -167,7 +167,7 @@ class EventCard extends ConsumerWidget {
                         dates: _compactDates(tourEventCardModel),
                         timeControlSpan: _timeControlSpan(
                           AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.9),
+                            color: context.colors.textPrimary.withValues(alpha: 0.9),
                           ),
                         ),
                         showLocation: false,
@@ -347,7 +347,7 @@ class _MetaLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseColor = onLight
-        ? kWhiteColor.withValues(alpha: 0.9)
+        ? context.colors.textPrimary.withValues(alpha: 0.9)
         : context.colors.textPrimaryMuted;
     final style = AppTypography.textXsMedium.copyWith(
       color: baseColor,
@@ -1036,7 +1036,7 @@ class _NextRoundLine extends ConsumerWidget {
     final showName = roundName.isNotEmpty;
 
     final baseColor = onLight
-        ? kWhiteColor.withValues(alpha: 0.9)
+        ? context.colors.textPrimary.withValues(alpha: 0.9)
         : context.colors.textPrimaryMuted;
 
     final textStyle = AppTypography.textXxsMedium.copyWith(

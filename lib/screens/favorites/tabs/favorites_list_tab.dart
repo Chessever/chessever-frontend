@@ -204,13 +204,13 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
           Icon(
             Icons.favorite_outline,
             size: 48.ic,
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
           SizedBox(height: 16.h),
           Text(
             title,
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
           Padding(
@@ -219,7 +219,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               subtitle,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -238,7 +238,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
           Text(
             'Error loading favorites',
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
           Padding(
@@ -247,7 +247,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               error,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -331,7 +331,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
           content: Text(
             'Are you sure you want to remove ${player.name} from your favorites?',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
           actions: [
@@ -340,7 +340,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               child: Text(
                 'Cancel',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
               ),
             ),

@@ -83,7 +83,7 @@ class _PremiumPaywallSheet extends HookWidget {
       builder: (BuildContext context, ScrollController scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: kBlack2Color.withValues(alpha: 0.98),
+            color: context.colors.surface.withValues(alpha: 0.98),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
           ),
           child: _PaywallContent(hostContext: hostContext),
@@ -214,7 +214,7 @@ class _PaywallContent extends HookConsumerWidget {
               width: 36.w,
               height: 4.h,
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.2),
+                color: context.colors.textPrimary.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(2.br),
               ),
             ),
@@ -228,12 +228,12 @@ class _PaywallContent extends HookConsumerWidget {
               child: Container(
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.08),
+                  color: context.colors.textPrimary.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.close_rounded,
-                  color: kWhiteColor.withValues(alpha: 0.6),
+                  color: context.colors.textPrimary.withValues(alpha: 0.6),
                   size: 20.ic,
                 ),
               ),
@@ -290,7 +290,7 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Restore purchases',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
                 ),
               ),
@@ -298,7 +298,7 @@ class _PaywallContent extends HookConsumerWidget {
               Text(
                 '·',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.3),
+                  color: context.colors.textPrimary.withValues(alpha: 0.3),
                 ),
               ),
               SizedBox(width: 12.w),
@@ -307,7 +307,7 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Have a code?',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
                 ),
               ),
@@ -323,9 +323,9 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Privacy Policy',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.4),
+                    color: context.colors.textPrimary.withValues(alpha: 0.4),
                     decoration: TextDecoration.underline,
-                    decorationColor: kWhiteColor.withValues(alpha: 0.4),
+                    decorationColor: context.colors.textPrimary.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -333,7 +333,7 @@ class _PaywallContent extends HookConsumerWidget {
               Text(
                 '|',
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.3),
+                  color: context.colors.textPrimary.withValues(alpha: 0.3),
                 ),
               ),
               SizedBox(width: 16.w),
@@ -342,9 +342,9 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Terms of Use',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.4),
+                    color: context.colors.textPrimary.withValues(alpha: 0.4),
                     decoration: TextDecoration.underline,
-                    decorationColor: kWhiteColor.withValues(alpha: 0.4),
+                    decorationColor: context.colors.textPrimary.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -390,7 +390,7 @@ class _FeatureItem extends StatelessWidget {
           Text(
             text,
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.9),
+              color: context.colors.textPrimary.withValues(alpha: 0.9),
             ),
           ),
         ],
@@ -520,12 +520,12 @@ class _PricingCard extends HookWidget {
     final showLoading = isLoading || price == null;
 
     final borderColor =
-        isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.1);
+        isSelected ? kPrimaryColor : context.colors.textPrimary.withValues(alpha: 0.1);
 
     final backgroundColor =
         isSelected
             ? kPrimaryColor.withValues(alpha: 0.15)
-            : kWhiteColor.withValues(alpha: 0.05);
+            : context.colors.textPrimary.withValues(alpha: 0.05);
 
     return GestureDetector(
       onTapDown: showLoading ? null : (_) => isPressed.value = true,
@@ -585,7 +585,7 @@ class _PricingCard extends HookWidget {
                               color:
                                   isSelected
                                       ? kWhiteColor
-                                      : kWhiteColor.withValues(alpha: 0.7),
+                                      : context.colors.textPrimary.withValues(alpha: 0.7),
                             ),
                           ),
                           if (isSelected)
@@ -630,7 +630,7 @@ class _PricingCard extends HookWidget {
                           width: 60.w,
                           height: 24.h,
                           decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.1),
+                            color: context.colors.textPrimary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4.br),
                           ),
                         )
@@ -651,7 +651,7 @@ class _PricingCard extends HookWidget {
                             Text(
                               period,
                               style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.6),
+                                color: context.colors.textPrimary.withValues(alpha: 0.6),
                               ),
                             ),
                           ],
@@ -664,7 +664,7 @@ class _PricingCard extends HookWidget {
                         Text(
                           subtitle!,
                           style: AppTypography.textXxsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -1004,7 +1004,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: kBlack2Color.withValues(alpha: 0.98),
+          color: context.colors.surface.withValues(alpha: 0.98),
           borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
         ),
         padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
@@ -1018,7 +1018,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 width: 36.w,
                 height: 4.h,
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.2),
+                  color: context.colors.textPrimary.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2.br),
                 ),
               ),
@@ -1032,7 +1032,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             Text(
               'Enter your code to apply your discount. The Play Store purchase sheet will open with the discounted price.',
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
+                color: context.colors.textPrimary.withValues(alpha: 0.6),
               ),
             ),
             SizedBox(height: 16.h),
@@ -1058,7 +1058,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
               decoration: InputDecoration(
                 hintText: 'XXXXXXXXXX',
                 hintStyle: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.25),
+                  color: context.colors.textPrimary.withValues(alpha: 0.25),
                   letterSpacing: 1.2,
                 ),
                 filled: true,
@@ -1066,13 +1066,13 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.br),
                   borderSide: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.08),
+                    color: context.colors.textPrimary.withValues(alpha: 0.08),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.br),
                   borderSide: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.08),
+                    color: context.colors.textPrimary.withValues(alpha: 0.08),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -1103,7 +1103,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
               child: Text(
                 'Cancel',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                 ),
               ),
             ),

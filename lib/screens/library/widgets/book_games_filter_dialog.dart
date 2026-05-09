@@ -261,7 +261,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
             onPressed: () => Navigator.of(context).pop(),
             icon: Icon(
               Icons.close_rounded,
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
               size: 20.ic,
             ),
           ),
@@ -436,7 +436,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
           border: InputBorder.none,
           isDense: true,

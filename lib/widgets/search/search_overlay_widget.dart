@@ -55,7 +55,7 @@ class SearchOverlay extends ConsumerWidget {
       decoration: BoxDecoration(
         color: kDarkGreyColor,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: kWhiteColor.withOpacity(0.1)),
+        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -243,7 +243,7 @@ class SearchOverlay extends ConsumerWidget {
     return Container(
       padding: EdgeInsets.all(8.sp),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: kWhiteColor.withOpacity(0.1))),
+        border: Border(bottom: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.1))),
       ),
       child: Row(
         children: [

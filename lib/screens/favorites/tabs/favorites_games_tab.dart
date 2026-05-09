@@ -1001,7 +1001,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                         .read(favoritesCombinedGamesProvider.notifier)
                         .refreshGames(),
             style: TextButton.styleFrom(
-              backgroundColor: kWhiteColor.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -1030,15 +1030,15 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  kWhiteColor.withValues(alpha: 0.15),
-                  kWhiteColor.withValues(alpha: 0.05),
+                  context.colors.textPrimary.withValues(alpha: 0.15),
+                  context.colors.textPrimary.withValues(alpha: 0.05),
                 ],
               ),
               borderRadius: BorderRadius.circular(20.br),
             ),
             child: Icon(
               Icons.sports_esports_outlined,
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
               size: 40.ic,
             ),
           ),
@@ -1071,20 +1071,20 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           Icon(
             Icons.search_off_outlined,
             size: 56.sp,
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
           SizedBox(height: 12.h),
           Text(
             'No results',
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.85),
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
             ),
           ),
           SizedBox(height: 6.h),
           Text(
             'Try a different filter',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.55),
+              color: context.colors.textPrimary.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1101,20 +1101,20 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           Icon(
             Icons.filter_alt_off_outlined,
             size: 56.sp,
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
           SizedBox(height: 12.h),
           Text(
             'No matching games',
             style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.85),
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
             ),
           ),
           SizedBox(height: 6.h),
           Text(
             'Try adjusting your filters',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.55),
+              color: context.colors.textPrimary.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1127,7 +1127,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.1),
+                color: context.colors.textPrimary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Text(
@@ -1201,7 +1201,7 @@ class _DateHeader extends StatelessWidget {
         decoration: BoxDecoration(
           color: kDarkGreyColor,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
+          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.1),
@@ -1240,7 +1240,7 @@ class _DateHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
                 size: 20.sp,
               ),
             ],

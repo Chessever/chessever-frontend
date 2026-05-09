@@ -207,7 +207,7 @@ class _SmoothBottomSheetWrapperState<T>
                                   width: 36.w,
                                   height: 4.h,
                                   decoration: BoxDecoration(
-                                    color: kWhiteColor.withValues(alpha: 0.3),
+                                    color: context.colors.textPrimary.withValues(alpha: 0.3),
                                     borderRadius: BorderRadius.circular(2.br),
                                   ),
                                 ),

@@ -33,7 +33,7 @@ class ChessMoveDisplay extends StatelessWidget {
     // Determine text color based on move impact
     // Priority: impact color > capture color > selected/unselected color
     // Impact colors are preserved even when selected
-    Color textColor = kWhiteColor70;
+    Color textColor = context.colors.textPrimaryMuted;
     if (moveImpact != null && moveImpact!.impact != MoveImpactType.normal) {
       // Use impact color for non-normal moves, regardless of selection
       textColor = moveImpact!.impact.color;
@@ -57,7 +57,7 @@ class ChessMoveDisplay extends StatelessWidget {
         decoration: BoxDecoration(
           color:
               isSelected
-                  ? kWhiteColor70.withValues(alpha: .4)
+                  ? context.colors.textPrimaryMuted.withValues(alpha: .4)
                   : Colors.transparent,
           borderRadius: BorderRadius.circular(4.sp),
           border: Border.all(

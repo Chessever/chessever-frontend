@@ -491,7 +491,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Icon(
             Icons.sports_esports_outlined,
             size: 48.ic,
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -502,7 +502,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Text(
             'Analytics will appear when games are available',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
             ),
             textAlign: TextAlign.center,
           ),
@@ -549,7 +549,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Text(
             'No games match the current filters.\nTap filter cards again to clear them.',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
             ),
             textAlign: TextAlign.center,
           ),
@@ -573,7 +573,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           ),
         )
         .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1500.ms, color: kWhiteColor.withValues(alpha: 0.1));
+        .shimmer(duration: 1500.ms, color: context.colors.textPrimary.withValues(alpha: 0.1));
   }
 
   Widget _buildErrorMessage(String error) {
@@ -599,7 +599,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Text(
             error,
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
             ),
             textAlign: TextAlign.center,
           ),
@@ -853,7 +853,7 @@ class _FilterActiveBanner extends StatelessWidget {
           Text(
             '$filteredGames of $totalGames',
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -1052,7 +1052,7 @@ countryCode,
                       Text(
                         'Federation',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(alpha: 0.5),
                         ),
                       ),
                     ],
@@ -1079,7 +1079,7 @@ countryCode,
                     Text(
                       'FIDE ID',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
+                        color: context.colors.textPrimary.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
@@ -1198,7 +1198,7 @@ class _RatingCardState extends State<_RatingCard> {
                     selectProgress,
                   )!;
               final labelColor =
-                  Color.lerp(kWhiteColor70, kPrimaryColor, selectProgress)!;
+                  Color.lerp(context.colors.textPrimaryMuted, kPrimaryColor, selectProgress)!;
               final ratingColor =
                   Color.lerp(kWhiteColor, kPrimaryColor, selectProgress)!;
 
@@ -1387,7 +1387,7 @@ class _OverallStatsSection extends StatelessWidget {
                         Expanded(
                           flex: resultStats.draws,
                           child: Container(
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                         ),
                       if (resultStats.losses > 0)
@@ -1419,7 +1419,7 @@ class _OverallStatsSection extends StatelessWidget {
                         Text(
                           'Total Games',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -1438,7 +1438,7 @@ class _OverallStatsSection extends StatelessWidget {
                         Text(
                           'W / D / L',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -1458,7 +1458,7 @@ class _OverallStatsSection extends StatelessWidget {
                           Text(
                             'Avg. Opponent',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.5),
+                              color: context.colors.textPrimary.withValues(alpha: 0.5),
                             ),
                           ),
                         ],
@@ -1588,7 +1588,7 @@ class _StatBoxState extends State<_StatBox> {
                         Text(
                           widget.label,
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.6),
+                            color: context.colors.textPrimary.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -1761,7 +1761,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                     selectProgress,
                   )!;
 
-              final defaultBorderColor = kWhiteColor.withValues(alpha: 0.08);
+              final defaultBorderColor = context.colors.textPrimary.withValues(alpha: 0.08);
               final selectedBorderColor = accentColor;
               final borderColor =
                   Color.lerp(
@@ -1812,7 +1812,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                               border: Border.all(
                                 color:
                                     Color.lerp(
-                                      kWhiteColor.withValues(alpha: 0.3),
+                                      context.colors.textPrimary.withValues(alpha: 0.3),
                                       accentColor,
                                       selectProgress,
                                     )!,
@@ -1851,7 +1851,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                       Text(
                         'Score',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(alpha: 0.5),
                         ),
                       ),
                       SizedBox(height: 8.h),
@@ -1878,7 +1878,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                           Text(
                             '${widget.games} games',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.4),
+                              color: context.colors.textPrimary.withValues(alpha: 0.4),
                             ),
                           ),
                         ],
@@ -1969,7 +1969,7 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
                     bgColor = kGreenColor;
                     text = 'W';
                   } else if (result == 0.5) {
-                    bgColor = kWhiteColor.withValues(alpha: 0.5);
+                    bgColor = context.colors.textPrimary.withValues(alpha: 0.5);
                     text = 'D';
                   } else {
                     bgColor = Colors.redAccent;
@@ -2151,9 +2151,9 @@ class _ExpandableGameCard extends ConsumerWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      kDividerColor.withValues(alpha: 0),
-                      kDividerColor.withValues(alpha: 0.5),
-                      kDividerColor.withValues(alpha: 0),
+                      context.colors.divider.withValues(alpha: 0),
+                      context.colors.divider.withValues(alpha: 0.5),
+                      context.colors.divider.withValues(alpha: 0),
                     ],
                   ),
                 ),
@@ -2186,7 +2186,7 @@ class _ExpandableGameCard extends ConsumerWidget {
                 child: Text(
                   'Tap card to view full game',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.4),
+                    color: context.colors.textPrimary.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -2465,7 +2465,7 @@ class _OpeningRepertoireSectionState
                         ? 'No openings found yet'
                         : 'No openings found for this color',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.6),
+                      color: context.colors.textPrimary.withValues(alpha: 0.6),
                     ),
                   ),
                 )
@@ -2504,13 +2504,13 @@ class _OpeningRepertoireSectionState
   Widget _buildFilterChip(_OpeningRepertoireFilter filter, String label) {
     final isSelected = _effectiveFilter == filter;
     final background =
-        isSelected ? kWhiteColor.withValues(alpha: 0.12) : kBlack2Color;
+        isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : kBlack2Color;
     final borderColor =
         isSelected
-            ? kWhiteColor.withValues(alpha: 0.6)
-            : kDividerColor.withValues(alpha: 0.6);
+            ? context.colors.textPrimary.withValues(alpha: 0.6)
+            : context.colors.divider.withValues(alpha: 0.6);
     final textColor =
-        isSelected ? kWhiteColor : kWhiteColor.withValues(alpha: 0.6);
+        isSelected ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.6);
 
     return GestureDetector(
       onTap: () => _onLocalFilterChanged(filter),
@@ -2633,7 +2633,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                   final nameColor =
                       Color.lerp(
                         activeNameColor,
-                        kWhiteColor.withValues(alpha: 0.22),
+                        context.colors.textPrimary.withValues(alpha: 0.22),
                         inactiveAmount,
                       )!;
 
@@ -2666,7 +2666,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                   final scoreColor =
                       Color.lerp(
                         activeScoreColor,
-                        kWhiteColor.withValues(alpha: 0.18),
+                        context.colors.textPrimary.withValues(alpha: 0.18),
                         inactiveAmount,
                       )!;
 
@@ -2737,7 +2737,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 style: AppTypography.textXsBold.copyWith(
                                   color: Color.lerp(
                                     kWhiteColor,
-                                    kWhiteColor.withValues(alpha: 0.35),
+                                    context.colors.textPrimary.withValues(alpha: 0.35),
                                     inactiveAmount,
                                   ),
                                   fontFamily: 'monospace',
@@ -2867,8 +2867,8 @@ class _WLDIndicator extends StatelessWidget {
         break;
       case 'D':
       default:
-        baseBgColor = kWhiteColor.withValues(alpha: 0.15);
-        baseTextColor = kWhiteColor.withValues(alpha: 0.7);
+        baseBgColor = context.colors.textPrimary.withValues(alpha: 0.15);
+        baseTextColor = context.colors.textPrimary.withValues(alpha: 0.7);
         break;
     }
 
@@ -2876,13 +2876,13 @@ class _WLDIndicator extends StatelessWidget {
     final bgColor =
         Color.lerp(
           baseBgColor,
-          kWhiteColor.withValues(alpha: 0.05),
+          context.colors.textPrimary.withValues(alpha: 0.05),
           dimAmount,
         )!;
     final textColor =
         Color.lerp(
           baseTextColor,
-          kWhiteColor.withValues(alpha: 0.2),
+          context.colors.textPrimary.withValues(alpha: 0.2),
           dimAmount,
         )!;
 

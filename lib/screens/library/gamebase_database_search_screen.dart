@@ -187,11 +187,11 @@ class _SearchBar extends StatelessWidget {
         decoration: BoxDecoration(
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
         ),
         child: Row(
           children: [
-            Icon(Icons.search, color: kWhiteColor.withValues(alpha: 0.7)),
+            Icon(Icons.search, color: context.colors.textPrimary.withValues(alpha: 0.7)),
             SizedBox(width: 10.w),
             Expanded(
               child: TextField(
@@ -203,7 +203,7 @@ class _SearchBar extends StatelessWidget {
                   isDense: true,
                   hintText: 'Search',
                   hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
                   border: InputBorder.none,
                 ),
@@ -215,13 +215,13 @@ class _SearchBar extends StatelessWidget {
                 child: Container(
                   padding: EdgeInsets.all(6.sp),
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.1),
+                    color: context.colors.textPrimary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.close,
                     size: 14.sp,
-                    color: kWhiteColor.withValues(alpha: 0.7),
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
                 ),
               ),
@@ -234,13 +234,13 @@ class _SearchBar extends StatelessWidget {
                   color:
                       hasActiveFilters
                           ? kPrimaryColor.withValues(alpha: 0.2)
-                          : kWhiteColor.withValues(alpha: 0.06),
+                          : context.colors.textPrimary.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(10.br),
                   border: Border.all(
                     color:
                         hasActiveFilters
                             ? kPrimaryColor.withValues(alpha: 0.55)
-                            : kWhiteColor.withValues(alpha: 0.08),
+                            : context.colors.textPrimary.withValues(alpha: 0.08),
                   ),
                 ),
                 child: Icon(
@@ -282,7 +282,7 @@ class _MetaRow extends StatelessWidget {
                 child: Text(
                   subtitle,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.7),
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
                 ),
               ),
@@ -515,7 +515,7 @@ class _PaginationBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         border: Border(
-          top: BorderSide(color: kWhiteColor.withValues(alpha: 0.06)),
+          top: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.06)),
         ),
       ),
       child: Row(
@@ -533,7 +533,7 @@ class _PaginationBar extends StatelessWidget {
           Text(
             rightText,
             style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -562,16 +562,16 @@ class _IconPillButton extends StatelessWidget {
           border: Border.all(
             color:
                 enabled
-                    ? kWhiteColor.withValues(alpha: 0.12)
-                    : kWhiteColor.withValues(alpha: 0.06),
+                    ? context.colors.textPrimary.withValues(alpha: 0.12)
+                    : context.colors.textPrimary.withValues(alpha: 0.06),
           ),
         ),
         child: Icon(
           icon,
           color:
               enabled
-                  ? kWhiteColor.withValues(alpha: 0.9)
-                  : kWhiteColor.withValues(alpha: 0.35),
+                  ? context.colors.textPrimary.withValues(alpha: 0.9)
+                  : context.colors.textPrimary.withValues(alpha: 0.35),
           size: 22.ic,
         ),
       ),
@@ -592,20 +592,20 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.search_off_outlined,
               size: 56.sp,
-              color: kWhiteColor.withValues(alpha: 0.4),
+              color: context.colors.textPrimary.withValues(alpha: 0.4),
             ),
             SizedBox(height: 12.h),
             Text(
               'No games found',
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.85),
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
               ),
             ),
             SizedBox(height: 6.h),
             Text(
               'Try another query or filters.',
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.55),
+                color: context.colors.textPrimary.withValues(alpha: 0.55),
               ),
               textAlign: TextAlign.center,
             ),
@@ -665,7 +665,7 @@ class _ErrorState extends StatelessWidget {
             Text(
               message,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
+                color: context.colors.textPrimary.withValues(alpha: 0.6),
               ),
               textAlign: TextAlign.center,
             ),

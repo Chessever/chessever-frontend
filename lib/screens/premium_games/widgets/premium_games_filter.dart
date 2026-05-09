@@ -113,7 +113,7 @@ class _PremiumGamesFilterDialogState
                                   onTap: () => Navigator.pop(context),
                                   child: Icon(
                                     Icons.close_rounded,
-                                    color: kWhiteColor.withValues(alpha: 0.6),
+                                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                                     size: 20.ic,
                                   ),
                                 ),
@@ -258,7 +258,7 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       title,
       style: AppTypography.textXsMedium.copyWith(
-        color: kWhiteColor.withValues(alpha: 0.8),
+        color: context.colors.textPrimary.withValues(alpha: 0.8),
         letterSpacing: 0.3,
       ),
     );

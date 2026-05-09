@@ -248,7 +248,7 @@ class _LoadingState extends StatelessWidget {
           Text(
             'Loading games...',
             style: AppTypography.textSmMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -292,7 +292,7 @@ class _ErrorState extends StatelessWidget {
           children: [
             Icon(
               Icons.error_outline_rounded,
-              color: kWhiteColor.withValues(alpha: 0.4),
+              color: context.colors.textPrimary.withValues(alpha: 0.4),
               size: 48.ic,
             ),
             SizedBox(height: 16.sp),
@@ -304,7 +304,7 @@ class _ErrorState extends StatelessWidget {
             Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
               textAlign: TextAlign.center,
             ),
@@ -372,7 +372,7 @@ class _EmptyState extends StatelessWidget {
               child: Center(
                 child: Icon(
                   icon,
-                  color: kWhiteColor.withValues(alpha: 0.4),
+                  color: context.colors.textPrimary.withValues(alpha: 0.4),
                   size: 36.ic,
                 ),
               ),
@@ -386,7 +386,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               subtitle,
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
               textAlign: TextAlign.center,
             ),

@@ -72,7 +72,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       SnackBar(
         content: Text(message, style: TextStyle(color: kWhiteColor)),
         backgroundColor:
-            backgroundColor ?? kBlack2Color.withValues(alpha: 0.95),
+            backgroundColor ?? context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -338,7 +338,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('FEN copied', style: TextStyle(color: kWhiteColor)),
-        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 1),
       ),
@@ -1025,7 +1025,7 @@ class _CastlingCheck extends StatelessWidget {
               onChanged: (v) => onChanged(v ?? false),
               activeColor: kWhiteColor,
               checkColor: kBackgroundColor,
-              side: BorderSide(color: kWhiteColor.withValues(alpha: 0.5)),
+              side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.5)),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             ),
@@ -1034,7 +1034,7 @@ class _CastlingCheck extends StatelessWidget {
           Text(
             label,
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.85),
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
             ),
           ),
         ],
@@ -1180,13 +1180,13 @@ class _TrayActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color:
               isActive
-                  ? kWhiteColor.withValues(alpha: 0.3)
+                  ? context.colors.textPrimary.withValues(alpha: 0.3)
                   : Colors.transparent,
           borderRadius: BorderRadius.circular(6.br),
           border:
               isActive
                   ? Border.all(
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                     width: 1.5,
                   )
                   : null,
@@ -1242,13 +1242,13 @@ class _TrayPiece extends StatelessWidget {
             decoration: BoxDecoration(
               color:
                   isSelected
-                      ? kWhiteColor.withValues(alpha: 0.3)
+                      ? context.colors.textPrimary.withValues(alpha: 0.3)
                       : Colors.transparent,
               borderRadius: BorderRadius.circular(6.br),
               border:
                   isSelected
                       ? Border.all(
-                        color: kWhiteColor.withValues(alpha: 0.6),
+                        color: context.colors.textPrimary.withValues(alpha: 0.6),
                         width: 1.5,
                       )
                       : null,
@@ -1286,7 +1286,7 @@ class _FenBar extends StatelessWidget {
             child: Text(
               fen,
               style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.85),
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
                 fontFamily: 'monospace',
               ),
               maxLines: 1,
@@ -1298,7 +1298,7 @@ class _FenBar extends StatelessWidget {
             onTap: onCopy,
             child: Icon(
               Icons.copy_rounded,
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
               size: 18.sp,
             ),
           ),

@@ -154,7 +154,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             'Clipboard is empty. Copy a PGN first.',
             style: TextStyle(color: kWhiteColor),
           ),
-          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -226,7 +226,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               'Database "${data.name}" created',
               style: TextStyle(color: kWhiteColor),
             ),
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -543,13 +543,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             Icon(
               Icons.search_off_outlined,
               size: 56.sp,
-              color: kWhiteColor.withValues(alpha: 0.4),
+              color: context.colors.textPrimary.withValues(alpha: 0.4),
             ),
             SizedBox(height: 12.h),
             Text(
               message,
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
             ),
           ],

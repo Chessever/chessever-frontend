@@ -148,7 +148,7 @@ class _AppButtonState extends State<AppButton> {
             border:
                 widget.isOutlined
                     ? Border.all(
-                      color: kWhiteColor.withValues(alpha: 0.3),
+                      color: context.colors.textPrimary.withValues(alpha: 0.3),
                       width: 1.5,
                     )
                     : null,

@@ -304,11 +304,15 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                 key: e2eKey(E2eIds.countrymenSearchField),
                                 controller: _searchController,
                                 focusNode: _focusNode,
-                                style: const TextStyle(color: kWhiteColor70),
-                                decoration: const InputDecoration(
+                                style: TextStyle(
+                                  color: context.colors.textPrimaryMuted,
+                                ),
+                                decoration: InputDecoration(
                                   hintText: 'Search',
 
-                                  hintStyle: TextStyle(color: kWhiteColor70),
+                                  hintStyle: TextStyle(
+                                    color: context.colors.textPrimaryMuted,
+                                  ),
                                   border: InputBorder.none,
                                   isDense: true,
                                 ),

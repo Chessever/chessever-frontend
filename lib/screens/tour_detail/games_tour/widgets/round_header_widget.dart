@@ -37,7 +37,7 @@ class RoundHeader extends StatelessWidget {
         decoration: BoxDecoration(
           color: kDarkGreyColor,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
+          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.1),
@@ -76,7 +76,7 @@ class RoundHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: kWhiteColor.withValues(alpha: 0.5),
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
                 size: 20.sp,
               ),
             ],

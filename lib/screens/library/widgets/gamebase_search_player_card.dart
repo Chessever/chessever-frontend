@@ -66,7 +66,7 @@ class _PlayerCardContent extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFF2E2E2E),
             borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
           ),
           child: Row(
             children: [
@@ -77,7 +77,7 @@ class _PlayerCardContent extends StatelessWidget {
                   color: const Color(0xFF1C1C1C),
                   borderRadius: BorderRadius.circular(12.br),
                   border: Border.all(
-                    color: kWhiteColor.withValues(alpha: 0.08),
+                    color: context.colors.textPrimary.withValues(alpha: 0.08),
                   ),
                 ),
                 alignment: Alignment.center,
@@ -102,7 +102,7 @@ class _PlayerCardContent extends StatelessWidget {
                               vertical: 2.h,
                             ),
                             decoration: BoxDecoration(
-                              color: kWhiteColor.withValues(alpha: 0.10),
+                              color: context.colors.textPrimary.withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(6.br),
                             ),
                             child: Text(
@@ -133,11 +133,11 @@ class _PlayerCardContent extends StatelessWidget {
                           Text(
                             fed,
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.55),
+                              color: context.colors.textPrimary.withValues(alpha: 0.55),
                             ),
                           ),
                         if (fed.isNotEmpty) SizedBox(width: 10.w),
-                        ..._buildRatings(),
+                        ..._buildRatings(context),
                       ],
                     ),
                   ],
@@ -146,13 +146,13 @@ class _PlayerCardContent extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.08),
+                  color: context.colors.textPrimary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10.br),
                 ),
                 child: Icon(
                   Icons.chevron_right_rounded,
                   size: 18.sp,
-                  color: kWhiteColor.withValues(alpha: 0.75),
+                  color: context.colors.textPrimary.withValues(alpha: 0.75),
                 ),
               ),
             ],
@@ -162,7 +162,7 @@ class _PlayerCardContent extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildRatings() {
+  List<Widget> _buildRatings(BuildContext context) {
     final ratings = <Widget>[];
 
     if (player.ratingClassical != null && player.ratingClassical! > 0) {
@@ -182,7 +182,7 @@ class _PlayerCardContent extends StatelessWidget {
         Text(
           'Unrated',
           style: AppTypography.textXsRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
         ),
       );
@@ -206,14 +206,14 @@ class _RatingChip extends StatelessWidget {
         Text(
           label,
           style: AppTypography.textXsBold.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
         ),
         SizedBox(width: 2.w),
         Text(
           value.toString(),
           style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.7),
+            color: context.colors.textPrimary.withValues(alpha: 0.7),
           ),
         ),
       ],

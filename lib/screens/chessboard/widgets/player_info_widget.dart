@@ -68,7 +68,7 @@ class PlayerInfoWidget extends StatelessWidget {
                 Text(
                   rating,
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.7),
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
                 ),
               ],

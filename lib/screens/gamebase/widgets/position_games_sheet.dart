@@ -680,7 +680,7 @@ class _PositionGamesFooter extends StatelessWidget {
           child: TextButton(
             onPressed: () => onLoadMore(),
             style: TextButton.styleFrom(
-              foregroundColor: kWhiteColor70,
+              foregroundColor: context.colors.textPrimaryMuted,
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
             ),
             child: Text(
@@ -760,10 +760,10 @@ class _Header extends StatelessWidget {
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
                 decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.08),
+                  color: context.colors.textPrimary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8.br),
                   border: Border.all(
-                    color: kWhiteColor.withValues(alpha: 0.12),
+                    color: context.colors.textPrimary.withValues(alpha: 0.12),
                   ),
                 ),
                 child: Row(
@@ -838,13 +838,13 @@ class _SortOptionTile extends StatelessWidget {
           color:
               isSelected
                   ? kPrimaryColor.withValues(alpha: 0.15)
-                  : kWhiteColor.withValues(alpha: 0.08),
+                  : context.colors.textPrimary.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color:
                 isSelected
                     ? kPrimaryColor.withValues(alpha: 0.3)
-                    : kWhiteColor.withValues(alpha: 0.12),
+                    : context.colors.textPrimary.withValues(alpha: 0.12),
           ),
         ),
         child: Row(
@@ -869,7 +869,7 @@ class _SortOptionTile extends StatelessWidget {
             if (!isSelected)
               Icon(
                 Icons.arrow_downward_rounded,
-                color: kWhiteColor.withValues(alpha: 0.2),
+                color: context.colors.textPrimary.withValues(alpha: 0.2),
                 size: 18.sp,
               ),
           ],

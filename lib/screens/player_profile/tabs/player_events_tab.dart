@@ -295,15 +295,15 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      kWhiteColor.withValues(alpha: 0.15),
-                      kWhiteColor.withValues(alpha: 0.05),
+                      context.colors.textPrimary.withValues(alpha: 0.15),
+                      context.colors.textPrimary.withValues(alpha: 0.05),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(20.br),
                 ),
                 child: Icon(
                   Icons.emoji_events_outlined,
-                  color: kWhiteColor.withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                   size: 40.ic,
                 ),
               ),
@@ -318,7 +318,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                 child: Text(
                   'This player has no recorded tournament participations.',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -347,7 +347,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           Text(
             'Loading tournaments...',
             style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -390,7 +390,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                 child: Text(
                   error,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -411,7 +411,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                     vertical: 12.h,
                   ),
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.1),
+                    color: context.colors.textPrimary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8.br),
                   ),
                   child: Text(
@@ -695,14 +695,14 @@ class _EventsListContent extends ConsumerWidget {
             Text(
               'No ${timeControl.displayText} events',
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.85),
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
               ),
             ),
             SizedBox(height: 6.h),
             Text(
               'This player has no ${timeControl.displayText.toLowerCase()} tournaments.\nTap the time control card to clear filter.',
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.55),
+                color: context.colors.textPrimary.withValues(alpha: 0.55),
               ),
               textAlign: TextAlign.center,
             ),
@@ -784,7 +784,7 @@ class _FilterActiveBanner extends StatelessWidget {
           Text(
             '$filteredEvents of $totalEvents',
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
+              color: context.colors.textPrimary.withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -888,7 +888,7 @@ class _StatBox extends StatelessWidget {
             Text(
               label,
               style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
+                color: context.colors.textPrimary.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -928,7 +928,7 @@ class _EventsPaginationFooter extends StatelessWidget {
             SizedBox(width: 10.w),
             Text(
               'Loading more events...',
-              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
             ),
           ],
         ),
@@ -942,7 +942,7 @@ class _EventsPaginationFooter extends StatelessWidget {
           child: Text(
             'Loaded $loadedEvents events',
             style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.45),
+              color: context.colors.textPrimary.withValues(alpha: 0.45),
             ),
           ),
         ),
@@ -954,7 +954,7 @@ class _EventsPaginationFooter extends StatelessWidget {
       child: Center(
         child: Text(
           'Loading more events...',
-          style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+          style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
         ),
       ),
     );
@@ -1003,13 +1003,13 @@ class _PlayerEventCard extends ConsumerWidget {
                         Icon(
                           Icons.sports_esports_outlined,
                           size: 14.sp,
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(alpha: 0.5),
                         ),
                         SizedBox(width: 4.w),
                         Text(
                           '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -1147,7 +1147,7 @@ class _FallbackEventCard extends StatelessWidget {
                                     child: Text(
                                       _formatDate(event.startDate!),
                                       style: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor70),
+                                          .copyWith(color: context.colors.textPrimaryMuted),
                                       overflow: TextOverflow.ellipsis,
                                       maxLines: 1,
                                     ),
@@ -1210,13 +1210,13 @@ class _FallbackEventCard extends StatelessWidget {
                         Icon(
                           Icons.sports_esports_outlined,
                           size: 14.sp,
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(alpha: 0.5),
                         ),
                         SizedBox(width: 4.w),
                         Text(
                           '${event.gamesPlayed} ${event.gamesPlayed == 1 ? 'game' : 'games'}',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
