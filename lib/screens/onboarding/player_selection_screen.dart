@@ -194,7 +194,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
     final maxWidth = ResponsiveHelper.isTablet ? 600.0 : double.infinity;
 
     return Container(
-      color: kBlackColor,
+      color: context.colors.background,
       child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),

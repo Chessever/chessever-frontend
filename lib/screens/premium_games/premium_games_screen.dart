@@ -362,10 +362,10 @@ class _EmptyState extends StatelessWidget {
               width: 80.sp,
               height: 80.sp,
               decoration: BoxDecoration(
-                color: kBlackColor,
+                color: context.colors.surface,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
+                  color: context.colors.divider,
                   width: 1,
                 ),
               ),
