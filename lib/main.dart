@@ -386,9 +386,26 @@ Future<void> _initializeRevenueCat() async {
             ? 'appl_hggBdZrNsqmMHEorxxxLYjyHTzz'
             : 'goog_ZmINjxirbMFvSsVMUfviZwrpfBY';
 
-    await Purchases.configure(PurchasesConfiguration(apiKey)..appUserID = null);
+    // If a Supabase session is already restored at boot, configure RC with
+    // that UID directly. Without this, RC starts anonymous ($RCAnonymousID:…)
+    // and any webhook fired before the auth-listener calls Purchases.logIn(uid)
+    // arrives with the anonymous id — the affiliate webhook then can't match
+    // it back to affiliate_referrals.referred_user_id and silently drops it.
+    String? bootUserId;
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      final user = Supabase.instance.client.auth.currentUser;
+      if (session != null && user != null && !session.isExpired) {
+        bootUserId = user.id;
+      }
+    } catch (_) {}
+
+    await Purchases.configure(
+      PurchasesConfiguration(apiKey)..appUserID = bootUserId,
+    );
     debugPrint(
-      '✅ RevenueCat initialized successfully for ${Platform.isIOS ? 'iOS' : 'Android'}',
+      '✅ RevenueCat initialized for ${Platform.isIOS ? 'iOS' : 'Android'} '
+      '(appUserID=${bootUserId ?? 'anonymous'})',
     );
 
     // Sync purchases at app startup (non-blocking)

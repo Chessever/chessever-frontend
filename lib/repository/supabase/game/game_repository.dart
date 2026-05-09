@@ -1301,7 +1301,7 @@ class GameRepository extends BaseRepository {
   /// Returns dates in descending order (most recent first).
   Future<List<DateTime>> getDistinctDatesForCountry({
     required String countryCode,
-    int minElo = 2000,
+    int minElo = 0,
     int limit = 30,
     int offset = 0,
   }) async {
@@ -1357,7 +1357,7 @@ class GameRepository extends BaseRepository {
   Future<List<Games>> getGamesByCountryAndDate({
     required String countryCode,
     required DateTime date,
-    int minElo = 2000,
+    int minElo = 0,
     String? eco,
   }) async {
     return handleApiCall(() async {
