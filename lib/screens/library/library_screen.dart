@@ -632,7 +632,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               child: Text(
                 error,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: const Color(0xFFA1A1AA), // Zinc 400
+                  color: context.colors.textSecondary, // Zinc 400
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -716,7 +716,7 @@ class _PlusButton extends StatelessWidget {
         width: 36.h,
         height: 36.h,
         decoration: BoxDecoration(
-          color: const Color(0xFF262626),
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(10.br),
         ),
         child: Center(
@@ -744,7 +744,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Decorative chess pattern - larger for background presence
-                _buildChessPatternVisual(),
+                _buildChessPatternVisual(context),
                 SizedBox(height: 32.h),
 
                 // Main headline
@@ -786,7 +786,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
     );
   }
 
-  Widget _buildChessPatternVisual() {
+  Widget _buildChessPatternVisual(BuildContext context) {
     const gridSize = 4;
     final squareSize = 28.w;
     final totalSize = squareSize * gridSize;
@@ -802,6 +802,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
                 left: col * squareSize,
                 top: row * squareSize,
                 child: _buildSquare(
+                  context: context,
                   row: row,
                   col: col,
                   size: squareSize,
@@ -814,6 +815,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
   }
 
   Widget _buildSquare({
+    required BuildContext context,
     required int row,
     required int col,
     required double size,
@@ -825,7 +827,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xFF3F3F46) : const Color(0xFF27272A),
+        color: isLight ? const Color(0xFF3F3F46) : context.colors.surfaceRecessed,
         borderRadius: _getCornerRadius(row, col, gridSize, 6.br),
       ),
     );
@@ -874,7 +876,7 @@ class _LibraryFolderLoadingCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1C),
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Row(
@@ -883,7 +885,7 @@ class _LibraryFolderLoadingCard extends StatelessWidget {
             width: iconSize,
             height: iconSize,
             decoration: BoxDecoration(
-              color: const Color(0xFF262626),
+              color: context.colors.surfaceRecessed,
               borderRadius: BorderRadius.circular(iconRadius),
             ),
           ),

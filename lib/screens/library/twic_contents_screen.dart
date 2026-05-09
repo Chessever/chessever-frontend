@@ -489,7 +489,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
               Text(
                 'Search failed',
                 style: AppTypography.textSmRegular.copyWith(
-                  color: const Color(0xFFA1A1AA),
+                  color: context.colors.textSecondary,
                 ),
               ),
             ],
@@ -504,7 +504,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         child: Text(
           'No games found',
           style: AppTypography.textSmRegular.copyWith(
-            color: const Color(0xFFA1A1AA),
+            color: context.colors.textSecondary,
           ),
         ),
       );
@@ -565,8 +565,8 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     return Skeletonizer(
       enabled: true,
       ignoreContainers: true,
-      effect: const ShimmerEffect(
-        baseColor: Color(0xFF2E2E32),
+      effect:  ShimmerEffect(
+        baseColor: context.colors.surfaceRecessed,
         highlightColor: Color(0xFF48484E),
         duration: Duration(milliseconds: 1200),
       ),
@@ -667,8 +667,8 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         child: Skeletonizer(
           enabled: true,
           ignoreContainers: true,
-          effect: const ShimmerEffect(
-            baseColor: Color(0xFF2E2E32),
+          effect:  ShimmerEffect(
+            baseColor: context.colors.surfaceRecessed,
             highlightColor: Color(0xFF48484E),
             duration: Duration(milliseconds: 1200),
           ),
@@ -920,7 +920,7 @@ class _SkeletonGameCard extends StatelessWidget {
   // Real outer: 0xFF2E2E2E
   static const _outerBg = Color(0xFF242426);
   static const _topBg = Color(0xFF38383C);
-  static const _bottomBg = Color(0xFF1C1C1E);
+  static const _bottomBg = Color(0xFF1A1A1C);
   static const _boneRadius = 4.0;
 
   @override

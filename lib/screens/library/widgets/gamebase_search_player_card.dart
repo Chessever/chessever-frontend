@@ -64,7 +64,7 @@ class _PlayerCardContent extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
           decoration: BoxDecoration(
-            color: const Color(0xFF2E2E2E),
+            color: context.colors.surfaceRecessed,
             borderRadius: BorderRadius.circular(14.br),
             border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
           ),

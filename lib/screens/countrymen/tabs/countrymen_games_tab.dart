@@ -309,9 +309,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF09090B),
+                color: context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               child: Row(
                 children: [
@@ -319,7 +319,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                   Icon(
                     Icons.search,
                     size: 20.sp,
-                    color: const Color(0xFFA1A1AA),
+                    color: context.colors.textSecondary,
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
@@ -334,7 +334,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                         isDense: true,
                         hintText: 'Search',
                         hintStyle: AppTypography.textSmRegular.copyWith(
-                          color: const Color(0xFFA1A1AA),
+                          color: context.colors.textSecondary,
                         ),
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.symmetric(vertical: 14.h),
@@ -348,7 +348,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                       child: Icon(
                         Icons.close,
                         size: 20.sp,
-                        color: const Color(0xFFA1A1AA),
+                        color: context.colors.textSecondary,
                       ),
                     ),
                     SizedBox(width: 8.w),
@@ -369,13 +369,13 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                 color:
                     hasActiveFilters
                         ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : const Color(0xFF09090B),
+                        : context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
                   color:
                       hasActiveFilters
                           ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : const Color(0xFF27272A),
+                          : context.colors.surfaceRecessed,
                 ),
               ),
               child: Stack(
@@ -387,7 +387,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                     color:
                         hasActiveFilters
                             ? const Color(0xFFEF4444)
-                            : const Color(0xFFA1A1AA),
+                            : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -425,17 +425,17 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color: const Color(0xFF09090B),
+                color: context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               child: Center(
                 child: SvgPicture.asset(
                   SvgAsset.chase_grid,
                   width: 20.sp,
                   height: 20.sp,
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xFFA1A1AA),
+                  colorFilter:  ColorFilter.mode(
+                    context.colors.textSecondary,
                     BlendMode.srcIn,
                   ),
                 ),
@@ -743,7 +743,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           Text(
             'Loading games...',
             style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFA1A1AA),
+              color: context.colors.textSecondary,
             ),
           ),
         ],
@@ -780,7 +780,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             child: Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -848,7 +848,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             child: Text(
               'No recent games found for players from $countryName',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),

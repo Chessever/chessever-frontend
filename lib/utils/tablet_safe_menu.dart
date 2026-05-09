@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -209,7 +210,7 @@ Future<T?> _showTabletOverlayMenu<T>({
                     shape is RoundedRectangleBorder
                         ? shape.borderRadius as BorderRadius?
                         : BorderRadius.circular(12),
-                color: color ?? const Color(0xFF2A2A2A),
+                color: color ?? context.colors.surfaceRecessed,
                 clipBehavior: Clip.antiAlias,
                 child: ConstrainedBox(
                   constraints: constraints ?? const BoxConstraints(),

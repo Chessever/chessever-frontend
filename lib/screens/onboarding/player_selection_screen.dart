@@ -837,7 +837,7 @@ class _PlayerTile extends HookWidget {
           margin: EdgeInsets.only(bottom: 6.sp),
           padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(14.br),
           ),
           child: Row(

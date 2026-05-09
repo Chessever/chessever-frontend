@@ -31,7 +31,7 @@ class NotifLeadTimeControl extends StatelessWidget {
       child: Container(
         height: 36.sp,
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(color: context.colors.divider.withValues(alpha: 0.4)),
         ),
@@ -48,7 +48,7 @@ class NotifLeadTimeControl extends StatelessWidget {
                 widthFactor: 0.5,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2A2A2A),
+                    color: context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(7.br),
                   ),
                 ),

@@ -392,9 +392,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF09090B),
+                color: context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               child: Row(
                 children: [
@@ -402,7 +402,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   Icon(
                     Icons.search,
                     size: 20.sp,
-                    color: const Color(0xFFA1A1AA),
+                    color: context.colors.textSecondary,
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
@@ -418,7 +418,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                         isDense: true,
                         hintText: 'Search',
                         hintStyle: AppTypography.textSmRegular.copyWith(
-                          color: const Color(0xFFA1A1AA),
+                          color: context.colors.textSecondary,
                         ),
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.symmetric(vertical: 14.h),
@@ -432,7 +432,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                       child: Icon(
                         Icons.close,
                         size: 20.sp,
-                        color: const Color(0xFFA1A1AA),
+                        color: context.colors.textSecondary,
                       ),
                     ),
                     SizedBox(width: 8.w),
@@ -454,13 +454,13 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                 color:
                     hasActiveFilters
                         ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : const Color(0xFF09090B),
+                        : context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
                   color:
                       hasActiveFilters
                           ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : const Color(0xFF27272A),
+                          : context.colors.surfaceRecessed,
                 ),
               ),
               child: Stack(
@@ -472,7 +472,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     color:
                         hasActiveFilters
                             ? const Color(0xFFEF4444)
-                            : const Color(0xFFA1A1AA),
+                            : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -510,17 +510,17 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color: const Color(0xFF09090B),
+                color: context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               child: Center(
                 child: SvgPicture.asset(
                   SvgAsset.chase_grid,
                   width: 20.sp,
                   height: 20.sp,
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xFFA1A1AA),
+                  colorFilter:  ColorFilter.mode(
+                    context.colors.textSecondary,
                     BlendMode.srcIn,
                   ),
                 ),
@@ -584,7 +584,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                       vertical: 8.h,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF27272A),
+                      color: context.colors.surfaceRecessed,
                       borderRadius: BorderRadius.circular(16.br),
                       border: Border.all(
                         color: const Color(0xFF3F3F46),
@@ -597,7 +597,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                         Icon(
                           Icons.close_rounded,
                           size: 14.sp,
-                          color: const Color(0xFFA1A1AA),
+                          color: context.colors.textSecondary,
                         ),
                         SizedBox(width: 4.w),
                         Text(
@@ -605,7 +605,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                           style: TextStyle(
                             fontSize: 13.sp,
                             fontWeight: FontWeight.w500,
-                            color: const Color(0xFFA1A1AA),
+                            color: context.colors.textSecondary,
                           ),
                         ),
                       ],
@@ -640,7 +640,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     color:
                         isSelected
                             ? const Color(0xFFEF4444)
-                            : const Color(0xFF27272A),
+                            : context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
                       color:
@@ -951,7 +951,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           Text(
             'Loading games...',
             style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFA1A1AA),
+              color: context.colors.textSecondary,
             ),
           ),
         ],
@@ -988,7 +988,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             child: Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1053,7 +1053,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             child: Text(
               'Your favorite players haven\'t played any games yet.',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),

@@ -3503,7 +3503,7 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
                   child: Material(
                     elevation: 8,
                     borderRadius: BorderRadius.circular(12),
-                    color: const Color(0xFF2A2A2A),
+                    color: context.colors.surfaceRecessed,
                     child: IntrinsicWidth(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -4293,7 +4293,7 @@ class _GameDropdownOverlay extends StatelessWidget {
                     maxHeight: availableHeight.clamp(180.0, 380.0),
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
                       color: context.colors.textPrimary.withValues(alpha: 0.08),
@@ -5922,7 +5922,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                         Expanded(
                           child: Container(
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1A1A1A),
+                              color: context.colors.surface,
                               borderRadius: BorderRadius.circular(12.sp),
                               border: Border.all(
                                 color: Colors.white.withValues(alpha: 0.06),
@@ -6005,7 +6005,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                       child: Container(
                         margin: EdgeInsets.symmetric(horizontal: 16.sp),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A1A),
+                          color: context.colors.surface,
                           borderRadius: BorderRadius.only(
                             topLeft: Radius.circular(12.sp),
                             topRight: Radius.circular(12.sp),
@@ -6157,7 +6157,7 @@ class _TabletPlayerCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color:
-            isCurrentPlayer ? const Color(0xFF1E1E1E) : const Color(0xFF141414),
+            isCurrentPlayer ? context.colors.surface : const Color(0xFF141414),
         borderRadius: BorderRadius.circular(10.sp),
         border: Border.all(
           color:

@@ -608,7 +608,7 @@ class _ImportFolderTile extends StatelessWidget {
           color:
               selected
                   ? kPrimaryColor.withValues(alpha: 0.18)
-                  : const Color(0xFF27272A),
+                  : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color:

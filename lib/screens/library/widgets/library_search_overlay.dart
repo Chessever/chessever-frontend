@@ -56,9 +56,9 @@ class LibrarySearchOverlay extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF09090B), // Zinc 950
+        color: context.colors.background, // Zinc 950
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: const Color(0xFF27272A)), // Zinc 800
+        border: Border.all(color: context.colors.surfaceRecessed), // Zinc 800
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.5),
@@ -75,8 +75,8 @@ class LibrarySearchOverlay extends ConsumerWidget {
             loading: () => _buildLoadingState(context, maxH),
             error: (e, _) => _buildErrorState(e.toString(), maxH),
             data: (result) {
-              if (result.isEmpty) return _buildEmptyState(maxH);
-              return _buildResultsList(result);
+              if (result.isEmpty) return _buildEmptyState(context, maxH);
+              return _buildResultsList(context, result);
             },
           ),
         ),
@@ -84,7 +84,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildResultsList(LibrarySearchResult result) {
+  Widget _buildResultsList(BuildContext context, LibrarySearchResult result) {
     // Prioritize sections: Books > Players > Saved Games > Database Games
     // This ensures players are always visible without scrolling
     return SingleChildScrollView(
@@ -95,7 +95,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
         children: [
           // 1. Books (folders) - highest priority, always shown first
           if (result.folders.isNotEmpty) ...[
-            _buildSectionHeader('Databases'),
+            _buildSectionHeader(context, 'Databases'),
             ...result.folders
                 .take(_maxBooksInDropdown)
                 .map((f) => _buildFolderTile(f)),
@@ -109,7 +109,11 @@ class LibrarySearchOverlay extends ConsumerWidget {
 
           // 2. Players - second priority, shown prominently
           if (result.players.isNotEmpty) ...[
-            _buildSectionHeader('Players', count: result.players.length),
+            _buildSectionHeader(
+              context,
+              'Players',
+              count: result.players.length,
+            ),
             ...result.players
                 .take(_maxPlayersInDropdown)
                 .map((p) => _buildPlayerTile(p)),
@@ -126,7 +130,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
 
           // 3. Saved Games (analyses) - user's own games
           if (result.analyses.isNotEmpty) ...[
-            _buildSectionHeader('Saved Games'),
+            _buildSectionHeader(context, 'Saved Games'),
             ...result.analyses
                 .take(_maxSavedGamesInDropdown)
                 .map((a) => _buildAnalysisTile(a)),
@@ -140,7 +144,11 @@ class LibrarySearchOverlay extends ConsumerWidget {
 
           // 4. Database Games - lowest priority in dropdown, scroll to see more
           if (result.games.isNotEmpty) ...[
-            _buildSectionHeader('Games', count: result.games.length),
+            _buildSectionHeader(
+              context,
+              'Games',
+              count: result.games.length,
+            ),
             ...result.games
                 .take(_maxGamesInDropdown)
                 .map((g) => _buildGameTile(g)),
@@ -159,7 +167,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title, {int? count}) {
+  Widget _buildSectionHeader(BuildContext context, String title, {int? count}) {
     return Padding(
       padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 8.h),
       child: Row(
@@ -167,7 +175,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
           Text(
             title,
             style: AppTypography.textXsBold.copyWith(
-              color: const Color(0xFFA1A1AA), // Zinc 400
+              color: context.colors.textSecondary, // Zinc 400
               letterSpacing: 0.5,
               fontWeight: FontWeight.w600,
             ),
@@ -177,13 +185,13 @@ class LibrarySearchOverlay extends ConsumerWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
               decoration: BoxDecoration(
-                color: const Color(0xFF27272A),
+                color: context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Text(
                 count.toString(),
                 style: AppTypography.textXsRegular.copyWith(
-                  color: const Color(0xFF71717A),
+                  color: context.colors.textTertiary,
                   fontSize: 10.sp,
                 ),
               ),
@@ -343,14 +351,14 @@ class LibrarySearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(double h) {
+  Widget _buildEmptyState(BuildContext context, double h) {
     return SizedBox(
       height: math.min(h, 160.h),
       child: Center(
         child: Text(
           'No results found',
           style: AppTypography.textSmRegular.copyWith(
-            color: const Color(0xFFA1A1AA),
+            color: context.colors.textSecondary,
           ),
         ),
       ),
@@ -408,16 +416,16 @@ class _PlayerResultTileState extends State<_PlayerResultTile> {
       onTap: widget.onTap,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
-        color: _isHovered ? const Color(0xFF27272A) : Colors.transparent,
+        color: _isHovered ? context.colors.surfaceRecessed : Colors.transparent,
         child: Row(
           children: [
             Container(
               width: 32.sp,
               height: 32.sp,
               decoration: BoxDecoration(
-                color: const Color(0xFF18181B),
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               alignment: Alignment.center,
               child: FederationFlag(
@@ -459,7 +467,7 @@ class _PlayerResultTileState extends State<_PlayerResultTile> {
                   Text(
                     widget.subtitle,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFA1A1AA),
+                      color: context.colors.textSecondary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -486,24 +494,24 @@ class _BaseResultTileState extends State<_BaseResultTile> {
       onTap: widget.onTap,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
-        color: _isHovered ? const Color(0xFF27272A) : Colors.transparent,
+        color: _isHovered ? context.colors.surfaceRecessed : Colors.transparent,
         child: Row(
           children: [
             Container(
               width: 32.sp,
               height: 32.sp,
               decoration: BoxDecoration(
-                color: const Color(0xFF18181B), // Zinc 900
+                color: context.colors.surface, // Zinc 900
                 shape:
                     widget.isRoundedIcon ? BoxShape.circle : BoxShape.rectangle,
                 borderRadius:
                     widget.isRoundedIcon ? null : BorderRadius.circular(6.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               child: Icon(
                 widget.icon,
                 size: 16.sp,
-                color: const Color(0xFFA1A1AA), // Zinc 400
+                color: context.colors.textSecondary, // Zinc 400
               ),
             ),
             SizedBox(width: 12.w),
@@ -523,7 +531,7 @@ class _BaseResultTileState extends State<_BaseResultTile> {
                   Text(
                     widget.subtitle,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFA1A1AA),
+                      color: context.colors.textSecondary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -594,16 +602,16 @@ class _GameResultTileState extends State<_GameResultTile> {
       onTap: widget.onTap,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
-        color: _isHovered ? const Color(0xFF27272A) : Colors.transparent,
+        color: _isHovered ? context.colors.surfaceRecessed : Colors.transparent,
         child: Row(
           children: [
             Container(
               width: 32.sp,
               height: 32.sp,
               decoration: BoxDecoration(
-                color: const Color(0xFF18181B),
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8.br),
-                border: Border.all(color: const Color(0xFF27272A)),
+                border: Border.all(color: context.colors.surfaceRecessed),
               ),
               alignment: Alignment.center,
               child: Column(
@@ -642,7 +650,7 @@ class _GameResultTileState extends State<_GameResultTile> {
                   Text(
                     metaLine.isNotEmpty ? metaLine : widget.subtitle,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFA1A1AA),
+                      color: context.colors.textSecondary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

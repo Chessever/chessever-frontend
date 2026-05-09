@@ -3,6 +3,8 @@
 library;
 
 import 'dart:math' as math;
+import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 
@@ -148,7 +150,7 @@ class ChessSheetDecoration {
   }) {
     return MaterialSheetDecoration(
       size: SheetSize.stretch,
-      color: const Color(0xFF1A1A1C).withValues(alpha: alpha),
+      color: kBlack2Color.withValues(alpha: alpha),
       borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
       clipBehavior: Clip.antiAlias,
     );
@@ -162,7 +164,7 @@ class ChessSheetDecoration {
   }) {
     return MaterialSheetDecoration(
       size: SheetSize.stretch,
-      color: const Color(0xFF1A1A1C).withValues(alpha: alpha),
+      color: kBlack2Color.withValues(alpha: alpha),
       borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
       clipBehavior: Clip.antiAlias,
     );

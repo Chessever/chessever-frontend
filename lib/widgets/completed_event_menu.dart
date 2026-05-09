@@ -1,5 +1,6 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 class CompletedEventMenu extends StatelessWidget {
@@ -22,8 +23,8 @@ class CompletedEventMenu extends StatelessWidget {
       enableDrag: true,
       builder:
           (context) => Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF0C0C0E),
+            decoration:  BoxDecoration(
+              color: context.colors.background,
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),

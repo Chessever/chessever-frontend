@@ -109,7 +109,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                   width: 80.h,
                   height: 80.h,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF262626),
+                    color: context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(22.br),
                   ),
                   child: Center(

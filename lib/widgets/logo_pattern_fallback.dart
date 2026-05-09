@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 /// A fallback widget that displays the app logo in a beautiful repeating pattern.
@@ -27,8 +28,8 @@ class LogoPatternFallback extends StatelessWidget {
 
     final pattern = Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A1A1A), Color(0xFF252525)],
+        gradient:  LinearGradient(
+          colors: [context.colors.surface, Color(0xFF252525)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

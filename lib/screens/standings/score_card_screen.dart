@@ -1458,9 +1458,9 @@ class _RatingDisplay extends ConsumerWidget {
                   () => Skeletonizer(
                     enabled: true,
                     ignoreContainers: true,
-                    effect: const ShimmerEffect(
-                      baseColor: Color(0xFF2A2A2A),
-                      highlightColor: Color(0xFF3A3A3A),
+                    effect:  ShimmerEffect(
+                      baseColor: context.colors.surfaceRecessed,
+                      highlightColor: context.colors.divider,
                     ),
                     child: Text(
                       '2400',

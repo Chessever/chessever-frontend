@@ -403,13 +403,13 @@ class _FavoritesCombinedGamesScreenState
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF27272A),
+                    color: context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(10.br),
                   ),
                   child: Text(
                     '$favoriteCount',
                     style: AppTypography.textXsMedium.copyWith(
-                      color: const Color(0xFFA1A1AA),
+                      color: context.colors.textSecondary,
                       height: 1.1,
                     ),
                   ),
@@ -431,7 +431,7 @@ class _FavoritesCombinedGamesScreenState
                     color:
                         hasActiveFilters
                             ? context.colors.textPrimary
-                            : const Color(0xFFA1A1AA),
+                            : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -486,14 +486,14 @@ class _FavoritesCombinedGamesScreenState
       padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.h),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF09090B),
+          color: context.colors.background,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: const Color(0xFF27272A)),
+          border: Border.all(color: context.colors.surfaceRecessed),
         ),
         child: Row(
           children: [
             SizedBox(width: 12.w),
-            Icon(Icons.search, size: 20.sp, color: const Color(0xFFA1A1AA)),
+            Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
@@ -507,7 +507,7 @@ class _FavoritesCombinedGamesScreenState
                   isDense: true,
                   hintText: 'Search',
                   hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
+                    color: context.colors.textSecondary,
                   ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(vertical: 14.h),
@@ -520,7 +520,7 @@ class _FavoritesCombinedGamesScreenState
                 child: Icon(
                   Icons.close,
                   size: 20.sp,
-                  color: const Color(0xFFA1A1AA),
+                  color: context.colors.textSecondary,
                 ),
               ),
               SizedBox(width: 8.w),
@@ -570,7 +570,7 @@ class _FavoritesCombinedGamesScreenState
                       vertical: 8.h,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF27272A),
+                      color: context.colors.surfaceRecessed,
                       borderRadius: BorderRadius.circular(16.br),
                       border: Border.all(
                         color: const Color(0xFF3F3F46),
@@ -583,7 +583,7 @@ class _FavoritesCombinedGamesScreenState
                         Icon(
                           Icons.close_rounded,
                           size: 14.sp,
-                          color: const Color(0xFFA1A1AA),
+                          color: context.colors.textSecondary,
                         ),
                         SizedBox(width: 4.w),
                         Text(
@@ -591,7 +591,7 @@ class _FavoritesCombinedGamesScreenState
                           style: TextStyle(
                             fontSize: 13.sp,
                             fontWeight: FontWeight.w500,
-                            color: const Color(0xFFA1A1AA),
+                            color: context.colors.textSecondary,
                           ),
                         ),
                       ],
@@ -620,7 +620,7 @@ class _FavoritesCombinedGamesScreenState
                     color:
                         isSelected
                             ? const Color(0xFFEF4444)
-                            : const Color(0xFF27272A),
+                            : context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
                       color:
@@ -744,7 +744,7 @@ class _FavoritesCombinedGamesScreenState
                             Text(
                               'Loading more games...',
                               style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF71717A),
+                                color: context.colors.textTertiary,
                               ),
                             ),
                           ],
@@ -796,14 +796,14 @@ class _FavoritesCombinedGamesScreenState
           Text(
             'Loading games...',
             style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFA1A1AA),
+              color: context.colors.textSecondary,
             ),
           ),
           SizedBox(height: 8.h),
           Text(
             'Fetching from multiple sources',
             style: AppTypography.textXsRegular.copyWith(
-              color: const Color(0xFF71717A),
+              color: context.colors.textTertiary,
             ),
           ),
         ],
@@ -840,7 +840,7 @@ class _FavoritesCombinedGamesScreenState
             child: Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -905,7 +905,7 @@ class _FavoritesCombinedGamesScreenState
             child: Text(
               'Your favorite players haven\'t played any games yet, or add some favorite players first.',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),

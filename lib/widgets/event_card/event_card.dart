@@ -91,9 +91,9 @@ class EventCard extends ConsumerWidget {
 
     return Skeletonizer(
       enabled: nextRoundLoading,
-      effect: const ShimmerEffect(
-        baseColor: Color(0xFF2A2A2A),
-        highlightColor: Color(0xFF3A3A3A),
+      effect:  ShimmerEffect(
+        baseColor: context.colors.surfaceRecessed,
+        highlightColor: context.colors.divider,
         duration: Duration(seconds: 1),
       ),
       child: body,
@@ -474,9 +474,9 @@ class _EventImage extends ConsumerWidget {
                 placeholder:
                     (context, url) => Skeletonizer(
                       enabled: true,
-                      effect: const ShimmerEffect(
-                        baseColor: Color(0xFF2A2A2A),
-                        highlightColor: Color(0xFF3A3A3A),
+                      effect:  ShimmerEffect(
+                        baseColor: context.colors.surfaceRecessed,
+                        highlightColor: context.colors.divider,
                         duration: Duration(seconds: 1),
                       ),
                       child: Container(color: context.colors.surfaceRecessed),
@@ -674,19 +674,19 @@ class _TabletEventBackground extends ConsumerWidget {
         return _buildFlagBackground(imageData.fallbackCountryCode);
       },
       loading: () => _buildLoadingBackground(),
-      error: (_, __) => const LogoPatternFallback(),
+      error: (_, __) =>  LogoPatternFallback(),
     );
   }
 
   Widget _buildLoadingBackground() {
-    return Skeletonizer(
+    return const Skeletonizer(
       enabled: true,
-      effect: const ShimmerEffect(
+      effect: ShimmerEffect(
         baseColor: Color(0xFF2A2A2A),
         highlightColor: Color(0xFF3A3A3A),
         duration: Duration(seconds: 1),
       ),
-      child: Container(color: kLightBlack),
+      child: ColoredBox(color: kLightBlack),
     );
   }
 

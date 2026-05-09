@@ -106,7 +106,7 @@ class _PlayerCardState extends State<PlayerCard>
   @override
   Widget build(BuildContext context) {
     final Color backgroundColor =
-        widget.index.isOdd ? context.colors.surface : Color(0xff111111);
+        widget.index.isOdd ? context.colors.surface : context.colors.surface;
     BorderRadius? borderRadius;
     if (widget.isFirst) {
       borderRadius = BorderRadius.only(

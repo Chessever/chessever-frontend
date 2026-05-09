@@ -885,7 +885,7 @@ class _DropdownOverlay extends ConsumerWidget {
                       maxHeight: availableHeight.clamp(100.0, 350.0),
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
+                      color: context.colors.surface,
                       borderRadius: BorderRadius.circular(16.br),
                       border: Border.all(
                         color: context.colors.textPrimary.withValues(alpha: 0.08),

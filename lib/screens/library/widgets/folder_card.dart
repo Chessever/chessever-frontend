@@ -61,7 +61,7 @@ class FolderCard extends ConsumerWidget {
       child: Container(
         width: 140.w,
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1C),
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
         ),
         child: Padding(
@@ -74,7 +74,7 @@ class FolderCard extends ConsumerWidget {
                 width: 34.h,
                 height: 34.h,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF262626),
+                  color: context.colors.surfaceRecessed,
                   borderRadius: BorderRadius.circular(10.br),
                 ),
                 child: Center(
@@ -159,7 +159,7 @@ class FolderCard extends ConsumerWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1C),
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
         ),
         child: Row(
@@ -173,7 +173,7 @@ class FolderCard extends ConsumerWidget {
                   width: iconSize,
                   height: iconSize,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF262626),
+                    color: context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(iconRadius),
                   ),
                   child: Center(
@@ -193,10 +193,10 @@ class FolderCard extends ConsumerWidget {
                       width: 18.sp,
                       height: 18.sp,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF262626),
+                        color: context.colors.surfaceRecessed,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFF1A1A1C),
+                          color: context.colors.surface,
                           width: 2,
                         ),
                       ),
@@ -870,7 +870,7 @@ class _FolderOverlayMenuState extends State<_FolderOverlayMenu>
                 child: Container(
                   width: menuWidth,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF111111),
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(12.br),
                     boxShadow: const [
                       BoxShadow(
@@ -946,7 +946,7 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
       onTap: widget.onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: _isPressed ? const Color(0xFF1A1A1C) : const Color(0xFF111111),
+          color: _isPressed ? context.colors.surface : context.colors.surface,
           border:
               widget.position != _MenuItemPosition.top
                   ? const Border(
@@ -964,7 +964,7 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
               width: 24.sp,
               height: 24.sp,
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1C),
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(3.br),
               ),
               child: Center(
