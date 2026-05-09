@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/search/search_result_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
@@ -72,10 +73,9 @@ class _SearchResultTileState extends State<SearchResultTile>
                       vertical: 4.h,
                     ),
                     decoration: BoxDecoration(
-                      color:
-                          _isHovered
-                              ? Colors.white.withValues(alpha: 0.05)
-                              : Colors.transparent,
+                      color: _isHovered
+                          ? context.colors.surfaceRecessed
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12.br),
                       border: Border.all(
                         color:
@@ -98,7 +98,7 @@ class _SearchResultTileState extends State<SearchResultTile>
         Container(
           margin: EdgeInsets.symmetric(vertical: 4.h),
           height: 1,
-          color: Colors.white.withValues(alpha: 0.06),
+          color: context.colors.divider,
         ),
       ],
     );
