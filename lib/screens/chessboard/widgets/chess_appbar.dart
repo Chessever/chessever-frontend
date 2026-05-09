@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -40,7 +41,9 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
           Expanded(
             child: Text(
               title,
-              style: AppTypography.textSmBold.copyWith(color: Colors.white),
+              style: AppTypography.textSmBold.copyWith(
+                color: context.colors.textPrimary,
+              ),
               maxLines: 1,
             ),
           ),
