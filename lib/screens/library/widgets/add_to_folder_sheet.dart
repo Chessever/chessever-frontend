@@ -69,7 +69,7 @@ class _AddToFolderSheetShell extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(alpha: 0.97, borderRadius: 28.sp),
+        decoration: ChessSheetDecoration.dark(context, alpha: 0.97, borderRadius: 28.sp),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
