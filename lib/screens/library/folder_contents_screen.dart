@@ -113,7 +113,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Removed from "${widget.folder.name}"',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -143,7 +143,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Failed to remove: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -193,7 +193,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           SnackBar(
             content: Text(
               'Could not open file picker: $e',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,
@@ -225,7 +225,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Clipboard is empty. Copy a PGN first.',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -241,7 +241,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Clipboard does not contain a valid PGN',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor.withValues(alpha: 0.9),
           behavior: SnackBarBehavior.floating,
@@ -285,7 +285,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Sub-database "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -297,7 +297,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Failed to create sub-database: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -330,7 +330,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Renamed to "$name"',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -343,7 +343,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Failed to rename: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -400,7 +400,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             error != null
                 ? 'Export failed: $error'
                 : 'Nothing to export in this database',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -444,7 +444,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Share failed: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -642,7 +642,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             Expanded(
               child: TextField(
                 controller: _searchController,
-                style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
                 decoration: InputDecoration(
                   hintText: 'Search games...',
                   hintStyle: AppTypography.textSmRegular.copyWith(
@@ -811,10 +811,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             },
           );
         },
-        loading:
-            () => const Center(
-              child: CircularProgressIndicator(color: kWhiteColor),
-            ),
+        loading: () => Center(
+          child: CircularProgressIndicator(color: context.colors.textPrimary),
+        ),
         error:
             (e, _) => Center(
               child: Text(
@@ -839,7 +838,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           SizedBox(height: 16.h),
           Text(
             'This database is empty',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           if (!_isSubscribed) ...[
             SizedBox(height: 8.h),
@@ -868,7 +867,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           SizedBox(height: 16.h),
           Text(
             'No matches found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Text(

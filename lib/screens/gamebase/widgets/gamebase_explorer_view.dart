@@ -105,7 +105,9 @@ class GamebaseExplorerView extends HookConsumerWidget {
               ),
 
             // Moves Table
-            Expanded(child: _buildContent(ref, gamebaseState, currentPosition)),
+            Expanded(
+              child: _buildContent(context, ref, gamebaseState, currentPosition),
+            ),
           ],
         );
       },
@@ -113,12 +115,15 @@ class GamebaseExplorerView extends HookConsumerWidget {
   }
 
   Widget _buildContent(
+    BuildContext context,
     WidgetRef ref,
     GamebaseExplorerState gamebaseState,
     Position currentPosition,
   ) {
     if (gamebaseState.isLoading && gamebaseState.moveAggregates.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: kWhiteColor));
+      return Center(
+        child: CircularProgressIndicator(color: context.colors.textPrimary),
+      );
     }
 
     // While the overlay is mounting, there is a brief moment where the provider
@@ -455,7 +460,7 @@ class _GamebaseEmptyState extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 6.h),
           Text(
@@ -469,10 +474,10 @@ class _GamebaseEmptyState extends StatelessWidget {
             SizedBox(height: 14.h),
             TextButton.icon(
               onPressed: primaryAction!.onPressed,
-              icon: Icon(primaryAction!.icon, size: 18.sp, color: kWhiteColor),
+              icon: Icon(primaryAction!.icon, size: 18.sp, color: context.colors.textPrimary),
               label: Text(
                 primaryAction!.label,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
               style: TextButton.styleFrom(
                 backgroundColor: context.colors.textPrimary.withValues(alpha: 0.08),
@@ -550,7 +555,7 @@ class _MoveRow extends ConsumerWidget {
       ),
     );
 
-    final sanStyle = AppTypography.textSmBold.copyWith(color: kWhiteColor);
+    final sanStyle = AppTypography.textSmBold.copyWith(color: context.colors.textPrimary);
 
     return InkWell(
       onTap: onPressed,

@@ -315,7 +315,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         SnackBar(
           content: Text(
             'Selected ${allFilteredIds.length} filtered games',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -327,7 +327,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         SnackBar(
           content: Text(
             'Failed to select all games: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -361,7 +361,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         SnackBar(
           content: Text(
             'Select at least one game',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -1343,7 +1343,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               border: Border.all(
                 color:
                     isSelected
-                        ? kWhiteColor
+                        ? context.colors.textPrimary
                         : context.colors.textPrimary.withValues(alpha: 0.24),
                 width: 1.2,
               ),
@@ -1482,7 +1482,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -1513,7 +1513,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -1549,7 +1549,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -1609,7 +1609,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ),
@@ -1687,7 +1687,7 @@ class _SelectionActionButton extends StatelessWidget {
               icon,
               size: 16.sp,
               color:
-                  enabled ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.45),
+                  enabled ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.45),
             ),
             SizedBox(width: 6.w),
             Flexible(
@@ -1696,7 +1696,7 @@ class _SelectionActionButton extends StatelessWidget {
                 style: AppTypography.textSmBold.copyWith(
                   color:
                       enabled
-                          ? kWhiteColor
+                          ? context.colors.textPrimary
                           : context.colors.textPrimary.withValues(alpha: 0.45),
                 ),
                 maxLines: 1,

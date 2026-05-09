@@ -496,7 +496,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           SizedBox(height: 12.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 4.h),
           Text(
@@ -543,7 +543,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           SizedBox(height: 12.h),
           Text(
             'No $filterName games',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 4.h),
           Text(
@@ -593,7 +593,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           SizedBox(height: 12.h),
           Text(
             'Failed to load analytics',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 4.h),
           Text(
@@ -847,7 +847,7 @@ class _FilterActiveBanner extends StatelessWidget {
           Expanded(
             child: Text(
               _buildFilterDescription(),
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
           Text(
@@ -1200,7 +1200,7 @@ class _RatingCardState extends State<_RatingCard> {
               final labelColor =
                   Color.lerp(context.colors.textPrimaryMuted, kPrimaryColor, selectProgress)!;
               final ratingColor =
-                  Color.lerp(kWhiteColor, kPrimaryColor, selectProgress)!;
+                  Color.lerp(context.colors.textPrimary, kPrimaryColor, selectProgress)!;
 
               // Subtle scale bump when selected
               final selectScale = 1.0 + (selectProgress * 0.03);
@@ -1307,7 +1307,7 @@ class _OverallStatsSection extends StatelessWidget {
       children: [
         Text(
           'Overall Performance',
-          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -1623,7 +1623,7 @@ class _ColorPerformanceSection extends StatelessWidget {
       children: [
         Text(
           'Performance by Color',
-          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
         ),
         SizedBox(height: 12.h),
         Row(
@@ -1828,7 +1828,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                               overflow: TextOverflow.ellipsis,
                               style: AppTypography.textSmMedium.copyWith(
                                 color: Color.lerp(
-                                  kWhiteColor,
+                                  context.colors.textPrimary,
                                   accentColor,
                                   selectProgress * 0.5,
                                 ),
@@ -1842,7 +1842,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                         '${(widget.score * 100).toStringAsFixed(1)}%',
                         style: AppTypography.textXlBold.copyWith(
                           color: Color.lerp(
-                            kWhiteColor,
+                            context.colors.textPrimary,
                             accentColor,
                             selectProgress * 0.3,
                           ),
@@ -1945,7 +1945,7 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
       children: [
         Text(
           'Recent Form (Last ${widget.form.length} games)',
-          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -2093,7 +2093,7 @@ class _AnimatedFormChipState extends State<_AnimatedFormChip> {
                     child: Text(
                       widget.text,
                       style: AppTypography.textXsBold.copyWith(
-                        color: widget.isDraw ? kBlackColor : kWhiteColor,
+                        color: widget.isDraw ? kBlackColor : context.colors.textPrimary,
                       ),
                     ),
                   ),
@@ -2425,7 +2425,7 @@ class _OpeningRepertoireSectionState
       children: [
         Text(
           'Opening Repertoire',
-          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -2510,7 +2510,7 @@ class _OpeningRepertoireSectionState
             ? context.colors.textPrimary.withValues(alpha: 0.6)
             : context.colors.divider.withValues(alpha: 0.6);
     final textColor =
-        isSelected ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.6);
+        isSelected ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.6);
 
     return GestureDetector(
       onTap: () => _onLocalFilterChanged(filter),
@@ -2626,7 +2626,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                   // Name color: white when active, dimmed when inactive
                   final activeNameColor =
                       Color.lerp(
-                        kWhiteColor,
+                        context.colors.textPrimary,
                         kPrimaryColor,
                         selectProgress * 0.6,
                       )!;
@@ -2736,7 +2736,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 textAlign: TextAlign.center,
                                 style: AppTypography.textXsBold.copyWith(
                                   color: Color.lerp(
-                                    kWhiteColor,
+                                    context.colors.textPrimary,
                                     context.colors.textPrimary.withValues(alpha: 0.35),
                                     inactiveAmount,
                                   ),

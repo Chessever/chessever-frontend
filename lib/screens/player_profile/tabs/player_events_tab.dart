@@ -310,7 +310,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               SizedBox(height: 20.h),
               Text(
                 'No tournaments found',
-                style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
               ),
               SizedBox(height: 8.h),
               Padding(
@@ -382,7 +382,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               SizedBox(height: 16.h),
               Text(
                 'Failed to load tournaments',
-                style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
               ),
               SizedBox(height: 8.h),
               Padding(
@@ -778,7 +778,7 @@ class _FilterActiveBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Showing ${timeControl.displayText} events only',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
           Text(
@@ -812,7 +812,7 @@ class _StatsHeader extends StatelessWidget {
       children: [
         Text(
           'Tournament Statistics',
-          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -846,7 +846,7 @@ class _StatsHeader extends StatelessWidget {
         SizedBox(height: 24.h),
         Text(
           'Participated Events',
-          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
         ),
         SizedBox(height: 12.h),
       ],

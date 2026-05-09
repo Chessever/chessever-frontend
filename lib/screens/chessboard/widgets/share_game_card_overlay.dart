@@ -890,7 +890,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           Text(
             'Eval Bar',
             style: TextStyle(
-              color: _showEvalBar ? kWhiteColor : context.colors.textPrimaryMuted,
+              color: _showEvalBar ? context.colors.textPrimary : context.colors.textPrimaryMuted,
               fontSize: 13.sp,
               fontWeight: FontWeight.w500,
             ),
@@ -963,12 +963,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 18.sp, color: isPrimary ? kWhiteColor : kWhiteColor),
+          Icon(icon, size: 18.sp, color: isPrimary ? context.colors.textPrimary : context.colors.textPrimary),
           SizedBox(width: 8.w),
           Text(
             label,
             style: TextStyle(
-              color: isPrimary ? kWhiteColor : kWhiteColor,
+              color: isPrimary ? context.colors.textPrimary : context.colors.textPrimary,
               fontSize: 13.sp,
               fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w500,
             ),
@@ -1872,7 +1872,7 @@ class _ShareCard extends ConsumerWidget {
                 color: Colors.black.withValues(alpha: 0.4),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.close, size: 16.sp, color: kWhiteColor),
+              child: Icon(Icons.close, size: 16.sp, color: context.colors.textPrimary),
             ),
           ),
         ),

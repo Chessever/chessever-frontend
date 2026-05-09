@@ -70,7 +70,7 @@ class FilterPopup extends ConsumerWidget {
                             Text(
                               'Format',
                               style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                               ),
                             ),
                             SizedBox(height: 8.h),
@@ -112,7 +112,7 @@ class FilterPopup extends ConsumerWidget {
                                             color:
                                                 isSelected
                                                     ? kBlackColor
-                                                    : kWhiteColor,
+                                                    : context.colors.textPrimary,
                                           ),
                                     ),
                                   ),
@@ -123,7 +123,7 @@ class FilterPopup extends ConsumerWidget {
                             Text(
                               'Event Status',
                               style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                               ),
                             ),
                             SizedBox(height: 8.h),
@@ -165,7 +165,7 @@ class FilterPopup extends ConsumerWidget {
                                             color:
                                                 isSelected
                                                     ? kBlackColor
-                                                    : kWhiteColor,
+                                                    : context.colors.textPrimary,
                                           ),
                                     ),
                                   ),
@@ -176,7 +176,7 @@ class FilterPopup extends ConsumerWidget {
                             Text(
                               'Level',
                               style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                               ),
                             ),
                             SizedBox(height: 8.h),
@@ -217,7 +217,7 @@ class FilterPopup extends ConsumerWidget {
                                   child: Text(
                                     'Reset',
                                     style: AppTypography.textSmMedium.copyWith(
-                                      color: kWhiteColor,
+                                      color: context.colors.textPrimary,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
