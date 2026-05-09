@@ -4,6 +4,7 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -84,7 +85,7 @@ class HamburgerMenu extends HookConsumerWidget {
       width: drawerWidth,
       child: Drawer(
         key: e2eKey(E2eIds.homeDrawer),
-        backgroundColor: kBackgroundColor,
+        backgroundColor: context.colors.background,
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: () {
@@ -131,12 +132,12 @@ class HamburgerMenu extends HookConsumerWidget {
                               width: 44.w,
                               height: 44.h,
                               decoration: BoxDecoration(
-                                color: kDarkGreyColor.withOpacity(0.3),
+                                color: context.colors.surfaceRecessed,
                                 borderRadius: BorderRadius.circular(12.br),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.menu_rounded,
-                                color: Colors.white,
+                                color: context.colors.iconPrimary,
                                 size: 24.0,
                               ),
                             ),
@@ -162,7 +163,7 @@ class HamburgerMenu extends HookConsumerWidget {
                       icon: Icons.explore_outlined,
                       title: 'Opening Explorer',
                       textStyle: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 1.0,
                         letterSpacing: -0.14,
                       ),
@@ -183,7 +184,7 @@ class HamburgerMenu extends HookConsumerWidget {
                       icon: Icons.grid_view_rounded,
                       title: 'Board Editor',
                       textStyle: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
@@ -196,7 +197,7 @@ class HamburgerMenu extends HookConsumerWidget {
                       icon: Icons.favorite_border,
                       title: 'Favorites',
                       textStyle: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
@@ -215,7 +216,7 @@ class HamburgerMenu extends HookConsumerWidget {
                       ),
                       title: 'Settings',
                       textStyle: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                       ),
                       onPressed: () => showSettingsDialog(context),
@@ -231,7 +232,7 @@ class HamburgerMenu extends HookConsumerWidget {
                       icon: Icons.rate_review_outlined,
                       title: 'Leave Feedback',
                       textStyle: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
@@ -254,7 +255,7 @@ class HamburgerMenu extends HookConsumerWidget {
                       icon: Icons.lock_outline,
                       title: 'Privacy Policy',
                       textStyle: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
@@ -274,7 +275,7 @@ class HamburgerMenu extends HookConsumerWidget {
                               ? 'Version $versionString'
                               : 'Version',
                       textStyle: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
@@ -303,7 +304,10 @@ class HamburgerMenu extends HookConsumerWidget {
                     // Divider
                     Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                      child: Container(height: 1, color: kDividerColor),
+                      child: Container(
+                        height: 1,
+                        color: context.colors.divider,
+                      ),
                     ),
 
                     _LogOutButton(
@@ -366,7 +370,7 @@ class _UserProfileHeader extends ConsumerWidget {
                     child: Text(
                       displayName,
                       style: AppTypography.textSmSemiBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                         letterSpacing: -0.14,
                       ),
@@ -394,9 +398,9 @@ class _ProBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
       decoration: BoxDecoration(
-        color: kLightGreyColor,
+        color: kPrimaryColor,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: kWhiteColor.withOpacity(0.25), width: 1),
+        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4), width: 1),
       ),
       child: Text(
         'PRO',
@@ -432,9 +436,12 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
       padding: EdgeInsets.fromLTRB(16.sp, 0.sp, 16.sp, 12.sp),
       child: Container(
         decoration: BoxDecoration(
-          color: kBlack3Color,
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(color: kWhiteColor.withOpacity(0.08), width: 1),
+          border: Border.all(
+            color: context.colors.divider,
+            width: 1,
+          ),
         ),
         padding: EdgeInsets.only(left: 12.sp, top: 4.sp, bottom: 12.sp),
         child: Column(
@@ -449,7 +456,7 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
                   child: Text(
                     'Get Premium',
                     style: AppTypography.textSmSemiBold.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.iconPrimary,
                       height: 17.5.h / 14.h,
                     ),
                   ),
@@ -457,8 +464,12 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
 
                 IconButton(
                   style: ButtonStyle(
-                    backgroundColor: WidgetStatePropertyAll(kBlackColor),
-                    foregroundColor: WidgetStatePropertyAll(kWhiteColor),
+                    backgroundColor: WidgetStatePropertyAll(
+                      context.colors.background,
+                    ),
+                    foregroundColor: WidgetStatePropertyAll(
+                      context.colors.iconPrimary,
+                    ),
                     shape: WidgetStatePropertyAll(CircleBorder()),
                   ),
                   onPressed: () {
@@ -467,7 +478,7 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
                   },
                   icon: Icon(
                     Icons.close,
-                    color: kWhiteColor.withOpacity(0.6),
+                    color: context.colors.iconPrimary.withValues(alpha: 0.6),
                     size: 14.ic,
                   ),
                   padding: EdgeInsets.zero,
@@ -479,7 +490,7 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
             Text(
               'Unlock all premium features to improve your chess game!',
               style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor,
+                color: context.colors.iconPrimary,
                 height: 19.5.h / 12.h,
               ),
             ),
@@ -487,7 +498,7 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
               decoration: BoxDecoration(
-                color: kLightGreyColor,
+                color: kPrimaryColor,
                 borderRadius: BorderRadius.circular(69.br),
               ),
               child: InkWell(
@@ -531,7 +542,9 @@ class _RestorePurchasesRow extends ConsumerWidget {
                     ? 'Purchases restored successfully!'
                     : 'No purchases found to restore',
               ),
-              backgroundColor: success ? kGreenColor : kDarkGreyColor,
+              backgroundColor: success
+                  ? context.colors.successStrong
+                  : context.colors.surfaceRecessed,
             ),
           );
         }
@@ -548,13 +561,13 @@ class _RestorePurchasesRow extends ConsumerWidget {
             Icon(
               Icons.restore_rounded,
               size: 24.ic,
-              color: kWhiteColor.withOpacity(0.5),
+              color: context.colors.iconPrimary.withValues(alpha:0.5),
             ),
             SizedBox(width: 12.w),
             Text(
               'Restore Purchases',
               style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withOpacity(0.5),
+                color: context.colors.iconPrimary.withValues(alpha:0.5),
               ),
             ),
           ],
@@ -589,14 +602,14 @@ class _LogOutButton extends StatelessWidget {
           children: [
             Icon(
               isAnonymous ? Icons.person_add_outlined : Icons.logout,
-              color: isAnonymous ? null : kDarkRedColor,
+              color: isAnonymous ? null : context.colors.danger,
               size: 24.ic,
             ),
             SizedBox(width: 12.w),
             Text(
               isAnonymous ? 'Sign up' : 'Log out',
               style: AppTypography.textSmMedium.copyWith(
-                color: isAnonymous ? null : kDarkRedColor,
+                color: isAnonymous ? context.colors.iconPrimary : context.colors.danger,
                 height: 20.h / 14.h,
               ),
             ),
@@ -635,12 +648,16 @@ class _MenuItem extends StatelessWidget {
           }
           : null;
 
-  Widget _buildRowContent() {
+  Widget _buildRowContent(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         customIcon ??
-            Icon(icon, color: kWhiteColor.withValues(alpha: 0.8), size: 22.ic),
+            Icon(
+              icon,
+              color: context.colors.iconPrimary.withValues(alpha: 0.8),
+              size: 22.ic,
+            ),
         SizedBox(width: 12.w),
         Expanded(
           child: Text(
@@ -649,7 +666,7 @@ class _MenuItem extends StatelessWidget {
             style:
                 textStyle ??
                 AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor,
+                  color: context.colors.iconPrimary,
                   height: 20.h / 14.h,
                 ),
           ),
@@ -657,7 +674,7 @@ class _MenuItem extends StatelessWidget {
         if (showChevron)
           Icon(
             Icons.chevron_right_outlined,
-            color: kWhiteColor.withValues(alpha: 0.4),
+            color: context.colors.iconPrimary.withValues(alpha: 0.4),
             size: 22.ic,
           ),
       ],
@@ -684,7 +701,7 @@ class _MenuItem extends StatelessWidget {
           height: 44.h,
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 12.sp),
-            child: _buildRowContent(),
+            child: _buildRowContent(context),
           ),
         ),
       ),
@@ -712,12 +729,15 @@ class _AboutDialog extends StatelessWidget {
       child: Container(
             constraints: BoxConstraints(maxWidth: 340.w),
             decoration: BoxDecoration(
-              color: kBackgroundColor,
+              color: context.colors.surfaceElevated,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: kWhiteColor.withOpacity(0.1), width: 1),
+              border: Border.all(
+                color: context.colors.divider,
+                width: 1,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
+                  color: context.colors.shadow,
                   blurRadius: 24,
                   offset: const Offset(0, 12),
                 ),
@@ -735,8 +755,8 @@ class _AboutDialog extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        kWhiteColor.withOpacity(0.05),
-                        kWhiteColor.withOpacity(0.02),
+                        context.colors.iconPrimary.withValues(alpha:0.05),
+                        context.colors.iconPrimary.withValues(alpha:0.02),
                       ],
                     ),
                     borderRadius: const BorderRadius.only(
@@ -750,10 +770,10 @@ class _AboutDialog extends StatelessWidget {
                             width: 56.w,
                             height: 56.h,
                             decoration: BoxDecoration(
-                              color: kWhiteColor.withOpacity(0.1),
+                              color: context.colors.iconPrimary.withValues(alpha:0.1),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: kWhiteColor.withOpacity(0.2),
+                                color: context.colors.iconPrimary.withValues(alpha:0.2),
                                 width: 1,
                               ),
                             ),
@@ -790,7 +810,7 @@ class _AboutDialog extends StatelessWidget {
                       Text(
                             'ChessEver',
                             style: AppTypography.textXlBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.iconPrimary,
                               letterSpacing: 0.5,
                             ),
                           )
@@ -801,7 +821,7 @@ class _AboutDialog extends StatelessWidget {
                       Text(
                         'Version $version',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withOpacity(0.5),
+                          color: context.colors.iconPrimary.withValues(alpha:0.5),
                         ),
                       ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
                     ],
@@ -865,7 +885,7 @@ class _AboutDialog extends StatelessWidget {
                           },
                           style: TextButton.styleFrom(
                             padding: EdgeInsets.symmetric(vertical: 14.h),
-                            backgroundColor: kWhiteColor.withOpacity(0.05),
+                            backgroundColor: context.colors.iconPrimary.withValues(alpha:0.05),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -873,7 +893,7 @@ class _AboutDialog extends StatelessWidget {
                           child: Text(
                             'Close',
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor.withOpacity(0.7),
+                              color: context.colors.iconPrimary.withValues(alpha:0.7),
                             ),
                           ),
                         ),
@@ -920,10 +940,10 @@ class _LinkButton extends StatelessWidget {
           child: Container(
             padding: EdgeInsets.all(16.sp),
             decoration: BoxDecoration(
-              color: kWhiteColor.withOpacity(0.03),
+              color: context.colors.iconPrimary.withValues(alpha:0.03),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: kWhiteColor.withOpacity(0.08),
+                color: context.colors.iconPrimary.withValues(alpha:0.08),
                 width: 1,
               ),
             ),
@@ -933,13 +953,13 @@ class _LinkButton extends StatelessWidget {
                   width: 40.w,
                   height: 40.h,
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withOpacity(0.08),
+                    color: context.colors.iconPrimary.withValues(alpha:0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     icon,
                     size: 20.ic,
-                    color: kWhiteColor.withOpacity(0.8),
+                    color: context.colors.iconPrimary.withValues(alpha:0.8),
                   ),
                 ),
                 SizedBox(width: 12.w),
@@ -950,14 +970,14 @@ class _LinkButton extends StatelessWidget {
                       Text(
                         label,
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor.withOpacity(0.9),
+                          color: context.colors.iconPrimary.withValues(alpha:0.9),
                         ),
                       ),
                       SizedBox(height: 2.h),
                       Text(
                         subtitle,
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withOpacity(0.5),
+                          color: context.colors.iconPrimary.withValues(alpha:0.5),
                         ),
                       ),
                     ],
@@ -966,7 +986,7 @@ class _LinkButton extends StatelessWidget {
                 Icon(
                   Icons.arrow_forward_ios,
                   size: 14.ic,
-                  color: kWhiteColor.withOpacity(0.4),
+                  color: context.colors.iconPrimary.withValues(alpha:0.4),
                 ),
               ],
             ),

@@ -14,6 +14,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -167,10 +168,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       height: 48.h,
                       padding: EdgeInsets.symmetric(horizontal: 12.w),
                       decoration: BoxDecoration(
-                        color: kBlack2Color,
+                        color: context.colors.surface,
                         borderRadius: BorderRadius.circular(8.br),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.1),
+                          color: context.colors.divider,
                           width: 1.w,
                         ),
                       ),
@@ -189,13 +190,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           },
                           icon: Icon(
                             Icons.keyboard_arrow_down_outlined,
-                            color: kWhiteColor,
+                            color: context.colors.iconPrimary,
                             size: 20.ic,
                           ),
                           style: AppTypography.textMdBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           ),
-                          dropdownColor: kBlack2Color,
+                          dropdownColor: context.colors.surface,
                           borderRadius: BorderRadius.circular(8.br),
                           items:
                               yearList.map((value) {
@@ -218,10 +219,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         height: 40.h,
                         padding: EdgeInsets.symmetric(horizontal: 12.w),
                         decoration: BoxDecoration(
-                          color: kBlack2Color,
+                          color: context.colors.surface,
                           borderRadius: BorderRadius.circular(8.br),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.1),
+                            color: context.colors.divider,
                             width: 1.w,
                           ),
                         ),
@@ -233,13 +234,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                 Icon(
                                   Icons.speed_outlined,
                                   size: 16.ic,
-                                  color: kSecondaryTextColor,
+                                  color: context.colors.textSecondary,
                                 ),
                                 SizedBox(width: 8.w),
                                 Text(
                                   'Time Control',
                                   style: AppTypography.textSmRegular.copyWith(
-                                    color: kSecondaryTextColor,
+                                    color: context.colors.textSecondary,
                                   ),
                                 ),
                               ],
@@ -255,13 +256,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             },
                             icon: Icon(
                               Icons.keyboard_arrow_down_outlined,
-                              color: kWhiteColor,
+                              color: context.colors.iconPrimary,
                               size: 20.ic,
                             ),
                             style: AppTypography.textMdBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
-                            dropdownColor: kBlack2Color,
+                            dropdownColor: context.colors.surface,
                             borderRadius: BorderRadius.circular(8.br),
                             isExpanded: true,
                             selectedItemBuilder: (context) {
@@ -326,7 +327,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         ref.invalidate(calendarScreenProvider);
                       },
                       color: kPrimaryColor,
-                      backgroundColor: kBlack2Color,
+                      backgroundColor: context.colors.surface,
                       displacement: 60.h,
                       strokeWidth: 3.w,
                       child: GridView.builder(
@@ -377,7 +378,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           Text(
                             'Failed To Load Months!\nPlease Try Again Later',
                             style: AppTypography.textLgRegular.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -489,7 +490,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         ref.invalidate(calendarScreenProvider);
       },
       color: kPrimaryColor,
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       displacement: 60.h,
       strokeWidth: 3.w,
       child:
@@ -507,7 +508,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     child: Text(
                       'No events found',
                       style: AppTypography.textLgRegular.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                       ),
                     ),
                   ),
@@ -629,7 +630,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         SizedBox(width: 8.w),
         Text(
           label,
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
       ],
     );
@@ -643,7 +646,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         SizedBox(width: 10.w),
         Text(
           label,
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
       ],
     );
@@ -652,7 +657,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   /// Get the appropriate icon for a time control
   Widget _getTimeControlIcon(String? timeControl) {
     if (timeControl == null) {
-      return Icon(Icons.grid_view_rounded, size: 16.ic, color: kWhiteColor70);
+      return Icon(
+        Icons.grid_view_rounded,
+        size: 16.ic,
+        color: context.colors.textSecondary,
+      );
     }
 
     final lower = timeControl.toLowerCase();
@@ -682,7 +691,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       );
     }
 
-    return Icon(Icons.timer_outlined, size: 16.ic, color: kWhiteColor70);
+    return Icon(
+      Icons.timer_outlined,
+      size: 16.ic,
+      color: context.colors.textSecondary,
+    );
   }
 }
 
@@ -708,10 +721,10 @@ class _MonthButton extends StatelessWidget {
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: context.colors.divider,
               width: 1,
             ),
           ),
@@ -723,7 +736,7 @@ class _MonthButton extends StatelessWidget {
                 child: Text(
                   monthName,
                   style: AppTypography.textMdMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
               ),
@@ -735,13 +748,13 @@ class _MonthButton extends StatelessWidget {
                     vertical: 4.sp,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     eventCount.toString(),
                     style: AppTypography.textXsBold.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                     ),
                   ),
                 ),
@@ -907,42 +920,36 @@ class _FilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor =
-        isDisabled
-            ? kPlaceholderColor
-            : isSelected
+    final iconColor = isDisabled
+        ? context.colors.placeholder
+        : isSelected
             ? kPrimaryColor
-            : kWhiteColor70;
-    final textColor =
-        isDisabled
-            ? kPlaceholderColor
-            : isSelected
+            : context.colors.textSecondary;
+    final textColor = isDisabled
+        ? context.colors.placeholder
+        : isSelected
             ? kPrimaryColor
-            : kWhiteColor;
-    final badgeColor =
-        isDisabled
-            ? Colors.white.withValues(alpha: 0.05)
-            : isSelected
+            : context.colors.textPrimary;
+    final badgeColor = isDisabled
+        ? context.colors.divider.withValues(alpha: 0.4)
+        : isSelected
             ? kPrimaryColor.withValues(alpha: 0.25)
-            : Colors.white.withValues(alpha: 0.12);
-    final badgeTextColor =
-        isDisabled
-            ? kPlaceholderColor
-            : isSelected
+            : context.colors.surfaceRecessed;
+    final badgeTextColor = isDisabled
+        ? context.colors.placeholder
+        : isSelected
             ? kPrimaryColor
-            : kWhiteColor70;
-    final borderColor =
-        isDisabled
-            ? Colors.white.withValues(alpha: 0.05)
-            : isSelected
+            : context.colors.textSecondary;
+    final borderColor = isDisabled
+        ? context.colors.divider
+        : isSelected
             ? kPrimaryColor.withValues(alpha: 0.6)
-            : Colors.white.withValues(alpha: 0.15);
-    final backgroundColor =
-        isDisabled
-            ? kBlack2Color.withValues(alpha: 0.6)
-            : isSelected
+            : context.colors.divider;
+    final backgroundColor = isDisabled
+        ? context.colors.surface.withValues(alpha: 0.6)
+        : isSelected
             ? kPrimaryColor.withValues(alpha: 0.12)
-            : kBlack2Color;
+            : context.colors.surface;
 
     return Material(
       color: Colors.transparent,

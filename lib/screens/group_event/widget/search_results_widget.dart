@@ -4,6 +4,7 @@ import 'package:chessever2/screens/group_event/providers/supabase_combined_searc
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -91,21 +92,28 @@ class SearchResultsWidget extends HookConsumerWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.search_off, size: 64.sp, color: kSubtleIconColor),
+                Icon(
+                  Icons.search_off,
+                  size: 64.sp,
+                  color: context.colors.iconSecondary,
+                ),
                 SizedBox(height: 16.sp),
                 Text(
                   'No events found',
                   style: TextStyle(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.w600,
-                    color: kWhiteColor70,
+                    color: context.colors.textPrimaryMuted,
                   ),
                 ),
                 SizedBox(height: 8.sp),
                 Text(
                   'No events match "$query"',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14.sp, color: kSecondaryTextColor),
+                  style: TextStyle(
+                fontSize: 14.sp,
+                color: context.colors.textSecondary,
+              ),
                 ),
               ],
             ),
@@ -127,21 +135,28 @@ class SearchResultsWidget extends HookConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search, size: 64.sp, color: kSubtleIconColor),
+            Icon(
+              Icons.search,
+              size: 64.sp,
+              color: context.colors.iconSecondary,
+            ),
             SizedBox(height: 16.sp),
             Text(
               'Search Events',
               style: TextStyle(
                 fontSize: 18.sp,
                 fontWeight: FontWeight.w600,
-                color: kWhiteColor70,
+                color: context.colors.textPrimaryMuted,
               ),
             ),
             SizedBox(height: 8.sp),
             Text(
               'Enter a search term to find events',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14.sp, color: kSecondaryTextColor),
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: context.colors.textSecondary,
+              ),
             ),
           ],
         ),
@@ -183,9 +198,9 @@ class _SkeletonEventCard extends StatelessWidget {
         margin: EdgeInsets.only(top: isFirst ? 0 : 12.sp, bottom: 12.sp),
         height: 80.sp,
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kDarkGreyColor.withValues(alpha: 0.3)),
+          border: Border.all(color: context.colors.divider),
         ),
       ),
     );
@@ -223,7 +238,7 @@ class _SearchResultsListView extends ConsumerWidget {
         ref.invalidate(supabaseCombinedSearchProvider(searchQuery.trim()));
       },
       color: kPrimaryColor,
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       displacement: 60.h,
       strokeWidth: 3.w,
       child:

@@ -1,4 +1,4 @@
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -24,7 +24,7 @@ class AppBarIcons extends StatelessWidget {
         width: 32.w,
         padding: padding ?? EdgeInsets.all(6.sp),
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(4.br),
         ),
         child: SvgPicture.asset(image),

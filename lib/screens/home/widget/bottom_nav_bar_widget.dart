@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -22,8 +23,14 @@ class BottomNavBarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedColor = context.isLightTheme
+        ? kPrimaryColor
+        : context.colors.textPrimary;
+    final inactiveColor = context.isLightTheme
+        ? context.colors.textTertiary
+        : context.colors.tabInactive;
     return InkWell(
-      splashColor: kWhiteColor,
+      splashColor: context.colors.surfaceRecessed,
       onTap: onTap,
       child: Container(
         width: width,
@@ -36,7 +43,7 @@ class BottomNavBarWidget extends StatelessWidget {
               width: 20.w,
               svgIcon,
               colorFilter: ColorFilter.mode(
-                isSelected ? kWhiteColor : kInactiveTabColor,
+                isSelected ? selectedColor : inactiveColor,
                 BlendMode.srcIn,
               ),
             ),
@@ -44,7 +51,7 @@ class BottomNavBarWidget extends StatelessWidget {
             Text(
               title,
               style: AppTypography.textXsMedium.copyWith(
-                color: isSelected ? kWhiteColor : kInactiveTabColor,
+                color: isSelected ? selectedColor : inactiveColor,
               ),
             ),
           ],

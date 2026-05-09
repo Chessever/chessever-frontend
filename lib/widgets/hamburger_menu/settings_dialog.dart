@@ -5,7 +5,7 @@ import 'package:chessever2/screens/chessboard/chess_board_notification_settings_
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/settings_menu.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -20,7 +20,7 @@ class SettingsDialog extends ConsumerWidget {
       key: e2eKey(E2eIds.settingsRoot),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.all(Radius.circular(20.sp)),
-        color: kPopUpColor,
+        color: context.colors.popup,
       ),
       child: SettingsMenu(
         boardSettingsIcon: SvgWidget(
@@ -30,7 +30,7 @@ class SettingsDialog extends ConsumerWidget {
         ),
         notificationSettingsIcon: Icon(
           Icons.notifications_active_outlined,
-          color: Colors.white,
+          color: context.colors.iconPrimary,
           size: 20.h,
         ),
         onBoardSettingsPressed: () async {
@@ -98,7 +98,7 @@ class SettingsDialog extends ConsumerWidget {
                             }
                           },
                           style: TextButton.styleFrom(
-                            foregroundColor: kRedColor,
+                            foregroundColor: context.colors.danger,
                           ),
                           child: const Text('Delete'),
                         ),

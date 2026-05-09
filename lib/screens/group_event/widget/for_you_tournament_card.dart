@@ -3,7 +3,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -39,8 +39,8 @@ class ForYouTournamentCard extends ConsumerWidget {
 
     return tournamentAsync.when(
       data: (tournament) => _buildCard(context, ref, tournament),
-      loading: () => _buildLoadingCard(),
-      error: (_, __) => _buildFallbackCard(context, ref),
+      loading: () => _buildLoadingCard(context),
+      error: (_, _) => _buildFallbackCard(context, ref),
     );
   }
 
@@ -64,17 +64,17 @@ class ForYouTournamentCard extends ConsumerWidget {
     ).animate().fadeIn(duration: 200.ms).slideY(begin: 0.02, end: 0);
   }
 
-  Widget _buildLoadingCard() {
+  Widget _buildLoadingCard(BuildContext context) {
     return Container(
       margin: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
       height: 60.sp,
       decoration: BoxDecoration(
-        color: kBlack2Color.withValues(alpha: 0.5),
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(8.br),
       ),
     ).animate().shimmer(
       duration: 1200.ms,
-      color: kWhiteColor.withValues(alpha: 0.05),
+      color: context.colors.divider.withValues(alpha: 0.4),
     );
   }
 

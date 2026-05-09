@@ -38,16 +38,26 @@ Search command to find candidates:
 ### Screens
 
 - [x] `lib/screens/chessboard/chess_board_settings_page.dart`
+- [x] `lib/screens/calendar/calendar_screen.dart`
+- [x] `lib/screens/calendar/calendar_event_detail_screen.dart`
+- [x] `lib/screens/group_event/group_event_screen.dart`
+- [x] `lib/screens/group_event/widget/empty_widget.dart`
+- [x] `lib/screens/group_event/widget/appbar_icons_widget.dart`
+- [x] `lib/screens/group_event/widget/for_you_tournament_card.dart`
+- [x] `lib/screens/group_event/widget/search_results_widget.dart`
+- [x] `lib/screens/home/widget/bottom_nav_bar.dart`
+- [x] `lib/screens/home/widget/bottom_nav_bar_widget.dart`
+- [x] `lib/screens/home/widget/tablet_nav_rail.dart`
 - [ ] lib/screens/authentication
 - [ ] lib/screens/board_editor
-- [ ] lib/screens/calendar
+- [ ] lib/screens/calendar/calendar_detail_screen.dart
 - [ ] lib/screens/chessboard (rest)
 - [ ] lib/screens/countrymen
 - [ ] lib/screens/countryman_games_screen.dart
 - [ ] lib/screens/favorites
 - [ ] lib/screens/gamebase
-- [ ] lib/screens/group_event
-- [ ] lib/screens/home
+- [ ] lib/screens/group_event/widget/{premium_collection_cards, player_search_cards, for_you_games_widget, filter_popup}
+- [ ] lib/screens/home/home_screen.dart
 - [ ] lib/screens/library
 - [ ] lib/screens/onboarding
 - [ ] lib/screens/player_profile
@@ -63,11 +73,15 @@ Search command to find candidates:
 - [x] lib/widgets/divider_widget.dart
 - [x] lib/widgets/app_bar_with_title.dart
 - [x] lib/widgets/generic_loading_widget.dart
-- [ ] lib/widgets/hamburger_menu/hamburger_menu.dart (42 refs — heavy)
+- [x] lib/widgets/hamburger_menu/hamburger_menu.dart
+- [x] lib/widgets/hamburger_menu/hamburger_menu_dialogs.dart
+- [x] lib/widgets/hamburger_menu/settings_dialog.dart
+- [x] lib/widgets/settings_menu.dart
+- [x] lib/widgets/event_card/event_card.dart
 - [ ] lib/widgets/paywall/premium_paywall_sheet.dart (38 refs)
 - [ ] lib/widgets/review_prompt/review_prompt_dialogs.dart (32 refs)
 - [ ] lib/widgets/game_filter/eco_filter_dropdown.dart (29 refs)
-- [ ] lib/widgets/* (~80 more)
+- [ ] lib/widgets/* (~70 more)
 
 ## Notes
 
