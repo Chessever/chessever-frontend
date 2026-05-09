@@ -88,7 +88,7 @@ class FolderCard extends ConsumerWidget {
               Text(
                 folder.name,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: const Color(0xFFFAFAFA),
+                  color: context.colors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -223,7 +223,7 @@ class FolderCard extends ConsumerWidget {
                   Text(
                     folder.name,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: const Color(0xFFFAFAFA),
+                      color: context.colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -240,7 +240,7 @@ class FolderCard extends ConsumerWidget {
                 padding: EdgeInsets.only(left: 8.w),
                 child: Icon(
                   Icons.arrow_forward_ios_rounded,
-                  color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                   size: 20.sp,
                   weight: 700,
                 ),
@@ -596,7 +596,7 @@ class _DotsMenuButton extends StatelessWidget {
           quarterTurns: 1,
           child: Icon(
             Icons.more_horiz_rounded,
-            color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+            color: context.colors.textPrimary.withValues(alpha: 0.7),
             size: 24.sp,
           ),
         ),

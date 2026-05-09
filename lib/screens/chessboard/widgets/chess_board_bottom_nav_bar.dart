@@ -199,7 +199,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                     ? Container(
                       height: barHeight - 12,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0D0D0D),
+                        color: context.colors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       margin: EdgeInsets.symmetric(vertical: 4),

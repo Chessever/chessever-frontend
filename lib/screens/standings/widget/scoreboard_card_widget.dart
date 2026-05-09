@@ -38,7 +38,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final Color backgroundColor = const Color(0xFF0F0F0F);
+    final Color backgroundColor = context.colors.surface;
     BorderRadius? borderRadius;
     if (isFirst) {
       borderRadius = BorderRadius.only(

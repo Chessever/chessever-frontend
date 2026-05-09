@@ -623,7 +623,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             Text(
               'Failed to load library',
               style: AppTypography.textLgMedium.copyWith(
-                color: const Color(0xFFFAFAFA), // Zinc 50
+                color: context.colors.textPrimary, // Zinc 50
               ),
             ),
             SizedBox(height: 8.h),
@@ -659,15 +659,15 @@ class _OpeningExplorerButton extends StatelessWidget {
         width: 32.h,
         height: 32.h,
         decoration: BoxDecoration(
-          color: const Color(0xFF1D1D1D),
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(4.br),
-          border: Border.all(color: const Color(0xFF444444), width: 0.1),
+          border: Border.all(color: context.colors.divider, width: 0.1),
         ),
         child: Center(
           child: Icon(
             Icons.explore_outlined,
             size: 20.sp,
-            color: const Color(0xFFFAFAFA),
+            color: context.colors.textPrimary,
           ),
         ),
       ),
@@ -690,9 +690,9 @@ class _BoardSettingsButton extends StatelessWidget {
         width: 32.h,
         height: 32.h,
         decoration: BoxDecoration(
-          color: const Color(0xFF1D1D1D),
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(4.br),
-          border: Border.all(color: const Color(0xFF444444), width: 0.1),
+          border: Border.all(color: context.colors.divider, width: 0.1),
         ),
         child: Center(
           child: SvgWidget(SvgAsset.boardSettings, width: 20.sp, height: 20.sp),
@@ -720,7 +720,7 @@ class _PlusButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(10.br),
         ),
         child: Center(
-          child: Icon(Icons.add, size: 20.sp, color: const Color(0xFFFFFFFF)),
+          child: Icon(Icons.add, size: 20.sp, color: context.colors.textPrimary),
         ),
       ),
     );
@@ -898,7 +898,7 @@ class _LibraryFolderLoadingCard extends StatelessWidget {
                 Text(
                   isFeatured ? 'TWIC Database' : 'Opening Preparation',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: const Color(0xFFFAFAFA),
+                    color: context.colors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

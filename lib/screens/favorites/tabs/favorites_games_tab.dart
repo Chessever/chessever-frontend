@@ -411,7 +411,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                       controller: _searchController,
                       focusNode: _searchFocusNode,
                       style: AppTypography.textSmRegular.copyWith(
-                        color: const Color(0xFFFAFAFA),
+                        color: context.colors.textPrimary,
                       ),
                       onChanged: _onSearchChanged,
                       decoration: InputDecoration(

@@ -220,7 +220,7 @@ class _ResultBadge extends StatelessWidget {
         text = 'LIVE';
         break;
       case GameStatus.unknown:
-        backgroundColor = const Color(0xFFE0E0E0);
+        backgroundColor = context.colors.textPrimaryMuted;
         textColor = context.colors.textSecondary;
         text = '-';
         break;

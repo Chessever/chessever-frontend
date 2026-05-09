@@ -138,12 +138,12 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         ),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF121214),
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(24.br),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: context.colors.divider),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
+                color: context.colors.shadow,
                 blurRadius: 40,
                 offset: const Offset(0, 20),
               ),

@@ -29,9 +29,9 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
           child: Container(
             margin: EdgeInsets.all(12.w),
             decoration: BoxDecoration(
-              color: const Color(0xFF121214),
+              color: context.colors.surface,
               borderRadius: BorderRadius.circular(20.br),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              border: Border.all(color: context.colors.divider),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

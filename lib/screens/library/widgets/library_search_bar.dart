@@ -300,7 +300,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
         _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
     final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
     final style = AppTypography.textXsRegular.copyWith(
-      color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+      color: context.colors.textPrimary.withValues(alpha: 0.7),
     );
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -324,7 +324,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
           Icon(
             Icons.search,
             size: 16.sp,
-            color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+            color: context.colors.textPrimary.withValues(alpha: 0.7),
           ),
           SizedBox(width: 4.w),
           Expanded(
@@ -338,7 +338,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                   else if (widget.hintPhrases != null &&
                       widget.hintPhrases!.length > 1)
                     AnimatedSearchHint(
-                      textColor: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                      textColor: context.colors.textPrimary.withValues(alpha: 0.7),
                       textStyle: AppTypography.textXsRegular,
                       phrases: widget.hintPhrases!,
                     )
@@ -346,7 +346,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                     Text(
                       widget.hintText,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(alpha: 0.7),
                       ),
                     ),
                 // CSS: 12px, Inter, rgba(255,255,255,0.7)
@@ -356,14 +356,14 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                   focusNode: _effectiveFocusNode,
                   onTapOutside: (_) => _effectiveFocusNode.unfocus(),
                   style: AppTypography.textXsRegular.copyWith(
-                    color: const Color(0xFFFAFAFA),
+                    color: context.colors.textPrimary,
                   ),
                   decoration: InputDecoration(
                     isDense: true,
                     hintText:
                         _effectiveFocusNode.hasFocus ? widget.hintText : null,
                     hintStyle: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                      color: context.colors.textPrimary.withValues(alpha: 0.7),
                     ),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
@@ -381,7 +381,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                 child: Icon(
                   Icons.close,
                   size: 16.sp,
-                  color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
               ),
             ),
