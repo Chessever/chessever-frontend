@@ -1,4 +1,4 @@
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -19,12 +19,18 @@ class AppBarWithTitle extends StatelessWidget {
           onPressed: () {
             Navigator.of(context).pop();
           },
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
+          icon: Icon(
+            Icons.arrow_back_ios_new_outlined,
+            size: 24.ic,
+            color: context.colors.iconPrimary,
+          ),
         ),
         Spacer(),
         Text(
           title,
-          style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+          style: AppTypography.textMdRegular.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         Spacer(),
         SizedBox(width: 44.w),
