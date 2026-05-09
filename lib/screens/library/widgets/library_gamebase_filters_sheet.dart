@@ -28,8 +28,10 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                 ),
               ),
               padding: EdgeInsets.symmetric(vertical: 32.h),
-              child: const Center(
-                child: CircularProgressIndicator(color: kWhiteColor),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ),
@@ -415,7 +417,7 @@ class _ToggleChip extends StatelessWidget {
         child: Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: isActive ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.7),
+            color: isActive ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.7),
           ),
         ),
       ),
@@ -465,7 +467,7 @@ class _SegmentedControl<T> extends StatelessWidget {
                 style: AppTypography.textXsMedium.copyWith(
                   color:
                       selected
-                          ? kWhiteColor
+                          ? context.colors.textPrimary
                           : context.colors.textPrimary.withValues(alpha: 0.75),
                 ),
               ),
@@ -572,7 +574,7 @@ class _TextInput extends StatelessWidget {
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
-        style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+        style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
         decoration: InputDecoration(
           isDense: true,
           hintText: hint,
@@ -607,7 +609,7 @@ class _PrimaryButton extends StatelessWidget {
         child: Center(
           child: Text(
             label,
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
         ),
       ),

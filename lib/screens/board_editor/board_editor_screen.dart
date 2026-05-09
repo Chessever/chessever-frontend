@@ -70,7 +70,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: TextStyle(color: kWhiteColor)),
+        content: Text(message, style: TextStyle(color: context.colors.textPrimary)),
         backgroundColor:
             backgroundColor ?? context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
@@ -337,7 +337,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('FEN copied', style: TextStyle(color: kWhiteColor)),
+        content: Text('FEN copied', style: TextStyle(color: context.colors.textPrimary)),
         backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 1),
@@ -584,7 +584,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
           Expanded(
             child: Text(
               'Board Editor',
-              style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textLgMedium.copyWith(color: context.colors.textPrimary),
               textAlign: TextAlign.center,
             ),
           ),
@@ -936,7 +936,7 @@ class _SideOption extends StatelessWidget {
         width: 36.h,
         height: 36.h,
         decoration: BoxDecoration(
-          color: isSelected ? kWhiteColor : const Color(0xFF333333),
+          color: isSelected ? context.colors.textPrimary : const Color(0xFF333333),
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Center(
@@ -944,7 +944,7 @@ class _SideOption extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 20.f,
-              color: isSelected ? kBackgroundColor : kWhiteColor,
+              color: isSelected ? kBackgroundColor : context.colors.textPrimary,
             ),
           ),
         ),

@@ -1305,7 +1305,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                           showCheckmark: false,
                           labelStyle: TextStyle(
-                            color: isSelected ? kPrimaryColor : kWhiteColor,
+                            color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                             fontSize: 12.f,
                           ),
                           backgroundColor: context.colors.surface,
@@ -1339,7 +1339,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                           showCheckmark: false,
                           labelStyle: TextStyle(
-                            color: isSelected ? kPrimaryColor : kWhiteColor,
+                            color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                             fontSize: 12.f,
                           ),
                           backgroundColor: context.colors.surface,
@@ -1383,7 +1383,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           color:
                               filters.playerColor == GamebasePlayerColor.white
                                   ? kPrimaryColor
-                                  : kWhiteColor,
+                                  : context.colors.textPrimary,
                           fontSize: 12.f,
                         ),
                         backgroundColor: context.colors.surface,
@@ -1411,7 +1411,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           color:
                               filters.playerColor == GamebasePlayerColor.black
                                   ? kPrimaryColor
-                                  : kWhiteColor,
+                                  : context.colors.textPrimary,
                           fontSize: 12.f,
                         ),
                         backgroundColor: context.colors.surface,
@@ -1452,7 +1452,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         color:
                             filters.isOnline == false
                                 ? kPrimaryColor
-                                : kWhiteColor,
+                                : context.colors.textPrimary,
                       ),
                       selected: filters.isOnline == false,
                       onSelected: (_) => _toggleOnline(false),
@@ -1462,7 +1462,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         color:
                             filters.isOnline == false
                                 ? kPrimaryColor
-                                : kWhiteColor,
+                                : context.colors.textPrimary,
                         fontSize: 12.f,
                       ),
                       backgroundColor: context.colors.surface,
@@ -1481,7 +1481,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         color:
                             filters.isOnline == true
                                 ? kPrimaryColor
-                                : kWhiteColor,
+                                : context.colors.textPrimary,
                       ),
                       selected: filters.isOnline == true,
                       onSelected: (_) => _toggleOnline(true),
@@ -1491,7 +1491,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         color:
                             filters.isOnline == true
                                 ? kPrimaryColor
-                                : kWhiteColor,
+                                : context.colors.textPrimary,
                         fontSize: 12.f,
                       ),
                       backgroundColor: context.colors.surface,
@@ -2098,7 +2098,7 @@ class _SegmentLabel extends StatelessWidget {
       style: TextStyle(
         color:
             isActive
-                ? kWhiteColor
+                ? context.colors.textPrimary
                 : context.colors.textSecondary.withValues(alpha: 0.7),
         fontSize: isLarge ? 17.f : 13.f,
         // Constant weight prevents layout shift as the active label changes.
@@ -2692,7 +2692,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                   : Colors.transparent,
           borderRadius: BorderRadius.circular(4.sp),
           border: Border.all(
-            color: isCurrent ? kWhiteColor : Colors.transparent,
+            color: isCurrent ? context.colors.textPrimary : Colors.transparent,
             width: 0.7,
           ),
         ),
@@ -2894,7 +2894,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
     if (node.isMainline || token.depth <= 0) {
-      return isPast ? kWhiteColor : kWhiteColor;
+      return isPast ? context.colors.textPrimary : context.colors.textPrimary;
     }
 
     final depthColor = _colorForVariationAccent(

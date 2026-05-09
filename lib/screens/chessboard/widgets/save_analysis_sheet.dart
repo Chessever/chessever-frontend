@@ -838,7 +838,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       child: TextField(
         controller: controller,
         enabled: !_isSaving,
-        style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+        style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: AppTypography.textXsRegular.copyWith(
@@ -915,7 +915,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             Icons.arrow_drop_down,
             color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
-          style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
           onChanged:
               _isSaving
                   ? null
@@ -1117,7 +1117,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             focusNode: _newFolderNameFocusNode,
             enabled: !_isSaving,
             maxLength: 50,
-            style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
             decoration: InputDecoration(
               hintText: 'Folder name',
               hintStyle: AppTypography.textMdRegular.copyWith(
@@ -1626,10 +1626,10 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                 ? SizedBox(
                                   width: 20.w,
                                   height: 20.h,
-                                  child: const CircularProgressIndicator(
+                                  child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                      kWhiteColor,
+                                      context.colors.textPrimary,
                                     ),
                                   ),
                                 )
@@ -1642,7 +1642,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                           : Icons.bookmark_add_rounded,
                                       color:
                                           canSave
-                                              ? kWhiteColor
+                                              ? context.colors.textPrimary
                                               : kWhiteColor.withValues(
                                                 alpha: 0.3,
                                               ),
@@ -1660,7 +1660,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                       style: AppTypography.textSmBold.copyWith(
                                         color:
                                             canSave
-                                                ? kWhiteColor
+                                                ? context.colors.textPrimary
                                                 : kWhiteColor.withValues(
                                                   alpha: 0.3,
                                                 ),

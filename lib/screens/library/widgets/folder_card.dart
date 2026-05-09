@@ -307,7 +307,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to share: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -324,7 +324,7 @@ class FolderCard extends ConsumerWidget {
       SnackBar(
         content: Text(
           'Link copied',
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
         ),
         backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
@@ -344,7 +344,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Sharing stopped',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -357,7 +357,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to stop sharing: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -379,7 +379,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Unsubscribed from "${folder.name}"',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -392,7 +392,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to unsubscribe: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -430,7 +430,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Renamed to "$name"',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -443,7 +443,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to rename: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -468,7 +468,7 @@ class FolderCard extends ConsumerWidget {
                 ),
                 title: Text(
                   'Delete database?',
-                  style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
                 ),
                 content: Text(
                   'This removes the database. Games in it will stay saved but become unassigned.',
@@ -513,7 +513,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Database deleted',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -526,7 +526,7 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to delete: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -934,8 +934,8 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = widget.isEnabled ? kWhiteColor : const Color(0xFF4D4D4D);
-    final iconColor = widget.isEnabled ? kWhiteColor : const Color(0xFF4D4D4D);
+    final textColor = widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
+    final iconColor = widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

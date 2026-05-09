@@ -576,7 +576,7 @@ class _FeatureItem extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
               Text(
                 subtitle,
@@ -809,7 +809,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                           Text(
                                             'Your preferences are saved',
                                             style: AppTypography.textSmMedium
-                                                .copyWith(color: kWhiteColor),
+                                                .copyWith(color: context.colors.textPrimary),
                                           ),
                                           Text(
                                             'Synced across all your devices',
@@ -1001,7 +1001,7 @@ class _UserAvatarVisual extends HookWidget {
                   BoxShadow(color: kGreenColor.withOpacity(0.4), blurRadius: 8),
                 ],
               ),
-              child: Icon(Icons.check_rounded, size: 18.ic, color: kWhiteColor),
+              child: Icon(Icons.check_rounded, size: 18.ic, color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -1598,7 +1598,7 @@ class _PrimaryButton extends HookWidget {
           height: 52.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color: onTap != null ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.2),
+            color: onTap != null ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.2),
           ),
           child: Center(
             child:

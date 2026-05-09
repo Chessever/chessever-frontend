@@ -83,12 +83,12 @@ class _FilterHeader extends StatelessWidget {
             Icon(
               Icons.filter_list_rounded,
               size: 20.sp,
-              color: hasActiveFilters ? kWhiteColor : context.colors.textSecondary,
+              color: hasActiveFilters ? context.colors.textPrimary : context.colors.textSecondary,
             ),
             SizedBox(width: 8.w),
             Text(
               'Filters',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
             if (hasActiveFilters) ...[
               SizedBox(width: 8.w),
@@ -101,7 +101,7 @@ class _FilterHeader extends StatelessWidget {
                 child: Text(
                   'Active',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
               ),
@@ -416,12 +416,12 @@ class _FilterChip extends StatelessWidget {
               icon,
               size: 16.sp,
               color:
-                  iconColor ?? (isSelected ? kWhiteColor : context.colors.textSecondary),
+                  iconColor ?? (isSelected ? context.colors.textPrimary : context.colors.textSecondary),
             ),
             SizedBox(width: 6.w),
             Text(
               label,
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ],
         ),
@@ -497,12 +497,12 @@ class _PlayerSearchField extends HookConsumerWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.person_rounded, size: 20.sp, color: kWhiteColor),
+            Icon(Icons.person_rounded, size: 20.sp, color: context.colors.textPrimary),
             SizedBox(width: 8.w),
             Expanded(
               child: Text(
                 selectedPlayer.titleAndName,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -583,7 +583,7 @@ class _PlayerSearchInput extends HookConsumerWidget {
           child: TextField(
             controller: searchController,
             focusNode: focusNode,
-            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
             decoration: InputDecoration(
               hintText: 'Search player...',
               hintStyle: AppTypography.textSmRegular.copyWith(
@@ -674,7 +674,7 @@ class _PlayerSearchInput extends HookConsumerWidget {
                         height: 20.sp,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ),
@@ -737,7 +737,7 @@ class _PlayerSearchResult extends StatelessWidget {
                   Text(
                     player.titleAndName,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -753,7 +753,7 @@ class _PlayerSearchResult extends StatelessWidget {
               ),
             ),
             // Add icon
-            Icon(Icons.add_rounded, size: 20.sp, color: kWhiteColor),
+            Icon(Icons.add_rounded, size: 20.sp, color: context.colors.textPrimary),
           ],
         ),
       ),
