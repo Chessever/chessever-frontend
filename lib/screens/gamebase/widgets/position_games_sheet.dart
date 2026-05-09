@@ -6,6 +6,7 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -199,7 +200,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
               final bottomPadding = MediaQuery.of(ctx).padding.bottom;
               return Container(
                 decoration: BoxDecoration(
-                  color: kBlack3Color,
+                  color: context.colors.surfaceRecessed,
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(20.br),
                   ),
@@ -220,7 +221,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                         Text(
                           'Sort Games',
                           style: TextStyle(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 18.f,
                             fontWeight: FontWeight.w600,
                           ),
@@ -231,7 +232,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                           child: Container(
                             padding: EdgeInsets.all(4.w),
                             decoration: BoxDecoration(
-                              color: kBlack2Color,
+                              color: context.colors.surface,
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -339,7 +340,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
     return Container(
       decoration: BoxDecoration(
-        color: kBlack3Color,
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
       child: ConstrainedBox(
@@ -353,13 +354,13 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
               countText: _countText,
               onSort: _showSortOptions,
             ),
-            Divider(color: kDividerColor, height: 1),
+            Divider(color: context.colors.divider, height: 1),
             Expanded(
               child:
                   _isInitialLoading && _games.isEmpty
-                      ? const Center(
+                      ? Center(
                         child: CircularProgressIndicator(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           strokeWidth: 2,
                         ),
                       )
@@ -657,15 +658,15 @@ class _PositionGamesFooter extends StatelessWidget {
             SizedBox(
               width: 16.w,
               height: 16.h,
-              child: const CircularProgressIndicator(
-                color: kWhiteColor70,
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimaryMuted,
                 strokeWidth: 2,
               ),
             ),
             SizedBox(width: 10.w),
             Text(
               'Loading more games...',
-              style: TextStyle(color: kWhiteColor70, fontSize: 12.f),
+              style: TextStyle(color: context.colors.textPrimaryMuted, fontSize: 12.f),
             ),
           ],
         ),
@@ -699,7 +700,7 @@ class _PositionGamesFooter extends StatelessWidget {
         child: Center(
           child: Text(
             'Loaded all $totalCount games',
-            style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+            style: TextStyle(color: context.colors.textSecondary, fontSize: 12.f),
           ),
         ),
       );
@@ -710,7 +711,7 @@ class _PositionGamesFooter extends StatelessWidget {
       child: Center(
         child: Text(
           'Loaded $loadedCount games',
-          style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+          style: TextStyle(color: context.colors.textSecondary, fontSize: 12.f),
         ),
       ),
     );
@@ -734,7 +735,7 @@ class _Header extends StatelessWidget {
             child: Text(
               title,
               style: TextStyle(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 fontSize: 14.f,
                 fontWeight: FontWeight.w600,
               ),
@@ -748,7 +749,7 @@ class _Header extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -768,12 +769,12 @@ class _Header extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.sort_rounded, color: kWhiteColor70, size: 15.sp),
+                    Icon(Icons.sort_rounded, color: context.colors.textPrimaryMuted, size: 15.sp),
                     SizedBox(width: 5.w),
                     Text(
                       'Sort',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -785,7 +786,7 @@ class _Header extends StatelessWidget {
           ],
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(Icons.close, color: kSecondaryTextColor, size: 22.ic),
+            icon: Icon(Icons.close, color: context.colors.textSecondary, size: 22.ic),
             tooltip: 'Close',
           ),
         ],
@@ -806,7 +807,7 @@ class _Empty extends StatelessWidget {
         padding: EdgeInsets.all(16.sp),
         child: Text(
           message,
-          style: TextStyle(color: kSecondaryTextColor, fontSize: 14.f),
+          style: TextStyle(color: context.colors.textSecondary, fontSize: 14.f),
           textAlign: TextAlign.center,
         ),
       ),

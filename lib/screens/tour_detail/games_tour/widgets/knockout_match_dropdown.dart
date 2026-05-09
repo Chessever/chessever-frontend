@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_match_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -92,7 +93,11 @@ class _MatchDropdown extends HookConsumerWidget {
     required this.onChanged,
   });
 
-  Widget _buildMatchRow(MatchHeaderModel match, bool isSelected) {
+  Widget _buildMatchRow(
+    BuildContext context,
+    MatchHeaderModel match,
+    bool isSelected,
+  ) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -140,7 +145,7 @@ class _MatchDropdown extends HookConsumerWidget {
                       Text(
                         '${match.games.length}g',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor70,
+                          color: context.colors.textPrimaryMuted,
                           fontSize: 9.sp,
                         ),
                       ),
@@ -243,7 +248,7 @@ class _MatchDropdown extends HookConsumerWidget {
                             ),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: kBlack2Color,
+                                color: context.colors.surface,
                                 borderRadius: BorderRadius.circular(20.br),
                               ),
                               padding: EdgeInsets.symmetric(vertical: 8.h),
@@ -280,7 +285,11 @@ class _MatchDropdown extends HookConsumerWidget {
                                         horizontal: 12.w,
                                         vertical: 6.h,
                                       ),
-                                      child: _buildMatchRow(match, isSelected),
+                                      child: _buildMatchRow(
+                                        context,
+                                        match,
+                                        isSelected,
+                                      ),
                                     ),
                                   );
                                 },
@@ -376,7 +385,7 @@ class _MatchDropdown extends HookConsumerWidget {
                     Text(
                       _shortenMatchTitle(selectedMatch.matchTitle),
                       style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontSize: 11.sp,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -403,7 +412,7 @@ class _MatchDropdown extends HookConsumerWidget {
                   ),
                   child: Icon(
                     Icons.keyboard_arrow_down_outlined,
-                    color: kWhiteColor70,
+                    color: context.colors.textPrimaryMuted,
                     size: 18.ic,
                   ),
                 ),

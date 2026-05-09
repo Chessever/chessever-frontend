@@ -3,6 +3,7 @@ import 'package:chessever2/screens/library/providers/gamebase_player_games_provi
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -53,9 +54,9 @@ class _GamebasePlayerGamesScreenState
     final displayTitle = ChessTitleUtils.normalize(widget.player.title);
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       appBar: AppBar(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: context.colors.background,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: kWhiteColor),
@@ -80,7 +81,7 @@ class _GamebasePlayerGamesScreenState
                   child: Text(
                     widget.player.name,
                     style: AppTypography.textMdBold.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -194,8 +195,8 @@ class _GamebasePlayerGamesScreenState
               ref
                   .read(gamebasePlayerGamesProvider(widget.player).notifier)
                   .refreshGames(),
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: ListView.builder(
         controller: _scrollController,
         padding: EdgeInsets.symmetric(

@@ -27,6 +27,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
@@ -291,7 +292,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         },
         child: Scaffold(
           key: e2eKey(E2eIds.openingExplorerRoot),
-          backgroundColor: kBlack2Color,
+          backgroundColor: context.colors.surface,
           appBar: _buildAppBar(context),
           bottomNavigationBar: ChessBoardBottomNavBar(
             gameIndex: 0,
@@ -394,7 +395,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: kBlack3Color,
+                  color: context.colors.surfaceRecessed,
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(16.br),
                   ),
@@ -466,7 +467,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             child: Container(
               height: availableHeight - verticalPadding,
               decoration: BoxDecoration(
-                color: kBlack3Color,
+                color: context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(12.sp),
                 border: Border.all(color: kDividerColor),
               ),
@@ -526,7 +527,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: kBlack3Color,
+                    color: context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(16.br),
                     ),
@@ -552,7 +553,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     final currentPage = ref.watch(explorerPageIndexProvider);
 
     return AppBar(
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       elevation: 0,
       centerTitle: false,
       titleSpacing: 0,
@@ -572,7 +573,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                   Text(
                     state.filters.selectedPlayers.first.titleAndName,
                     style: TextStyle(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontSize: 15.f,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.2,
@@ -635,13 +636,13 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               key: e2eKey(E2eIds.openingExplorerDoneButton),
               padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
               decoration: BoxDecoration(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Text(
                 'Done',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kBackgroundColor,
+                  color: context.colors.background,
                 ),
               ),
             ),
@@ -719,7 +720,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: kBlack3Color,
+      backgroundColor: context.colors.surfaceRecessed,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
@@ -1050,7 +1051,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       controller: _playerSearchController,
       focusNode: _playerSearchFocusNode,
       readOnly: !canUsePlayerFilter,
-      style: TextStyle(color: kWhiteColor, fontSize: 13.f),
+      style: TextStyle(color: context.colors.textPrimary, fontSize: 13.f),
       decoration: InputDecoration(
         hintText: 'Search player',
         hintStyle: TextStyle(
@@ -1060,7 +1061,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
         prefixIcon: Icon(
           Icons.search_rounded,
           size: 18.sp,
-          color: kSecondaryTextColor,
+          color: context.colors.textSecondary,
         ),
         filled: true,
         fillColor: kBlack2Color,
@@ -1262,7 +1263,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                     Text(
                       'Filters',
                       style: TextStyle(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontSize: 18.f,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1286,7 +1287,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 Text(
                   'Time Control',
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 12.f,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1307,7 +1308,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                             color: isSelected ? kPrimaryColor : kWhiteColor,
                             fontSize: 12.f,
                           ),
-                          backgroundColor: kBlack2Color,
+                          backgroundColor: context.colors.surface,
                           side: BorderSide(
                             color: isSelected ? kPrimaryColor : kDividerColor,
                           ),
@@ -1320,7 +1321,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 Text(
                   'Result',
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 12.f,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1341,7 +1342,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                             color: isSelected ? kPrimaryColor : kWhiteColor,
                             fontSize: 12.f,
                           ),
-                          backgroundColor: kBlack2Color,
+                          backgroundColor: context.colors.surface,
                           side: BorderSide(
                             color: isSelected ? kPrimaryColor : kDividerColor,
                           ),
@@ -1356,7 +1357,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   Text(
                     'Color',
                     style: TextStyle(
-                      color: kSecondaryTextColor,
+                      color: context.colors.textSecondary,
                       fontSize: 12.f,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1370,7 +1371,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         avatar: Icon(
                           Icons.circle,
                           size: 14.sp,
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                         selected:
                             filters.playerColor == GamebasePlayerColor.white,
@@ -1385,7 +1386,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                                   : kWhiteColor,
                           fontSize: 12.f,
                         ),
-                        backgroundColor: kBlack2Color,
+                        backgroundColor: context.colors.surface,
                         side: BorderSide(
                           color:
                               filters.playerColor == GamebasePlayerColor.white
@@ -1413,7 +1414,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                                   : kWhiteColor,
                           fontSize: 12.f,
                         ),
-                        backgroundColor: kBlack2Color,
+                        backgroundColor: context.colors.surface,
                         side: BorderSide(
                           color:
                               filters.playerColor == GamebasePlayerColor.black
@@ -1434,7 +1435,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 Text(
                   'Format',
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 12.f,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1464,7 +1465,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                                 : kWhiteColor,
                         fontSize: 12.f,
                       ),
-                      backgroundColor: kBlack2Color,
+                      backgroundColor: context.colors.surface,
                       side: BorderSide(
                         color:
                             filters.isOnline == false
@@ -1493,7 +1494,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                                 : kWhiteColor,
                         fontSize: 12.f,
                       ),
-                      backgroundColor: kBlack2Color,
+                      backgroundColor: context.colors.surface,
                       side: BorderSide(
                         color:
                             filters.isOnline == true
@@ -1510,7 +1511,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 Text(
                   'Level',
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 12.f,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1530,7 +1531,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 Text(
                   'Year Range',
                   style: TextStyle(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                     fontSize: 12.f,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1554,7 +1555,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   Text(
                     'Player',
                     style: TextStyle(
-                      color: kSecondaryTextColor,
+                      color: context.colors.textSecondary,
                       fontSize: 12.f,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1598,7 +1599,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                               Text(
                                 player.titleAndName,
                                 style: TextStyle(
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                   fontSize: 12.f,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -1609,7 +1610,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                                 child: Icon(
                                   Icons.close_rounded,
                                   size: 14.sp,
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                 ),
                               ),
                             ],
@@ -1637,7 +1638,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                     child: Text(
                       'Apply',
                       style: TextStyle(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontSize: 14.f,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1669,7 +1670,7 @@ class _PlayerSearchResults extends ConsumerWidget {
     return Container(
       constraints: BoxConstraints(maxHeight: 200.h),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(color: kDividerColor),
       ),
@@ -1680,7 +1681,7 @@ class _PlayerSearchResults extends ConsumerWidget {
               padding: EdgeInsets.all(12.sp),
               child: Text(
                 'No players found',
-                style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 12.f),
               ),
             );
           }
@@ -1698,11 +1699,11 @@ class _PlayerSearchResults extends ConsumerWidget {
                   player.titleAndName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: kWhiteColor, fontSize: 13.f),
+                  style: TextStyle(color: context.colors.textPrimary, fontSize: 13.f),
                 ),
                 subtitle: Text(
                   '${player.fed}${player.highestRating != null ? ' • ${player.highestRating}' : ''}',
-                  style: TextStyle(color: kSecondaryTextColor, fontSize: 11.f),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 11.f),
                 ),
                 trailing: Icon(
                   Icons.add_rounded,
@@ -1730,7 +1731,7 @@ class _PlayerSearchResults extends ConsumerWidget {
                   Text(
                     'Searching...',
                     style: TextStyle(
-                      color: kSecondaryTextColor,
+                      color: context.colors.textSecondary,
                       fontSize: 12.f,
                     ),
                   ),
@@ -1832,7 +1833,7 @@ class _ExplorerEngineLines extends ConsumerWidget {
               isEvaluating: evalState.isEvaluating,
             ),
         ],
-        Divider(color: kDividerColor, height: 1),
+        Divider(color: context.colors.divider, height: 1),
       ],
     );
   }
@@ -2431,7 +2432,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
           child: Text(
             'Play a move to build the notation.',
             style: AppTypography.textSmRegular.copyWith(
-              color: kSecondaryTextColor,
+              color: context.colors.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -2477,7 +2478,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
           child: Text(
             'No notation available for this line yet.',
             style: AppTypography.textSmRegular.copyWith(
-              color: kSecondaryTextColor,
+              color: context.colors.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),

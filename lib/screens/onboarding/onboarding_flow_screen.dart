@@ -9,6 +9,7 @@ import 'package:chessever2/repository/local_storage/onboarding/onboarding_reposi
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/services/appsflyer_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
@@ -302,7 +303,7 @@ class _AuthStep extends HookWidget {
                           'Unlock the full\nexperience',
                           textAlign: TextAlign.center,
                           style: AppTypography.displayXsBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             height: 1.2,
                           ),
                         )
@@ -757,7 +758,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                 _displayName,
                                 textAlign: TextAlign.center,
                                 style: AppTypography.displayXsBold.copyWith(
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                   height: 1.2,
                                 ),
                               )
@@ -979,9 +980,9 @@ class _UserAvatarVisual extends HookWidget {
                       ? Image.network(
                         avatarUrl!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildInitials(),
+                        errorBuilder: (_, __, ___) => _buildInitials(context),
                       )
-                      : _buildInitials(),
+                      : _buildInitials(context),
             ),
           ),
 
@@ -995,7 +996,7 @@ class _UserAvatarVisual extends HookWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: kGreenColor,
-                border: Border.all(color: kBackgroundColor, width: 3),
+                border: Border.all(color: context.colors.background, width: 3),
                 boxShadow: [
                   BoxShadow(color: kGreenColor.withOpacity(0.4), blurRadius: 8),
                 ],
@@ -1008,12 +1009,12 @@ class _UserAvatarVisual extends HookWidget {
     );
   }
 
-  Widget _buildInitials() {
+  Widget _buildInitials(BuildContext context) {
     return Center(
       child: Text(
         initials,
         style: AppTypography.displaySmBold.copyWith(
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           letterSpacing: 2,
         ),
       ),
@@ -1265,7 +1266,7 @@ class _WelcomeStep extends HookWidget {
                     textAlign: TextAlign.center,
                     text: TextSpan(
                       style: AppTypography.displayXsBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         height: 1.2,
                       ),
                       children: [
@@ -1273,7 +1274,7 @@ class _WelcomeStep extends HookWidget {
                         TextSpan(
                           text: 'Better.',
                           style: AppTypography.displayXsBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -1389,7 +1390,7 @@ class _CountryStep extends HookConsumerWidget {
                     'Where are you from?',
                     textAlign: TextAlign.center,
                     style: AppTypography.displayXsBold.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   )
                   .animate(delay: 200.ms)
@@ -1496,7 +1497,7 @@ class _CountryCard extends StatelessWidget {
       padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12.br),
-        color: kBlack2Color,
+        color: context.colors.surface,
       ),
       child: countryState.when(
         loading:
@@ -1706,7 +1707,7 @@ class _AttPrePromptSheet extends StatelessWidget {
           Text(
             'Help us know what\'s working',
             style: AppTypography.textLgMedium.copyWith(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               fontSize: 22,
               fontWeight: FontWeight.w700,
             ),

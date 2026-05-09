@@ -8,6 +8,7 @@ import 'package:chessever2/screens/countrymen/countrymen_tab_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -90,8 +91,8 @@ class _PremiumCollectionCard extends ConsumerWidget {
                       end: Alignment.bottomCenter,
                       colors: [
                         Colors.transparent,
-                        kBlack2Color.withValues(alpha: 0.6),
-                        kBlack2Color.withValues(alpha: 0.95),
+                        Colors.black.withValues(alpha: 0.6),
+                        Colors.black.withValues(alpha: 0.95),
                       ],
                       stops: const [0.0, 0.5, 1.0],
                     ),

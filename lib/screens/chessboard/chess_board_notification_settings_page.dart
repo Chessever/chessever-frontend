@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -60,16 +61,16 @@ class _ChessBoardNotificationSettingsPageState
         }
       },
       child: Scaffold(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: context.colors.background,
         appBar: AppBar(
           title: Text(
             'Notification Settings',
             style: AppTypography.textLgMedium.copyWith(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               fontSize: 16.f,
             ),
           ),
-          backgroundColor: kBackgroundColor,
+          backgroundColor: context.colors.background,
           centerTitle: false,
         ),
         body: Center(
@@ -183,7 +184,7 @@ class _ChessBoardNotificationSettingsPageState
                 // Heads-up Alerts + Live Updates share a single card
                 Container(
                   decoration: BoxDecoration(
-                    color: kBlack2Color,
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(12.br),
                     border: Border.all(
                       color: kDividerColor.withValues(alpha: 0.5),

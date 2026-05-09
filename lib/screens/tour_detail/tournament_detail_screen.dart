@@ -20,6 +20,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -303,7 +304,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         key: UniqueKey(),
-        backgroundColor: kPopUpColor,
+        backgroundColor: context.colors.popup,
         selectedBackgroundColor: kPopUpColor,
         options: _mappedName.values.toList(),
         initialSelection: _mappedName.values.toList().indexOf(

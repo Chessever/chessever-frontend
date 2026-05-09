@@ -4,6 +4,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -118,7 +119,7 @@ class _PgnImportPreviewScreenState
     }
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: ScreenWrapper(
         child: Center(
           child: ConstrainedBox(
@@ -181,7 +182,7 @@ class _PgnImportPreviewScreenState
               },
               icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 size: 20.ic,
               ),
             ),
@@ -193,7 +194,7 @@ class _PgnImportPreviewScreenState
               tooltip: 'Save to database',
               icon: Icon(
                 Icons.save_rounded,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 size: 26.ic,
               ),
             ),
@@ -206,7 +207,7 @@ class _PgnImportPreviewScreenState
                 Text(
                   'Import PGN',
                   style: AppTypography.textLgBold.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     height: 1.1,
                   ),
                   textAlign: TextAlign.center,

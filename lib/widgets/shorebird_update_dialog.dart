@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -75,7 +76,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
         width: ResponsiveHelper.isTablet ? 400.w : 340.w,
         padding: EdgeInsets.all(24.sp),
         decoration: BoxDecoration(
-          color: kPopUpColor,
+          color: context.colors.popup,
           borderRadius: BorderRadius.circular(20.sp),
           boxShadow: [
             BoxShadow(
@@ -120,7 +121,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                   ? 'The update has been downloaded successfully. Restart the app to apply the changes.'
                   : 'A new version of ChessEver is available. Update now to get the latest features and improvements.',
               style: AppTypography.textSmRegular.copyWith(
-                color: kSecondaryTextColor,
+                color: context.colors.textSecondary,
                 height: 1.5,
               ),
               textAlign: TextAlign.center,
@@ -143,7 +144,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
               Column(
                 children: [
                   LinearProgressIndicator(
-                    backgroundColor: kBlack3Color,
+                    backgroundColor: context.colors.surfaceRecessed,
                     valueColor: const AlwaysStoppedAnimation<Color>(
                       kPrimaryColor,
                     ),
@@ -153,7 +154,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                   Text(
                     'Downloading update...',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kSecondaryTextColor,
+                      color: context.colors.textSecondary,
                     ),
                   ),
                 ],
@@ -177,7 +178,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                         child: Text(
                           'Later',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: kSecondaryTextColor,
+                            color: context.colors.textSecondary,
                           ),
                         ),
                       ),
@@ -202,7 +203,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                       child: Text(
                         _isReadyToRestart ? 'Restart App' : 'Update Now',
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

@@ -6,6 +6,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -58,7 +59,7 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: kBlack2Color,
+              color: context.colors.surface,
               borderRadius: BorderRadius.circular(4.br),
             ),
             padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 8.sp),
@@ -83,12 +84,12 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                     autofocus: widget.autofocus,
                     textAlignVertical: TextAlignVertical.center,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                     decoration: InputDecoration(
                       hintText: widget.hintText,
                       hintStyle: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                       ),
                       border: InputBorder.none,
                       isDense: true,

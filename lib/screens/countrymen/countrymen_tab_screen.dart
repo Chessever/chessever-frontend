@@ -3,6 +3,7 @@ import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.
 import 'package:chessever2/screens/countrymen/tabs/countrymen_events_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_games_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -92,7 +93,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${currentCountry.name} pinned as default'),
-          backgroundColor: kBlack2Color,
+          backgroundColor: context.colors.surface,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8.br),
@@ -122,7 +123,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
             : persistedCountryAsync;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -183,13 +184,13 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
               width: 36.w,
               height: 36.h,
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Icon(
                 Icons.arrow_back_ios_new_outlined,
                 size: 18.ic,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
               ),
             ),
           ),
@@ -203,14 +204,14 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                     height: 36.h,
                     padding: EdgeInsets.symmetric(horizontal: 12.w),
                     decoration: BoxDecoration(
-                      color: kBlack2Color,
+                      color: context.colors.surface,
                       borderRadius: BorderRadius.circular(8.br),
                     ),
                     child: Center(
                       child: Text(
                         'Loading...',
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor70,
+                          color: context.colors.textPrimaryMuted,
                         ),
                       ),
                     ),
@@ -220,7 +221,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                     height: 36.h,
                     padding: EdgeInsets.symmetric(horizontal: 12.w),
                     decoration: BoxDecoration(
-                      color: kBlack2Color,
+                      color: context.colors.surface,
                       borderRadius: BorderRadius.circular(8.br),
                     ),
                     child: Center(
@@ -301,7 +302,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        backgroundColor: kPopUpColor,
+        backgroundColor: context.colors.popup,
         selectedBackgroundColor: kPopUpColor,
         options: countrymenModeNames.values.toList(),
         initialSelection: countrymenModeNames.values.toList().indexOf(

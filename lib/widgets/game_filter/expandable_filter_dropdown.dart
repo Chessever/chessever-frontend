@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -155,7 +156,7 @@ class _ExpandableFilterDropdownState<T>
           axisAlignment: -1,
           child: Container(
             decoration: BoxDecoration(
-              color: kBlack2Color,
+              color: context.colors.surface,
               borderRadius: BorderRadius.vertical(
                 bottom: Radius.circular(12.br),
               ),

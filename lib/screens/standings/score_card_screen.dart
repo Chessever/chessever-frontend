@@ -22,6 +22,7 @@ import 'package:heroine/heroine.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -610,7 +611,7 @@ class ScoreCardScreen extends ConsumerWidget {
 
     return Scaffold(
       key: e2eKey(E2eIds.scorecardRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -1111,7 +1112,7 @@ class _PlayerHeaderRow extends StatelessWidget {
           ),
         ),
         if (hasTournamentContext)
-          Icon(Icons.keyboard_arrow_down, color: kWhiteColor70, size: 20.ic),
+          Icon(Icons.keyboard_arrow_down, color: context.colors.textPrimaryMuted, size: 20.ic),
       ],
     );
   }
@@ -1272,7 +1273,7 @@ class _SliverScoreboardAppBarState
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
@@ -1326,13 +1327,13 @@ class _SliverScoreboardAppBarState
 
     return SliverAppBar(
       pinned: true,
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       elevation: 0,
       centerTitle: false,
       leading: IconButton(
         icon: Icon(
           Icons.arrow_back_ios_new_outlined,
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           size: 22.ic,
         ),
         onPressed: () => Navigator.of(context).pop(),
@@ -1418,7 +1419,7 @@ class _RatingDisplay extends ConsumerWidget {
         width: double.infinity,
         height: containerHeight,
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Column(
@@ -1432,7 +1433,7 @@ class _RatingDisplay extends ConsumerWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor70,
+                color: context.colors.textPrimaryMuted,
                 fontSize: labelFontSize,
               ),
               textAlign: TextAlign.center,
@@ -1446,10 +1447,10 @@ class _RatingDisplay extends ConsumerWidget {
                   style:
                       ResponsiveHelper.isTablet
                           ? AppTypography.textLgBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           )
                           : AppTypography.textMdBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           ),
                 );
               },
@@ -1466,10 +1467,10 @@ class _RatingDisplay extends ConsumerWidget {
                       style:
                           ResponsiveHelper.isTablet
                               ? AppTypography.textLgBold.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                               )
                               : AppTypography.textMdBold.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                               ),
                     ),
                   ),
@@ -1479,10 +1480,10 @@ class _RatingDisplay extends ConsumerWidget {
                     style:
                         ResponsiveHelper.isTablet
                             ? AppTypography.textLgBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             )
                             : AppTypography.textMdBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                   ),
             ),
@@ -1528,7 +1529,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
               const Spacer(),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: Icon(Icons.close, color: kWhiteColor70, size: 20.ic),
+                child: Icon(Icons.close, color: context.colors.textPrimaryMuted, size: 20.ic),
               ),
             ],
           ),
@@ -1595,7 +1596,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                       Text(
                         player.score.toStringAsFixed(0),
                         style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor70,
+                          color: context.colors.textPrimaryMuted,
                         ),
                       ),
                       // Selected indicator

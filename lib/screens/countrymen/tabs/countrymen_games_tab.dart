@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -239,8 +240,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         HapticFeedbackService.medium();
         await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
       },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: CustomScrollView(
         key: PageStorageKey<String>('countrymen_games_list_${viewMode.index}'),
         controller: _scrollController,
@@ -404,7 +405,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                           child: Text(
                             '$activeFilterCount',
                             style: AppTypography.textXsBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                               fontSize: 9.sp,
                               height: 1,
                             ),
@@ -647,8 +648,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             child: SizedBox(
               width: 24.w,
               height: 24.h,
-              child: const CircularProgressIndicator(
-                color: kWhiteColor,
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimary,
                 strokeWidth: 2,
               ),
             ),
@@ -733,8 +734,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           SizedBox(
             width: 48.w,
             height: 48.h,
-            child: const CircularProgressIndicator(
-              color: kWhiteColor,
+            child: CircularProgressIndicator(
+              color: context.colors.textPrimary,
               strokeWidth: 2.5,
             ),
           ),
@@ -1015,7 +1016,7 @@ class _DateHeader extends StatelessWidget {
               child: Text(
                 '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
                 style: TextStyle(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w600,
                 ),

@@ -4,6 +4,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -451,7 +452,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   child: Text(
                     _isEditMode ? 'Game updated' : 'Analysis saved successfully',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                 ),
@@ -636,7 +637,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     Text(
                       _isEditMode ? 'Edit Game Details' : 'Save Analysis',
                       style: AppTypography.textLgBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         letterSpacing: -0.3,
                       ),
                     ),
@@ -886,7 +887,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                             ? [FilteringTextInputFormatter.digitsOnly]
                             : null,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                     decoration: InputDecoration(
                       border: InputBorder.none,
@@ -1799,7 +1800,7 @@ class _FolderListItem extends StatelessWidget {
                           ? Icon(
                             Icons.check_rounded,
                             size: 14.sp,
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           )
                           : null,
                 ),

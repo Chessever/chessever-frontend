@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/droplet_animation_curves.dart';
@@ -148,7 +149,7 @@ class CategoryDropdown extends ConsumerWidget {
               child: Text(
                 'Error',
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor70,
+                  color: context.colors.textPrimaryMuted,
                 ),
               ),
             ),

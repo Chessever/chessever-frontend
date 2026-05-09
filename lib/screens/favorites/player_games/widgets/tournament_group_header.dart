@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -15,7 +16,7 @@ class TournamentGroupHeader extends StatelessWidget {
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
       ),
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
@@ -50,7 +51,7 @@ class TournamentGroupHeader extends StatelessWidget {
                 Text(
                   tournamentGroup.tourName,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

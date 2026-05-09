@@ -7,6 +7,7 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -274,7 +275,7 @@ class _FavoritesCombinedGamesScreenState
     final favoriteCount = favorites.length;
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -290,8 +291,8 @@ class _FavoritesCombinedGamesScreenState
                   .read(favoritesCombinedGamesProvider.notifier)
                   .refreshGames();
             },
-            color: kWhiteColor,
-            backgroundColor: kBlack2Color,
+            color: context.colors.textPrimary,
+            backgroundColor: context.colors.surface,
             edgeOffset: 120,
             child: CustomScrollView(
               controller: _scrollController,
@@ -339,7 +340,7 @@ class _FavoritesCombinedGamesScreenState
     return SliverAppBar(
       pinned: true,
       floating: false,
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       elevation: 0,
       scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
@@ -357,7 +358,7 @@ class _FavoritesCombinedGamesScreenState
               child: Icon(
                 Icons.arrow_back_ios_new_rounded,
                 size: 20.sp,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
               ),
             ),
           ),
@@ -393,7 +394,7 @@ class _FavoritesCombinedGamesScreenState
                 Text(
                   'Favorites',
                   style: AppTypography.textLgBold.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -450,7 +451,7 @@ class _FavoritesCombinedGamesScreenState
                         child: Text(
                           '$activeFilterCount',
                           style: AppTypography.textXsBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 10.sp,
                             height: 1,
                           ),
@@ -645,7 +646,7 @@ class _FavoritesCombinedGamesScreenState
                           fontSize: 13.sp,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -734,8 +735,8 @@ class _FavoritesCombinedGamesScreenState
                             SizedBox(
                               width: 24.w,
                               height: 24.h,
-                              child: const CircularProgressIndicator(
-                                color: kWhiteColor,
+                              child: CircularProgressIndicator(
+                                color: context.colors.textPrimary,
                                 strokeWidth: 2,
                               ),
                             ),
@@ -786,8 +787,8 @@ class _FavoritesCombinedGamesScreenState
           SizedBox(
             width: 48.w,
             height: 48.h,
-            child: const CircularProgressIndicator(
-              color: kWhiteColor,
+            child: CircularProgressIndicator(
+              color: context.colors.textPrimary,
               strokeWidth: 2.5,
             ),
           ),
@@ -1035,7 +1036,7 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
     // This prevents layoutExtent from exceeding paintExtent
     return SizedBox(
       height: maxExtent,
-      child: Container(color: kBackgroundColor, child: child),
+      child: Container(color: context.colors.background, child: child),
     );
   }
 

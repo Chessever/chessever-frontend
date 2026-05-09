@@ -8,6 +8,7 @@ import 'package:chessever2/widgets/app_button.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 
 class PremiumScreen extends ConsumerStatefulWidget {
@@ -91,7 +92,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                       width: 40.w,
                       height: 4.h,
                       decoration: BoxDecoration(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                         borderRadius: BorderRadius.circular(2.br),
                       ),
                     ),
@@ -100,7 +101,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                     Text(
                       'Premium',
                       style: AppTypography.textLgMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                     SizedBox(height: 12.h),
@@ -141,7 +142,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                     Text(
                       '\$8.99/month',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         decoration: TextDecoration.lineThrough,
                       ),
 
@@ -153,7 +154,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                     Text(
                       '\$58.99/year',
                       style: AppTypography.textXlRegular.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
 

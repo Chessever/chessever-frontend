@@ -5,6 +5,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/widgets/animated_search_hint.dart';
 import 'package:chessever2/screens/library/widgets/library_search_overlay.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -433,7 +434,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                         child: Text(
                           '${widget.filterBadgeCount}',
                           style: AppTypography.textXsBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 10.sp,
                             height: 1,
                           ),

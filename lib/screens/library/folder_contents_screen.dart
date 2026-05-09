@@ -15,6 +15,7 @@ import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -459,7 +460,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     return Scaffold(
       key: e2eKey(E2eIds.folderContentsRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: ScreenWrapper(
         child: Center(
           child: ConstrainedBox(
@@ -542,7 +543,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               },
               icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 size: 20.ic,
               ),
             ),
@@ -558,7 +559,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     tooltip: 'Export as PGN',
                     icon: Icon(
                       Icons.ios_share_rounded,
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       size: 22.ic,
                     ),
                   ),
@@ -570,7 +571,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     tooltip: 'Rename Database',
                     icon: Icon(
                       Icons.edit_rounded,
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       size: 22.ic,
                     ),
                   ),
@@ -582,7 +583,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     onPressed: _handlePlusButton,
                     icon: Icon(
                       Icons.add_rounded,
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       size: 28.ic,
                     ),
                   ),
@@ -597,7 +598,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 Text(
                   _currentFolderName,
                   style: AppTypography.textLgBold.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     height: 1.1,
                   ),
                   textAlign: TextAlign.center,
@@ -687,8 +688,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             .read(bookGamesPaginatedProvider(_paginationKey).notifier)
             .refresh();
       },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: bookAsync.when(
         data: (bookState) {
           final analyses = bookState.games;
@@ -796,13 +797,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               // 3. Loading indicator at the bottom
               return Padding(
                 padding: EdgeInsets.symmetric(vertical: 16.h),
-                child: const Center(
+                child: Center(
                   child: SizedBox(
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                 ),
@@ -965,7 +966,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(16.br),
           border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
@@ -988,7 +989,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
                   child: Text(
                     label,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                 ),

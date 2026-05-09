@@ -3,6 +3,7 @@ import 'package:chessever2/screens/premium_games/providers/premium_games_provide
 export 'providers/premium_games_provider.dart' show PremiumGamesType;
 import 'package:chessever2/screens/premium_games/widgets/premium_games_filter.dart';
 import 'package:chessever2/screens/premium_games/widgets/twic_game_card.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -51,7 +52,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
 
     return Scaffold(
       key: e2eKey(E2eIds.premiumGamesRoot),
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       appBar: _buildAppBar(),
       body: gamesAsync.when(
         loading: () => const _LoadingState(),
@@ -158,7 +159,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
         },
         icon: Icon(
           Icons.arrow_back_ios_new_rounded,
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           size: 20.ic,
         ),
       ),

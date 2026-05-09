@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -213,7 +214,7 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                   Text(
                         'Welcome to Premium!',
                         style: AppTypography.displaySmBold.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 28.f,
                           letterSpacing: -0.5,
                         ),

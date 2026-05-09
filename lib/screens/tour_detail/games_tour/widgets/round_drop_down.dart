@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -55,7 +56,7 @@ class RoundDropDown extends ConsumerWidget {
                 child: Text(
                   'Error loading rounds',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor70,
+                    color: context.colors.textPrimaryMuted,
                   ),
                 ),
               );
@@ -109,7 +110,11 @@ class _RoundDropdown extends HookConsumerWidget {
     required this.onChanged,
   });
 
-  Widget _buildRow(GamesAppBarModel round, bool showDivider) {
+  Widget _buildRow(
+    BuildContext context,
+    GamesAppBarModel round,
+    bool showDivider,
+  ) {
     Widget trailingIcon;
     switch (round.roundStatus) {
       case RoundStatus.completed:
@@ -148,7 +153,7 @@ class _RoundDropdown extends HookConsumerWidget {
                   Text(
                     round.name,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -232,7 +237,7 @@ class _RoundDropdown extends HookConsumerWidget {
                             ),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: kBlack2Color,
+                                color: context.colors.surface,
                                 borderRadius: BorderRadius.circular(20.br),
                               ),
                               padding: EdgeInsets.symmetric(vertical: 8.h),
@@ -270,7 +275,7 @@ class _RoundDropdown extends HookConsumerWidget {
                                         horizontal: 12.w,
                                         vertical: 4.h,
                                       ),
-                                      child: _buildRow(round, false),
+                                      child: _buildRow(context, round, false),
                                     ),
                                   );
                                 },
@@ -375,7 +380,7 @@ class _RoundDropdown extends HookConsumerWidget {
                     Text(
                       selected.name,
                       style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -405,7 +410,7 @@ class _RoundDropdown extends HookConsumerWidget {
                   ),
                   child: Icon(
                     Icons.keyboard_arrow_down_outlined,
-                    color: kWhiteColor70,
+                    color: context.colors.textPrimaryMuted,
                     size: 20.ic,
                   ),
                 ),

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -139,7 +140,7 @@ class _AuthUpgradePage extends HookWidget {
                   'Unlock the full\nexperience',
                   textAlign: TextAlign.center,
                   style: AppTypography.displayXsBold.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     height: 1.2,
                   ),
                 ),
@@ -428,7 +429,7 @@ class _PrimaryButton extends HookWidget {
                     : Text(
                       label,
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
           ),

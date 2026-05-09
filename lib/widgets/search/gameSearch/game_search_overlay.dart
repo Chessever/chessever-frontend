@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
@@ -408,7 +409,7 @@ class _LoadingState extends StatelessWidget {
             Text(
               'Searching games...',
               style: TextStyle(
-                color: kWhiteColor70,
+                color: context.colors.textPrimaryMuted,
                 fontSize: 12.f,
                 fontWeight: FontWeight.w400,
               ),
@@ -491,7 +492,7 @@ class EmptySearchWidget extends StatelessWidget {
             Text(
               'No games found',
               style: TextStyle(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 fontSize: 16.f,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 0.5,

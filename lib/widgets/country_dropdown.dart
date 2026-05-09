@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -123,7 +124,7 @@ selectedCountryCode,
                             ? Text(
                               widget.hintText ?? 'Loading...',
                               style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor70,
+                                color: context.colors.textPrimaryMuted,
                               ),
                               overflow: TextOverflow.ellipsis,
                             )
@@ -143,7 +144,7 @@ selectedCountryCode,
                     isDropDownOpen
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
-                    color: kWhiteColor70,
+                    color: context.colors.textPrimaryMuted,
                     size: isCompact ? 18.ic : 20.ic,
                   ),
                 ],
@@ -153,7 +154,7 @@ selectedCountryCode,
               padding: EdgeInsets.zero,
               offset: const Offset(0, -4),
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: dropDownBorderRadius,
                 border: Border.all(color: kDarkGreyColor),
               ),
@@ -175,7 +176,7 @@ selectedCountryCode,
                   maxLines: null,
                   controller: _searchController,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                   decoration: InputDecoration(
                     isDense: true,
@@ -311,7 +312,7 @@ country.countryCode,
                                 child: Text(
                                   country.name,
                                   style: AppTypography.textMdMedium.copyWith(
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                   ),
                                 ),
                               ),

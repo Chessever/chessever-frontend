@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
@@ -419,7 +420,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: e2eKey(E2eIds.boardEditorRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -576,7 +577,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             onPressed: () => Navigator.of(context).pop(),
             icon: Icon(
               Icons.arrow_back_ios_new_rounded,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               size: 20.sp,
             ),
           ),
@@ -593,13 +594,13 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
               key: e2eKey(E2eIds.boardEditorDoneButton),
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
               decoration: BoxDecoration(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Text(
                 'Analyze',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kBackgroundColor,
+                  color: context.colors.background,
                 ),
               ),
             ),
@@ -877,7 +878,7 @@ class _SmallButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Text(
@@ -1344,7 +1345,7 @@ class _ActionButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 12.h),
         decoration: BoxDecoration(
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           borderRadius: BorderRadius.circular(24.br),
         ),
         child: Center(

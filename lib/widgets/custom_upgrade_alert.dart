@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -50,13 +51,13 @@ class CustomUpgradeAlert extends StatelessWidget {
       data: Theme.of(context).copyWith(
         // Customize dialog theme
         dialogTheme: DialogThemeData(
-          backgroundColor: kPopUpColor,
+          backgroundColor: context.colors.popup,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20.sp),
           ),
           titleTextStyle: AppTypography.textXlBold.copyWith(color: kWhiteColor),
           contentTextStyle: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor70,
+            color: context.colors.textPrimaryMuted,
           ),
         ),
         // Customize button theme

@@ -5,6 +5,7 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/services/appsflyer_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/extensioms/string_extensions.dart';
@@ -253,7 +254,7 @@ class _PaywallContent extends HookConsumerWidget {
             'Follow Chess\nLike a Pro',
             textAlign: TextAlign.center,
             style: AppTypography.displaySmBold.copyWith(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               height: 1.1,
               letterSpacing: -0.5,
               fontSize: 28.f,
@@ -609,7 +610,7 @@ class _PricingCard extends HookWidget {
                           child: Text(
                             badge!,
                             style: AppTypography.textXxsBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -642,7 +643,7 @@ class _PricingCard extends HookWidget {
                             Text(
                               price!,
                               style: AppTypography.displaySmBold.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                                 fontSize: 20.sp,
                               ),
                             ),
@@ -701,7 +702,7 @@ class _PricingCard extends HookWidget {
                     child: Text(
                       'BEST VALUE',
                       style: AppTypography.textXxsBold.copyWith(
-                        color: kBlack3Color,
+                        color: context.colors.surfaceRecessed,
                         letterSpacing: 1.0,
                       ),
                     ),
@@ -1051,7 +1052,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 LengthLimitingTextInputFormatter(40),
               ],
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 letterSpacing: 1.2,
               ),
               decoration: InputDecoration(

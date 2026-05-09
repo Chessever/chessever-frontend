@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -81,7 +82,7 @@ class _ScrollToTopButtonState extends State<ScrollToTopButton> {
                       ),
                       child: Icon(
                         Icons.keyboard_arrow_up_rounded,
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         size: 28.sp,
                       ),
                     ),

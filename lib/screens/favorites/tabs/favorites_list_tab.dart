@@ -13,6 +13,7 @@ import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
@@ -89,8 +90,8 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
                 .read(favoritePlayersNotifierProvider.notifier)
                 .refreshFavorites();
           },
-          color: kWhiteColor,
-          backgroundColor: kBlack2Color,
+          color: context.colors.textPrimary,
+          backgroundColor: context.colors.surface,
           child: CustomScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
@@ -287,7 +288,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
         position & const Size(40, 40),
         Offset.zero & overlay.size,
       ),
-      color: kBlack2Color,
+      color: context.colors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
       items: [
         PopupMenuItem(
@@ -319,7 +320,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: kBlack2Color,
+          backgroundColor: context.colors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.br),
           ),

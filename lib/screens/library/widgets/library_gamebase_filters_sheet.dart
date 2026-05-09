@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/library/providers/gamebase_database_search_provider.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -21,7 +22,7 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
           () => SafeArea(
             child: Container(
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(16.br),
                 ),
@@ -36,7 +37,7 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
           (error, _) => SafeArea(
             child: Container(
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(16.br),
                 ),
@@ -61,7 +62,7 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
         return SafeArea(
           child: Container(
             decoration: BoxDecoration(
-              color: kBlack2Color,
+              color: context.colors.surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
             ),
             padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
@@ -82,7 +83,7 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                     Text(
                       'Filters',
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                     const Spacer(),
@@ -196,7 +197,7 @@ class _FilterRuleCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(12.sp),
       decoration: BoxDecoration(
-        color: kBlack3Color,
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
       ),
@@ -439,7 +440,7 @@ class _SegmentedControl<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: kBlack3Color,
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
       ),
@@ -501,7 +502,7 @@ class _Dropdown<T> extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
       ),
@@ -527,7 +528,7 @@ class _Dropdown<T> extends StatelessWidget {
                 child: Text(
                   item.label,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -564,7 +565,7 @@ class _TextInput extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
       ),

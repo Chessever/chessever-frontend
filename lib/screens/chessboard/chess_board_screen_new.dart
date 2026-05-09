@@ -39,6 +39,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
@@ -642,7 +643,7 @@ Future<bool?> _showAnalysisConfirmationDialog({
     context: context,
     builder: (context) {
       return AlertDialog(
-        backgroundColor: kBlack2Color,
+        backgroundColor: context.colors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.br),
         ),
@@ -2079,7 +2080,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                         24.h,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: kWhiteColor,
+                                        color: context.colors.textPrimary,
                                         borderRadius: BorderRadius.circular(
                                           28.br,
                                         ),
@@ -2151,13 +2152,13 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                       ),
                                     ],
                                     border: Border.all(
-                                      color: kWhiteColor,
+                                      color: context.colors.textPrimary,
                                       width: 3,
                                     ),
                                   ),
                                   child: Icon(
                                     Icons.view_carousel_rounded,
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                     size: 22.sp,
                                   ),
                                 ),
@@ -2219,7 +2220,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                         child: Icon(
                                           Icons.touch_app_rounded,
                                           size: 52.sp,
-                                          color: kWhiteColor,
+                                          color: context.colors.textPrimary,
                                           shadows: [
                                             BoxShadow(
                                               color: Colors.black.withValues(
@@ -2504,7 +2505,7 @@ class _LoadingScreen extends StatelessWidget {
                   margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
                   padding: EdgeInsets.all(8.sp),
                   decoration: BoxDecoration(
-                    color: kBlack2Color,
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(8.br),
                   ),
                   child: Row(
@@ -2578,7 +2579,7 @@ class _LoadingScreen extends StatelessWidget {
                   margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
                   padding: EdgeInsets.all(8.sp),
                   decoration: BoxDecoration(
-                    color: kBlack2Color,
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(8.br),
                   ),
                   child: Row(
@@ -3034,7 +3035,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
       case AutoSaveStatus.idle:
         icon = Icon(
           isEditableLibraryGame ? Icons.edit_outlined : Icons.save_outlined,
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           size: 20.sp,
         );
         break;
@@ -3076,7 +3077,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
       leadingWidth: 44.sp,
       titleSpacing: 4.sp,
       leading: IconButton(
-        icon: Icon(Icons.arrow_back_ios_new, color: kWhiteColor, size: 20.sp),
+        icon: Icon(Icons.arrow_back_ios_new, color: context.colors.textPrimary, size: 20.sp),
         onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
       ),
       title:
@@ -3084,7 +3085,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
               ? Text(
                 'Analysis Board',
                 style: TextStyle(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w600,
                 ),
@@ -3104,7 +3105,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
           IconButton(
             icon: Icon(
               Icons.info_outline_rounded,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               size: 20.sp,
             ),
             tooltip: 'Event info',
@@ -3119,7 +3120,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // phantom tap dismissals, use standard PopupMenuButton on mobile
         if (ResponsiveHelper.isTablet)
           _TabletSafePopupMenu<String>(
-            icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
+            icon: Icon(Icons.more_vert, color: context.colors.textPrimary, size: 22.sp),
             enabled: !widget.isLoading,
             onSelected: (value) async {
               if (value == 'share') {
@@ -3225,7 +3226,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
           )
         else
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
+            icon: Icon(Icons.more_vert, color: context.colors.textPrimary, size: 22.sp),
             enabled: !widget.isLoading,
             onSelected: (value) async {
               if (value == 'share') {
@@ -7988,9 +7989,8 @@ class _FenPositionGamesTableState
           Expanded(
             child:
                 _isInitialLoading && _games.isEmpty
-                    ? const Center(
-                      child: CircularProgressIndicator(
-                        color: kWhiteColor,
+                    ? Center(child: CircularProgressIndicator(
+                        color: context.colors.textPrimary,
                         strokeWidth: 2,
                       ),
                     )
@@ -8081,7 +8081,7 @@ class _FenPositionGamesHeader extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -8091,7 +8091,7 @@ class _FenPositionGamesHeader extends StatelessWidget {
             countText,
             maxLines: 1,
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
               fontWeight: FontWeight.normal,
             ),
           ),
@@ -8103,7 +8103,7 @@ class _FenPositionGamesHeader extends StatelessWidget {
             onPressed: onShowGames,
             icon: Icon(
               Icons.list_alt_rounded,
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
               size: 18.sp,
             ),
           ),
@@ -8218,7 +8218,7 @@ class _FenPositionGameRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -8242,7 +8242,7 @@ class _FenPositionGameRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kWhiteColor70,
+                  color: context.colors.textPrimaryMuted,
                   fontWeight: FontWeight.normal,
                 ),
               ),
@@ -8296,7 +8296,7 @@ class _FenPositionPlayerCell extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: AppTypography.textXsMedium.copyWith(
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -8362,12 +8362,12 @@ class _FenPositionGamesFooter extends StatelessWidget {
     if (isLoadingMore) {
       return Padding(
         padding: EdgeInsets.symmetric(vertical: 14.h),
-        child: const Center(
+        child: Center(
           child: SizedBox(
             height: 18,
             width: 18,
             child: CircularProgressIndicator(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               strokeWidth: 2,
             ),
           ),
@@ -8443,7 +8443,7 @@ class _FenPositionGamesEmpty extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor70,
+                color: context.colors.textPrimaryMuted,
                 fontWeight: FontWeight.normal,
               ),
             ),
@@ -8596,7 +8596,7 @@ class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
         ),
         child: Container(
           decoration: BoxDecoration(
-            color: kBlack3Color,
+            color: context.colors.surfaceRecessed,
             borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
           ),
           child: SingleChildScrollView(
@@ -8614,7 +8614,7 @@ class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
                       Text(
                         'Filters',
                         style: TextStyle(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 18.f,
                           fontWeight: FontWeight.w600,
                         ),
@@ -8732,7 +8732,7 @@ class _FenPositionFiltersSheetState extends State<_FenPositionFiltersSheet> {
                       child: Text(
                         'Apply',
                         style: TextStyle(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 14.f,
                           fontWeight: FontWeight.w600,
                         ),
@@ -8758,7 +8758,7 @@ class _FilterSectionLabel extends StatelessWidget {
     return Text(
       label,
       style: TextStyle(
-        color: kSecondaryTextColor,
+        color: context.colors.textSecondary,
         fontSize: 12.f,
         fontWeight: FontWeight.w500,
       ),
@@ -8789,7 +8789,7 @@ class _ExplorerStyleFilterChip extends StatelessWidget {
         color: selected ? kPrimaryColor : kWhiteColor,
         fontSize: 12.f,
       ),
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       side: BorderSide(color: selected ? kPrimaryColor : kDividerColor),
     );
   }
@@ -9099,7 +9099,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 },
                 icon: Icon(
                   Icons.restart_alt_rounded,
-                  color: kWhiteColor70,
+                  color: context.colors.textPrimaryMuted,
                   size: 16.ic,
                 ),
               ),
@@ -9224,7 +9224,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                       style: AppTypography
                                                           .textMdBold
                                                           .copyWith(
-                                                            color: kWhiteColor,
+                                                            color: context.colors.textPrimary,
                                                           ),
                                                     ),
                                                     content: Text(
@@ -9313,7 +9313,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                           children: [
                                             Icon(
                                               Icons.upgrade_rounded,
-                                              color: kWhiteColor,
+                                              color: context.colors.textPrimary,
                                               size: 16.sp,
                                             ),
                                             SizedBox(width: 8.sp),
@@ -9321,7 +9321,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                               'Promote main variant',
                                               style: AppTypography.textSmMedium
                                                   .copyWith(
-                                                    color: kWhiteColor,
+                                                    color: context.colors.textPrimary,
                                                     letterSpacing: 0.2,
                                                   ),
                                             ),
@@ -10643,7 +10643,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _NotationActionItem(
         icon: Icons.add_comment_outlined,
         label: 'Add comment',
-        color: kWhiteColor,
+        color: context.colors.textPrimary,
         triggersCommentEditor: true,
         onSelected: (_) async {},
       ),
@@ -10759,7 +10759,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _NotationActionItem(
         icon: Icons.add_comment_outlined,
         label: 'Add comment',
-        color: kWhiteColor,
+        color: context.colors.textPrimary,
         onSelected: (_) async {},
         triggersCommentEditor: true,
       ),
@@ -11429,7 +11429,7 @@ class _PrincipalVariationListState
             isSelectedMove
                 ? baseStyle.copyWith(
                   backgroundColor: variantColor.withValues(alpha: 0.4),
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                 )
                 : baseStyle;
 
@@ -11582,7 +11582,7 @@ class _PrincipalVariationListState
                             child: Text(
                               evalText,
                               style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -11748,7 +11748,7 @@ class _PrincipalVariationListState
                           child: Text(
                             evalText,
                             style: AppTypography.textSmBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                               fontSize: 12.sp,
                               letterSpacing: -0.3,
                             ),
@@ -11883,7 +11883,7 @@ class _PrincipalVariationListState
                             Text(
                               'Game Over',
                               style: TextStyle(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -12136,7 +12136,7 @@ class _PrincipalVariationListState
           isSelectedMove
               ? baseStyle.copyWith(
                 backgroundColor: kPrimaryColor.withValues(alpha: 0.4),
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
               )
               : baseStyle;
 
@@ -12782,7 +12782,7 @@ class _NotationActionListPage extends ConsumerWidget {
                     Text(
                       title,
                       style: AppTypography.textLgBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         letterSpacing: 0.25,
                       ),
                     ),
@@ -12791,7 +12791,7 @@ class _NotationActionListPage extends ConsumerWidget {
                       Text(
                         subtitle!,
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor70,
+                          color: context.colors.textPrimaryMuted,
                         ),
                       ),
                     ],
@@ -12807,7 +12807,7 @@ class _NotationActionListPage extends ConsumerWidget {
                     Text(
                       'Time spent',
                       style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                         letterSpacing: 0.2,
                       ),
                     ),
@@ -12815,7 +12815,7 @@ class _NotationActionListPage extends ConsumerWidget {
                     Text(
                       timeSpentLabel!,
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         letterSpacing: 0.2,
                       ),
                     ),
@@ -12945,7 +12945,7 @@ class _NotationActionTileState extends State<_NotationActionTile>
                       child: Text(
                         widget.action.label,
                         style: AppTypography.textMdMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ),
@@ -13060,7 +13060,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
               IconButton(
                 icon: Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   size: 18.ic,
                 ),
                 onPressed: () {
@@ -13082,7 +13082,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                     Text(
                       'Variant comment',
                       style: AppTypography.textLgBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         letterSpacing: 0.3,
                       ),
                     ),
@@ -13090,7 +13090,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                     Text(
                       'Leave a note for this branch.',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                       ),
                     ),
                   ],
@@ -13118,7 +13118,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                 fillColor: kBlack2Color.withValues(alpha: 0.6),
                 hintText: 'Add a quick thought…',
                 hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor70,
+                  color: context.colors.textPrimaryMuted,
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.sp),
@@ -13208,9 +13208,9 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                         ? SizedBox(
                           height: 14.h,
                           width: 14.h,
-                          child: const CircularProgressIndicator(
+                          child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           ),
                         )
                         : const Text('Save comment'),
@@ -13408,7 +13408,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(24.sp),
         border: Border.all(
           color: kPrimaryColor.withValues(alpha: 0.3),
@@ -13462,7 +13462,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                       Text(
                         'Add Comment',
                         style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           letterSpacing: 0.2,
                         ),
                       ),
@@ -13498,7 +13498,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                 controller: _controller,
                 focusNode: _focusNode,
                 style: AppTypography.textMdRegular.copyWith(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   height: 1.5,
                 ),
                 maxLines: null,
@@ -13781,7 +13781,7 @@ class _EventInfoSheet extends ConsumerWidget {
       builder:
           (context, scrollController) => Container(
             decoration: BoxDecoration(
-              color: kBlack2Color,
+              color: context.colors.surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(16.sp)),
             ),
             child: Column(
@@ -14292,7 +14292,7 @@ class _EventInfoRow extends StatelessWidget {
                     child: Text(
                       value,
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                   ),
@@ -14394,7 +14394,7 @@ class _NagPickerSheet extends ConsumerWidget {
                       child: Text(
                         moveText,
                         style: AppTypography.textMdBold.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 16.sp,
                           letterSpacing: -0.2,
                         ),

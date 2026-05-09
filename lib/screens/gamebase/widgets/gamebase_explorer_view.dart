@@ -4,6 +4,7 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/gamebase_filter_panel.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
@@ -219,7 +220,7 @@ class _HorizontalPvLines extends ConsumerWidget {
     return Container(
       height: 60.h,
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         border: Border(
           bottom: BorderSide(color: kWhiteColor.withValues(alpha: 0.05)),
         ),

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -202,7 +203,7 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
                               Text(
                                 'Save to Library',
                                 style: AppTypography.textLgBold.copyWith(
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                 ),
                               ),
                               SizedBox(height: 6.h),
@@ -300,7 +301,7 @@ class _ActionTile extends StatelessWidget {
                     Text(
                       title,
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                     SizedBox(height: 2.h),

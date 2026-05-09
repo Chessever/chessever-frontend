@@ -1,10 +1,9 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesErrorWidget extends ConsumerWidget {
@@ -23,7 +22,7 @@ class GamesErrorWidget extends ConsumerWidget {
           Text(
             errorMessage,
             textAlign: TextAlign.center,
-            style: TextStyle(color: kWhiteColor70),
+            style: TextStyle(color: context.colors.textPrimaryMuted),
           ),
           SizedBox(height: 16.h),
           ElevatedButton(

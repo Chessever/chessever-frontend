@@ -9,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -80,7 +81,7 @@ class TournamentMenuButton extends ConsumerWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12.br),
             ),
-            color: kBlack2Color,
+            color: context.colors.surface,
             constraints: BoxConstraints.tightFor(width: 208.w),
             items: _buildRedesignedMenuItems(
               ref,
@@ -141,7 +142,7 @@ class TournamentMenuButton extends ConsumerWidget {
             isFocusingLiveGames
                 ? Icons.format_list_bulleted_outlined
                 : Icons.center_focus_strong_outlined,
-            color: kWhiteColor,
+            color: context.colors.textPrimary,
             size: 16,
           ),
           hasBorder: false,
@@ -220,7 +221,7 @@ class TournamentMenuButton extends ConsumerWidget {
           text: isAllCollapsed ? "Expand all" : "Collapse all",
           icon: Icon(
             isAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
-            color: kWhiteColor,
+            color: context.colors.textPrimary,
             size: 16,
           ),
         ),
@@ -269,7 +270,7 @@ class TournamentMenuButton extends ConsumerWidget {
               isMuted
                   ? Icons.notifications_none
                   : Icons.notifications_off_outlined,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               size: 16,
             ),
           ),
@@ -309,7 +310,7 @@ class TournamentMenuButton extends ConsumerWidget {
           },
           child: _MenuDropDownItem(
             text: "Share event",
-            icon: Icon(Icons.ios_share, color: kWhiteColor, size: 16),
+            icon: Icon(Icons.ios_share, color: context.colors.textPrimary, size: 16),
           ),
         ),
       );
@@ -363,7 +364,7 @@ class _MenuDropDownItem extends StatelessWidget {
       height: 40.h,
       padding: EdgeInsets.symmetric(horizontal: 14.w),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         border:
             hasBorder
                 ? Border(
@@ -388,7 +389,7 @@ class _MenuDropDownItem extends StatelessWidget {
                 fontFamily: fontFamily,
                 fontSize: 12.sp,
                 fontWeight: FontWeight.w400,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
               ),
             ),
           ),

@@ -5,6 +5,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -197,8 +198,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           );
           await _loadTwicEvents(reset: true);
         },
-        color: kWhiteColor,
-        backgroundColor: kBlack2Color,
+        color: context.colors.textPrimary,
+        backgroundColor: context.colors.surface,
         child:
             _twicIsLoading && _twicEvents.isEmpty
                 ? _buildLoadingState()
@@ -230,8 +231,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
             ref.invalidate(playerEventCardsProvider(widget.fideId!));
           }
         },
-        color: kWhiteColor,
-        backgroundColor: kBlack2Color,
+        color: context.colors.textPrimary,
+        backgroundColor: context.colors.surface,
         child: eventsAsync.when(
           data: (events) {
             if (events.isEmpty) {
@@ -337,8 +338,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           SizedBox(
             width: 48.w,
             height: 48.h,
-            child: const CircularProgressIndicator(
-              color: kWhiteColor,
+            child: CircularProgressIndicator(
+              color: context.colors.textPrimary,
               strokeWidth: 2.5,
             ),
           ),
@@ -416,7 +417,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                   child: Text(
                     'Retry',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                 ),
@@ -817,7 +818,7 @@ class _StatsHeader extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(16.sp),
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Row(
@@ -831,7 +832,7 @@ class _StatsHeader extends StatelessWidget {
               _StatBox(
                 value: totalGames.toString(),
                 label: 'Games',
-                color: kWhiteColor70,
+                color: context.colors.textPrimaryMuted,
               ),
               SizedBox(width: 12.w),
               _StatBox(
@@ -919,9 +920,9 @@ class _EventsPaginationFooter extends StatelessWidget {
             SizedBox(
               width: 16.w,
               height: 16.h,
-              child: const CircularProgressIndicator(
+              child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: kWhiteColor70,
+                color: context.colors.textPrimaryMuted,
               ),
             ),
             SizedBox(width: 10.w),
@@ -988,7 +989,7 @@ class _PlayerEventCard extends ConsumerWidget {
                 margin: EdgeInsets.only(top: 1.h),
                 padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
                 decoration: BoxDecoration(
-                  color: kBlack2Color,
+                  color: context.colors.surface,
                   borderRadius: BorderRadius.only(
                     bottomLeft: Radius.circular(8.br),
                     bottomRight: Radius.circular(8.br),
@@ -1105,7 +1106,7 @@ class _FallbackEventCard extends StatelessWidget {
               // Main card - matches EventCard._buildPhoneCard layout
               Container(
                 decoration: BoxDecoration(
-                  color: kBlack2Color,
+                  color: context.colors.surface,
                   borderRadius: BorderRadius.circular(8.br),
                 ),
                 padding: EdgeInsets.all(6.sp),
@@ -1127,7 +1128,7 @@ class _FallbackEventCard extends StatelessWidget {
                             Text(
                               event.tourName,
                               style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                                 fontSize: 14.sp,
                                 height: 1.2,
                               ),
@@ -1195,7 +1196,7 @@ class _FallbackEventCard extends StatelessWidget {
                 margin: EdgeInsets.only(top: 1.h),
                 padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
                 decoration: BoxDecoration(
-                  color: kBlack2Color,
+                  color: context.colors.surface,
                   borderRadius: BorderRadius.only(
                     bottomLeft: Radius.circular(8.br),
                     bottomRight: Radius.circular(8.br),

@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 
 class BoardThemePair {

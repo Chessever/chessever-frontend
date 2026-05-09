@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -142,7 +143,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
       child: Container(
         constraints: BoxConstraints(maxWidth: 360.w),
         decoration: BoxDecoration(
-          color: kBackgroundColor,
+          color: context.colors.background,
           borderRadius: BorderRadius.circular(20.br),
           border: Border.all(
             color: kWhiteColor.withValues(alpha: 0.08),
@@ -341,7 +342,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   minLines: 3,
                   maxLength: 500,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Type your feedback here...',
@@ -466,7 +467,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   minLines: 2,
                   maxLength: 200,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                   decoration: InputDecoration(
                     hintText: "I'd happily pay for...",

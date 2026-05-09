@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -145,7 +146,7 @@ class LibraryGameCard extends ConsumerWidget {
                       child: Text(
                         displayEventName,
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -157,7 +158,7 @@ class LibraryGameCard extends ConsumerWidget {
                       Text(
                         displayEco,
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -167,7 +168,7 @@ class LibraryGameCard extends ConsumerWidget {
                       Text(
                         displayDate,
                         style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ],

@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -332,7 +333,7 @@ class _WheelInputState extends State<_WheelInput> {
       child: Container(
         height: 48.h,
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(color: kDividerColor),
         ),
@@ -481,7 +482,7 @@ class _WheelInputState extends State<_WheelInput> {
                     textAlign: TextAlign.center,
                     autofocus: true,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,

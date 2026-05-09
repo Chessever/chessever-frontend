@@ -147,7 +147,7 @@ class EventCard extends ConsumerWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     fontSize: 15.sp,
                     height: 1.3,
                     shadows: [
@@ -936,7 +936,7 @@ class _HeartIconWithCount extends StatelessWidget {
           Text(
             count > 9 ? '9+' : count.toString(),
             style: AppTypography.textXsBold.copyWith(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               fontSize: 10.sp,
               height: 1,
               fontWeight: FontWeight.w900,

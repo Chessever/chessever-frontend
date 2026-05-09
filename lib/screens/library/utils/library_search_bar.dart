@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -157,7 +158,7 @@ class SearchBarWidget extends StatelessWidget {
               controller: controller,
               focusNode: focusNode,
               autofocus: autoFocus,
-              style: TextStyle(color: kWhiteColor70, fontSize: 16.f),
+              style: TextStyle(color: context.colors.textPrimaryMuted, fontSize: 16.f),
               onChanged: onChanged,
               decoration: InputDecoration(
                 hintText: hintText,
@@ -177,7 +178,7 @@ class SearchBarWidget extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.close, color: kWhiteColor70, size: 16.ic),
+                child: Icon(Icons.close, color: context.colors.textPrimaryMuted, size: 16.ic),
               ),
             ),
         ],

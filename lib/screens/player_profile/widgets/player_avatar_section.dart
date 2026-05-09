@@ -1,4 +1,5 @@
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -134,7 +135,7 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(10.br),
       ),
       child: Column(
@@ -147,7 +148,7 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
               Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kWhiteColor70,
+                  color: context.colors.textPrimaryMuted,
                 ),
               ),
             ],

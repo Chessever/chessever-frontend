@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -58,7 +59,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
                               Text(
                                 'No games going on',
                                 style: AppTypography.textMdRegular.copyWith(
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -88,7 +89,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
 
             return RefreshIndicator(
               onRefresh: _handleRefresh,
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
               backgroundColor: kDarkGreyColor,
               displacement: 60.h,
               strokeWidth: 3.w,

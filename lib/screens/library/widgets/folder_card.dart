@@ -3,6 +3,7 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -461,7 +462,7 @@ class FolderCard extends ConsumerWidget {
                 maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
               ),
               child: AlertDialog(
-                backgroundColor: kBlack2Color,
+                backgroundColor: context.colors.surface,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16.br),
                 ),

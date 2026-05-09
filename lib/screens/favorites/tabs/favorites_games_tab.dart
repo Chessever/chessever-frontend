@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -323,8 +324,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         HapticFeedbackService.medium();
         await ref.read(favoritesCombinedGamesProvider.notifier).refreshGames();
       },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: CustomScrollView(
         key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
         controller: _scrollController,
@@ -489,7 +490,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                           child: Text(
                             '$activeFilterCount',
                             style: AppTypography.textXsBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                               fontSize: 9.sp,
                               height: 1,
                             ),
@@ -665,7 +666,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                           fontSize: 13.sp,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -869,8 +870,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             child: SizedBox(
               width: 24.w,
               height: 24.h,
-              child: const CircularProgressIndicator(
-                color: kWhiteColor,
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimary,
                 strokeWidth: 2,
               ),
             ),
@@ -941,8 +942,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           SizedBox(
             width: 48.w,
             height: 48.h,
-            child: const CircularProgressIndicator(
-              color: kWhiteColor,
+            child: CircularProgressIndicator(
+              color: context.colors.textPrimary,
               strokeWidth: 2.5,
             ),
           ),
@@ -1225,7 +1226,7 @@ class _DateHeader extends StatelessWidget {
               child: Text(
                 '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
                 style: TextStyle(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w600,
                 ),

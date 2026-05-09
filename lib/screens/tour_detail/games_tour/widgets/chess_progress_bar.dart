@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -81,7 +82,7 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
             width: 48.w,
             height: 12.h,
             decoration: BoxDecoration(
-              color: kBlack2Color,
+              color: context.colors.surface,
               borderRadius: BorderRadius.circular(4.br),
             ),
           ),
@@ -97,7 +98,7 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
               width: (48.w * displayEval).clamp(0.0, 48.w),
               height: 12.h,
               decoration: BoxDecoration(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(
                     widget.isReversedMode && displayEval < 0.99 ? 0 : 4.br,

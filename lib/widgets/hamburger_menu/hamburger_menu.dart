@@ -405,7 +405,7 @@ class _ProBadge extends StatelessWidget {
       child: Text(
         'PRO',
         style: AppTypography.textXsRegular.copyWith(
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,
         ),
@@ -509,7 +509,7 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
                 child: Text(
                   'Upgrade to Premium',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     height: 16.h / 12.h,
                   ),
                 ),

@@ -6,6 +6,7 @@ import 'package:chessever2/screens/group_event/group_event_screen.dart'
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -170,7 +171,7 @@ class _PlayerSearchCard extends ConsumerWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color: kWhiteColor.withValues(alpha: 0.25),
+            color: context.colors.divider,
             width: 1,
           ),
         ),
@@ -368,7 +369,7 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
       bottom: isCompact ? -8.sp : -10.sp,
       child: photoUrlAsync.when(
         data: (photoUrl) {
-          if (photoUrl == null) return _buildPlaceholder();
+          if (photoUrl == null) return _buildPlaceholder(context);
           return AspectRatio(
             aspectRatio: 0.8,
             child: ShaderMask(
@@ -389,19 +390,19 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
                 imageUrl: photoUrl,
                 fit: BoxFit.cover,
                 memCacheWidth: (200 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                placeholder: (_, __) => _buildPlaceholder(),
-                errorWidget: (_, __, ___) => _buildPlaceholder(),
+                placeholder: (_, _) => _buildPlaceholder(context),
+                errorWidget: (_, _, _) => _buildPlaceholder(context),
               ),
             ),
           );
         },
-        loading: () => _buildPlaceholder(),
-        error: (_, __) => _buildPlaceholder(),
+        loading: () => _buildPlaceholder(context),
+        error: (_, _) => _buildPlaceholder(context),
       ),
     );
   }
 
-  Widget _buildPlaceholder() {
+  Widget _buildPlaceholder(BuildContext context) {
     return AspectRatio(
       aspectRatio: 0.8,
       child: Container(
@@ -410,8 +411,8 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              kWhiteColor.withValues(alpha: 0.06),
-              kWhiteColor.withValues(alpha: 0.02),
+              context.colors.divider.withValues(alpha: 0.6),
+              context.colors.divider.withValues(alpha: 0.2),
             ],
           ),
         ),
@@ -419,7 +420,7 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
           child: Icon(
             Icons.person_rounded,
             size: isCompact ? 32.sp : 48.sp,
-            color: kWhiteColor.withValues(alpha: 0.12),
+            color: context.colors.iconSecondary,
           ),
         ),
       ),

@@ -16,6 +16,7 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -285,7 +286,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                           vertical: 5.sp,
                         ),
                         decoration: BoxDecoration(
-                          color: kBlack2Color,
+                          color: context.colors.surface,
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                         child: Row(
@@ -322,9 +323,9 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                             ),
                             GestureDetector(
                               onTap: _closeSearch,
-                              child: const Icon(
+                              child: Icon(
                                 Icons.close,
-                                color: kWhiteColor70,
+                                color: context.colors.textPrimaryMuted,
                               ),
                             ),
                           ],
@@ -354,7 +355,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                     Text(
                       'Countrymen',
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                     Spacer(),
@@ -399,7 +400,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12.br),
                             ),
-                            color: kBlack2Color,
+                            color: context.colors.surface,
                             items: <PopupMenuEntry<String>>[
                               PopupMenuItem<String>(
                                 value: 'Unpin all',
@@ -437,7 +438,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                               PopupMenuDivider(
                                 height: 1.h,
                                 thickness: 0.5.w,
-                                color: kDividerColor,
+                                color: context.colors.divider,
                               ),
                               PopupMenuItem<String>(
                                 value: 'share',

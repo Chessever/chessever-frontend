@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -83,7 +84,7 @@ class _AuthButtonState extends State<AuthButton>
         width: widget.width,
         padding: widget.padding,
         decoration: BoxDecoration(
-          color: kWhiteColor, // Pure white background
+          color: context.colors.textPrimary, // Pure white background
           borderRadius: BorderRadius.circular(widget.borderRadius),
           boxShadow: [],
         ),
@@ -107,7 +108,7 @@ class _AuthButtonState extends State<AuthButton>
                 fallback: Icon(
                   Icons.apple,
                   size: 24.ic,
-                  color: kBackgroundColor,
+                  color: context.colors.background,
                 ),
               ),
               SizedBox(width: ResponsiveHelper.isTablet ? 8 : 12.w),
