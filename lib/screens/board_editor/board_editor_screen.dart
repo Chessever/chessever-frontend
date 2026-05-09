@@ -1023,7 +1023,7 @@ class _CastlingCheck extends StatelessWidget {
             child: Checkbox(
               value: value,
               onChanged: (v) => onChanged(v ?? false),
-              activeColor: kWhiteColor,
+              activeColor: context.colors.textPrimary,
               checkColor: kBackgroundColor,
               side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.5)),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

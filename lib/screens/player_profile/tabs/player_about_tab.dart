@@ -2585,7 +2585,7 @@ class _OpeningRowState extends State<_OpeningRow> {
 
   Color _getScoreColor(double score) {
     if (score >= 0.6) return kGreenColor;
-    if (score >= 0.4) return kWhiteColor;
+    if (score >= 0.4) return context.colors.textPrimary;
     return Colors.redAccent;
   }
 

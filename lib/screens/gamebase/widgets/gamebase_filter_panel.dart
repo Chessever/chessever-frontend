@@ -354,7 +354,7 @@ class _PlayerColorChips extends ConsumerWidget {
           label: 'White',
           icon: Icons.circle,
           isSelected: selectedColor == GamebasePlayerColor.white,
-          iconColor: kWhiteColor,
+          iconColor: context.colors.iconPrimary,
           onTap: () {
             ref
                 .read(gamebaseExplorerProvider.notifier)

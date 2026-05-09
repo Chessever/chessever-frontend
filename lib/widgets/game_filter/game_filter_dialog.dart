@@ -276,7 +276,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
               child: OutlinedButton(
                 onPressed: _resetFilters,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: kWhiteColor,
+                  foregroundColor: context.colors.textPrimary,
                   backgroundColor: context.colors.surface,
                   side: BorderSide.none,
                   shape: RoundedRectangleBorder(

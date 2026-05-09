@@ -63,7 +63,7 @@ class CustomUpgradeAlert extends StatelessWidget {
         // Customize button theme
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
-            foregroundColor: kWhiteColor,
+            foregroundColor: context.colors.textPrimary,
             padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 24.w),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12.sp),
@@ -74,7 +74,7 @@ class CustomUpgradeAlert extends StatelessWidget {
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: kPrimaryColor,
-            foregroundColor: kWhiteColor,
+            foregroundColor: context.colors.textPrimary,
             padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 24.w),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12.sp),

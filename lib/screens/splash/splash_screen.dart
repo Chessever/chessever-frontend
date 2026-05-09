@@ -145,7 +145,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                         onPressed: _isRetrying ? null : _retry,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: kPrimaryColor,
-                          foregroundColor: kWhiteColor,
+                          foregroundColor: context.colors.textPrimary,
                           disabledBackgroundColor: kPrimaryColor.withOpacity(
                             0.5,
                           ),

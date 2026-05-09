@@ -90,7 +90,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   }
 
   Color _getCategoryColor(String? letter) {
-    if (letter == null) return kWhiteColor;
+    if (letter == null) return context.colors.textPrimary;
     return _categoryColors[letter.toUpperCase()] ?? kWhiteColor;
   }
 

@@ -2881,7 +2881,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
   }
 
   Color _colorForVariationDepth(int depth) {
-    if (depth <= 0) return kWhiteColor;
+    if (depth <= 0) return context.colors.textPrimary;
     final paletteIndex = (depth - 1) % _variationDepthPalette.length;
     return _variationDepthPalette[paletteIndex];
   }
@@ -2889,7 +2889,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
   Color _resolveMoveColor(NotationDisplayToken token, int currentPly) {
     final node = token.node;
     if (node == null || token.pointerId == null) {
-      return kWhiteColor;
+      return context.colors.textPrimary;
     }
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
