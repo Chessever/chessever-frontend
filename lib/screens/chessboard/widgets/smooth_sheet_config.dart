@@ -142,15 +142,16 @@ class ChessSheetConfigs {
 class ChessSheetDecoration {
   ChessSheetDecoration._();
 
-  /// Standard dark sheet with premium feel
+  /// Themed sheet with premium feel
   /// Slightly transparent for depth, generous border radius for modern look
-  static MaterialSheetDecoration dark({
+  static MaterialSheetDecoration dark(
+    BuildContext context, {
     double alpha = 0.96,
     double borderRadius = 28.0,
   }) {
     return MaterialSheetDecoration(
       size: SheetSize.stretch,
-      color: kBlack2Color.withValues(alpha: alpha),
+      color: context.colors.surface.withValues(alpha: alpha),
       borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
       clipBehavior: Clip.antiAlias,
     );
@@ -158,13 +159,14 @@ class ChessSheetDecoration {
 
   /// Frosted glass effect for overlays
   /// Combines blur and transparency for premium feel
-  static MaterialSheetDecoration frosted({
+  static MaterialSheetDecoration frosted(
+    BuildContext context, {
     double alpha = 0.92,
     double borderRadius = 28.0,
   }) {
     return MaterialSheetDecoration(
       size: SheetSize.stretch,
-      color: kBlack2Color.withValues(alpha: alpha),
+      color: context.colors.surface.withValues(alpha: alpha),
       borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
       clipBehavior: Clip.antiAlias,
     );

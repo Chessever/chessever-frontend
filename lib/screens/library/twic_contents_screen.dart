@@ -213,7 +213,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [kBlackColor, context.colors.background],
+          colors: [
+            context.colors.background,
+            context.colors.background.withValues(alpha: 0),
+          ],
         ),
       ),
       child: Column(
