@@ -446,7 +446,7 @@ class _PlayerResultTileState extends State<_PlayerResultTile> {
                         Text(
                           widget.titlePrefix!.trim(),
                           style: AppTypography.textSmBold.copyWith(
-                            color: const Color(0xFFFAFAFA),
+                            color: context.colors.textPrimary,
                           ),
                         ),
                         SizedBox(width: 6.w),
@@ -455,7 +455,7 @@ class _PlayerResultTileState extends State<_PlayerResultTile> {
                         child: Text(
                           widget.title,
                           style: AppTypography.textSmMedium.copyWith(
-                            color: const Color(0xFFFAFAFA),
+                            color: context.colors.textPrimary,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -522,7 +522,7 @@ class _BaseResultTileState extends State<_BaseResultTile> {
                   Text(
                     widget.title,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: const Color(0xFFFAFAFA),
+                      color: context.colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -641,7 +641,7 @@ class _GameResultTileState extends State<_GameResultTile> {
                   Text(
                     '${widget.whiteName} vs ${widget.blackName}',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: const Color(0xFFFAFAFA),
+                      color: context.colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

@@ -5,6 +5,7 @@
 // Only the data classes (MoveImpactType, MoveImpactAnalysis) are kept active
 // for receiving and displaying data from Supabase
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 /// Enum representing different types of impactful chess moves with their visual properties
@@ -49,7 +50,7 @@ enum MoveImpactType {
   // Normal move - No special annotation
   normal(
     symbol: '',
-    color: Color(0xFFFFFFFF), // White
+    color: Color(0xFFFAFAFA),
     description: 'Normal move',
   );
 

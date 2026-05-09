@@ -130,12 +130,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
         width: dialogWidth,
         constraints: BoxConstraints(maxHeight: 560.h),
         decoration: BoxDecoration(
-          color: kBlackColor,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: kDarkGreyColor.withValues(alpha: 0.3),
-            width: 1,
-          ),
+          border: Border.all(color: context.colors.divider, width: 1),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

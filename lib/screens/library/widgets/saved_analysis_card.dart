@@ -62,7 +62,7 @@ class SavedAnalysisCard extends StatelessWidget {
                   child: Text(
                     analysis.title,
                     style: AppTypography.textMdMedium.copyWith(
-                      color: const Color(0xFFFAFAFA), // Zinc 50
+                      color: context.colors.textPrimary, // Zinc 50
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 2,
@@ -173,7 +173,7 @@ class SavedAnalysisCard extends StatelessWidget {
                         child: Text(
                           tag,
                           style: AppTypography.textXxsRegular.copyWith(
-                            color: const Color(0xFFFAFAFA), // Zinc 50
+                            color: context.colors.textPrimary, // Zinc 50
                           ),
                         ),
                       );

@@ -327,7 +327,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                       controller: _searchController,
                       focusNode: _searchFocusNode,
                       style: AppTypography.textSmRegular.copyWith(
-                        color: const Color(0xFFFAFAFA),
+                        color: context.colors.textPrimary,
                       ),
                       onChanged: _onSearchChanged,
                       decoration: InputDecoration(
