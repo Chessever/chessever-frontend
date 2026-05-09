@@ -193,7 +193,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
                             _isReadyToRestart ? kGreenColor : kPrimaryColor,
-                        foregroundColor: kWhiteColor,
+                        foregroundColor: context.colors.textPrimary,
                         padding: EdgeInsets.symmetric(vertical: 12.h),
                         elevation: 0,
                         shape: RoundedRectangleBorder(

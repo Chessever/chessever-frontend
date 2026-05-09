@@ -206,7 +206,7 @@ class FilterPopup extends ConsumerWidget {
                                         .resetFilters(context);
                                   },
                                   style: OutlinedButton.styleFrom(
-                                    foregroundColor: kWhiteColor,
+                                    foregroundColor: context.colors.textPrimary,
                                     backgroundColor: kBlack2Color,
                                     side: BorderSide.none,
                                     shape: RoundedRectangleBorder(

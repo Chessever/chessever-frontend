@@ -215,7 +215,7 @@ class _SwitchItem extends StatelessWidget {
                   child: Switch(
                     value: value,
                     onChanged: onChanged,
-                    activeColor: kWhiteColor,
+                    activeColor: context.colors.textPrimary,
                     activeTrackColor: kPrimaryColor,
                     inactiveThumbColor: kWhiteColor,
                     inactiveTrackColor: kDarkGreyColor,

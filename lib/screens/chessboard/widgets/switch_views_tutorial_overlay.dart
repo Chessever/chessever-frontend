@@ -334,7 +334,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                           TextButton(
                             onPressed: _animateOut,
                             style: TextButton.styleFrom(
-                              foregroundColor: kWhiteColor,
+                              foregroundColor: context.colors.textPrimary,
                               backgroundColor: kWhiteColor.withValues(
                                 alpha: 0.1,
                               ),

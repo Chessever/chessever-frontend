@@ -178,7 +178,10 @@ class TournamentMenuButton extends ConsumerWidget {
             isAnyPinned ? SvgAsset.unpine : SvgAsset.pin,
             height: 16,
             width: 16,
-            colorFilter: const ColorFilter.mode(kWhiteColor, BlendMode.srcIn),
+            colorFilter: ColorFilter.mode(
+              context.colors.iconPrimary,
+              BlendMode.srcIn,
+            ),
           ),
         ),
       ),

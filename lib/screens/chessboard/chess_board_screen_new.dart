@@ -2260,7 +2260,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                             TextButton(
                               onPressed: animateOut,
                               style: TextButton.styleFrom(
-                                foregroundColor: kWhiteColor,
+                                foregroundColor: context.colors.textPrimary,
                                 backgroundColor: kWhiteColor.withValues(
                                   alpha: 0.1,
                                 ),
@@ -8382,7 +8382,7 @@ class _FenPositionGamesFooter extends StatelessWidget {
           onPressed: onLoadMore,
           style: OutlinedButton.styleFrom(
             side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.18)),
-            foregroundColor: kWhiteColor,
+            foregroundColor: context.colors.textPrimary,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8.br),
             ),
@@ -10159,7 +10159,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   Color _colorForVariationDepth(int depth) {
     if (depth <= 0) {
-      return kWhiteColor;
+      return context.colors.textPrimary;
     }
     final paletteIndex = (depth - 1) % _variationDepthPalette.length;
     return _variationDepthPalette[paletteIndex];
@@ -10168,11 +10168,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   Color _resolveMoveColor(NotationDisplayToken token, int currentPly) {
     final node = token.node;
     if (node == null) {
-      return kWhiteColor;
+      return context.colors.textPrimary;
     }
 
     if (token.pointerId == null) {
-      return kWhiteColor;
+      return context.colors.textPrimary;
     }
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
@@ -13197,7 +13197,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                 onPressed: _isSaving || !_hasEdited ? null : _handleSave,
                 style: FilledButton.styleFrom(
                   backgroundColor: kPrimaryColor,
-                  foregroundColor: kWhiteColor,
+                  foregroundColor: context.colors.textPrimary,
                   padding: EdgeInsets.symmetric(
                     horizontal: 18.w,
                     vertical: 10.h,
