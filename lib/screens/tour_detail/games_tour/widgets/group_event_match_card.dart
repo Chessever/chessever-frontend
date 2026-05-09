@@ -203,7 +203,7 @@ country2,
                     ? Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(height: 10.h, color: kBlackColor),
+                        Container(height: 10.h, color: context.colors.background),
                         _buildGamesList(context, ref),
                       ],
                     )
