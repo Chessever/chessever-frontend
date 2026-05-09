@@ -617,8 +617,6 @@ class _SegmentedSwitcher extends ConsumerWidget {
         }).toList();
 
     return SegmentedSwitcher(
-      backgroundColor: kBlackColor,
-      selectedBackgroundColor: kBlackColor,
       options: options,
       optionLabels: optionLabels,
       currentSelection: visibleCategories

@@ -805,8 +805,6 @@ countryCode,
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        backgroundColor: context.colors.popup,
-        selectedBackgroundColor: context.colors.popup,
         options: playerProfileTabNames.values.toList(),
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
         currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
@@ -1390,12 +1388,11 @@ class _ActionCardState extends State<_ActionCard> {
               value: widget.isHighlighted ? 1.0 : 0.0,
               builder: (context, h, _) {
                 // Idle: solid dark card. Highlighted: red-tinted.
-                final bg =
-                    Color.lerp(
-                      const Color(0xFF141414),
-                      _filterRed.withValues(alpha: 0.10),
-                      h,
-                    )!;
+                final bg = Color.lerp(
+                  context.colors.surface,
+                  _filterRed.withValues(alpha: 0.10),
+                  h,
+                )!;
                 final iconBg =
                     Color.lerp(
                       context.colors.textPrimary.withValues(alpha: 0.08),
