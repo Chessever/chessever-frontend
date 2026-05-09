@@ -573,7 +573,7 @@ class _FavoritesCombinedGamesScreenState
                       color: context.colors.surfaceRecessed,
                       borderRadius: BorderRadius.circular(16.br),
                       border: Border.all(
-                        color: const Color(0xFF3F3F46),
+                        color: context.colors.divider,
                         width: 1,
                       ),
                     ),
@@ -626,7 +626,7 @@ class _FavoritesCombinedGamesScreenState
                       color:
                           isSelected
                               ? const Color(0xFFEF4444)
-                              : const Color(0xFF3F3F46),
+                              : context.colors.divider,
                       width: 1,
                     ),
                   ),

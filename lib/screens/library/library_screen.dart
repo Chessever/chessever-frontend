@@ -827,7 +827,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xFF3F3F46) : context.colors.surfaceRecessed,
+        color: isLight ? context.colors.divider : context.colors.surfaceRecessed,
         borderRadius: _getCornerRadius(row, col, gridSize, 6.br),
       ),
     );
