@@ -2,7 +2,9 @@ import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -62,16 +64,17 @@ class _ChessBoardSettingsPageState
         }
       },
       child: Scaffold(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: context.colors.background,
         appBar: AppBar(
           title: Text(
             'Board Settings',
             style: AppTypography.textLgMedium.copyWith(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               fontSize: 16.f,
             ),
           ),
-          backgroundColor: kBackgroundColor,
+          backgroundColor: context.colors.background,
+          foregroundColor: context.colors.textPrimary,
           centerTitle: false,
         ),
         body: settingsAsync.when(
@@ -86,7 +89,7 @@ class _ChessBoardSettingsPageState
                       child: Text(
                         'Error loading board settings',
                         style: AppTypography.textMdRegular.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ),
@@ -97,7 +100,7 @@ class _ChessBoardSettingsPageState
                 child: Text(
                   'Error loading settings',
                   style: AppTypography.textMdRegular.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
               ),
@@ -133,6 +136,10 @@ class _ChessBoardSettingsPageState
             bottom: 16.sp + bottomPadding,
           ),
           children: [
+            _SectionLabel(title: 'Appearance'),
+            SizedBox(height: 12.h),
+            _ThemeModeCard(),
+            SizedBox(height: 24.h),
             _SectionLabel(title: 'Engine Experience'),
             SizedBox(height: 12.h),
             _SettingCard(
@@ -145,7 +152,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Evaluation Bar',
                           style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 13.f,
                           ),
                         ),
@@ -153,7 +160,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Display a bar showing which side is winning.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor70,
+                            color: context.colors.textSecondary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -167,7 +174,7 @@ class _ChessBoardSettingsPageState
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor.withValues(alpha: 0.35)
-                              : kDividerColor.withValues(alpha: 0.5),
+                              : context.colors.divider.withValues(alpha: 0.5),
                     ),
                     onChanged: (value) {
                       _trackPersist(notifier.toggleEngineGauge(value));
@@ -187,7 +194,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Computer Analysis',
                           style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 13.f,
                           ),
                         ),
@@ -195,7 +202,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Enable Stockfish to analyze positions and suggest best moves.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor70,
+                            color: context.colors.textSecondary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -208,13 +215,13 @@ class _ChessBoardSettingsPageState
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor
-                              : kWhiteColor.withValues(alpha: 0.6),
+                              : context.colors.textSecondary.withValues(alpha: 0.6),
                     ),
                     trackColor: WidgetStateProperty.resolveWith(
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor.withValues(alpha: 0.35)
-                              : kDividerColor.withValues(alpha: 0.5),
+                              : context.colors.divider.withValues(alpha: 0.5),
                     ),
                     onChanged: (value) {
                       _trackPersist(notifier.toggleEngineAnalysis(value));
@@ -234,7 +241,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Analysis Depth Indicator',
                           style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 13.f,
                           ),
                         ),
@@ -242,7 +249,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Show how deep the engine is calculating (higher = more accurate).',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor70,
+                            color: context.colors.textSecondary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -255,13 +262,13 @@ class _ChessBoardSettingsPageState
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor
-                              : kWhiteColor.withValues(alpha: 0.6),
+                              : context.colors.textSecondary.withValues(alpha: 0.6),
                     ),
                     trackColor: WidgetStateProperty.resolveWith(
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor.withValues(alpha: 0.35)
-                              : kDividerColor.withValues(alpha: 0.5),
+                              : context.colors.divider.withValues(alpha: 0.5),
                     ),
                     onChanged: (value) {
                       _trackPersist(notifier.toggleDepthOverlay(value));
@@ -281,7 +288,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Show Arrows',
                           style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 13.f,
                           ),
                         ),
@@ -289,7 +296,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Draw arrows on the board showing recommended moves.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor70,
+                            color: context.colors.textSecondary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -302,13 +309,13 @@ class _ChessBoardSettingsPageState
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor
-                              : kWhiteColor.withValues(alpha: 0.6),
+                              : context.colors.textSecondary.withValues(alpha: 0.6),
                     ),
                     trackColor: WidgetStateProperty.resolveWith(
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor.withValues(alpha: 0.35)
-                              : kDividerColor.withValues(alpha: 0.5),
+                              : context.colors.divider.withValues(alpha: 0.5),
                     ),
                     onChanged: (value) {
                       _trackPersist(notifier.togglePvArrows(value));
@@ -325,7 +332,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Thinking Time',
                     style: AppTypography.textMdMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontSize: 13.f,
                     ),
                   ),
@@ -333,7 +340,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'How long the engine thinks per move. Longer = stronger analysis.',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                       fontSize: 11.f,
                     ),
                   ),
@@ -355,7 +362,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Current: ${settings.searchTimeLabel()}',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                       fontSize: 11.f,
                     ),
                   ),
@@ -370,7 +377,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Number of Lines',
                     style: AppTypography.textMdMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontSize: 13.f,
                     ),
                   ),
@@ -378,7 +385,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'How many alternative move sequences to show.',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                       fontSize: 11.f,
                     ),
                   ),
@@ -402,7 +409,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Current: ${settings.principalVariationLabel()}',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                       fontSize: 11.f,
                     ),
                   ),
@@ -417,7 +424,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Arrow Count',
                     style: AppTypography.textMdMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontSize: 13.f,
                     ),
                   ),
@@ -425,7 +432,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Maximum arrows to display for suggested moves.',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                       fontSize: 11.f,
                     ),
                   ),
@@ -447,7 +454,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Current: ${settings.maxArrowsLabel()}',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                       fontSize: 11.f,
                     ),
                   ),
@@ -473,7 +480,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Games View Mode',
                     style: AppTypography.textMdMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontSize: 13.f,
                     ),
                   ),
@@ -481,7 +488,7 @@ class _ChessBoardSettingsPageState
                   Text(
                     'Choose how games are displayed in tournament lists.',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textSecondary,
                       fontSize: 11.f,
                     ),
                   ),
@@ -531,7 +538,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Sound Effects',
                           style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 13.f,
                           ),
                         ),
@@ -539,7 +546,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Play sounds for moves, captures, and game events.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor70,
+                            color: context.colors.textSecondary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -552,13 +559,13 @@ class _ChessBoardSettingsPageState
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor
-                              : kWhiteColor.withValues(alpha: 0.6),
+                              : context.colors.textSecondary.withValues(alpha: 0.6),
                     ),
                     trackColor: WidgetStateProperty.resolveWith(
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor.withValues(alpha: 0.35)
-                              : kDividerColor.withValues(alpha: 0.5),
+                              : context.colors.divider.withValues(alpha: 0.5),
                     ),
                     onChanged: (value) {
                       _trackPersist(boardNotifier.toggleSound(value));
@@ -582,7 +589,7 @@ class _ChessBoardSettingsPageState
                             Text(
                               'Figurine Notation',
                               style: AppTypography.textMdMedium.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                                 fontSize: 13.f,
                               ),
                             ),
@@ -614,7 +621,7 @@ class _ChessBoardSettingsPageState
                         Text(
                           'Show chess piece symbols (♔♕♖♗♘) instead of letters (K, Q, R, B, N) in move notation.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor70,
+                            color: context.colors.textSecondary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -627,13 +634,13 @@ class _ChessBoardSettingsPageState
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor
-                              : kWhiteColor.withValues(alpha: 0.6),
+                              : context.colors.textSecondary.withValues(alpha: 0.6),
                     ),
                     trackColor: WidgetStateProperty.resolveWith(
                       (states) =>
                           states.contains(WidgetState.selected)
                               ? kPrimaryColor.withValues(alpha: 0.35)
-                              : kDividerColor.withValues(alpha: 0.5),
+                              : context.colors.divider.withValues(alpha: 0.5),
                     ),
                     onChanged: (value) {
                       _trackPersist(boardNotifier.toggleFigurine(value));
@@ -665,7 +672,7 @@ class _ChessBoardSettingsPageState
                     Text(
                       'Favorite Players',
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontSize: 13.f,
                       ),
                     ),
@@ -673,7 +680,7 @@ class _ChessBoardSettingsPageState
                     Text(
                       'Automatically pin games of your favorite players.',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textSecondary,
                         fontSize: 11.f,
                       ),
                     ),
@@ -687,7 +694,7 @@ class _ChessBoardSettingsPageState
                   (states) =>
                       states.contains(WidgetState.selected)
                           ? kPrimaryColor.withValues(alpha: 0.35)
-                          : kDividerColor.withValues(alpha: 0.5),
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   _trackPersist(notifier.setFavoritePlayersAutoPin(value));
@@ -707,7 +714,7 @@ class _ChessBoardSettingsPageState
                     Text(
                       'Countrymen',
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontSize: 13.f,
                       ),
                     ),
@@ -715,7 +722,7 @@ class _ChessBoardSettingsPageState
                     Text(
                       'Automatically pin games of players from your country.',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textSecondary,
                         fontSize: 11.f,
                       ),
                     ),
@@ -729,7 +736,7 @@ class _ChessBoardSettingsPageState
                   (states) =>
                       states.contains(WidgetState.selected)
                           ? kPrimaryColor.withValues(alpha: 0.35)
-                          : kDividerColor.withValues(alpha: 0.5),
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   _trackPersist(notifier.setCountrymenAutoPin(value));
@@ -773,7 +780,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                       Text(
                         'Board Theme',
                         style: AppTypography.textMdMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 13.f,
                         ),
                       ),
@@ -781,7 +788,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                       Text(
                         'Choose from ${kBoardThemes.length} beautiful board styles',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor70,
+                          color: context.colors.textSecondary,
                           fontSize: 11.f,
                         ),
                       ),
@@ -816,7 +823,7 @@ class _BoardThemePickerCard extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(12.sp),
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4)),
               ),
@@ -830,7 +837,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8.br),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: context.colors.shadow,
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -857,7 +864,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                         Text(
                           currentTheme.name,
                           style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 14.f,
                           ),
                         ),
@@ -865,7 +872,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                         Text(
                           'Tap to browse all themes',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kSecondaryTextColor,
+                            color: context.colors.textTertiary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -874,7 +881,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: kSecondaryTextColor,
+                    color: context.colors.textTertiary,
                     size: 24.ic,
                   ),
                 ],
@@ -939,7 +946,7 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
       ),
       child: Column(
@@ -950,7 +957,7 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
             width: 40.w,
             height: 4.h,
             decoration: BoxDecoration(
-              color: kDividerColor,
+              color: context.colors.divider,
               borderRadius: BorderRadius.circular(2.br),
             ),
           ),
@@ -966,7 +973,7 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
                       Text(
                         'Board Themes',
                         style: AppTypography.textLgMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 18.f,
                           fontWeight: FontWeight.w600,
                         ),
@@ -975,7 +982,7 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
                       Text(
                         '${kBoardThemes.length} styles available',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kSecondaryTextColor,
+                          color: context.colors.textTertiary,
                           fontSize: 12.f,
                         ),
                       ),
@@ -987,11 +994,11 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
                   onPressed: () => Navigator.pop(context),
                   icon: Icon(
                     Icons.close_rounded,
-                    color: kSecondaryTextColor,
+                    color: context.colors.textTertiary,
                     size: 24.ic,
                   ),
                   style: IconButton.styleFrom(
-                    backgroundColor: kBlack3Color,
+                    backgroundColor: context.colors.surfaceRecessed,
                     padding: EdgeInsets.all(8.sp),
                   ),
                 ),
@@ -1120,7 +1127,7 @@ class _BoardThemeGridItem extends StatelessWidget {
               child: Text(
                 theme.name,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: isSelected ? kPrimaryColor : kWhiteColor,
+                  color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                   fontSize: 10.f,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 ),
@@ -1211,7 +1218,7 @@ class _PieceSetPickerCard extends StatelessWidget {
                       Text(
                         'Piece Set',
                         style: AppTypography.textMdMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 13.f,
                         ),
                       ),
@@ -1219,7 +1226,7 @@ class _PieceSetPickerCard extends StatelessWidget {
                       Text(
                         'Choose from ${kPieceSets.length} unique piece styles',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor70,
+                          color: context.colors.textSecondary,
                           fontSize: 11.f,
                         ),
                       ),
@@ -1254,7 +1261,7 @@ class _PieceSetPickerCard extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(12.sp),
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4)),
               ),
@@ -1265,11 +1272,11 @@ class _PieceSetPickerCard extends StatelessWidget {
                     width: 56.w,
                     height: 56.h,
                     decoration: BoxDecoration(
-                      color: kBlack3Color,
+                      color: context.colors.surface,
                       borderRadius: BorderRadius.circular(8.br),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: context.colors.shadow,
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -1309,7 +1316,7 @@ class _PieceSetPickerCard extends StatelessWidget {
                         Text(
                           currentPieceSet.label,
                           style: AppTypography.textMdMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             fontSize: 14.f,
                           ),
                         ),
@@ -1317,7 +1324,7 @@ class _PieceSetPickerCard extends StatelessWidget {
                         Text(
                           'Tap to browse all pieces',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kSecondaryTextColor,
+                            color: context.colors.textTertiary,
                             fontSize: 11.f,
                           ),
                         ),
@@ -1326,7 +1333,7 @@ class _PieceSetPickerCard extends StatelessWidget {
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: kSecondaryTextColor,
+                    color: context.colors.textTertiary,
                     size: 24.ic,
                   ),
                 ],
@@ -1390,7 +1397,7 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.8,
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
       ),
       child: Column(
@@ -1401,7 +1408,7 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
             width: 40.w,
             height: 4.h,
             decoration: BoxDecoration(
-              color: kDividerColor,
+              color: context.colors.divider,
               borderRadius: BorderRadius.circular(2.br),
             ),
           ),
@@ -1417,7 +1424,7 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
                       Text(
                         'Piece Sets',
                         style: AppTypography.textLgMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontSize: 18.f,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1426,7 +1433,7 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
                       Text(
                         '${kPieceSets.length} styles available',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kSecondaryTextColor,
+                          color: context.colors.textTertiary,
                           fontSize: 12.f,
                         ),
                       ),
@@ -1438,11 +1445,11 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
                   onPressed: () => Navigator.pop(context),
                   icon: Icon(
                     Icons.close_rounded,
-                    color: kSecondaryTextColor,
+                    color: context.colors.textTertiary,
                     size: 24.ic,
                   ),
                   style: IconButton.styleFrom(
-                    backgroundColor: kBlack3Color,
+                    backgroundColor: context.colors.surfaceRecessed,
                     padding: EdgeInsets.all(8.sp),
                   ),
                 ),
@@ -1509,7 +1516,7 @@ class _PieceSetGridItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: kBlack3Color,
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color: isSelected ? kPrimaryColor : Colors.transparent,
@@ -1583,7 +1590,7 @@ class _PieceSetGridItem extends StatelessWidget {
               child: Text(
                 pieceSet.label,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: isSelected ? kPrimaryColor : kWhiteColor,
+                  color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                   fontSize: 9.f,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 ),
@@ -1609,7 +1616,7 @@ class _SectionLabel extends StatelessWidget {
     return Text(
       title,
       style: AppTypography.textLgMedium.copyWith(
-        color: kWhiteColor,
+        color: context.colors.textPrimary,
         fontSize: 14.f,
       ),
     );
@@ -1626,9 +1633,18 @@ class _SettingCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
-        color: kPopUpColor,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(18.br),
-        border: Border.all(color: kDividerColor.withValues(alpha: 0.4)),
+        border: Border.all(color: context.colors.divider.withValues(alpha: 0.4)),
+        boxShadow: context.isLightTheme
+            ? [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : null,
       ),
       child: child,
     );
@@ -1659,7 +1675,7 @@ class _DiscreteSlider extends StatelessWidget {
         inactiveTrackColor: kPrimaryColor.withValues(alpha: 0.2),
         thumbColor: kPrimaryColor,
         valueIndicatorTextStyle: AppTypography.textSmMedium.copyWith(
-          color: kBlackColor,
+          color: context.colors.textInverse,
           fontSize: 11.f,
         ),
       ),
@@ -1689,7 +1705,7 @@ class _ViewModeSelector extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(4.sp),
       decoration: BoxDecoration(
-        color: kBlack3Color,
+        color: context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Row(
@@ -1757,19 +1773,184 @@ class _ViewModeSelector extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isSelected ? kWhiteColor : kSecondaryTextColor,
+                color: isSelected
+                    ? context.colors.textPrimary
+                    : context.colors.textTertiary,
                 size: 20.ic,
               ),
               SizedBox(height: 4.h),
               Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected ? kWhiteColor : kSecondaryTextColor,
+                  color: isSelected
+                      ? context.colors.textPrimary
+                      : context.colors.textTertiary,
                   fontSize: 10.f,
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeModeCard extends ConsumerWidget {
+  const _ThemeModeCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    return _SettingCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Theme',
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+              fontSize: 13.f,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            'Pick a light, dark, or system-matched look. Your selection is '
+            'saved across launches.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+              fontSize: 11.f,
+            ),
+          ),
+          SizedBox(height: 14.h),
+          _ThemeModeSegmented(
+            current: themeMode,
+            onChanged: (mode) =>
+                ref.read(themeModeProvider.notifier).setTheme(mode),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeModeSegmented extends StatelessWidget {
+  const _ThemeModeSegmented({required this.current, required this.onChanged});
+
+  final ThemeMode current;
+  final ValueChanged<ThemeMode> onChanged;
+
+  static const _options = <_ThemeModeOption>[
+    _ThemeModeOption(
+      mode: ThemeMode.system,
+      label: 'System',
+      icon: Icons.brightness_auto_rounded,
+    ),
+    _ThemeModeOption(
+      mode: ThemeMode.light,
+      label: 'Light',
+      icon: Icons.light_mode_rounded,
+    ),
+    _ThemeModeOption(
+      mode: ThemeMode.dark,
+      label: 'Dark',
+      icon: Icons.dark_mode_rounded,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(4.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < _options.length; i++) ...[
+            if (i > 0) SizedBox(width: 4.w),
+            Expanded(
+              child: _ThemeModeButton(
+                option: _options[i],
+                selected: current == _options[i].mode,
+                onTap: () => onChanged(_options[i].mode),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeModeOption {
+  const _ThemeModeOption({
+    required this.mode,
+    required this.label,
+    required this.icon,
+  });
+
+  final ThemeMode mode;
+  final String label;
+  final IconData icon;
+}
+
+class _ThemeModeButton extends StatelessWidget {
+  const _ThemeModeButton({
+    required this.option,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _ThemeModeOption option;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(vertical: 10.sp),
+        decoration: BoxDecoration(
+          color: selected
+              ? kPrimaryColor.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8.br),
+          border: Border.all(
+            color: selected ? kPrimaryColor : Colors.transparent,
+            width: selected ? 1.5 : 1.0,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: kPrimaryColor.withValues(alpha: 0.18),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          children: [
+            Icon(
+              option.icon,
+              color: selected ? kPrimaryColor : context.colors.textTertiary,
+              size: 20.ic,
+            ),
+            SizedBox(height: 4.h),
+            Text(
+              option.label,
+              style: AppTypography.textXsMedium.copyWith(
+                color: selected
+                    ? context.colors.textPrimary
+                    : context.colors.textTertiary,
+                fontSize: 10.f,
+              ),
+            ),
+          ],
         ),
       ),
     );

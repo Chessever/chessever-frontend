@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_colors.dart';
+
 // Color constants
 const Color kPrimaryColor = Color(0xFF0FB4E5); // PRIMARY COLOR
 const Color kDarkBlue = Color(0xFF17AAD6);
@@ -107,11 +109,16 @@ class AppTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: kPrimaryColor,
       brightness: Brightness.dark,
-      background: kBackgroundColor,
+      surface: kBlack2Color,
+      onSurface: kWhiteColor,
+    ).copyWith(
       primary: kPrimaryColor,
       onPrimary: kWhiteColor,
       surface: kBlack2Color,
       onSurface: kWhiteColor,
+      surfaceContainerHighest: kBlack3Color,
+      outline: kDividerColor,
+      error: kRedColor,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: kBackgroundColor,
@@ -119,6 +126,10 @@ class AppTheme {
       elevation: 0,
     ),
     scaffoldBackgroundColor: kBackgroundColor,
+    canvasColor: kBackgroundColor,
+    dividerColor: kDividerColor,
+    iconTheme: const IconThemeData(color: kWhiteColor),
+    extensions: const [_darkAppColors],
     useMaterial3: true,
   );
 
@@ -127,18 +138,30 @@ class AppTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: kPrimaryColor,
       brightness: Brightness.light,
-      background: kBackgroundColor,
+    ).copyWith(
       primary: kPrimaryColor,
       onPrimary: kWhiteColor,
-      surface: kWhiteColor,
-      onSurface: kBlack2Color,
+      surface: const Color(0xFFFFFFFF),
+      onSurface: const Color(0xFF1C1C1E),
+      surfaceContainerHighest: const Color(0xFFEDEDF2),
+      outline: const Color(0xFFE5E5EA),
+      error: const Color(0xFFFF3B30),
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: kPrimaryColor,
-      foregroundColor: kWhiteColor,
-      elevation: 4,
+      backgroundColor: Color(0xFFF2F2F7),
+      foregroundColor: Color(0xFF1C1C1E),
+      elevation: 0,
     ),
-    scaffoldBackgroundColor: kBackgroundColor,
+    scaffoldBackgroundColor: const Color(0xFFF2F2F7),
+    canvasColor: const Color(0xFFF2F2F7),
+    dividerColor: const Color(0xFFE5E5EA),
+    iconTheme: const IconThemeData(color: Color(0xFF1C1C1E)),
+    extensions: const [_lightAppColors],
     useMaterial3: true,
   );
 }
+
+// Forward-declared via app_colors.dart import at the call sites; we redeclare
+// the references here as constants to keep ThemeData.extensions list `const`.
+const _darkAppColors = AppColors.dark;
+const _lightAppColors = AppColors.light;
