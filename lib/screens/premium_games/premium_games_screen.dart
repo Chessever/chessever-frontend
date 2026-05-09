@@ -79,7 +79,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
 
           return RefreshIndicator(
             color: kPrimaryColor,
-            backgroundColor: kBlackColor,
+            backgroundColor: context.colors.surface,
             onRefresh:
                 () =>
                     ref
@@ -150,7 +150,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
     final hasActiveFilters = filter.hasActiveFilters;
 
     return AppBar(
-      backgroundColor: kBlackColor,
+      backgroundColor: context.colors.background,
       surfaceTintColor: Colors.transparent,
       leading: IconButton(
         onPressed: () {

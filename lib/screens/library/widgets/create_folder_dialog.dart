@@ -424,7 +424,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
             onPressed: _handleConfirm,
             style: ElevatedButton.styleFrom(
               backgroundColor: context.colors.textPrimary,
-              foregroundColor: kBlackColor,
+              foregroundColor: context.colors.textInverse,
               padding: EdgeInsets.symmetric(vertical: 16.h),
               elevation: 0,
               shape: RoundedRectangleBorder(

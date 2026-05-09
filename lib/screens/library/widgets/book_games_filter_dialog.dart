@@ -300,7 +300,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                 onPressed: _applyFilters,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.colors.textPrimary,
-                  foregroundColor: kBlackColor,
+                  foregroundColor: context.colors.textInverse,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8.br),
@@ -308,7 +308,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                 ),
                 child: Text(
                   'Apply Filters',
-                  style: AppTypography.textSmBold.copyWith(color: kBlackColor),
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.textInverse,
+                  ),
                 ),
               ),
             ),
