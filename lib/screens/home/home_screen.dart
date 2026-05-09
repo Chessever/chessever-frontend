@@ -15,6 +15,7 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -26,7 +27,7 @@ class PlayerDropDown extends ConsumerWidget {
         padding: EdgeInsets.symmetric(horizontal: 12.sp),
         alignment: Alignment.centerLeft,
         decoration: BoxDecoration(
-          color: kBackgroundColor,
+          color: context.colors.background,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(color: kDarkGreyColor, width: 1.w),
         ),
@@ -50,14 +51,14 @@ class PlayerDropDown extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(horizontal: 12.sp),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: kBackgroundColor,
+                    color: context.colors.background,
                     borderRadius: BorderRadius.circular(8.br),
                     border: Border.all(color: kDarkGreyColor, width: 1.w),
                   ),
                   child: Text(
                     'Error loading players',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textPrimaryMuted,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -106,7 +107,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
         padding: EdgeInsets.symmetric(horizontal: 12.sp),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: kBackgroundColor,
+          color: context.colors.background,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(color: kDarkGreyColor, width: 1.w),
         ),
@@ -136,7 +137,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: kBackgroundColor,
+          color: context.colors.background,
           borderRadius: borderRadius,
           border:
               isDropDownOpen
@@ -157,14 +158,14 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
                             ? Text(
                               'Loading players...',
                               style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor70,
+                                color: context.colors.textPrimaryMuted,
                               ),
                               overflow: TextOverflow.ellipsis,
                             )
                             : Text(
                               currentPlayer.name,
                               style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor70,
+                                color: context.colors.textPrimaryMuted,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -174,7 +175,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
                     isDropDownOpen
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     size: 20.ic,
                   ),
                 ],
@@ -184,7 +185,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
               padding: EdgeInsets.zero,
               offset: const Offset(0, -4),
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: dropDownBorderRadius,
                 border: Border.all(color: kDarkGreyColor),
               ),
@@ -243,7 +244,7 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
                                 child: Text(
                                   player.name,
                                   style: AppTypography.textMdMedium.copyWith(
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),

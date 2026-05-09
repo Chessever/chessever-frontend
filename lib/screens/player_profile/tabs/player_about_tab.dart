@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -203,8 +204,8 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           );
         }
       },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
@@ -482,7 +483,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     return Container(
       padding: EdgeInsets.all(24.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Column(
@@ -529,7 +530,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     return Container(
       padding: EdgeInsets.all(24.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Column(
@@ -565,7 +566,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
               margin: EdgeInsets.only(bottom: 16.h),
               height: 120.h,
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(12.br),
               ),
             ),
@@ -579,7 +580,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     return Container(
       padding: EdgeInsets.all(24.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Column(
@@ -1020,7 +1021,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
         Container(
           padding: EdgeInsets.all(16.sp),
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Row(
@@ -1045,7 +1046,7 @@ countryCode,
                             ? countryName
                             : effectiveFederation,
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                       Text(
@@ -1071,7 +1072,7 @@ countryCode,
                     Text(
                       widget.fideId?.toString() ?? '-',
                       style: AppTypography.textSmBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -1312,7 +1313,7 @@ class _OverallStatsSection extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(16.sp),
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Column(
@@ -1339,7 +1340,7 @@ class _OverallStatsSection extends StatelessWidget {
                     label: 'Draw Rate',
                     value:
                         '${(resultStats.drawRate * 100).toStringAsFixed(1)}%',
-                    color: kWhiteColor70,
+                    color: context.colors.textPrimaryMuted,
                     isSelected: currentResultFilter == PlayerResultFilter.draw,
                     onTap: () {
                       // Toggle: if already selected, clear filter; otherwise apply
@@ -1412,7 +1413,7 @@ class _OverallStatsSection extends StatelessWidget {
                         Text(
                           '${resultStats.totalGames}',
                           style: AppTypography.textLgBold.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           ),
                         ),
                         Text(
@@ -1431,7 +1432,7 @@ class _OverallStatsSection extends StatelessWidget {
                         Text(
                           '${resultStats.wins}W / ${resultStats.draws}D / ${resultStats.losses}L',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           ),
                         ),
                         Text(
@@ -1451,7 +1452,7 @@ class _OverallStatsSection extends StatelessWidget {
                           Text(
                             '$avgOpponentRating',
                             style: AppTypography.textLgBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                           ),
                           Text(
@@ -1950,7 +1951,7 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
         Container(
           padding: EdgeInsets.all(16.sp),
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Column(
@@ -2429,7 +2430,7 @@ class _OpeningRepertoireSectionState
         SizedBox(height: 12.h),
         Container(
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Column(
@@ -2450,7 +2451,7 @@ class _OpeningRepertoireSectionState
               ),
               // Divider between chips and list
               Divider(
-                color: kDividerColor,
+                color: context.colors.divider,
                 height: 1,
                 indent: 16.w,
                 endIndent: 16.w,
@@ -2476,7 +2477,7 @@ class _OpeningRepertoireSectionState
                   itemCount: topOpenings.length,
                   separatorBuilder:
                       (_, __) => Divider(
-                        color: kDividerColor,
+                        color: context.colors.divider,
                         height: 1,
                         indent: 16.w,
                         endIndent: 16.w,

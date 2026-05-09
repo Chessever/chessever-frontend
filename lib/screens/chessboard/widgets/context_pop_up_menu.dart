@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -169,7 +170,7 @@ class MenuDivider extends StatelessWidget {
       height: 1.h,
       width: double.infinity,
       margin: EdgeInsets.symmetric(horizontal: 12.sp),
-      color: kDividerColor,
+      color: context.colors.divider,
     );
   }
 }

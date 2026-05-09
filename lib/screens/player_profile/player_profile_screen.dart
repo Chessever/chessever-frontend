@@ -12,6 +12,7 @@ import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -597,7 +598,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     return Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -715,7 +716,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             icon: Icon(
               Icons.arrow_back_ios_new_outlined,
               size: 24.ic,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
             ),
           ),
 
@@ -759,7 +760,7 @@ countryCode,
                         title: effectiveTitle,
                       ),
                       style: AppTypography.textLgBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -804,7 +805,7 @@ countryCode,
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        backgroundColor: kPopUpColor,
+        backgroundColor: context.colors.popup,
         selectedBackgroundColor: kPopUpColor,
         options: playerProfileTabNames.values.toList(),
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
@@ -1473,7 +1474,7 @@ class _ActionCardState extends State<_ActionCard> {
                                     Text(
                                       widget.title,
                                       style: AppTypography.textSmBold.copyWith(
-                                        color: kWhiteColor,
+                                        color: context.colors.textPrimary,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,

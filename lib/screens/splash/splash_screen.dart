@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/screens/splash/splash_screen_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';

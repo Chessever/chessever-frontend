@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/library/providers/book_games_search_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -281,7 +282,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                 onPressed: _resetFilters,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: kWhiteColor,
-                  backgroundColor: kBlack2Color,
+                  backgroundColor: context.colors.surface,
                   side: BorderSide.none,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8.br),
@@ -366,7 +367,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
     return Text(
       text,
       style: AppTypography.textXsMedium.copyWith(
-        color: kSecondaryTextColor,
+        color: context.colors.textSecondary,
         letterSpacing: 0.5,
       ),
     );
@@ -381,7 +382,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(color: kDividerColor),
       ),
@@ -392,7 +393,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
           dropdownColor: kBlack2Color,
           icon: Icon(
             Icons.keyboard_arrow_down_rounded,
-            color: kSecondaryTextColor,
+            color: context.colors.textSecondary,
             size: 20.ic,
           ),
           items:
@@ -403,7 +404,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                       child: Text(
                         itemLabel(v),
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ),
@@ -425,7 +426,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(color: kDividerColor),
       ),

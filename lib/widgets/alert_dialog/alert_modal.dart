@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -157,7 +158,7 @@ Future<bool?> showSmoothConfirmDialog({
       width: double.infinity,
       padding: EdgeInsets.all(24.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(16.br),
         border: Border.all(color: kWhiteColor.withValues(alpha: 0.1), width: 1),
       ),
@@ -167,7 +168,7 @@ Future<bool?> showSmoothConfirmDialog({
           Text(
             title,
             style: TextStyle(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               fontSize: 18.sp,
               fontWeight: FontWeight.w600,
             ),
@@ -262,7 +263,7 @@ class _DialogButtonState extends State<_DialogButton> {
             child: Text(
               widget.text,
               style: TextStyle(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 fontSize: 15.sp,
                 fontWeight: FontWeight.w600,
               ),

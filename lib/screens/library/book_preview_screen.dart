@@ -3,6 +3,7 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -33,7 +34,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
 
     return Scaffold(
       key: e2eKey(E2eIds.bookPreviewRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: ScreenWrapper(
         child: Center(
           child: ConstrainedBox(
@@ -89,7 +90,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 onPressed: () => Navigator.of(context).pop(),
                 icon: Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   size: 20.ic,
                 ),
               ),
@@ -125,7 +126,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Text(
                   name,
                   style: AppTypography.displayXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     letterSpacing: -0.5,
                   ),
                   textAlign: TextAlign.center,
@@ -172,11 +173,11 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
 
         switch (relation) {
           case _BookRelation.loading:
-            return const SizedBox(
+            return SizedBox(
               height: 48,
               child: Center(
                 child: CircularProgressIndicator(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   strokeWidth: 2,
                 ),
               ),
@@ -334,7 +335,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 onPressed: () => Navigator.of(context).pop(),
                 icon: Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   size: 20.ic,
                 ),
               ),
@@ -388,7 +389,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 onPressed: () => Navigator.of(context).pop(),
                 icon: Icon(
                   Icons.arrow_back_ios_new_rounded,
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   size: 20.ic,
                 ),
               ),
@@ -409,7 +410,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Text(
                   'Something went wrong',
                   style: AppTypography.textMdMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
                 SizedBox(height: 6.h),

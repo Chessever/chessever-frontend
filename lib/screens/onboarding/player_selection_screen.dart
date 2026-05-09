@@ -17,6 +17,7 @@ import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -52,7 +53,7 @@ class PlayerSelectionScreen extends HookConsumerWidget {
     return ScreenWrapper(
       child: Scaffold(
         key: e2eKey(E2eIds.playerSelectionRoot),
-        backgroundColor: kBackgroundColor,
+        backgroundColor: context.colors.background,
         body: SafeArea(
           child: PlayerSelectionContent(
             title: 'Follow 3 players to get started',
@@ -210,7 +211,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     Text(
                       title,
                       style: AppTypography.textLgBold.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ).animate().fadeIn(duration: 300.ms, curve: _springCurve),
                     SizedBox(height: 4.h),
@@ -226,7 +227,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12.br),
-                        color: kBlack2Color,
+                        color: context.colors.surface,
                       ),
                       padding: EdgeInsets.symmetric(
                         horizontal: 14.sp,
@@ -245,7 +246,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                               key: e2eKey(E2eIds.playerSelectionSearchField),
                               controller: searchController,
                               style: AppTypography.textSmRegular.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                               ),
                               decoration: InputDecoration(
                                 hintText: 'Find any player...',
@@ -294,9 +295,9 @@ class PlayerSelectionContent extends HookConsumerWidget {
                   duration: const Duration(milliseconds: 250),
                   child:
                       isLoading
-                          ? const Center(
+                          ? Center(
                             child: CircularProgressIndicator(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                           )
                           : Padding(
@@ -863,7 +864,7 @@ class _PlayerTile extends HookWidget {
                           child: Text(
                             _playerName,
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

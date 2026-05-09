@@ -1,6 +1,7 @@
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 
 class PlayerInfoWidget extends StatelessWidget {
@@ -32,14 +33,14 @@ class PlayerInfoWidget extends StatelessWidget {
                 Text(
                   name,
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
                 SizedBox(width: 2.w),
                 Text(
                   rating,
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
               ],
@@ -60,7 +61,7 @@ class PlayerInfoWidget extends StatelessWidget {
                 Text(
                   name,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
                 SizedBox(width: 2.w),

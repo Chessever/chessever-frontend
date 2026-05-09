@@ -3,6 +3,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';

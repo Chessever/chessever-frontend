@@ -13,6 +13,7 @@ import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
@@ -50,7 +51,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     );
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -178,7 +179,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                           child: Text(
                             'Player',
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -193,7 +194,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                     child: Text(
                       'Elo',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -364,7 +365,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
         position & const Size(40, 40),
         Offset.zero & overlay.size,
       ),
-      color: kBlack2Color,
+      color: context.colors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
       items: [
         PopupMenuItem(
@@ -396,7 +397,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: kBlack2Color,
+          backgroundColor: context.colors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.br),
           ),

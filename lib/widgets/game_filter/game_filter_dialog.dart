@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -276,7 +277,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                 onPressed: _resetFilters,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: kWhiteColor,
-                  backgroundColor: kBlack2Color,
+                  backgroundColor: context.colors.surface,
                   side: BorderSide.none,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10.br),
@@ -343,7 +344,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     return Text(
       text,
       style: AppTypography.textSmMedium.copyWith(
-        color: kWhiteColor,
+        color: context.colors.textPrimary,
         letterSpacing: 0.3,
       ),
     );

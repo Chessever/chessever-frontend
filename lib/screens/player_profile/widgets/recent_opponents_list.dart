@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -16,7 +17,7 @@ class RecentOpponentsList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: ListView.separated(
@@ -25,7 +26,7 @@ class RecentOpponentsList extends StatelessWidget {
         itemCount: opponents.length,
         separatorBuilder:
             (context, index) => Divider(
-              color: kDividerColor,
+              color: context.colors.divider,
               height: 1,
               indent: 16.sp,
               endIndent: 16.sp,
@@ -71,7 +72,7 @@ class RecentOpponentsList extends StatelessWidget {
           ),
 
           // Result indicator (color square showing if played as white/black and result)
-          _buildResultIndicator(opponent),
+          _buildResultIndicator(context, opponent),
 
           SizedBox(width: 10.w),
 
@@ -115,7 +116,7 @@ class RecentOpponentsList extends StatelessWidget {
     );
   }
 
-  Widget _buildResultIndicator(RecentOpponent opponent) {
+  Widget _buildResultIndicator(BuildContext context, RecentOpponent opponent) {
     // The indicator shows:
     // - Top half: player's color (white if playedAsWhite, black otherwise)
     // - Bottom half: result color (green=win, gray=draw, red=loss)
@@ -127,7 +128,7 @@ class RecentOpponentsList extends StatelessWidget {
       height: 20.h,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(4.br),
-        border: Border.all(color: kDividerColor, width: 1),
+        border: Border.all(color: context.colors.divider, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(

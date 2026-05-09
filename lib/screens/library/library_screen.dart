@@ -12,6 +12,7 @@ import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -399,8 +400,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ref.invalidate(libraryFoldersStreamProvider);
             ref.invalidate(subscribedBooksProvider);
           },
-          color: kWhiteColor,
-          backgroundColor: kBlack2Color,
+          color: context.colors.textPrimary,
+          backgroundColor: context.colors.surface,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
@@ -750,7 +751,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
                 Text(
                   'Millions of games',
                   style: AppTypography.displayXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     letterSpacing: -0.5,
                   ),
                 ),
@@ -758,7 +759,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
                 Text(
                   'at your fingertips',
                   style: AppTypography.displayXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     letterSpacing: -0.5,
                   ),
                 ),
@@ -771,7 +772,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
                   child: Text(
                     'Search any player, opening, or tournament. Save games to your personal databases for study.',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       height: 1.5,
                     ),
                     textAlign: TextAlign.center,

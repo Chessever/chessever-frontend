@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -69,7 +70,7 @@ class NotifPushCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 14.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kDividerColor.withValues(alpha: 0.5)),
       ),
@@ -86,7 +87,7 @@ class NotifPushCard extends StatelessWidget {
                     Text(
                       'Push Notifications',
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontSize: 13.f,
                       ),
                     ),
@@ -94,7 +95,7 @@ class NotifPushCard extends StatelessWidget {
                     Text(
                       'Enable alerts for game starts, finishes, and live updates.',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
+                        color: context.colors.textPrimaryMuted,
                         fontSize: 11.f,
                       ),
                     ),

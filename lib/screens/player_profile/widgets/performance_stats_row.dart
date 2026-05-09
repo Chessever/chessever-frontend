@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -23,7 +24,7 @@ class PerformanceStatsRow extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Row(

@@ -10,6 +10,7 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
@@ -68,7 +69,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     final playerGamesAsync = ref.watch(playerGamesProvider(_playerIdentifier));
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -172,7 +173,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                       child: Text(
                         widget.playerName,
                         style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -236,7 +237,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
             .read(playerGamesProvider(_playerIdentifier).notifier)
             .refreshGames();
       },
-      color: kWhiteColor70,
+      color: context.colors.textPrimaryMuted,
       backgroundColor: kDarkGreyColor,
       child: ListView.builder(
         controller: _scrollController,
@@ -363,7 +364,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                 Container(
                   height: 70.h,
                   decoration: BoxDecoration(
-                    color: kBlack2Color,
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(8.br),
                   ),
                 ),
@@ -375,7 +376,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                     child: Container(
                       height: 84.h,
                       decoration: BoxDecoration(
-                        color: kBlack2Color,
+                        color: context.colors.surface,
                         borderRadius: BorderRadius.circular(12.br),
                       ),
                     ),

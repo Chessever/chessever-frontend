@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/eco_openings.dart';
@@ -208,7 +209,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
           child: Container(
             constraints: BoxConstraints(maxHeight: 320.h),
             decoration: BoxDecoration(
-              color: kBlack2Color,
+              color: context.colors.surface,
               borderRadius: BorderRadius.vertical(
                 bottom: Radius.circular(12.br),
               ),
@@ -254,7 +255,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
           prefixIcon: Icon(
             Icons.search_rounded,
             size: 18.ic,
-            color: kSecondaryTextColor,
+            color: context.colors.textSecondary,
           ),
           prefixIconConstraints: BoxConstraints(minWidth: 36.w),
           suffixIcon:
@@ -267,7 +268,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                     child: Icon(
                       Icons.close_rounded,
                       size: 16.ic,
-                      color: kSecondaryTextColor,
+                      color: context.colors.textSecondary,
                     ),
                   )
                   : null,
@@ -288,7 +289,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         child: Text(
           'No openings found',
           style: AppTypography.textSmRegular.copyWith(
-            color: kSecondaryTextColor,
+            color: context.colors.textSecondary,
           ),
         ),
       );
@@ -353,7 +354,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               child: Text(
                 'All Openings',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),

@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/widgets.dart';

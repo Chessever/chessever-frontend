@@ -3,6 +3,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import '../localization/locale_provider.dart';
 import '../repository/local_storage/language_repository/language_repository.dart';

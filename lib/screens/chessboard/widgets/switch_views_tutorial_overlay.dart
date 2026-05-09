@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -161,7 +162,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                       24.h,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: kWhiteColor,
+                                      color: context.colors.textPrimary,
                                       borderRadius: BorderRadius.circular(
                                         28.br,
                                       ),
@@ -232,13 +233,13 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                     ),
                                   ],
                                   border: Border.all(
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                     width: 3,
                                   ),
                                 ),
                                 child: Icon(
                                   Icons.swap_horiz_rounded,
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                   size: 22.sp,
                                 ),
                               ),
@@ -294,7 +295,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                       child: Icon(
                                         Icons.touch_app_rounded,
                                         size: 52.sp,
-                                        color: kWhiteColor,
+                                        color: context.colors.textPrimary,
                                         shadows: [
                                           BoxShadow(
                                             color: Colors.black.withValues(
@@ -524,7 +525,7 @@ class _TapTitleHintState extends State<_TapTitleHint>
         return Container(
           padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(14.br),
           ),
           child: Row(

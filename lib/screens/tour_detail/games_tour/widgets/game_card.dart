@@ -4,6 +4,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -170,7 +171,7 @@ class GamesTourGameCardBody extends ConsumerWidget {
             width: double.infinity,
             padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
             decoration: BoxDecoration(
-              color: kBlack3Color,
+              color: context.colors.surfaceRecessed,
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(12.br),
                 topRight: Radius.circular(12.br),
@@ -232,7 +233,7 @@ class _TopSection extends ConsumerWidget {
       height: 60.h,
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
-        color: kWhiteColor70,
+        color: context.colors.textPrimaryMuted,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(12.br),
           topRight: Radius.circular(12.br),
@@ -329,7 +330,7 @@ class _BottomSection extends ConsumerWidget {
         height: 24.h,
         padding: EdgeInsets.symmetric(horizontal: 16.sp),
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.only(
             bottomLeft: Radius.circular(12.br),
             bottomRight: Radius.circular(12.br),
@@ -343,7 +344,7 @@ class _BottomSection extends ConsumerWidget {
       height: 24.h,
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(12.br),
           bottomRight: Radius.circular(12.br),

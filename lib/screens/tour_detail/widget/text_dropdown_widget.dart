@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -85,7 +86,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
             isLast
                 ? null
                 : Border(
-                  bottom: BorderSide(color: kDividerColor, width: 0.5.h),
+                  bottom: BorderSide(color: context.colors.divider, width: 0.5.h),
                 ),
       ),
       constraints: BoxConstraints(maxHeight: 42.h),
@@ -149,7 +150,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
       underline: Container(),
       icon: Icon(
         Icons.keyboard_arrow_down_outlined,
-        color: kWhiteColor,
+        color: context.colors.textPrimary,
         size: 20.ic,
       ),
       dropdownColor: kBlack2Color,

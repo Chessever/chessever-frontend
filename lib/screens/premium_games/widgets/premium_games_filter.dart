@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/premium_games/providers/premium_games_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -105,7 +106,7 @@ class _PremiumGamesFilterDialogState
                                 Text(
                                   'Filters',
                                   style: AppTypography.textMdBold.copyWith(
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                   ),
                                 ),
                                 GestureDetector(
@@ -174,7 +175,7 @@ class _PremiumGamesFilterDialogState
                                   onPressed: _resetFilters,
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: kWhiteColor,
-                                    backgroundColor: kBlack2Color,
+                                    backgroundColor: context.colors.surface,
                                     side: BorderSide.none,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(8.br),
@@ -183,7 +184,7 @@ class _PremiumGamesFilterDialogState
                                   child: Text(
                                     'Reset',
                                     style: AppTypography.textSmMedium.copyWith(
-                                      color: kWhiteColor,
+                                      color: context.colors.textPrimary,
                                     ),
                                   ),
                                 ),

@@ -6,6 +6,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
@@ -88,7 +89,7 @@ class StandingScoreCard extends ConsumerWidget {
                 child: Text(
                   rank.toString(),
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kSecondaryTextColor,
+                    color: context.colors.textSecondary,
                   ),
                   textAlign: TextAlign.left,
                 ),
@@ -135,7 +136,7 @@ validCountryCode,
                       TextSpan(
                         text: name,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -153,7 +154,7 @@ validCountryCode,
                   Text(
                     score.toString(),
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                   if (scoreChange != null && scoreChange != 0) ...[
@@ -177,7 +178,7 @@ validCountryCode,
                   matchScore ?? '',
                   textAlign: TextAlign.left,
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
               ),

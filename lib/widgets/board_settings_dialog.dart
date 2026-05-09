@@ -6,6 +6,7 @@ import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import '../providers/board_settings_provider.dart';
 import 'board_color_dialog.dart';
@@ -27,7 +28,7 @@ class BoardSettingsDialog extends ConsumerWidget {
           child: Container(
             // padding: EdgeInsets.symmetric(vertical: 10.h),
             decoration: BoxDecoration(
-              color: kPopUpColor,
+              color: context.colors.popup,
               borderRadius: BorderRadius.circular(20.br),
               boxShadow: [
                 BoxShadow(
@@ -159,13 +160,13 @@ class _MenuItem extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 20.sp),
           child: Row(
             children: [
-              customIcon ?? Icon(icon!, color: kWhiteColor, size: 20.ic),
+              customIcon ?? Icon(icon!, color: context.colors.textPrimary, size: 20.ic),
               SizedBox(width: 4.w),
               Expanded(child: Text(title, style: AppTypography.textMdMedium)),
               if (showChevron)
                 Icon(
                   Icons.chevron_right_outlined,
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   size: 20.ic,
                 ),
               SizedBox(

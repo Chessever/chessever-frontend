@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -273,7 +274,7 @@ class _TcCard extends StatelessWidget {
                             child: Icon(
                               Icons.check,
                               size: 7.sp,
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                           ),
                         ),

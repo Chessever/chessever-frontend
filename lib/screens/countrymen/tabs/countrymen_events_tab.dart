@@ -6,6 +6,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -245,8 +246,8 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
         HapticFeedbackService.medium();
         await ref.read(countrymenEventsProvider.notifier).refresh();
       },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(
@@ -369,8 +370,8 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
                             SizedBox(
                               width: 24.w,
                               height: 24.h,
-                              child: const CircularProgressIndicator(
-                                color: kWhiteColor,
+                              child: CircularProgressIndicator(
+                                color: context.colors.textPrimary,
                                 strokeWidth: 2,
                               ),
                             ),
@@ -428,8 +429,8 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           SizedBox(
             width: 48.w,
             height: 48.h,
-            child: const CircularProgressIndicator(
-              color: kWhiteColor,
+            child: CircularProgressIndicator(
+              color: context.colors.textPrimary,
               strokeWidth: 2.5,
             ),
           ),

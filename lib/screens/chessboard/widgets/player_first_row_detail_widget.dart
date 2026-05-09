@@ -12,6 +12,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -242,7 +243,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               height: 1.15,
               letterSpacing: 0,
             )
@@ -250,12 +251,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.f,
               fontWeight: FontWeight.w600,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               height: 1.15,
               letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               fontWeight: FontWeight.w600,
               fontSize: 14.f,
               height: 1.2,
@@ -266,7 +267,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
               height: 1.15,
               letterSpacing: 0,
             )
@@ -274,12 +275,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 7.5.f,
               fontWeight: FontWeight.w500,
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
               height: 1.15,
               letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
               fontWeight: FontWeight.w600,
               fontSize: 14.f,
               height: 1.2,
@@ -627,7 +628,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                             fontSize:
                                 playerView == PlayerView.gridView ? 9.f : 10.f,
                             fontWeight: FontWeight.w700,
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                             height: 1.0,
                           ),
                           textAlign: TextAlign.center,

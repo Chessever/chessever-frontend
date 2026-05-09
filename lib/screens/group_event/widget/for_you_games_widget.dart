@@ -14,6 +14,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -182,7 +183,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         await ref.read(forYouEventsProvider.notifier).refresh();
       },
       color: kPrimaryColor,
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       child: _buildEventsList(
         events,
         viewMode: viewMode,
@@ -424,7 +425,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         Center(
           child: Text(
             'No events available',
-            style: TextStyle(color: kWhiteColor70, fontSize: 14.sp),
+            style: TextStyle(
+              color: context.colors.textPrimaryMuted,
+              fontSize: 14.sp,
+            ),
           ),
         ),
       ],
@@ -450,7 +454,7 @@ class _TabletColumnSkeleton extends StatelessWidget {
             aspectRatio: eventCardAspectRatio,
             child: Container(
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(12.br),
               ),
             ),
@@ -469,7 +473,7 @@ class _TabletColumnSkeleton extends StatelessWidget {
                     child: Container(
                       height: 72.sp,
                       decoration: BoxDecoration(
-                        color: kBlack2Color,
+                        color: context.colors.surfaceRecessed,
                         borderRadius: BorderRadius.circular(8.br),
                       ),
                     ),
@@ -482,7 +486,7 @@ class _TabletColumnSkeleton extends StatelessWidget {
                     child: Container(
                       height: 72.sp,
                       decoration: BoxDecoration(
-                        color: kBlack2Color,
+                        color: context.colors.surfaceRecessed,
                         borderRadius: BorderRadius.circular(8.br),
                       ),
                     ),
@@ -793,7 +797,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
 
         return Column(children: rows);
       },
-      loading: () => _buildColumnShimmer(),
+      loading: () => _buildColumnShimmer(context),
       error: (error, stack) {
         debugPrint(
           '[_ForYouTabletColumnGames] Error loading games for $eventId: $error',
@@ -802,14 +806,17 @@ class _ForYouTabletColumnGames extends StatelessWidget {
           padding: EdgeInsets.only(bottom: 8.sp),
           child: Text(
             'Could not load games',
-            style: TextStyle(color: kWhiteColor70, fontSize: 12.sp),
+            style: TextStyle(
+              color: context.colors.textPrimaryMuted,
+              fontSize: 12.sp,
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildColumnShimmer() {
+  Widget _buildColumnShimmer(BuildContext context) {
     // Show 2 rows of 2 game cards (4 total) matching actual content
     return Column(
       children: List.generate(2, (rowIndex) {
@@ -823,7 +830,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                   child: Container(
                     height: 72.sp,
                     decoration: BoxDecoration(
-                      color: kBlack2Color,
+                      color: context.colors.surfaceRecessed,
                       borderRadius: BorderRadius.circular(8.br),
                     ),
                   ),
@@ -836,7 +843,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                   child: Container(
                     height: 72.sp,
                     decoration: BoxDecoration(
-                      color: kBlack2Color,
+                      color: context.colors.surfaceRecessed,
                       borderRadius: BorderRadius.circular(8.br),
                     ),
                   ),
@@ -990,7 +997,10 @@ class _ForYouEventGames extends ConsumerWidget {
           padding: EdgeInsets.only(bottom: 8.sp),
           child: Text(
             'Could not load games',
-            style: TextStyle(color: kWhiteColor70, fontSize: 12.sp),
+            style: TextStyle(
+              color: context.colors.textPrimaryMuted,
+              fontSize: 12.sp,
+            ),
           ),
         );
       },
@@ -1281,7 +1291,7 @@ class _ForYouEventSkeleton extends StatelessWidget {
             margin: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
             height: 80.sp,
             decoration: BoxDecoration(
-              color: kBlack2Color,
+              color: context.colors.surfaceRecessed,
               borderRadius: BorderRadius.circular(8.br),
             ),
           ),

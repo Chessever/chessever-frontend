@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -48,7 +49,7 @@ class MatchHeader extends ConsumerWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Row(
@@ -85,7 +86,7 @@ class MatchHeader extends ConsumerWidget {
                                 child: Text(
                                   match.player1,
                                   style: AppTypography.textSmMedium.copyWith(
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                     fontWeight: FontWeight.w600,
                                   ),
                                   maxLines: 1,
@@ -132,7 +133,7 @@ class MatchHeader extends ConsumerWidget {
                                 child: Text(
                                   match.player2,
                                   style: AppTypography.textSmMedium.copyWith(
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                     fontWeight: FontWeight.w600,
                                   ),
                                   maxLines: 1,
@@ -243,7 +244,7 @@ class CompactMatchHeader extends ConsumerWidget {
                   child: Text(
                     match.player1,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,
@@ -264,7 +265,7 @@ class CompactMatchHeader extends ConsumerWidget {
                   child: Text(
                     match.player2,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,

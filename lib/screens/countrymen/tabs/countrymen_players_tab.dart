@@ -7,6 +7,7 @@ import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -283,8 +284,8 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
         HapticFeedbackService.medium();
         await ref.read(countrymenPlayersProvider.notifier).refresh();
       },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(
@@ -409,8 +410,8 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
                             SizedBox(
                               width: 24.w,
                               height: 24.h,
-                              child: const CircularProgressIndicator(
-                                color: kWhiteColor,
+                              child: CircularProgressIndicator(
+                                color: context.colors.textPrimary,
                                 strokeWidth: 2,
                               ),
                             ),
@@ -514,8 +515,8 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           SizedBox(
             width: 48.w,
             height: 48.h,
-            child: const CircularProgressIndicator(
-              color: kWhiteColor,
+            child: CircularProgressIndicator(
+              color: context.colors.textPrimary,
               strokeWidth: 2.5,
             ),
           ),

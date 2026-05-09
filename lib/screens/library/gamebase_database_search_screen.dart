@@ -4,6 +4,7 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filters_sheet.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -39,18 +40,18 @@ class _GamebaseDatabaseSearchScreenState
     final searchAsync = ref.watch(gamebaseDatabaseSearchProvider);
 
     return Scaffold(
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       appBar: AppBar(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: context.colors.background,
         elevation: 0,
         leading: IconButton(
           onPressed: () {
             HapticFeedback.lightImpact();
             Navigator.of(context).pop();
           },
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: kWhiteColor,
+            color: context.colors.textPrimary,
           ),
         ),
         title: Text(
@@ -184,7 +185,7 @@ class _SearchBar extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
         ),
@@ -338,7 +339,7 @@ class _GamesList extends ConsumerWidget {
           () async =>
               ref.read(gamebaseDatabaseSearchProvider.notifier).refresh(),
       color: kPrimaryColor,
-      backgroundColor: kBlack2Color,
+      backgroundColor: context.colors.surface,
       child:
           games.isEmpty
               ? ListView(
@@ -512,7 +513,7 @@ class _PaginationBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 10.h),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         border: Border(
           top: BorderSide(color: kWhiteColor.withValues(alpha: 0.06)),
         ),
@@ -556,7 +557,7 @@ class _IconPillButton extends StatelessWidget {
         width: 44.w,
         height: 36.h,
         decoration: BoxDecoration(
-          color: kBlack3Color,
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(10.br),
           border: Border.all(
             color:

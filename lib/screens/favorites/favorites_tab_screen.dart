@@ -3,6 +3,7 @@ import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.da
 import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -83,7 +84,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
 
     return Scaffold(
       key: e2eKey(E2eIds.favoritesRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -138,7 +139,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
             icon: Icon(
               Icons.arrow_back_ios_new_outlined,
               size: 24.ic,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
             ),
           ),
           Expanded(
@@ -155,7 +156,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
                   Text(
                     'Favorites',
                     style: AppTypography.textLgBold.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                 ],
@@ -176,7 +177,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        backgroundColor: kPopUpColor,
+        backgroundColor: context.colors.popup,
         selectedBackgroundColor: kPopUpColor,
         options: favoritesModeNames.values.toList(),
         initialSelection: favoritesModeNames.values.toList().indexOf(

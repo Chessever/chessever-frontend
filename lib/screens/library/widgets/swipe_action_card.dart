@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -229,18 +230,18 @@ class _SwipeActionCardState extends State<SwipeActionCard>
                           Text(
                             widget.label!,
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                           ),
                           SizedBox(width: 10.w),
                         ],
-                        Icon(widget.icon, color: kWhiteColor, size: 22.sp),
+                        Icon(widget.icon, color: context.colors.textPrimary, size: 22.sp),
                         if (!isRtl && widget.label != null) ...[
                           SizedBox(width: 10.w),
                           Text(
                             widget.label!,
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                           ),
                         ],

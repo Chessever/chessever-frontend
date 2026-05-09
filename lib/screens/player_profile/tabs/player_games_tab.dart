@@ -19,6 +19,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -509,8 +510,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             .read(playerProfileGamesKeyProvider(_playerKey).notifier)
             .refresh();
       },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
       child: CustomScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(
@@ -589,7 +590,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             .length;
 
     return Container(
-      color: kBackgroundColor,
+      color: context.colors.background,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -772,7 +773,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                           child: Text(
                             '$activeFilterCount',
                             style: AppTypography.textXsBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                               fontSize: 9.sp,
                               height: 1,
                             ),
@@ -844,7 +845,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(16.br),
                 border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
                 boxShadow: [
@@ -1352,7 +1353,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   ? Icons.check_rounded
                   : Icons.radio_button_unchecked_rounded,
               size: 14.5.sp,
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
             ),
           ),
         ),
@@ -1371,9 +1372,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             SizedBox(
               width: 16.w,
               height: 16.h,
-              child: const CircularProgressIndicator(
+              child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: kWhiteColor70,
+                color: context.colors.textPrimaryMuted,
               ),
             ),
             SizedBox(width: 10.w),
@@ -1441,7 +1442,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   height: 96.h,
                   margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
                   decoration: BoxDecoration(
-                    color: kBlack2Color,
+                    color: context.colors.surface,
                     borderRadius: BorderRadius.circular(12.br),
                   ),
                 ),
@@ -1625,9 +1626,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SizedBox(
             width: 24.w,
             height: 24.h,
-            child: const CircularProgressIndicator(
+            child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: kWhiteColor70,
+              color: context.colors.textPrimaryMuted,
             ),
           ),
           SizedBox(height: 12.h),
@@ -1743,27 +1744,27 @@ class _EventSection extends StatelessWidget {
               heroTagSuffix: '_player_games_$tourId',
             )
           else
-            _buildFallbackCard(),
+            _buildFallbackCard(context),
 
           // Player stats row
-          _buildStatsRow(),
+          _buildStatsRow(context),
         ],
       ),
     );
   }
 
-  Widget _buildFallbackCard() {
+  Widget _buildFallbackCard(BuildContext context) {
     final eventName = eventData?.tourName ?? _formatSlug(tourSlug ?? tourId);
     return Container(
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(8.br)),
       ),
       padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 16.sp),
       child: Text(
         eventName,
         style: AppTypography.textSmMedium.copyWith(
-          color: kWhiteColor,
+          color: context.colors.textPrimary,
           height: 1.2,
         ),
         maxLines: 2,
@@ -1772,12 +1773,12 @@ class _EventSection extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsRow() {
+  Widget _buildStatsRow(BuildContext context) {
     return Container(
       margin: EdgeInsets.only(top: 1.h),
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(8.br),
           bottomRight: Radius.circular(8.br),

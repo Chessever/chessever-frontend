@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:motor/motor.dart';
 
@@ -287,7 +288,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                           child: Text(
                             '${widget.filterBadgeCount}',
                             style: AppTypography.textXsBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                               fontSize: 10.sp,
                               height: 1,
                             ),

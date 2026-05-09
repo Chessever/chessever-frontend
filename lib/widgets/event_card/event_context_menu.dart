@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -64,7 +65,7 @@ Future<void> showEventContextMenu({
   final action = await showTabletSafeMenu<EventContextAction>(
     context: context,
     position: position,
-    color: kBlack2Color,
+    color: context.colors.surface,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.br)),
     constraints: BoxConstraints.tightFor(width: 176.w),
     items: _buildMenuItems(),
@@ -165,7 +166,7 @@ class _EventMenuRow extends StatelessWidget {
           SizedBox(
             width: 16.w,
             height: 16.h,
-            child: Icon(icon, color: kWhiteColor, size: 16),
+            child: Icon(icon, color: context.colors.textPrimary, size: 16),
           ),
           SizedBox(width: 10.w),
           Expanded(
@@ -177,7 +178,7 @@ class _EventMenuRow extends StatelessWidget {
                 fontFamily: 'InterDisplay',
                 fontSize: 12.sp,
                 fontWeight: FontWeight.w400,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
               ),
             ),
           ),

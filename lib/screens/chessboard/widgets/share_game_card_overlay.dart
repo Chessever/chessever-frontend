@@ -15,6 +15,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'gif_export_worker.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -873,7 +874,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(20.br),
         border: Border.all(color: kBlack3Color),
       ),
@@ -919,7 +920,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   width: 18.h,
                   height: 18.h,
                   decoration: BoxDecoration(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -957,7 +958,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       decoration: BoxDecoration(
         color: isPrimary ? kPrimaryColor : kBlack3Color,
         borderRadius: BorderRadius.circular(8.br),
-        border: isPrimary ? null : Border.all(color: kDividerColor, width: 1),
+        border: isPrimary ? null : Border.all(color: context.colors.divider, width: 1),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -989,7 +990,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       width: 370.w,
       padding: EdgeInsets.all(4.w),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kBlack3Color),
       ),
@@ -1023,7 +1024,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       width: 370.w,
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(color: kBlack3Color),
       ),
@@ -1045,7 +1046,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               Text(
                 'Generating GIF... ${(_gifProgress * 100).toInt()}%',
                 style: TextStyle(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontSize: 14.sp,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1058,7 +1059,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
             borderRadius: BorderRadius.circular(4.br),
             child: LinearProgressIndicator(
               value: _gifProgress,
-              backgroundColor: kBlack3Color,
+              backgroundColor: context.colors.surfaceRecessed,
               valueColor: AlwaysStoppedAnimation<Color>(kPrimaryColor),
               minHeight: 6.h,
             ),
@@ -1089,7 +1090,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 fontSize: 15.sp,
                 fontWeight: FontWeight.w500,
               ),
@@ -1107,7 +1108,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                 child: Icon(
                   Icons.copy_rounded,
                   size: 18.sp,
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                 ),
               ),
             ),
@@ -1233,7 +1234,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               child: Screenshot(
                 controller: _fullScreenshotController,
                 child: Container(
-                  color: kBackgroundColor,
+                  color: context.colors.background,
                   padding: EdgeInsets.all(16.w),
                   child: _ShareCard(
                     boardSettings: widget.boardSettings,
@@ -1377,10 +1378,13 @@ class _ShareCard extends ConsumerWidget {
     required this.gameId, // REQUIRED for correct eval caching
   });
 
-  Widget _buildEndScoreWidget({required bool isWhitePlayer}) {
+  Widget _buildEndScoreWidget({
+    required BuildContext context,
+    required bool isWhitePlayer,
+  }) {
     // For finished games, display end scores similar to main chess board screen
     final scoreStyle = AppTypography.textXsBold.copyWith(
-      color: kWhiteColor,
+      color: context.colors.textPrimary,
       fontSize: 14.sp, // Bigger for better proportion
       fontWeight: FontWeight.w700,
       height: 1.0,
@@ -1409,6 +1413,7 @@ class _ShareCard extends ConsumerWidget {
 
   /// Build player row matching PlayerFirstRowDetailWidget boardView style exactly
   Widget _buildPlayerRow({
+    required BuildContext context,
     required String playerName,
     required String playerCountry,
     required String? playerElo,
@@ -1426,7 +1431,7 @@ class _ShareCard extends ConsumerWidget {
     );
 
     final nameStyle = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor,
+      color: context.colors.textPrimary,
       fontWeight: FontWeight.w600,
       fontSize: 14.sp,
       height: 1.2,
@@ -1434,14 +1439,14 @@ class _ShareCard extends ConsumerWidget {
 
     // Rating style - matches PlayerFirstRowDetailWidget (kWhiteColor70)
     final ratingStyle = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor70,
+      color: context.colors.textPrimaryMuted,
       fontWeight: FontWeight.w600,
       fontSize: 14.sp,
       height: 1.2,
     );
 
     final timeStyle = AppTypography.textXsMedium.copyWith(
-      color: kWhiteColor,
+      color: context.colors.textPrimary,
       fontSize: 14.sp,
       fontWeight: FontWeight.w500,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -1467,7 +1472,10 @@ class _ShareCard extends ConsumerWidget {
           SizedBox(
             width: sideBarWidth.w,
             child: Center(
-              child: _buildEndScoreWidget(isWhitePlayer: isWhitePlayer),
+              child: _buildEndScoreWidget(
+                context: context,
+                isWhitePlayer: isWhitePlayer,
+              ),
             ),
           ),
           SizedBox(width: elementSpacing.w),
@@ -1617,9 +1625,9 @@ class _ShareCard extends ConsumerWidget {
     final cardContent = Container(
       width: 370.w,
       decoration: BoxDecoration(
-        color: kBackgroundColor,
+        color: context.colors.background,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: kDividerColor, width: 3),
+        border: Border.all(color: context.colors.divider, width: 3),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.5),
@@ -1639,7 +1647,7 @@ class _ShareCard extends ConsumerWidget {
               child: Text(
                 tournamentName!,
                 style: TextStyle(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontSize: 11.sp,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1652,11 +1660,12 @@ class _ShareCard extends ConsumerWidget {
           if (roundInfo != null)
             Text(
               roundInfo!,
-              style: TextStyle(color: kWhiteColor70, fontSize: 9.sp),
+              style: TextStyle(color: context.colors.textPrimaryMuted, fontSize: 9.sp),
             ),
           SizedBox(height: 12.h),
           // Top player row - matching PlayerFirstRowDetailWidget exactly
           _buildPlayerRow(
+            context: context,
             playerName: topPlayerName,
             playerCountry: topPlayerCountry,
             playerElo: topPlayerElo,
@@ -1828,6 +1837,7 @@ class _ShareCard extends ConsumerWidget {
           SizedBox(height: 12.h),
           // Bottom player row - matching PlayerFirstRowDetailWidget exactly
           _buildPlayerRow(
+            context: context,
             playerName: bottomPlayerName,
             playerCountry: bottomPlayerCountry,
             playerElo: bottomPlayerElo,

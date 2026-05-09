@@ -4,6 +4,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/rounded_search_bar.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -84,7 +85,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
 
     return Scaffold(
       key: e2eKey(E2eIds.playersRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -111,7 +112,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
                     padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
                     child: DefaultTextStyle(
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -184,8 +185,8 @@ class _PlayerList extends ConsumerWidget {
     final notifier = ref.read(playerPaginationProvider.notifier);
 
     return RefreshIndicator(
-      color: kWhiteColor,
-      backgroundColor: kBackgroundColor,
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.background,
       displacement: 40.0,
       onRefresh: () => _handleRefresh(ref),
       child: playersState.when(
@@ -207,7 +208,7 @@ class _PlayerList extends ConsumerWidget {
                       Text(
                         'Error loading players',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -239,7 +240,7 @@ class _PlayerList extends ConsumerWidget {
                         Text(
                           'No players found',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor,
+                            color: context.colors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 8),

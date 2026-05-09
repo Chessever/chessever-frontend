@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -68,7 +69,7 @@ class GroupEventMatchCard extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: cardBorderRadius,
       ),
       clipBehavior: Clip.antiAlias,
@@ -82,7 +83,7 @@ class GroupEventMatchCard extends ConsumerWidget {
               height: 60.h,
               padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: headerBorderRadius,
               ),
               child: Row(
@@ -104,7 +105,7 @@ country1,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                             textAlign: TextAlign.left,
                           ),
@@ -120,7 +121,7 @@ country1,
                       child: Text(
                         team1ScoreStr,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -134,7 +135,7 @@ country1,
                         'VS',
                         textAlign: TextAlign.center,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -148,7 +149,7 @@ country1,
                       child: Text(
                         team2ScoreStr,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -164,7 +165,7 @@ country1,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                             textAlign: TextAlign.right,
                           ),

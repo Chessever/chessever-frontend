@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -151,7 +152,7 @@ class FigmaPlayerCard extends ConsumerWidget {
                   Text(
                     player.name,
                     style: AppTypography.textSmBold.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -236,7 +237,7 @@ validCountryCode,
                 child: Text(
                   player.matchScore ?? '',
                   style: AppTypography.textMdMedium.copyWith(
-                    color: kWhiteColor,
+                    color: context.colors.textPrimary,
                   ),
                 ),
               ),

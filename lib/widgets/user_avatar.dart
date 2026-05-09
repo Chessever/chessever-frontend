@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -114,22 +115,22 @@ class UserAvatar extends HookConsumerWidget {
         width: size.w,
         height: size.h,
         memCacheWidth: cacheSize,
-        placeholder: (context, url) => _buildFallback(initials),
-        errorWidget: (context, url, error) => _buildFallback(initials),
+        placeholder: (context, url) => _buildFallback(context, initials),
+        errorWidget: (context, url, error) => _buildFallback(context, initials),
       );
     }
 
-    return _buildFallback(initials);
+    return _buildFallback(context, initials);
   }
 
-  Widget _buildFallback(String initials) {
+  Widget _buildFallback(BuildContext context, String initials) {
     final content = initials.isNotEmpty ? initials : '♞';
     final effectiveStyle =
         initialsStyle ??
         (size >= 44
             ? AppTypography.textMdBold
             : TextStyle(
-              color: kBlack2Color,
+              color: context.colors.surface,
               fontWeight: FontWeight.bold,
               fontSize: (size * 0.35).f,
             ));

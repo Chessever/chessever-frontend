@@ -13,6 +13,7 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/library/widgets/gamebase_search_player_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -413,12 +414,12 @@ class _LibrarySearchResultsViewState
       if (paginationState.isLoading && games.isNotEmpty)
         Padding(
           padding: EdgeInsets.symmetric(vertical: 16.h),
-          child: const Center(
+          child: Center(
             child: SizedBox(
               width: 24,
               height: 24,
               child: CircularProgressIndicator(
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
                 strokeWidth: 2,
               ),
             ),
@@ -556,8 +557,8 @@ class _LoadMoreButton extends StatelessWidget {
               SizedBox(
                 width: 16.sp,
                 height: 16.sp,
-                child: const CircularProgressIndicator(
-                  color: kWhiteColor,
+                child: CircularProgressIndicator(
+                  color: context.colors.textPrimary,
                   strokeWidth: 2,
                 ),
               ),

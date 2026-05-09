@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -107,7 +108,7 @@ class _PlayerCardContent extends StatelessWidget {
                             child: Text(
                               title,
                               style: AppTypography.textXsBold.copyWith(
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                               ),
                             ),
                           ),
@@ -117,7 +118,7 @@ class _PlayerCardContent extends StatelessWidget {
                           child: Text(
                             player.displayName,
                             style: AppTypography.textSmBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

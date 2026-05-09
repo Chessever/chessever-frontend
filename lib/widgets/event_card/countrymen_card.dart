@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/extensioms/string_extensions.dart';
@@ -22,7 +23,7 @@ class CountrymenCardWidget extends ConsumerWidget {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: kBlack2Color,
+          color: context.colors.surface,
           borderRadius: BorderRadius.only(
             topRight: Radius.circular(8.br),
             topLeft: Radius.circular(8.br),
@@ -57,7 +58,7 @@ class CountrymenCardWidget extends ConsumerWidget {
                   maxLines: 1,
                   text: TextSpan(
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textPrimaryMuted,
                     ),
                     children: [
                       TextSpan(

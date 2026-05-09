@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -42,7 +43,7 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                       Text(
                         title,
                         style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -133,7 +134,7 @@ class _AddSourceTile extends StatelessWidget {
                   Text(
                     title,
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                   SizedBox(height: 2.h),

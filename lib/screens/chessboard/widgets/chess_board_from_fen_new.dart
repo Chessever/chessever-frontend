@@ -13,6 +13,7 @@ import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_wi
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';

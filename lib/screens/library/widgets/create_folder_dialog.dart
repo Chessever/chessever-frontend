@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -178,7 +179,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                       child: Text(
                         widget.title,
                         style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                           letterSpacing: -0.5,
                         ),
                       ),
@@ -306,7 +307,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                       child: Text(
                         folder.name,
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     );

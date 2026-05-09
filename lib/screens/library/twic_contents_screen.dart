@@ -12,6 +12,7 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -180,7 +181,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: e2eKey(E2eIds.twicContentsRoot),
-      backgroundColor: kBackgroundColor,
+      backgroundColor: context.colors.background,
       body: ScreenWrapper(
         child: Center(
           child: ConstrainedBox(
@@ -256,7 +257,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
               'TWIC Database',
               style: AppTypography.textMdMedium.copyWith(
                 fontWeight: FontWeight.w600,
-                color: kWhiteColor,
+                color: context.colors.textPrimary,
               ),
             ),
           ),
@@ -530,12 +531,12 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         if (index >= games.length) {
           return Padding(
             padding: EdgeInsets.symmetric(vertical: 16.h),
-            child: const Center(
+            child: Center(
               child: SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   strokeWidth: 2,
                 ),
               ),
@@ -617,12 +618,12 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             if (index > eventItems.length) {
               return SizedBox(
                 width: 32.w,
-                child: const Center(
+                child: Center(
                   child: SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                       strokeWidth: 1.5,
                     ),
                   ),
@@ -800,7 +801,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         borderRadius: BorderRadius.circular(12.br),
         child: Container(
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             border: Border(left: BorderSide(color: kPrimaryColor, width: 2.5)),
           ),
           padding: EdgeInsets.fromLTRB(12.w, 10.h, 8.w, 10.h),
@@ -814,7 +815,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                     child: Text(
                       item.event,
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,

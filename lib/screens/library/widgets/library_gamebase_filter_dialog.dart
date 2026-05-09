@@ -1,3 +1,4 @@
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -291,7 +292,7 @@ class _LibraryGamebaseFilterDialogState
         width: dialogWidth,
         constraints: BoxConstraints(maxHeight: 560.h),
         decoration: BoxDecoration(
-          color: kBackgroundColor,
+          color: context.colors.background,
           borderRadius: BorderRadius.circular(4.br),
         ),
         child: Column(
@@ -539,7 +540,7 @@ class _LibraryGamebaseFilterDialogState
               child: Container(
                 height: 40.h,
                 decoration: BoxDecoration(
-                  color: kBlack2Color,
+                  color: context.colors.surface,
                   borderRadius: BorderRadius.circular(4.br),
                 ),
                 alignment: Alignment.center,
@@ -558,7 +559,7 @@ class _LibraryGamebaseFilterDialogState
               child: Container(
                 height: 40.h,
                 decoration: BoxDecoration(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   borderRadius: BorderRadius.circular(4.br),
                 ),
                 alignment: Alignment.center,
@@ -601,7 +602,7 @@ class _LibraryGamebaseFilterDialogState
     return Text(
       text,
       style: AppTypography.textSmMedium.copyWith(
-        color: kWhiteColor,
+        color: context.colors.textPrimary,
         letterSpacing: 0.3,
       ),
     );

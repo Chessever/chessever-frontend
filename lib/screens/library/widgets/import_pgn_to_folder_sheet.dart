@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -382,7 +383,7 @@ class _ImportPgnToFolderPageState
                   Text(
                     'Import to My Library',
                     style: AppTypography.textLgBold.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                   SizedBox(height: 6.h),
@@ -501,14 +502,14 @@ class _ImportPgnToFolderPageState
                             children: [
                               Icon(
                                 Icons.create_new_folder_outlined,
-                                color: kWhiteColor,
+                                color: context.colors.textPrimary,
                                 size: 20.sp,
                               ),
                               SizedBox(width: 8.w),
                               Text(
                                 'New Database',
                                 style: AppTypography.textSmMedium.copyWith(
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                 ),
                               ),
                             ],
@@ -540,16 +541,16 @@ class _ImportPgnToFolderPageState
                                 SizedBox(
                                   height: 18.sp,
                                   width: 18.sp,
-                                  child: const CircularProgressIndicator(
+                                  child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: kWhiteColor,
+                                    color: context.colors.textPrimary,
                                   ),
                                 ),
                                 SizedBox(width: 8.w),
                               ] else ...[
                                 Icon(
                                   Icons.library_add_rounded,
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                   size: 20.sp,
                                 ),
                                 SizedBox(width: 8.w),
@@ -559,7 +560,7 @@ class _ImportPgnToFolderPageState
                                     ? 'Import'
                                     : 'Import (${selectedFolders.length})',
                                 style: AppTypography.textSmMedium.copyWith(
-                                  color: kWhiteColor,
+                                  color: context.colors.textPrimary,
                                 ),
                               ),
                             ],
@@ -626,7 +627,7 @@ class _ImportFolderTile extends StatelessWidget {
               ),
               SizedBox(width: 8.w),
             ],
-            Icon(Icons.folder_rounded, color: kWhiteColor, size: 24.sp),
+            Icon(Icons.folder_rounded, color: context.colors.textPrimary, size: 24.sp),
             SizedBox(width: 12.w),
             Expanded(
               child: Text(

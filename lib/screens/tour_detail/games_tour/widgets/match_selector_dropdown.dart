@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -63,7 +64,7 @@ class MatchSelectorDropdown extends ConsumerWidget {
                   child: Text(
                     'Error loading matches',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textPrimaryMuted,
                     ),
                   ),
                 ),
@@ -79,7 +80,7 @@ class _MatchDropdown extends HookConsumerWidget {
 
   const _MatchDropdown({required this.matches, required this.onChanged});
 
-  Widget _buildMatchRow(MatchHeaderModel match) {
+  Widget _buildMatchRow(BuildContext context, MatchHeaderModel match) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -90,7 +91,7 @@ class _MatchDropdown extends HookConsumerWidget {
               Text(
                 match.matchTitle,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontWeight: FontWeight.w500,
                 ),
                 maxLines: 1,
@@ -121,7 +122,7 @@ class _MatchDropdown extends HookConsumerWidget {
                   Text(
                     '${match.games.length} ${match.games.length == 1 ? 'game' : 'games'}',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor70,
+                      color: context.colors.textPrimaryMuted,
                       fontSize: 10.sp,
                     ),
                   ),
@@ -192,7 +193,7 @@ class _MatchDropdown extends HookConsumerWidget {
                             ),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: kBlack2Color,
+                                color: context.colors.surface,
                                 borderRadius: BorderRadius.circular(20.br),
                               ),
                               padding: EdgeInsets.symmetric(vertical: 8.h),
@@ -230,7 +231,7 @@ class _MatchDropdown extends HookConsumerWidget {
                                         horizontal: 12.w,
                                         vertical: 6.h,
                                       ),
-                                      child: _buildMatchRow(match),
+                                      child: _buildMatchRow(context, match),
                                     ),
                                   );
                                 },
@@ -333,7 +334,7 @@ class _MatchDropdown extends HookConsumerWidget {
                     Text(
                       selectedMatch.matchTitle,
                       style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                         fontSize: 11.sp,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -360,7 +361,7 @@ class _MatchDropdown extends HookConsumerWidget {
                   ),
                   child: Icon(
                     Icons.keyboard_arrow_down_outlined,
-                    color: kWhiteColor70,
+                    color: context.colors.textPrimaryMuted,
                     size: 18.ic,
                   ),
                 ),

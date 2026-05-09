@@ -2,6 +2,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -61,7 +62,7 @@ class RoundHeader extends StatelessWidget {
               child: Text(
                 '$displayName ⚫ ${round.formattedRoundDateTime}',
                 style: TextStyle(
-                  color: kWhiteColor,
+                  color: context.colors.textPrimary,
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w600,
                 ),
