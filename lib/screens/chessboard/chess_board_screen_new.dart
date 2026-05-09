@@ -1783,10 +1783,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         }
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light.copyWith(
-          statusBarColor: Colors.black,
-          systemNavigationBarColor: Colors.black,
-        ),
+        value:
+            (context.isLightTheme
+                    ? SystemUiOverlayStyle.dark
+                    : SystemUiOverlayStyle.light)
+                .copyWith(
+                  statusBarColor: context.colors.background,
+                  systemNavigationBarColor: context.colors.background,
+                ),
         child:
         // ignore: deprecated_member_use
         ShowCaseWidget(
@@ -1802,7 +1806,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
               builder: (innerContext) {
                 return Scaffold(
                   key: e2eKey(E2eIds.chessBoardRoot),
-                  backgroundColor: Colors.black,
+                  backgroundColor: innerContext.colors.background,
                   resizeToAvoidBottomInset: false,
                   // REMOVED: RawGestureDetector was blocking PageView swipes
                   body: Stack(
@@ -2407,7 +2411,7 @@ class _GamePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scaffold = Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: context.colors.background,
       resizeToAvoidBottomInset: false,
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
@@ -2482,7 +2486,7 @@ class _LoadingScreen extends StatelessWidget {
     final boardSize = contentMaxWidth - sideBarWidth - 32.w;
 
     final scaffold = Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: context.colors.background,
       resizeToAvoidBottomInset: false,
       appBar: _AppBar(
         game: games[currentGameIndex],
@@ -3072,8 +3076,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
     return AppBar(
       elevation: 0,
-      backgroundColor: Colors.black,
-      surfaceTintColor: Colors.black,
+      backgroundColor: context.colors.background,
+      surfaceTintColor: context.colors.background,
       leadingWidth: 44.sp,
       titleSpacing: 4.sp,
       leading: IconButton(
