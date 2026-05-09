@@ -348,7 +348,7 @@ class _GamebaseMovesTable extends StatelessWidget {
         // Header
         Container(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-          color: kBlackColor,
+          color: context.colors.background,
           child: Row(
             children: [
               Expanded(flex: 2, child: Text('Move', style: headerStyle)),
