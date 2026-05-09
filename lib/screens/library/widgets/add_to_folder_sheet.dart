@@ -226,7 +226,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             'Database "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -238,7 +238,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             'Failed to create database: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -288,7 +288,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             'Select at least one database',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -343,7 +343,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
             successCount == 1
                 ? 'Added to 1 database'
                 : 'Added to $successCount databases',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -356,7 +356,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             'Failed to add game: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -388,7 +388,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
               padding: EdgeInsets.symmetric(horizontal: 20.w),
               child: Text(
                 'Add to Databases',
-                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
               ),
             ),
 
@@ -508,7 +508,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         style: AppTypography.textXsMedium.copyWith(
                           color:
                               isSelected
-                                  ? kWhiteColor
+                                  ? context.colors.textPrimary
                                   : context.colors.textPrimary.withValues(alpha: 0.8),
                         ),
                       ),

@@ -1807,13 +1807,13 @@ class _EventSection extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
               decoration: BoxDecoration(
-                color: _getScoreColor().withValues(alpha: 0.2),
+                color: _getScoreColor(context).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(4.br),
               ),
               child: Text(
                 '${_formatScore(playerScore)}/$gameCount',
                 style: AppTypography.textXsBold.copyWith(
-                  color: _getScoreColor(),
+                  color: _getScoreColor(context),
                 ),
               ),
             ),
@@ -1837,11 +1837,11 @@ class _EventSection extends StatelessWidget {
         .join(' ');
   }
 
-  Color _getScoreColor() {
-    if (gameCount == 0) return kWhiteColor;
+  Color _getScoreColor(BuildContext context) {
+    if (gameCount == 0) return context.colors.textPrimary;
     final percentage = playerScore / gameCount;
     if (percentage >= 0.6) return kGreenColor;
-    if (percentage >= 0.4) return kWhiteColor;
+    if (percentage >= 0.4) return context.colors.textPrimary;
     return Colors.redAccent;
   }
 }

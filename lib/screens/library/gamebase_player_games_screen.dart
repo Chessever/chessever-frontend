@@ -59,7 +59,7 @@ class _GamebasePlayerGamesScreenState
         backgroundColor: context.colors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: kWhiteColor),
+          icon:  Icon(Icons.arrow_back_ios, color: context.colors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
@@ -129,7 +129,7 @@ class _GamebasePlayerGamesScreenState
 
   Widget _buildBody(GamebasePlayerGamesState state) {
     if (state.isLoading && state.games.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: kWhiteColor));
+      return  Center(child: CircularProgressIndicator(color: context.colors.textPrimary));
     }
 
     if (state.error != null && state.games.isEmpty) {
@@ -141,7 +141,7 @@ class _GamebasePlayerGamesScreenState
             SizedBox(height: 16.h),
             Text(
               'Failed to load games',
-              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(height: 8.h),
             TextButton(
@@ -154,7 +154,7 @@ class _GamebasePlayerGamesScreenState
                           .refreshGames(),
               child: Text(
                 'Retry',
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ],
@@ -175,7 +175,7 @@ class _GamebasePlayerGamesScreenState
             SizedBox(height: 16.h),
             Text(
               'No games found',
-              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(height: 4.h),
             Text(
@@ -208,8 +208,8 @@ class _GamebasePlayerGamesScreenState
           if (index >= state.games.length) {
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 24.h),
-              child: const Center(
-                child: CircularProgressIndicator(color: kWhiteColor),
+              child:  Center(
+                child: CircularProgressIndicator(color: context.colors.textPrimary),
               ),
             );
           }

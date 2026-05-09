@@ -249,7 +249,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         children: [
           Text(
             'Filters',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
           ),
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -285,7 +285,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                 ),
                 child: Text(
                   'Reset',
-                  style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
                 ),
               ),
             ),
@@ -298,7 +298,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
               child: ElevatedButton(
                 onPressed: _applyFilters,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: kWhiteColor,
+                  backgroundColor: context.colors.textPrimary,
                   foregroundColor: kBlackColor,
                   elevation: 0,
                   shape: RoundedRectangleBorder(

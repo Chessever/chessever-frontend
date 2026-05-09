@@ -475,7 +475,7 @@ class _StadiumChipButton extends HookWidget {
               child: _MarqueeText(
                 text: label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isOpen ? kPrimaryColor : kWhiteColor,
+                  color: isOpen ? kPrimaryColor : context.colors.textPrimary,
                   letterSpacing: 0.3,
                 ),
                 continuous: false, // Single cycle for chip button
@@ -1618,7 +1618,7 @@ class _CategoryRow extends StatelessWidget {
                       child: _MarqueeText(
                         text: _extractName(category.tour.name),
                         style: AppTypography.textSmMedium.copyWith(
-                          color: isSelected ? kPrimaryColor : kWhiteColor,
+                          color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
                         ),
@@ -1647,7 +1647,7 @@ class _CategoryRow extends StatelessWidget {
                       size: 20.ic,
                       color:
                           isExpanded
-                              ? kWhiteColor
+                              ? context.colors.textPrimary
                               : context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
                   ),

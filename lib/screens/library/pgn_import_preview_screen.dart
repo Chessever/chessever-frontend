@@ -145,11 +145,11 @@ class _PgnImportPreviewScreenState
     final topPadding = MediaQuery.of(context).viewPadding.top;
     return Container(
       padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration: const BoxDecoration(
+      decoration:  BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [kBlackColor, kBackgroundColor],
+          colors: [kBlackColor, context.colors.background],
         ),
       ),
       child: Column(
@@ -252,7 +252,7 @@ class _PgnImportPreviewScreenState
             Expanded(
               child: TextField(
                 controller: _searchController,
-                style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
                 decoration: InputDecoration(
                   hintText: 'Search games...',
                   hintStyle: AppTypography.textSmRegular.copyWith(
@@ -301,7 +301,7 @@ class _PgnImportPreviewScreenState
             SizedBox(height: 16.h),
             Text(
               query.isEmpty ? 'No games to import' : 'No matches found',
-              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
             ),
           ],
         ),

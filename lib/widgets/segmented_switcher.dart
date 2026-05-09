@@ -78,11 +78,11 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = widget.backgroundColor ?? kBackgroundColor;
+    final backgroundColor = widget.backgroundColor ?? context.colors.background;
     final selectedBackgroundColor =
-        widget.selectedBackgroundColor ?? kBackgroundColor;
+        widget.selectedBackgroundColor ?? context.colors.background;
     final textColor = widget.textColor ?? context.colors.tabInactive;
-    final selectedTextColor = widget.selectedTextColor ?? kWhiteColor;
+    final selectedTextColor = widget.selectedTextColor ?? context.colors.textPrimary;
     final borderRadius = widget.borderRadius ?? 8.br;
 
     final defaultTextStyle =

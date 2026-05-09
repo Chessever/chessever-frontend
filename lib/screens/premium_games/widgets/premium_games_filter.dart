@@ -301,7 +301,7 @@ class _ChipGrid<T> extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: isSelected ? kPrimaryColor : kBlack2Color,
+              color: isSelected ? kPrimaryColor : context.colors.surface,
               borderRadius: BorderRadius.circular(8.br),
               border: Border.all(
                 color:
@@ -314,7 +314,7 @@ class _ChipGrid<T> extends StatelessWidget {
             child: Text(
               getLabel(item),
               style: AppTypography.textXsMedium.copyWith(
-                color: isSelected ? kBlackColor : kWhiteColor,
+                color: isSelected ? kBlackColor : context.colors.textPrimary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               ),
             ),

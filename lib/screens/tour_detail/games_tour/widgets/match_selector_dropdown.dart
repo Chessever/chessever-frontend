@@ -223,7 +223,7 @@ class _MatchDropdown extends HookConsumerWidget {
                                     child: Container(
                                       color:
                                           isSelected
-                                              ? kBlack2Color.withValues(
+                                              ? context.colors.surface.withValues(
                                                 alpha: 0.5,
                                               )
                                               : Colors.transparent,

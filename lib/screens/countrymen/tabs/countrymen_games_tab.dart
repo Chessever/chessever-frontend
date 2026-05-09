@@ -772,7 +772,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -801,7 +801,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -840,7 +840,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -927,7 +927,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ),

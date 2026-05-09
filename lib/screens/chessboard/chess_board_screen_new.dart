@@ -649,7 +649,7 @@ Future<bool?> _showAnalysisConfirmationDialog({
         ),
         title: Text(
           title,
-          style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
         ),
         content: Text(
           message,
@@ -2202,7 +2202,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                     child: Center(
                                       child: Container(
                                         decoration: BoxDecoration(
-                                          color: kWhiteColor.withValues(
+                                          color: context.colors.textPrimary.withValues(
                                             alpha: 0.15,
                                           ),
                                           shape: BoxShape.circle,
@@ -2247,7 +2247,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                             TextButton(
                               onPressed: _handleDontShowAgain,
                               style: TextButton.styleFrom(
-                                foregroundColor: kWhiteColor.withValues(
+                                foregroundColor: context.colors.textPrimary.withValues(
                                   alpha: 0.6,
                                 ),
                               ),
@@ -2261,7 +2261,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                               onPressed: animateOut,
                               style: TextButton.styleFrom(
                                 foregroundColor: context.colors.textPrimary,
-                                backgroundColor: kWhiteColor.withValues(
+                                backgroundColor: context.colors.textPrimary.withValues(
                                   alpha: 0.1,
                                 ),
                                 padding: EdgeInsets.symmetric(
@@ -2879,7 +2879,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
           SnackBar(
             content: Text(
               'No PGN available for this game',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
             backgroundColor: context.colors.surface.withValues(alpha: 0.95),
             behavior: SnackBarBehavior.floating,
@@ -2895,7 +2895,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
         SnackBar(
           content: Text(
             'PGN copied to clipboard',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -2908,7 +2908,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
         SnackBar(
           content: Text(
             'Failed to copy PGN',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -2941,7 +2941,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
         SnackBar(
           content: Text(
             'Failed to prepare game share',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -3179,7 +3179,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     value: 'board_settings',
                     child: Row(
                       children: [
-                        Icon(Icons.settings, color: kWhiteColor),
+                        Icon(Icons.settings, color: context.colors.textPrimary),
                         SizedBox(width: 8.w),
                         const Text('Board Settings'),
                       ],
@@ -3189,7 +3189,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     value: 'share',
                     child: Row(
                       children: [
-                        Icon(Icons.share, color: kWhiteColor),
+                        Icon(Icons.share, color: context.colors.textPrimary),
                         SizedBox(width: 8.w),
                         const Text('Share Game'),
                       ],
@@ -3202,7 +3202,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     value: 'copy_pgn',
                     child: Row(
                       children: [
-                        Icon(Icons.copy, color: kWhiteColor),
+                        Icon(Icons.copy, color: context.colors.textPrimary),
                         SizedBox(width: 8.w),
                         const Text('Copy PGN'),
                       ],
@@ -3285,7 +3285,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     value: 'board_settings',
                     child: Row(
                       children: [
-                        Icon(Icons.settings, color: kWhiteColor),
+                        Icon(Icons.settings, color: context.colors.textPrimary),
                         SizedBox(width: 8.w),
                         const Text('Board Settings'),
                       ],
@@ -3295,7 +3295,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     value: 'share',
                     child: Row(
                       children: [
-                        Icon(Icons.share, color: kWhiteColor),
+                        Icon(Icons.share, color: context.colors.textPrimary),
                         SizedBox(width: 8.w),
                         const Text('Share Game'),
                       ],
@@ -3308,7 +3308,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     value: 'copy_pgn',
                     child: Row(
                       children: [
-                        Icon(Icons.copy, color: kWhiteColor),
+                        Icon(Icons.copy, color: context.colors.textPrimary),
                         SizedBox(width: 8.w),
                         const Text('Copy PGN'),
                       ],
@@ -4062,7 +4062,7 @@ class _GameChipButton extends StatelessWidget {
               child: Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isOpen ? kPrimaryColor : kWhiteColor,
+                  color: isOpen ? kPrimaryColor : context.colors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -7867,8 +7867,8 @@ class _FenPositionGamesTableState
       context: context,
       barrierDismissible: false,
       builder:
-          (ctx) => const Center(
-            child: CircularProgressIndicator(color: kWhiteColor),
+          (ctx) =>  Center(
+            child: CircularProgressIndicator(color: context.colors.textPrimary),
           ),
     );
 
@@ -8786,11 +8786,11 @@ class _ExplorerStyleFilterChip extends StatelessWidget {
       selectedColor: kPrimaryColor.withValues(alpha: 0.2),
       showCheckmark: false,
       labelStyle: TextStyle(
-        color: selected ? kPrimaryColor : kWhiteColor,
+        color: selected ? kPrimaryColor : context.colors.textPrimary,
         fontSize: 12.f,
       ),
       backgroundColor: context.colors.surface,
-      side: BorderSide(color: selected ? kPrimaryColor : kDividerColor),
+      side: BorderSide(color: selected ? kPrimaryColor : context.colors.divider),
     );
   }
 }
@@ -9212,7 +9212,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                     dialogContext,
                                                   ) => AlertDialog(
                                                     backgroundColor:
-                                                        kBlack2Color,
+                                                        context.colors.surface,
                                                     shape: RoundedRectangleBorder(
                                                       borderRadius:
                                                           BorderRadius.circular(
@@ -9232,7 +9232,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                       style: AppTypography
                                                           .textSmRegular
                                                           .copyWith(
-                                                            color: kWhiteColor
+                                                            color: context.colors.textPrimary
                                                                 .withValues(
                                                                   alpha: 0.7,
                                                                 ),
@@ -9249,7 +9249,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                           style: AppTypography
                                                               .textSmMedium
                                                               .copyWith(
-                                                                color: kWhiteColor
+                                                                color: context.colors.textPrimary
                                                                     .withValues(
                                                                       alpha:
                                                                           0.7,
@@ -9576,7 +9576,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                       : Colors.transparent,
               borderRadius: BorderRadius.circular(4.sp),
               border: Border.all(
-                color: isCurrent ? kWhiteColor : Colors.transparent,
+                color: isCurrent ? context.colors.textPrimary : Colors.transparent,
                 width: 0.7,
               ),
             ),
@@ -10927,7 +10927,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             Expanded(
               child: Text(
                 message,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
             TextButton(
@@ -10986,7 +10986,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             Expanded(
               child: Text(
                 message,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ],
@@ -11968,7 +11968,7 @@ class _PrincipalVariationListState
                             enabled: true,
                             effect: ShimmerEffect(
                               baseColor: context.colors.textPrimary.withValues(alpha: 0.05),
-                              highlightColor: kWhiteColor.withValues(
+                              highlightColor: context.colors.textPrimary.withValues(
                                 alpha: 0.1,
                               ),
                               duration: const Duration(milliseconds: 1500),
@@ -12919,7 +12919,7 @@ class _NotationActionTileState extends State<_NotationActionTile>
                   color: context.colors.textPrimary.withValues(alpha: _glowAnimation.value),
                   borderRadius: BorderRadius.circular(14.sp),
                   border: Border.all(
-                    color: kWhiteColor.withValues(
+                    color: context.colors.textPrimary.withValues(
                       alpha: 0.05 + (_controller.value * 0.05),
                     ),
                   ),
@@ -13111,7 +13111,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
               maxLines: null,
               minLines: 4,
               maxLength: _variationCommentMaxChars,
-              style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
                 filled: true,
@@ -13602,7 +13602,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                           ? kPrimaryColor
                           : context.colors.textPrimary.withValues(alpha: 0.1),
                       foregroundColor: _hasChanges
-                          ? kWhiteColor
+                          ? context.colors.textPrimary
                           : context.colors.textPrimary.withValues(alpha: 0.4),
                       padding: EdgeInsets.symmetric(vertical: 14.sp),
                       elevation: _hasChanges ? 4 : 0,
@@ -13860,7 +13860,7 @@ class _EventInfoSheet extends ConsumerWidget {
         // Game header
         Text(
           eventName,
-          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
         ),
         SizedBox(height: 16.h),
         // Round info
@@ -14004,7 +14004,7 @@ class _EventInfoSheet extends ConsumerWidget {
             width: 8.sp,
             height: 8.sp,
             decoration: BoxDecoration(
-              color: side == 'White' ? kWhiteColor : kBlack2Color,
+              color: side == 'White' ? context.colors.textPrimary : context.colors.surface,
               border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.3)),
               borderRadius: BorderRadius.circular(2.sp),
             ),
@@ -14040,7 +14040,7 @@ class _EventInfoSheet extends ConsumerWidget {
           Expanded(
             child: Text(
               player.name,
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -14107,7 +14107,7 @@ class _EventInfoSheet extends ConsumerWidget {
               Expanded(
                 child: Text(
                   aboutModel.name,
-                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
                 ),
               ),
               Icon(
@@ -14206,7 +14206,7 @@ class _EventInfoSheet extends ConsumerWidget {
                 .take(4)
                 .map((p) => p.displayName)
                 .join(', '),
-            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
           ),
         ],
         // Website button

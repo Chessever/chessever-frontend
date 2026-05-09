@@ -382,8 +382,8 @@ class _LibrarySearchResultsViewState
       if (games.isEmpty && paginationState.isLoading)
         Padding(
           padding: EdgeInsets.symmetric(vertical: 24.h),
-          child: const Center(
-            child: CircularProgressIndicator(color: kWhiteColor),
+          child:  Center(
+            child: CircularProgressIndicator(color: context.colors.textPrimary),
           ),
         )
       else if (paginationState.error != null && games.isEmpty)
@@ -679,7 +679,7 @@ class _SectionHeader extends StatelessWidget {
         children: [
           Text(
             title,
-            style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
           ),
           if (count != null && count! > 0) ...[
             SizedBox(width: 8.w),

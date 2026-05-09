@@ -30,7 +30,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     if (onPressed == null) {
       iconColor = context.colors.textPrimaryMuted;
     } else if (isActive) {
-      iconColor = kWhiteColor; // Use white when active, like arrow buttons
+      iconColor = context.colors.textPrimary; // Use white when active, like arrow buttons
     } else {
       iconColor = context.colors.textPrimaryMuted; // Use transparent white when inactive
     }
@@ -207,7 +207,7 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
                         height: 24.h,
                         width: 24.w,
                         colorFilter: ColorFilter.mode(
-                          onPressed != null ? kWhiteColor : context.colors.textPrimaryMuted,
+                          onPressed != null ? context.colors.textPrimary : context.colors.textPrimaryMuted,
                           BlendMode.srcIn,
                         ),
                       ),

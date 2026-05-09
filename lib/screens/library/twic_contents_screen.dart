@@ -209,11 +209,11 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
 
     return Container(
       padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration: const BoxDecoration(
+      decoration:  BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [kBlackColor, kBackgroundColor],
+          colors: [kBlackColor, context.colors.background],
         ),
       ),
       child: Column(
@@ -1117,7 +1117,7 @@ class _TwicEventCardState extends State<_TwicEventCard> {
             builder: (context, selectProgress, _) {
               final bgColor =
                   Color.lerp(
-                    kBlack2Color,
+                    context.colors.surface,
                     kPrimaryColor.withValues(alpha: 0.18),
                     selectProgress,
                   )!;

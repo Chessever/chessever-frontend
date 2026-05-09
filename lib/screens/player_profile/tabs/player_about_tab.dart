@@ -1187,7 +1187,7 @@ class _RatingCardState extends State<_RatingCard> {
               // Interpolate colors based on selection progress
               final bgColor =
                   Color.lerp(
-                    kBlack2Color,
+                    context.colors.surface,
                     kPrimaryColor.withValues(alpha: 0.18),
                     selectProgress,
                   )!;
@@ -1756,7 +1756,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
               // Interpolate colors based on selection
               final bgColor =
                   Color.lerp(
-                    kBlack2Color,
+                    context.colors.surface,
                     accentColor.withValues(alpha: 0.12),
                     selectProgress,
                   )!;
@@ -2070,7 +2070,7 @@ class _AnimatedFormChipState extends State<_AnimatedFormChip> {
                     border:
                         borderWidth > 0
                             ? Border.all(
-                              color: kWhiteColor.withValues(
+                              color: context.colors.textPrimary.withValues(
                                 alpha: glowOpacity + 0.3,
                               ),
                               width: borderWidth,
@@ -2504,7 +2504,7 @@ class _OpeningRepertoireSectionState
   Widget _buildFilterChip(_OpeningRepertoireFilter filter, String label) {
     final isSelected = _effectiveFilter == filter;
     final background =
-        isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : kBlack2Color;
+        isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : context.colors.surface;
     final borderColor =
         isSelected
             ? context.colors.textPrimary.withValues(alpha: 0.6)
@@ -2791,7 +2791,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                                         '${widget.opening.count} games',
                                         style: AppTypography.textXsRegular
                                             .copyWith(
-                                              color: kWhiteColor.withValues(
+                                              color: context.colors.textPrimary.withValues(
                                                 alpha: secondaryTextAlpha,
                                               ),
                                             ),
@@ -2815,7 +2815,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 Text(
                                   'score',
                                   style: AppTypography.textXsRegular.copyWith(
-                                    color: kWhiteColor.withValues(
+                                    color: context.colors.textPrimary.withValues(
                                       alpha: secondaryTextAlpha,
                                     ),
                                   ),

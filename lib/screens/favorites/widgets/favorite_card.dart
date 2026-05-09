@@ -1,5 +1,6 @@
 // filepath: /Users/p1/Desktop/chessever/lib/screens/favorites/widgets/favorite_card.dart
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
@@ -32,7 +33,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
     return Container(
       height: 48.h,
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: BorderRadius.zero,
       ),
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
@@ -43,7 +44,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
             width: 24.w,
             child: Text(
               '${widget.rank}.',
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
 
@@ -63,7 +64,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
                   TextSpan(
                     text: widget.playerName,
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
+                      color: context.colors.textPrimary,
                     ),
                   ),
                 ],
@@ -77,7 +78,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
             child: Text(
               widget.elo.toString(),
               textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
 
@@ -87,7 +88,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
             child: Text(
               widget.age.toString(),
               textAlign: TextAlign.center,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
 
@@ -152,7 +153,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
       default:
         return Text(
           countryCode,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
         );
     }
   }

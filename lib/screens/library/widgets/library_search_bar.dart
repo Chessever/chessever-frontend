@@ -408,7 +408,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                         height: 24.sp,
                         colorFilter: ColorFilter.mode(
                           widget.filterBadgeCount > 0
-                              ? kWhiteColor
+                              ? context.colors.textPrimary
                               : _effectiveFocusNode.hasFocus
                               ? kPrimaryColor
                               : Colors.grey[400]!,

@@ -159,7 +159,7 @@ class _EventMenuRow extends StatelessWidget {
       width: double.infinity,
       height: 40.h,
       padding: EdgeInsets.symmetric(horizontal: 14.w),
-      decoration: const BoxDecoration(color: kBlack2Color),
+      decoration:  BoxDecoration(color: context.colors.surface),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

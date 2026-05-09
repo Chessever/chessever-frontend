@@ -335,7 +335,7 @@ class _WheelInputState extends State<_WheelInput> {
         decoration: BoxDecoration(
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kDividerColor),
+          border: Border.all(color: context.colors.divider),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12.br),
@@ -400,7 +400,7 @@ class _WheelInputState extends State<_WheelInput> {
                             final color =
                                 Color.lerp(
                                   context.colors.textSecondary,
-                                  kWhiteColor,
+                                  context.colors.textPrimary,
                                   value,
                                 )!;
 
@@ -436,7 +436,7 @@ class _WheelInputState extends State<_WheelInput> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                kBlack2Color,
+                                context.colors.surface,
                                 context.colors.surface.withValues(alpha: 0),
                               ],
                             ),
@@ -451,7 +451,7 @@ class _WheelInputState extends State<_WheelInput> {
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
                               colors: [
-                                kBlack2Color,
+                                context.colors.surface,
                                 context.colors.surface.withValues(alpha: 0),
                               ],
                             ),

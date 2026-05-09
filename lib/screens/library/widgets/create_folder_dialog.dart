@@ -368,7 +368,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           controller: _controller,
           focusNode: _focusNode,
           maxLength: 40,
-          style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           cursorColor: kPrimaryColor,
           decoration: InputDecoration(
             hintText: 'e.g. My Openings',
@@ -423,7 +423,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           child: ElevatedButton(
             onPressed: _handleConfirm,
             style: ElevatedButton.styleFrom(
-              backgroundColor: kWhiteColor,
+              backgroundColor: context.colors.textPrimary,
               foregroundColor: kBlackColor,
               padding: EdgeInsets.symmetric(vertical: 16.h),
               elevation: 0,
@@ -475,7 +475,7 @@ class _TypeButton extends StatelessWidget {
             label,
             style: AppTypography.textXsBold.copyWith(
               color:
-                  isSelected ? kWhiteColor : context.colors.textPrimary.withValues(alpha: 0.4),
+                  isSelected ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.4),
             ),
           ),
         ),

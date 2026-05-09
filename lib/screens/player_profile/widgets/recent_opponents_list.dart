@@ -99,7 +99,7 @@ class RecentOpponentsList extends StatelessWidget {
           Expanded(
             child: Text(
               '${opponent.title != null ? '${opponent.title} ' : ''}${opponent.name}',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -121,7 +121,7 @@ class RecentOpponentsList extends StatelessWidget {
     // - Top half: player's color (white if playedAsWhite, black otherwise)
     // - Bottom half: result color (green=win, gray=draw, red=loss)
     final resultColor = _getResultColor(context, opponent.result);
-    final playerColor = opponent.playedAsWhite ? kWhiteColor : kBlackColor;
+    final playerColor = opponent.playedAsWhite ? context.colors.textPrimary : kBlackColor;
 
     return Container(
       width: 20.w,

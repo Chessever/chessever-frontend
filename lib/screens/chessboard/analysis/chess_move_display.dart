@@ -42,7 +42,7 @@ class ChessMoveDisplay extends StatelessWidget {
       textColor = const Color(0xFFB33A3A);
     } else if (isSelected) {
       // For normal, non-capture moves, use white when selected
-      textColor = kWhiteColor;
+      textColor = context.colors.textPrimary;
     }
 
     final impactSymbol = moveImpact?.impact.symbol ?? '';
@@ -61,7 +61,7 @@ class ChessMoveDisplay extends StatelessWidget {
                   : Colors.transparent,
           borderRadius: BorderRadius.circular(4.sp),
           border: Border.all(
-            color: isSelected ? kWhiteColor : Colors.transparent,
+            color: isSelected ? context.colors.textPrimary : Colors.transparent,
             width: 0.5,
           ),
         ),

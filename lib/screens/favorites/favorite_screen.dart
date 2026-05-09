@@ -403,7 +403,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
           ),
           title: Text(
             'Remove from favorites?',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
           ),
           content: Text(
             'Are you sure you want to remove ${player.name} from your favorites?',

@@ -208,7 +208,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
           SizedBox(height: 12.sp),
           Text(
             'Enjoying ChessEver?',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 6.sp),
@@ -302,7 +302,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
               children: [
                 Text(
                   'Your Feedback',
-                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
                 ),
                 SizedBox(height: 4.sp),
                 Text(
@@ -350,7 +350,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                       color: context.colors.textPrimary.withValues(alpha: 0.35),
                     ),
                     filled: true,
-                    fillColor: kBlack2Color,
+                    fillColor: context.colors.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
                       borderSide: BorderSide(
@@ -441,7 +441,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
               children: [
                 Text(
                   'Feature Request',
-                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
                 ),
                 SizedBox(height: 4.sp),
                 Text(
@@ -475,7 +475,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                       color: context.colors.textPrimary.withValues(alpha: 0.35),
                     ),
                     filled: true,
-                    fillColor: kBlack2Color,
+                    fillColor: context.colors.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
                       borderSide: BorderSide(

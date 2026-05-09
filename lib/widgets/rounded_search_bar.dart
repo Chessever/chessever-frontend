@@ -115,8 +115,8 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                   DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: selectedCountryCode,
-                      icon: Icon(Icons.keyboard_arrow_down, color: kWhiteColor),
-                      dropdownColor: kBlack2Color,
+                      icon: Icon(Icons.keyboard_arrow_down, color: context.colors.textPrimary),
+                      dropdownColor: context.colors.surface,
                       isDense: true,
                       onChanged: (String? value) {
                         if (value != null) {

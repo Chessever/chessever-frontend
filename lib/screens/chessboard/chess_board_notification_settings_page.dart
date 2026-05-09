@@ -187,7 +187,7 @@ class _ChessBoardNotificationSettingsPageState
                     color: context.colors.surface,
                     borderRadius: BorderRadius.circular(12.br),
                     border: Border.all(
-                      color: kDividerColor.withValues(alpha: 0.5),
+                      color: context.colors.divider.withValues(alpha: 0.5),
                     ),
                   ),
                   child: Column(
@@ -236,7 +236,7 @@ class _ChessBoardNotificationSettingsPageState
                       /*
                       Divider(
                         height: 1,
-                        color: kDividerColor.withValues(alpha: 0.4),
+                        color: context.colors.divider.withValues(alpha: 0.4),
                       ),
                       Padding(
                         padding: EdgeInsets.symmetric(

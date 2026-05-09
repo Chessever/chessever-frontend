@@ -56,7 +56,7 @@ class _GamebaseDatabaseSearchScreenState
         ),
         title: Text(
           'TWIC Database',
-          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
         ),
       ),
       body: Center(
@@ -197,7 +197,7 @@ class _SearchBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 focusNode: focusNode,
-                style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
                 onChanged: onChanged,
                 decoration: InputDecoration(
                   isDense: true,
@@ -246,7 +246,7 @@ class _SearchBar extends StatelessWidget {
                 child: Icon(
                   Icons.tune_rounded,
                   size: 18.ic,
-                  color: hasActiveFilters ? kPrimaryColor : kWhiteColor,
+                  color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimary,
                 ),
               ),
             ),
@@ -632,7 +632,7 @@ class _InlineError extends StatelessWidget {
       ),
       child: Text(
         message,
-        style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+        style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
       ),
     );
   }
@@ -659,7 +659,7 @@ class _ErrorState extends StatelessWidget {
             SizedBox(height: 12.h),
             Text(
               'Something went wrong',
-              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(height: 6.h),
             Text(

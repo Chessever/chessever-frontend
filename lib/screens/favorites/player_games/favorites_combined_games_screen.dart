@@ -430,7 +430,7 @@ class _FavoritesCombinedGamesScreenState
                     size: 22.ic,
                     color:
                         hasActiveFilters
-                            ? kWhiteColor
+                            ? context.colors.textPrimary
                             : const Color(0xFFA1A1AA),
                   ),
                   // Badge showing active filter count
@@ -832,7 +832,7 @@ class _FavoritesCombinedGamesScreenState
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -861,7 +861,7 @@ class _FavoritesCombinedGamesScreenState
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -897,7 +897,7 @@ class _FavoritesCombinedGamesScreenState
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -922,7 +922,7 @@ class _FavoritesCombinedGamesScreenState
             ),
             child: Text(
               'Add favorites',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -999,7 +999,7 @@ class _FavoritesCombinedGamesScreenState
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ),

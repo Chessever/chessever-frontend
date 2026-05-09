@@ -32,7 +32,7 @@ Future<bool> canAddMoreFavorites(
         SnackBar(
           content: Text(
             'You can follow more players after signing in',
-            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,

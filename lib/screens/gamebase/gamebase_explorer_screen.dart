@@ -469,7 +469,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               decoration: BoxDecoration(
                 color: context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(12.sp),
-                border: Border.all(color: kDividerColor),
+                border: Border.all(color: context.colors.divider),
               ),
               clipBehavior: Clip.antiAlias,
               child: ClipRRect(
@@ -1064,14 +1064,14 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
           color: context.colors.textSecondary,
         ),
         filled: true,
-        fillColor: kBlack2Color,
+        fillColor: context.colors.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.br),
-          borderSide: BorderSide(color: kDividerColor),
+          borderSide: BorderSide(color: context.colors.divider),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.br),
-          borderSide: BorderSide(color: kDividerColor),
+          borderSide: BorderSide(color: context.colors.divider),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.br),
@@ -1310,7 +1310,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           ),
                           backgroundColor: context.colors.surface,
                           side: BorderSide(
-                            color: isSelected ? kPrimaryColor : kDividerColor,
+                            color: isSelected ? kPrimaryColor : context.colors.divider,
                           ),
                         );
                       }).toList(),
@@ -1344,7 +1344,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           ),
                           backgroundColor: context.colors.surface,
                           side: BorderSide(
-                            color: isSelected ? kPrimaryColor : kDividerColor,
+                            color: isSelected ? kPrimaryColor : context.colors.divider,
                           ),
                         );
                       }).toList(),
@@ -1391,7 +1391,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           color:
                               filters.playerColor == GamebasePlayerColor.white
                                   ? kPrimaryColor
-                                  : kDividerColor,
+                                  : context.colors.divider,
                         ),
                       ),
                       FilterChip(
@@ -1419,7 +1419,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           color:
                               filters.playerColor == GamebasePlayerColor.black
                                   ? kPrimaryColor
-                                  : kDividerColor,
+                                  : context.colors.divider,
                         ),
                       ),
                     ],
@@ -1470,7 +1470,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         color:
                             filters.isOnline == false
                                 ? kPrimaryColor
-                                : kDividerColor,
+                                : context.colors.divider,
                       ),
                     ),
                     FilterChip(
@@ -1499,7 +1499,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         color:
                             filters.isOnline == true
                                 ? kPrimaryColor
-                                : kDividerColor,
+                                : context.colors.divider,
                       ),
                     ),
                   ],
@@ -1672,7 +1672,7 @@ class _PlayerSearchResults extends ConsumerWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: kDividerColor),
+        border: Border.all(color: context.colors.divider),
       ),
       child: results.when(
         data: (players) {
@@ -1689,7 +1689,7 @@ class _PlayerSearchResults extends ConsumerWidget {
             shrinkWrap: true,
             itemCount: players.length,
             separatorBuilder:
-                (_, __) => Divider(height: 1, color: kDividerColor),
+                (_, __) => Divider(height: 1, color: context.colors.divider),
             itemBuilder: (context, index) {
               final player = players[index];
               return ListTile(
@@ -1868,7 +1868,7 @@ class _EngineLinePlaceholder extends StatelessWidget {
               badgeText,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: kWhiteColor.withValues(
+                color: context.colors.textPrimary.withValues(
                   alpha: isEvaluating ? 0.35 : 0.18,
                 ),
                 fontSize: 11.f,
@@ -1931,14 +1931,14 @@ class _EngineLine extends StatelessWidget {
     Color evalBgColor;
     Color evalTextColor;
     if (isWhiteWinning) {
-      evalBgColor = kWhiteColor;
-      evalTextColor = kBlack2Color;
+      evalBgColor = context.colors.textPrimary;
+      evalTextColor = context.colors.surface;
     } else if (isBlackWinning) {
-      evalBgColor = kDividerColor;
-      evalTextColor = kWhiteColor;
+      evalBgColor = context.colors.divider;
+      evalTextColor = context.colors.textPrimary;
     } else {
       evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
-      evalTextColor = kWhiteColor;
+      evalTextColor = context.colors.textPrimary;
     }
 
     final moveText = _formatMoveText();

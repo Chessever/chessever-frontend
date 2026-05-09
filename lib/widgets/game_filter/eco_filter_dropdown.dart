@@ -91,7 +91,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
 
   Color _getCategoryColor(String? letter) {
     if (letter == null) return context.colors.textPrimary;
-    return _categoryColors[letter.toUpperCase()] ?? kWhiteColor;
+    return _categoryColors[letter.toUpperCase()] ?? context.colors.textPrimary;
   }
 
   List<MapEntry<String, String>> _getFilteredOpenings() {
@@ -132,7 +132,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
             duration: const Duration(milliseconds: 200),
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
             decoration: BoxDecoration(
-              color: _isExpanded ? kWhiteColor : kBlack2Color,
+              color: _isExpanded ? context.colors.textPrimary : context.colors.surface,
               borderRadius:
                   _isExpanded
                       ? BorderRadius.vertical(top: Radius.circular(12.br))
@@ -141,7 +141,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                 color:
                     _isExpanded
                         ? context.colors.textPrimary.withValues(alpha: 0.2)
-                        : kDividerColor,
+                        : context.colors.divider,
               ),
             ),
             child: Row(
@@ -164,7 +164,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                             ? 'All Openings'
                             : widget.value.code!,
                         style: AppTypography.textSmMedium.copyWith(
-                          color: _isExpanded ? kBlackColor : kWhiteColor,
+                          color: _isExpanded ? kBlackColor : context.colors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -214,9 +214,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                 bottom: Radius.circular(12.br),
               ),
               border: Border(
-                left: BorderSide(color: kDividerColor),
-                right: BorderSide(color: kDividerColor),
-                bottom: BorderSide(color: kDividerColor),
+                left: BorderSide(color: context.colors.divider),
+                right: BorderSide(color: context.colors.divider),
+                bottom: BorderSide(color: context.colors.divider),
               ),
             ),
             child: Column(
@@ -246,7 +246,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         controller: _searchController,
         focusNode: _searchFocusNode,
         onChanged: (value) => setState(() => _searchQuery = value),
-        style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+        style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
         decoration: InputDecoration(
           hintText: 'Search',
           hintStyle: AppTypography.textSmRegular.copyWith(
@@ -360,7 +360,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               ),
             ),
             if (isSelected)
-              Icon(Icons.check_rounded, size: 18.ic, color: kWhiteColor),
+              Icon(Icons.check_rounded, size: 18.ic, color: context.colors.textPrimary),
           ],
         ),
       ),
@@ -510,7 +510,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         child: Text(
           letter,
           style: AppTypography.textSmBold.copyWith(
-            color: isExpanded ? kWhiteColor : color,
+            color: isExpanded ? context.colors.textPrimary : color,
             fontSize: 13.f,
             letterSpacing: 0.5,
           ),

@@ -391,7 +391,7 @@ class _TitleDescWidget extends StatelessWidget {
         SizedBox(height: 8),
         Text(
           description,
-          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
         ),
       ],
     );
@@ -420,7 +420,7 @@ class _InlineLinkRow extends StatelessWidget {
           children: [
             Text(
               '$prefix ',
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
             ),
             GestureDetector(
               onTap: onTap,
@@ -470,7 +470,7 @@ class _CountryFlag extends StatelessWidget {
               child: Text(
                 description,
                 maxLines: 1,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ],

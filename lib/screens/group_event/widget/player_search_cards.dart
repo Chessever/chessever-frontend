@@ -229,7 +229,7 @@ class _PlayerSearchCard extends ConsumerWidget {
                           child: Text(
                             player.title!,
                             style: AppTypography.textXsBold.copyWith(
-                              color: kWhiteColor,
+                              color: context.colors.textPrimary,
                               fontSize: isCompact ? 9.sp : 10.sp,
                               letterSpacing: 0.5,
                             ),
@@ -242,7 +242,7 @@ class _PlayerSearchCard extends ConsumerWidget {
                       style: (isCompact
                               ? AppTypography.textMdBold
                               : AppTypography.textLgBold)
-                          .copyWith(color: kWhiteColor, letterSpacing: 0.3),
+                          .copyWith(color: context.colors.textPrimary, letterSpacing: 0.3),
                       maxLines: isCompact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                     ),

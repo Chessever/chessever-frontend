@@ -90,7 +90,7 @@ class _ExpandableFilterDropdownState<T>
             duration: const Duration(milliseconds: 200),
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
             decoration: BoxDecoration(
-              color: _isExpanded ? kWhiteColor : kBlack2Color,
+              color: _isExpanded ? context.colors.textPrimary : context.colors.surface,
               borderRadius:
                   _isExpanded
                       ? BorderRadius.vertical(top: Radius.circular(12.br))
@@ -99,7 +99,7 @@ class _ExpandableFilterDropdownState<T>
                 color:
                     _isExpanded
                         ? context.colors.textPrimary.withValues(alpha: 0.2)
-                        : kDividerColor,
+                        : context.colors.divider,
               ),
             ),
             child: Row(
@@ -120,7 +120,7 @@ class _ExpandableFilterDropdownState<T>
                   Icon(
                     widget.itemIcon!(widget.value),
                     size: 18.ic,
-                    color: _isExpanded ? kBlackColor : kWhiteColor,
+                    color: _isExpanded ? kBlackColor : context.colors.textPrimary,
                   ),
                   SizedBox(width: 8.w),
                 ],
@@ -129,7 +129,7 @@ class _ExpandableFilterDropdownState<T>
                   child: Text(
                     widget.itemLabel(widget.value),
                     style: AppTypography.textSmMedium.copyWith(
-                      color: _isExpanded ? kBlackColor : kWhiteColor,
+                      color: _isExpanded ? kBlackColor : context.colors.textPrimary,
                     ),
                   ),
                 ),
@@ -161,9 +161,9 @@ class _ExpandableFilterDropdownState<T>
                 bottom: Radius.circular(12.br),
               ),
               border: Border(
-                left: BorderSide(color: kDividerColor),
-                right: BorderSide(color: kDividerColor),
-                bottom: BorderSide(color: kDividerColor),
+                left: BorderSide(color: context.colors.divider),
+                right: BorderSide(color: context.colors.divider),
+                bottom: BorderSide(color: context.colors.divider),
               ),
             ),
             child: Column(
@@ -203,13 +203,13 @@ class _ExpandableFilterDropdownState<T>
               SizedBox(width: 8.w),
             ] else if (hasIcon && iconData != null) ...[
               // Fallback to IconData
-              Icon(iconData, size: 18.ic, color: kWhiteColor),
+              Icon(iconData, size: 18.ic, color: context.colors.textPrimary),
               SizedBox(width: 8.w),
             ],
             Expanded(
               child: Text(
                 widget.itemLabel(item),
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
           ],

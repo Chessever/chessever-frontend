@@ -61,8 +61,8 @@ class MoveStatisticsPanel extends ConsumerWidget {
         state.currentMoveNumber >= kFreeExplorerMoveNumberLimit;
 
     if (state.isLoading && !hasStaleData && !showGate) {
-      return const Center(
-        child: CircularProgressIndicator(color: kWhiteColor, strokeWidth: 2),
+      return  Center(
+        child: CircularProgressIndicator(color: context.colors.textPrimary, strokeWidth: 2),
       );
     }
 
@@ -96,9 +96,9 @@ class MoveStatisticsPanel extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (state.isLoading)
-          const LinearProgressIndicator(
+           LinearProgressIndicator(
             minHeight: 2,
-            color: kWhiteColor,
+            color: context.colors.textPrimary,
             backgroundColor: Colors.transparent,
           ),
         Padding(
@@ -157,7 +157,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
             ],
           ),
         ),
-        Divider(color: kDividerColor, height: 1),
+        Divider(color: context.colors.divider, height: 1),
         // Move list
         Expanded(
           child: ListView.separated(
@@ -168,7 +168,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                     : state.moveAggregates.length,
             separatorBuilder:
                 (_, __) =>
-                    Divider(color: kDividerColor, height: 1, indent: 12.sp),
+                    Divider(color: context.colors.divider, height: 1, indent: 12.sp),
             itemBuilder: (context, index) {
               if (state.moveAggregates.isEmpty && showGate) {
                 return const _MoveStatisticsPlaceholderRow();
@@ -336,7 +336,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
     );
 
     final moveStyle = TextStyle(
-      color: kWhiteColor,
+      color: context.colors.textPrimary,
       fontSize: 14.f,
       fontWeight: FontWeight.w500,
     );
@@ -632,7 +632,7 @@ class _ExplorerPremiumGate extends ConsumerWidget {
             Text(
               'Theory ends here. Prep doesn’t.',
               textAlign: TextAlign.center,
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+              style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(height: 8.h),
             Text(

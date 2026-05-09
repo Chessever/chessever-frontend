@@ -53,7 +53,7 @@ class StandingScoreCard extends ConsumerWidget {
         .getValidCountryCode(countryCode);
 
     final Color backgroundColor =
-        index.isOdd ? kBlack2Color : Color(0xff111111);
+        index.isOdd ? context.colors.surface : Color(0xff111111);
     BorderRadius? borderRadius;
     if (isFirst) {
       borderRadius = BorderRadius.only(

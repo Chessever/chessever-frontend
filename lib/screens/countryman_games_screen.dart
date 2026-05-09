@@ -293,8 +293,8 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                           children: [
                             SvgPicture.asset(
                               SvgAsset.searchIcon,
-                              colorFilter: const ColorFilter.mode(
-                                kWhiteColor,
+                              colorFilter:  ColorFilter.mode(
+                                context.colors.textPrimary,
                                 BlendMode.srcIn,
                               ),
                             ),
@@ -427,7 +427,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                         Text(
                                           "Unpin all",
                                           style: AppTypography.textXsMedium
-                                              .copyWith(color: kWhiteColor),
+                                              .copyWith(color: context.colors.textPrimary),
                                         ),
                                         SvgPicture.asset(
                                           SvgAsset.unpine,
@@ -453,7 +453,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                     Text(
                                       "Active games on top",
                                       style: AppTypography.textXsMedium
-                                          .copyWith(color: kWhiteColor),
+                                          .copyWith(color: context.colors.textPrimary),
                                     ),
                                     SvgPicture.asset(
                                       SvgAsset.active,

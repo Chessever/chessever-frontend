@@ -100,7 +100,7 @@ class _SegmentLabel extends StatelessWidget {
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeInOut,
               style: AppTypography.textSmRegular.copyWith(
-                color: selected ? kWhiteColor : const Color(0xFF888888),
+                color: selected ? context.colors.textPrimary : const Color(0xFF888888),
                 fontSize: 12.f,
                 fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
               ),

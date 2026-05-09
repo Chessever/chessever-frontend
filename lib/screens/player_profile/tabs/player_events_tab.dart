@@ -838,7 +838,7 @@ class _StatsHeader extends StatelessWidget {
               _StatBox(
                 value: '${(avgScore * 100).toStringAsFixed(1)}%',
                 label: 'Avg Score',
-                color: _getScoreColor(avgScore),
+                color: _getScoreColor(context, avgScore),
               ),
             ],
           ),
@@ -853,9 +853,9 @@ class _StatsHeader extends StatelessWidget {
     ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.02, end: 0);
   }
 
-  Color _getScoreColor(double score) {
+  Color _getScoreColor(BuildContext context, double score) {
     if (score >= 0.6) return kGreenColor;
-    if (score >= 0.4) return kWhiteColor;
+    if (score >= 0.4) return context.colors.textPrimary;
     return Colors.redAccent;
   }
 }
@@ -1022,6 +1022,7 @@ class _PlayerEventCard extends ConsumerWidget {
                         ),
                         decoration: BoxDecoration(
                           color: _getScoreColor(
+                            context,
                             playerEventData.score!,
                             playerEventData.gamesPlayed,
                           ).withValues(alpha: 0.2),
@@ -1031,6 +1032,7 @@ class _PlayerEventCard extends ConsumerWidget {
                           '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
                           style: AppTypography.textXsBold.copyWith(
                             color: _getScoreColor(
+                              context,
                               playerEventData.score!,
                               playerEventData.gamesPlayed,
                             ),
@@ -1074,11 +1076,11 @@ class _PlayerEventCard extends ConsumerWidget {
     }
   }
 
-  Color _getScoreColor(double score, int totalGames) {
-    if (totalGames == 0) return kWhiteColor;
+  Color _getScoreColor(BuildContext context, double score, int totalGames) {
+    if (totalGames == 0) return context.colors.textPrimary;
     final percentage = score / totalGames;
     if (percentage >= 0.6) return kGreenColor;
-    if (percentage >= 0.4) return kWhiteColor;
+    if (percentage >= 0.4) return context.colors.textPrimary;
     return Colors.redAccent;
   }
 }
@@ -1229,6 +1231,7 @@ class _FallbackEventCard extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: _getScoreColor(
+                            context,
                             event.score!,
                             event.gamesPlayed,
                           ).withValues(alpha: 0.2),
@@ -1238,6 +1241,7 @@ class _FallbackEventCard extends StatelessWidget {
                           '${event.score!.toStringAsFixed(1)}/${event.gamesPlayed}',
                           style: AppTypography.textXsBold.copyWith(
                             color: _getScoreColor(
+                              context,
                               event.score!,
                               event.gamesPlayed,
                             ),
@@ -1276,11 +1280,11 @@ class _FallbackEventCard extends StatelessWidget {
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
-  Color _getScoreColor(double score, int totalGames) {
-    if (totalGames == 0) return kWhiteColor;
+  Color _getScoreColor(BuildContext context, double score, int totalGames) {
+    if (totalGames == 0) return context.colors.textPrimary;
     final percentage = score / totalGames;
     if (percentage >= 0.6) return kGreenColor;
-    if (percentage >= 0.4) return kWhiteColor;
+    if (percentage >= 0.4) return context.colors.textPrimary;
     return Colors.redAccent;
   }
 }

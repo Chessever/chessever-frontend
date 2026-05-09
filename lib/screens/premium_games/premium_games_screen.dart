@@ -165,7 +165,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
       ),
       title: Text(
         _getTitle(),
-        style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+        style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
       ),
       centerTitle: true,
       actions: [
@@ -176,7 +176,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
               onPressed: _showFilterDialog,
               icon: Icon(
                 Icons.tune_rounded,
-                color: hasActiveFilters ? kPrimaryColor : kWhiteColor,
+                color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimary,
                 size: 22.ic,
               ),
             ),
@@ -298,7 +298,7 @@ class _ErrorState extends StatelessWidget {
             SizedBox(height: 16.sp),
             Text(
               'Something went wrong',
-              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(height: 8.sp),
             Text(
@@ -380,7 +380,7 @@ class _EmptyState extends StatelessWidget {
             SizedBox(height: 24.sp),
             Text(
               title,
-              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(height: 8.sp),
             Text(

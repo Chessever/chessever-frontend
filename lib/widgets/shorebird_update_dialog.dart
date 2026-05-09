@@ -80,7 +80,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
           borderRadius: BorderRadius.circular(20.sp),
           boxShadow: [
             BoxShadow(
-              color: kBlack2Color.withOpacity(0.5),
+              color: context.colors.surface.withOpacity(0.5),
               blurRadius: 20,
               spreadRadius: 5,
             ),
@@ -110,7 +110,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
             // Title
             Text(
               _isReadyToRestart ? 'Update Ready' : 'Update Available',
-              style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textLgMedium.copyWith(color: context.colors.textPrimary),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 12.h),
@@ -172,7 +172,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                           padding: EdgeInsets.symmetric(vertical: 12.h),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.sp),
-                            side: const BorderSide(color: kDividerColor),
+                            side:  BorderSide(color: context.colors.divider),
                           ),
                         ),
                         child: Text(

@@ -24,7 +24,7 @@ class GamebaseFilterPanel extends HookConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         border: Border(
           bottom: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.05)),
         ),
@@ -401,7 +401,7 @@ class _FilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : kBlack3Color,
+          color: isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(
             color:
@@ -491,7 +491,7 @@ class _PlayerSearchField extends HookConsumerWidget {
       return Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
         decoration: BoxDecoration(
-          color: kBlack3Color,
+          color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.25)),
         ),
@@ -595,7 +595,7 @@ class _PlayerSearchInput extends HookConsumerWidget {
                 color: context.colors.textSecondary,
               ),
               filled: true,
-              fillColor: kBlack3Color,
+              fillColor: context.colors.surfaceRecessed,
               contentPadding: EdgeInsets.symmetric(
                 horizontal: 12.w,
                 vertical: 10.h,
@@ -626,9 +626,9 @@ class _PlayerSearchInput extends HookConsumerWidget {
             margin: EdgeInsets.only(top: 4.h),
             constraints: BoxConstraints(maxHeight: 200.h),
             decoration: BoxDecoration(
-              color: kBlack3Color,
+              color: context.colors.surfaceRecessed,
               borderRadius: BorderRadius.circular(8.br),
-              border: Border.all(color: kDividerColor),
+              border: Border.all(color: context.colors.divider),
             ),
             child: searchResults.when(
               data: (players) {
@@ -648,7 +648,7 @@ class _PlayerSearchInput extends HookConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 4.h),
                   itemCount: players.length,
                   separatorBuilder:
-                      (_, __) => Divider(color: kDividerColor, height: 1),
+                      (_, __) => Divider(color: context.colors.divider, height: 1),
                   itemBuilder: (context, index) {
                     final player = players[index];
                     return _PlayerSearchResult(
@@ -716,7 +716,7 @@ class _PlayerSearchResult extends StatelessWidget {
               width: 24.w,
               height: 16.h,
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(2.br),
               ),
               alignment: Alignment.center,

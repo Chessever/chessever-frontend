@@ -277,7 +277,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                   child: Center(
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: kWhiteColor.withValues(
+                                        color: context.colors.textPrimary.withValues(
                                           alpha: 0.15,
                                         ),
                                         shape: BoxShape.circle,
@@ -321,7 +321,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                           TextButton(
                             onPressed: _handleDontShowAgain,
                             style: TextButton.styleFrom(
-                              foregroundColor: kWhiteColor.withValues(
+                              foregroundColor: context.colors.textPrimary.withValues(
                                 alpha: 0.6,
                               ),
                             ),
@@ -335,7 +335,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                             onPressed: _animateOut,
                             style: TextButton.styleFrom(
                               foregroundColor: context.colors.textPrimary,
-                              backgroundColor: kWhiteColor.withValues(
+                              backgroundColor: context.colors.textPrimary.withValues(
                                 alpha: 0.1,
                               ),
                               padding: EdgeInsets.symmetric(
@@ -596,7 +596,7 @@ class _TapTitleSegment extends StatelessWidget {
           style: TextStyle(
             color:
                 isActive
-                    ? kWhiteColor
+                    ? context.colors.textPrimary
                     : context.colors.textSecondary.withValues(alpha: 0.7),
             fontSize: 13.f,
             fontWeight: FontWeight.w600,
@@ -622,7 +622,7 @@ class _TapTitleDot extends StatelessWidget {
         shape: BoxShape.circle,
         color:
             isSelected
-                ? kWhiteColor
+                ? context.colors.textPrimary
                 : context.colors.textSecondary.withValues(alpha: 0.4),
       ),
     );

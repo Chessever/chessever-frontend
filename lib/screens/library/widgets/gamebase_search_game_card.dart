@@ -131,8 +131,8 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       context: context,
       barrierDismissible: false,
       builder:
-          (ctx) => const Center(
-            child: CircularProgressIndicator(color: kWhiteColor),
+          (ctx) =>  Center(
+            child: CircularProgressIndicator(color: context.colors.textPrimary),
           ),
     );
 

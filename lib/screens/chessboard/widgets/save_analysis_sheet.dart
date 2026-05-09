@@ -1643,7 +1643,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                       color:
                                           canSave
                                               ? context.colors.textPrimary
-                                              : kWhiteColor.withValues(
+                                              : context.colors.textPrimary.withValues(
                                                 alpha: 0.3,
                                               ),
                                       size: 18.sp,
@@ -1661,7 +1661,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                         color:
                                             canSave
                                                 ? context.colors.textPrimary
-                                                : kWhiteColor.withValues(
+                                                : context.colors.textPrimary.withValues(
                                                   alpha: 0.3,
                                                 ),
                                         letterSpacing: 0.3,

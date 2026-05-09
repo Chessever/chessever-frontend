@@ -353,7 +353,7 @@ class _FeatureItem extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
               Text(
                 subtitle,
@@ -583,11 +583,10 @@ class _ParticlePainter extends CustomPainter {
           particle.x +
           math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
 
-      final paint =
-          Paint()
-            ..color = kWhiteColor.withValues(
-              alpha: particle.opacity * (1 - y.abs() * 0.5),
-            );
+      final paint = Paint()
+        ..color = Colors.white.withValues(
+          alpha: particle.opacity * (1 - y.abs() * 0.5),
+        );
 
       canvas.drawCircle(
         Offset(x * size.width, y * size.height),

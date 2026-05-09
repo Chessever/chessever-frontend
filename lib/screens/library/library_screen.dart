@@ -123,7 +123,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           SnackBar(
             content: Text(
               'Could not open file picker: $e2',
-              style: const TextStyle(color: kWhiteColor),
+              style:  TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,
@@ -152,7 +152,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         SnackBar(
           content: Text(
             'Clipboard is empty. Copy a PGN first.',
-            style: TextStyle(color: kWhiteColor),
+            style: TextStyle(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -168,7 +168,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         SnackBar(
           content: Text(
             'Clipboard does not contain a valid PGN',
-            style: TextStyle(color: kWhiteColor),
+            style: TextStyle(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor.withValues(alpha: 0.9),
           behavior: SnackBarBehavior.floating,
@@ -224,7 +224,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           SnackBar(
             content: Text(
               'Database "${data.name}" created',
-              style: TextStyle(color: kWhiteColor),
+              style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: context.colors.surface.withValues(alpha: 0.95),
             behavior: SnackBarBehavior.floating,
@@ -248,7 +248,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           SnackBar(
             content: Text(
               'Failed to create database: $e',
-              style: TextStyle(color: kWhiteColor),
+              style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor,
             behavior: SnackBarBehavior.floating,

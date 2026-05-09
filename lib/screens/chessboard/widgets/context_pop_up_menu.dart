@@ -153,7 +153,7 @@ class MenuItemContent extends StatelessWidget {
             text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
           ),
         ),
       ],

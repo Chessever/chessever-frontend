@@ -106,7 +106,7 @@ class _PlayerCardState extends State<PlayerCard>
   @override
   Widget build(BuildContext context) {
     final Color backgroundColor =
-        widget.index.isOdd ? kBlack2Color : Color(0xff111111);
+        widget.index.isOdd ? context.colors.surface : Color(0xff111111);
     BorderRadius? borderRadius;
     if (widget.isFirst) {
       borderRadius = BorderRadius.only(
@@ -138,7 +138,7 @@ class _PlayerCardState extends State<PlayerCard>
               width: 24.w,
               child: Text(
                 '${widget.rank}.',
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
 
@@ -172,7 +172,7 @@ widget.countryCode,
                     TextSpan(
                       text: widget.playerName,
                       style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                     ),
                   ],
@@ -186,7 +186,7 @@ widget.countryCode,
               child: Text(
                 widget.elo.toString(),
                 textAlign: TextAlign.center,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
 
@@ -196,7 +196,7 @@ widget.countryCode,
               child: Text(
                 widget.age.toString(),
                 textAlign: TextAlign.center,
-                style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
 

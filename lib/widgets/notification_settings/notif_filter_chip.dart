@@ -41,7 +41,7 @@ class NotifFilterChip extends StatelessWidget {
           child: Text(
             label,
             style: AppTypography.textSmRegular.copyWith(
-              color: selected ? kWhiteColor : const Color(0xFF9E9E9E),
+              color: selected ? context.colors.textPrimary : const Color(0xFF9E9E9E),
               fontSize: 12.f,
               fontWeight: FontWeight.w500,
             ),

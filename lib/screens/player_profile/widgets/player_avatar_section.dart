@@ -156,7 +156,7 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
           SizedBox(height: 10.h),
           Text(
             rating?.toString() ?? '-',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
           ),
         ],
       ),

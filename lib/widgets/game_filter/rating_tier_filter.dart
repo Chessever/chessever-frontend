@@ -100,7 +100,7 @@ class _TierGrid extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: isSelected ? kPrimaryColor : kBlack2Color,
+              color: isSelected ? kPrimaryColor : context.colors.surface,
               borderRadius: BorderRadius.circular(8.br),
               border: Border.all(
                 color:
@@ -118,7 +118,7 @@ class _TierGrid extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmBold.copyWith(
-                    color: isSelected ? kBlackColor : kWhiteColor,
+                    color: isSelected ? kBlackColor : context.colors.textPrimary,
                   ),
                 ),
                 SizedBox(width: 5.w),

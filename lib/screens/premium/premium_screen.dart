@@ -43,7 +43,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               SizedBox(height: 12.h),
               Text(
                 'Premium active',
-                style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textLgMedium.copyWith(color: context.colors.textPrimary),
               ),
               SizedBox(height: 8.h),
               Text(

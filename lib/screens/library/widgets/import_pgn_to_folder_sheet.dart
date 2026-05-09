@@ -193,7 +193,7 @@ class _ImportPgnToFolderPageState
         SnackBar(
           content: Text(
             'Database "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -205,7 +205,7 @@ class _ImportPgnToFolderPageState
         SnackBar(
           content: Text(
             'Failed to create database: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -229,7 +229,7 @@ class _ImportPgnToFolderPageState
         SnackBar(
           content: Text(
             'Select at least one database',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -295,7 +295,7 @@ class _ImportPgnToFolderPageState
             _savedEntries > 0
                 ? 'Imported $_savedEntries entries into your databases'
                 : 'No games were imported',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -308,7 +308,7 @@ class _ImportPgnToFolderPageState
         SnackBar(
           content: Text(
             'Import failed: $e',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -435,8 +435,8 @@ class _ImportPgnToFolderPageState
                     );
                   },
                   loading:
-                      () => const Center(
-                        child: CircularProgressIndicator(color: kWhiteColor),
+                      () =>  Center(
+                        child: CircularProgressIndicator(color: context.colors.textPrimary),
                       ),
                   error:
                       (e, _) => Center(
@@ -632,7 +632,7 @@ class _ImportFolderTile extends StatelessWidget {
             Expanded(
               child: Text(
                 folder.name,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
               ),
             ),
             Icon(

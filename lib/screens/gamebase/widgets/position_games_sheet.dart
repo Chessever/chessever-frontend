@@ -570,8 +570,8 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
       context: context,
       barrierDismissible: false,
       builder:
-          (ctx) => const Center(
-            child: CircularProgressIndicator(color: kWhiteColor),
+          (ctx) =>  Center(
+            child: CircularProgressIndicator(color: context.colors.textPrimary),
           ),
     );
 
@@ -853,7 +853,7 @@ class _SortOptionTile extends StatelessWidget {
               child: Text(
                 title,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: isSelected ? kPrimaryColor : kWhiteColor,
+                  color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),

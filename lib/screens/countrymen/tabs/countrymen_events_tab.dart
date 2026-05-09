@@ -467,7 +467,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load events',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -493,7 +493,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
             ),
           ),
         ],
@@ -532,7 +532,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           SizedBox(height: 20.h),
           Text(
             'No events found',
-            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
           ),
           SizedBox(height: 8.h),
           Padding(

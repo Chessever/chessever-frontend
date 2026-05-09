@@ -38,7 +38,7 @@ class EventFavoriteCard extends ConsumerWidget {
         ),
         alignment: Alignment.centerRight,
         padding: EdgeInsets.only(right: 20.sp),
-        child: Icon(Icons.delete_outline, color: kWhiteColor, size: 24.ic),
+        child: Icon(Icons.delete_outline, color: context.colors.textPrimary, size: 24.ic),
       ),
       confirmDismiss: (direction) async {
         final allowed = await requireFullAuthGuard(context);
@@ -64,7 +64,7 @@ class EventFavoriteCard extends ConsumerWidget {
         },
         child: Container(
           decoration: BoxDecoration(
-            color: kBlack2Color,
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(8.br),
           ),
           padding: EdgeInsets.all(16.sp),
@@ -78,7 +78,7 @@ class EventFavoriteCard extends ConsumerWidget {
                     Text(
                       title,
                       style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
+                        color: context.colors.textPrimary,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -225,13 +225,13 @@ class EventFavoriteCard extends ConsumerWidget {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: kBlack2Color,
+          backgroundColor: context.colors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.br),
           ),
           title: Text(
             'Remove from favorites?',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
           ),
           content: Text(
             'Are you sure you want to remove $eventTitle from your favorites?',

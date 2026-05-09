@@ -285,7 +285,7 @@ class _CenterContent extends ConsumerWidget {
 
     // If game hasn't started yet, show "VS" instead of eval bar
     if (!matchWithComparison.game.hasStarted) {
-      return Center(child: StatusText(status: 'VS', color: kBlack2Color));
+      return Center(child: StatusText(status: 'VS', color: context.colors.surface));
     }
 
     // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
@@ -435,7 +435,7 @@ class _GamesRound extends ConsumerWidget {
             Flexible(
               child: Text(
                 '${player.title} ${player.rating}',
-                style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
+                style: AppTypography.textXsMedium.copyWith(color: context.colors.surface),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -511,8 +511,8 @@ class _TimerWidget extends StatelessWidget {
         style: AppTypography.textXsMedium.copyWith(
           color:
               isGameFinished
-                  ? kWhiteColor
-                  : (turn ? kPrimaryColor : kWhiteColor),
+                  ? context.colors.textPrimary
+                  : (turn ? kPrimaryColor : context.colors.textPrimary),
         ),
       ),
     );
@@ -692,7 +692,7 @@ class _LastMoveNotation extends StatelessWidget {
     return Center(
       child: Text(
         displayText,
-        style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+        style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
