@@ -1255,15 +1255,15 @@ class GameRepository extends BaseRepository {
           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
       final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
-      // Match date_start first — it is the scheduled round day, written once
-      // at ingestion and stable. game_day / last_move_time can be clobbered by
-      // Lichess refresh pushes that stamp every game in a round with the
-      // current timestamp, so we only fall back to them when date_start is
-      // null on the row.
+      // Match game_day first (PGN [Date], stable per round), then fall back
+      // to last_move_time, then date_start. date_start is the broadcast
+      // pairing-upload day and can drift several days from the round day on
+      // pre-created multi-round broadcasts (e.g. GCT), so it is only used
+      // when game_day and last_move_time are both null on the row.
       final dayFilter =
-          'date_start.eq.$dateStr,'
-          'and(date_start.is.null,game_day.eq.$dateStr),'
-          'and(date_start.is.null,game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()})';
+          'game_day.eq.$dateStr,'
+          'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
+          'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
       debugPrint(
         '[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr, eco=$eco',
       );
@@ -1366,15 +1366,15 @@ class GameRepository extends BaseRepository {
           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
       final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
-      // Match date_start first — it is the scheduled round day, written once
-      // at ingestion and stable. game_day / last_move_time can be clobbered by
-      // Lichess refresh pushes that stamp every game in a round with the
-      // current timestamp, so we only fall back to them when date_start is
-      // null on the row.
+      // Match game_day first (PGN [Date], stable per round), then fall back
+      // to last_move_time, then date_start. date_start is the broadcast
+      // pairing-upload day and can drift several days from the round day on
+      // pre-created multi-round broadcasts (e.g. GCT), so it is only used
+      // when game_day and last_move_time are both null on the row.
       final dayFilter =
-          'date_start.eq.$dateStr,'
-          'and(date_start.is.null,game_day.eq.$dateStr),'
-          'and(date_start.is.null,game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()})';
+          'game_day.eq.$dateStr,'
+          'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
+          'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
       debugPrint(
         '[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr, eco=$eco',
       );

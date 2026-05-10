@@ -15,7 +15,6 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 
 final calendarDetailScreenProvider = AutoDisposeStateNotifierProvider.family<
   _CalendarDetailScreenController,
@@ -60,10 +59,6 @@ class _CalendarDetailScreenController
       (_, __) => _applyFiltersDebounced(),
     );
     ref.listen(favoriteEventsProvider, (_, __) => _applyFiltersDebounced());
-    ref.listen(
-      favoritePlayersNotifierProvider,
-      (_, __) => _applyFiltersDebounced(),
-    );
     // Listen to the favorite event IDs provider so we re-filter when it updates
     ref.listen(
       calendarFavoriteEventIdsProvider,
@@ -180,7 +175,7 @@ class _CalendarDetailScreenController
       final timeControl = ref.read(calendarTimeControlProvider);
       final filterMode = ref.read(calendarFilterModeProvider);
 
-      // Get favorite event IDs from the dedicated provider (includes both starred and player-based)
+      // Get starred event IDs from the dedicated provider
       Set<String> favoriteEventIds = {};
       if (filterMode == CalendarFilterMode.favorites) {
         final favoriteIdsAsync = ref.read(calendarFavoriteEventIdsProvider);

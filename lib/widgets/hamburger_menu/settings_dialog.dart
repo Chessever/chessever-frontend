@@ -27,6 +27,8 @@ class SettingsDialog extends ConsumerWidget {
           height: 20.h,
           width: 20.w,
           SvgAsset.boardSettings,
+          // Multi-colour (black + white squares) — preserve baked colours.
+          preserveOriginalColors: true,
         ),
         notificationSettingsIcon: Icon(
           Icons.notifications_active_outlined,

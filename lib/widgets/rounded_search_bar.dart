@@ -72,6 +72,14 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                     SvgAsset.searchIcon,
                     height: 16.h,
                     width: 16.w,
+                    // Light theme tints to a muted icon colour so it doesn't
+                    // disappear into the white search-bar surface.
+                    colorFilter: context.isLightTheme
+                        ? ColorFilter.mode(
+                            context.colors.iconSecondary,
+                            BlendMode.srcIn,
+                          )
+                        : null,
                   ),
                 ),
                 SizedBox(width: 4.w),
@@ -108,6 +116,12 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                         SvgAsset.listFilterIcon,
                         height: 24.h,
                         width: 24.w,
+                        colorFilter: context.isLightTheme
+                            ? ColorFilter.mode(
+                                context.colors.iconPrimary,
+                                BlendMode.srcIn,
+                              )
+                            : null,
                       ),
                     ),
                   )

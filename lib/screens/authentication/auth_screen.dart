@@ -655,7 +655,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
             loading: () => context.colors.textPrimary.withValues(alpha: 0.4),
             orElse: () => context.colors.textPrimary,
           ),
-          foregroundColor: kBlackColor,
+          foregroundColor: context.colors.textInverse,
           padding: EdgeInsets.symmetric(vertical: 16.sp),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12.br),
@@ -663,7 +663,12 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
           elevation: 0,
           shadowColor: Colors.transparent,
         ),
-        child: Text('Continue', style: AppTypography.textLgMedium),
+        child: Text(
+          'Continue',
+          style: AppTypography.textLgMedium.copyWith(
+            color: context.colors.textInverse,
+          ),
+        ),
       ),
     );
   }

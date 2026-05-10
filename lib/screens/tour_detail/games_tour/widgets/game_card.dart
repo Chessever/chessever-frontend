@@ -39,6 +39,45 @@ class GameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final body = SizedBox(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          _GameCardContent(
+            matchComparison: matchComparison,
+            allowStockfishFallback: allowStockfishFallback,
+          ),
+          if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
+        ],
+      ),
+    );
+
+    // In light theme, lift the card with the same iOS-style treatment as the
+    // settings page _SettingCard: faint divider border + soft shadow. The
+    // inner sections already round to 12br, so the outer wrapper matches.
+    // Dark theme is unchanged — no wrapper.
+    final wrapped = context.isLightTheme
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12.br),
+              border: Border.all(
+                color: context.colors.divider.withValues(alpha: 0.5),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 10,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12.br),
+              child: body,
+            ),
+          )
+        : body;
+
     return TappableScale(
       onTap: () {
         HapticFeedbackService.cardTap();
@@ -50,18 +89,7 @@ class GameCard extends ConsumerWidget {
           HapticFeedbackService.contextMenu();
           _showBlurredPopup(context, ref: ref, details: details);
         },
-        child: SizedBox(
-          width: double.infinity,
-          child: Stack(
-            children: [
-              _GameCardContent(
-                matchComparison: matchComparison,
-                allowStockfishFallback: allowStockfishFallback,
-              ),
-              if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
-            ],
-          ),
-        ),
+        child: wrapped,
       ),
     );
   }
@@ -229,15 +257,27 @@ class _TopSection extends ConsumerWidget {
         matchComparison.comparison == MatchComparison.sameOrder
             ? matchComparison.game.blackPlayer
             : matchComparison.game.whitePlayer;
+    // Light theme: use a flat white surface card for the chip strip and let
+    // the divider separate it from the bottom row. Dark theme keeps the
+    // historical translucent-text-as-bg trick that the user signed off on.
+    final isLight = context.isLightTheme;
     return Container(
       height: 60.h,
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
-        color: context.colors.textPrimaryMuted,
+        color: isLight ? context.colors.surface : context.colors.textPrimaryMuted,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(12.br),
           topRight: Radius.circular(12.br),
         ),
+        border: isLight
+            ? Border(
+                bottom: BorderSide(
+                  color: context.colors.divider.withValues(alpha: 0.6),
+                  width: 1,
+                ),
+              )
+            : null,
       ),
       child: Row(
         children: [
@@ -276,16 +316,29 @@ class _CenterContent extends ConsumerWidget {
       ),
     );
 
+    // Status text sits on the chip strip — light theme = white surface so we
+    // need a dark ink, dark theme = translucent-light bg so the original
+    // kBlackColor / surface tokens read fine.
+    final isLight = context.isLightTheme;
+
     // If game is not ongoing, show result text
     if (effectiveStatus != GameStatus.ongoing) {
       return Center(
-        child: StatusText(status: _displayTextSupporter(matchWithComparison)),
+        child: StatusText(
+          status: _displayTextSupporter(matchWithComparison),
+          color: isLight ? context.colors.textPrimary : kBlackColor,
+        ),
       );
     }
 
     // If game hasn't started yet, show "VS" instead of eval bar
     if (!matchWithComparison.game.hasStarted) {
-      return Center(child: StatusText(status: 'VS', color: context.colors.surface));
+      return Center(
+        child: StatusText(
+          status: 'VS',
+          color: isLight ? context.colors.textSecondary : context.colors.surface,
+        ),
+      );
     }
 
     // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
@@ -412,6 +465,14 @@ class _GamesRound extends ConsumerWidget {
             ? player.countryCode
             : player.federation;
 
+    // Light theme: chip strip is a white surface, so name uses textPrimary
+    // and rating uses textSecondary for hierarchy. Dark theme: chip strip is
+    // a translucent-light bg, original kBlackColor / surface tokens read OK.
+    final isLight = context.isLightTheme;
+    final nameColor = isLight ? context.colors.textPrimary : kBlackColor;
+    final ratingColor = isLight
+        ? context.colors.textSecondary
+        : context.colors.surface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -420,7 +481,7 @@ class _GamesRound extends ConsumerWidget {
           ref.read(stringUtilsProvider).getTrimmedString(player.name),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
+          style: AppTypography.textXsMedium.copyWith(color: nameColor),
         ),
         Row(
           children: [
@@ -435,7 +496,7 @@ class _GamesRound extends ConsumerWidget {
             Flexible(
               child: Text(
                 '${player.title} ${player.rating}',
-                style: AppTypography.textXsMedium.copyWith(color: context.colors.surface),
+                style: AppTypography.textXsMedium.copyWith(color: ratingColor),
                 overflow: TextOverflow.ellipsis,
               ),
             ),

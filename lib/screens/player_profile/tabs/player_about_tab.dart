@@ -2093,7 +2093,11 @@ class _AnimatedFormChipState extends State<_AnimatedFormChip> {
                     child: Text(
                       widget.text,
                       style: AppTypography.textXsBold.copyWith(
-                        color: widget.isDraw ? kBlackColor : context.colors.textPrimary,
+                        // W/L chips have green/red backgrounds in both themes,
+                        // so the foreground stays white for contrast. Draw
+                        // chips sit on a translucent surface and read better
+                        // in solid black.
+                        color: widget.isDraw ? Colors.black : Colors.white,
                       ),
                     ),
                   ),

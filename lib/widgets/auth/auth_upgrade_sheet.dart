@@ -429,7 +429,9 @@ class _PrimaryButton extends HookWidget {
                     : Text(
                       label,
                       style: AppTypography.textMdMedium.copyWith(
-                        color: context.colors.textPrimary,
+                        // Cyan→indigo gradient is bright in both themes,
+                        // so the label is always white for contrast.
+                        color: Colors.white,
                       ),
                     ),
           ),

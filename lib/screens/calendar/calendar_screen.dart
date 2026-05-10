@@ -807,8 +807,7 @@ class _QuickFilterButtons extends ConsumerWidget {
       orElse: () => 0,
     );
 
-    // Calculate favorites count: starred events + events with favorite players
-    // Use the dedicated provider that fetches from Supabase directly
+    // Calculate favorites count from starred events.
     final favoriteEventIdsAsync = ref.watch(calendarFavoriteEventIdsProvider);
 
     final favoritesCount = calendarData.maybeWhen(

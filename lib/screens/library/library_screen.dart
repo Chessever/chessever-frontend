@@ -695,7 +695,14 @@ class _BoardSettingsButton extends StatelessWidget {
           border: Border.all(color: context.colors.divider, width: 0.1),
         ),
         child: Center(
-          child: SvgWidget(SvgAsset.boardSettings, width: 20.sp, height: 20.sp),
+          child: SvgWidget(
+            SvgAsset.boardSettings,
+            width: 20.sp,
+            height: 20.sp,
+            // Multi-colour (black + white squares) — keep baked colours so
+            // the icon doesn't collapse into a single solid blob.
+            preserveOriginalColors: true,
+          ),
         ),
       ),
     );

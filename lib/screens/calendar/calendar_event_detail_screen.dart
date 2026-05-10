@@ -240,7 +240,16 @@ event.countryCode!,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
+            SvgWidget(
+              SvgAsset.websiteIcon,
+              height: 12.h,
+              width: 12.h,
+              // Match the cyan link text in light theme so the icon stays
+              // visible on white surfaces; dark theme keeps the original asset.
+              colorFilter: context.isLightTheme
+                  ? const ColorFilter.mode(kPrimaryColor, BlendMode.srcIn)
+                  : null,
+            ),
             SizedBox(width: 4.w),
             Flexible(
               child: Text(

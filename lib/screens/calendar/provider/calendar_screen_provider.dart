@@ -7,7 +7,6 @@ import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_search_isolate.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/month_provider.dart';
@@ -38,8 +37,7 @@ final calendarScreenProvider = AutoDisposeStateNotifierProvider<
   AsyncValue<List<MonthEventsSummary>>
 >((ref) => _CalendarScreenNotifier(ref));
 
-/// Provider that tracks the IDs of favorite events (starred + favorite players)
-/// This queries Supabase directly instead of relying on cache
+/// Provider that tracks the IDs of events the user has explicitly starred.
 final calendarFavoriteEventIdsProvider = AutoDisposeAsyncNotifierProvider<
   _CalendarFavoriteEventIdsNotifier,
   Set<String>
@@ -49,17 +47,12 @@ class _CalendarFavoriteEventIdsNotifier
     extends AutoDisposeAsyncNotifier<Set<String>> {
   @override
   Future<Set<String>> build() async {
-    // Watch dependencies to rebuild when they change
     ref.watch(favoriteEventsProvider);
-    ref.watch(favoritePlayersNotifierProvider);
-
     return _computeFavoriteEventIds();
   }
 
   Future<Set<String>> _computeFavoriteEventIds() async {
     final favoriteIds = <String>{};
-
-    // 1. Get starred events
     try {
       final favorites = await ref.read(favoriteEventsProvider.future);
       for (final e in favorites) {
@@ -68,28 +61,6 @@ class _CalendarFavoriteEventIdsNotifier
     } catch (_) {
       // Ignore errors loading favorites
     }
-
-    // 2. Get events with favorite players directly from Supabase
-    try {
-      final favoritePlayersState = await ref.read(
-        favoritePlayersNotifierProvider.future,
-      );
-      final fideIds =
-          favoritePlayersState.players
-              .where((p) => p.fideId != null)
-              .map((p) => p.fideId!)
-              .toList();
-
-      if (fideIds.isNotEmpty) {
-        final eventIdsWithFavoritePlayers = await ref
-            .read(groupBroadcastRepositoryProvider)
-            .getEventIdsWithFavoritePlayers(fideIds);
-        favoriteIds.addAll(eventIdsWithFavoritePlayers);
-      }
-    } catch (e) {
-      debugPrint('Error fetching events with favorite players: $e');
-    }
-
     return favoriteIds;
   }
 }
@@ -120,8 +91,6 @@ class _CalendarScreenNotifier
       );
       ref.listen(selectedYearProvider, (_, __) => _fetchYearEvents());
       ref.listen(favoriteEventsProvider, (_, __) => _applyFilters());
-      ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFilters());
-      // Listen to the favorite event IDs provider so we re-filter when it updates
       ref.listen(calendarFavoriteEventIdsProvider, (_, __) => _applyFilters());
 
       await _fetchYearEvents();
@@ -229,7 +198,7 @@ class _CalendarScreenNotifier
       final filterMode = ref.read(calendarFilterModeProvider);
       final monthConverter = ref.read(monthProvider);
 
-      // Get favorite event IDs from the dedicated provider (includes both starred and player-based)
+      // Get starred event IDs from the dedicated provider
       Set<String> favoriteEventIds = {};
       if (filterMode == CalendarFilterMode.favorites) {
         final favoriteIdsAsync = ref.read(calendarFavoriteEventIdsProvider);

@@ -146,7 +146,7 @@ CalendarSearchResult filterCalendarEventsIsolate(CalendarSearchParams params) {
         continue;
       }
     } else if (params.filterMode == 'favorites') {
-      // favoriteEventIds now contains both starred events AND events with favorite players
+      // favoriteEventIds contains the user's explicitly starred events.
       if (!params.favoriteEventIds.contains(event.id)) {
         continue;
       }
@@ -341,7 +341,7 @@ List<CalendarEventData> _sortEvents(
   final sorted = List<CalendarEventData>.from(events);
 
   if (filterMode == 'favorites') {
-    // Favorites: combine starred + hearted and sort by newest date first
+    // Favorites: starred events sorted by newest date first
     sorted.sort((a, b) => _compareByDate(a, b, descending: true));
   } else if (filterMode == 'upcoming') {
     // Upcoming: date ascending (soonest first)
@@ -471,7 +471,7 @@ DetailSearchResult filterDetailEventsIsolate(DetailSearchParams params) {
         continue;
       }
     } else if (params.filterMode == 'favorites') {
-      // favoriteEventIds now contains both starred events AND events with favorite players
+      // favoriteEventIds contains the user's explicitly starred events.
       if (!params.favoriteEventIds.contains(event.id)) {
         continue;
       }
