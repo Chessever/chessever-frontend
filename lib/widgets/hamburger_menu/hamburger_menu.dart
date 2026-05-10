@@ -152,6 +152,12 @@ class HamburgerMenu extends HookConsumerWidget {
                     SizedBox(height: 8.h),
 
                     // Menu items
+                    //
+                    // Each utility SVG is shipped with white-ish tints baked
+                    // in (looks correct on the dark drawer). In light theme
+                    // that bakes a white-on-light-grey contrast bug, so we
+                    // recolour to `iconPrimary` only when the theme is light;
+                    // dark theme renders the asset unchanged.
                     _MenuItem(
                       key: e2eKey(E2eIds.drawerOpeningExplorer),
                       customIcon: SvgWidget(
@@ -159,6 +165,12 @@ class HamburgerMenu extends HookConsumerWidget {
                         semanticsLabel: 'Opening Explorer Icon',
                         height: 20.h,
                         width: 20.w,
+                        colorFilter: context.isLightTheme
+                            ? ColorFilter.mode(
+                                context.colors.iconPrimary,
+                                BlendMode.srcIn,
+                              )
+                            : null,
                       ),
                       icon: Icons.explore_outlined,
                       title: 'Opening Explorer',
@@ -180,6 +192,10 @@ class HamburgerMenu extends HookConsumerWidget {
                         semanticsLabel: 'Analysis Board Icon',
                         height: 20.h,
                         width: 20.w,
+                        // Multi-colour mini-chessboard artwork — must keep
+                        // its baked white/grey/dark squares in both themes.
+                        // Tinting collapses it into a single solid blob.
+                        preserveOriginalColors: true,
                       ),
                       icon: Icons.grid_view_rounded,
                       title: 'Board Editor',
@@ -213,6 +229,12 @@ class HamburgerMenu extends HookConsumerWidget {
                         semanticsLabel: 'Settings Icon',
                         height: 20.h,
                         width: 20.w,
+                        colorFilter: context.isLightTheme
+                            ? ColorFilter.mode(
+                                context.colors.iconPrimary,
+                                BlendMode.srcIn,
+                              )
+                            : null,
                       ),
                       title: 'Settings',
                       textStyle: AppTypography.textSmRegular.copyWith(
@@ -228,6 +250,12 @@ class HamburgerMenu extends HookConsumerWidget {
                         semanticsLabel: 'Leave Feedback Icon',
                         height: 20.h,
                         width: 20.w,
+                        colorFilter: context.isLightTheme
+                            ? ColorFilter.mode(
+                                context.colors.iconPrimary,
+                                BlendMode.srcIn,
+                              )
+                            : null,
                       ),
                       icon: Icons.rate_review_outlined,
                       title: 'Leave Feedback',
@@ -251,6 +279,12 @@ class HamburgerMenu extends HookConsumerWidget {
                         semanticsLabel: 'Privacy Policy Icon',
                         height: 20.h,
                         width: 20.w,
+                        colorFilter: context.isLightTheme
+                            ? ColorFilter.mode(
+                                context.colors.iconPrimary,
+                                BlendMode.srcIn,
+                              )
+                            : null,
                       ),
                       icon: Icons.lock_outline,
                       title: 'Privacy Policy',
@@ -269,6 +303,12 @@ class HamburgerMenu extends HookConsumerWidget {
                         semanticsLabel: 'Info Icon',
                         height: 20.h,
                         width: 20.w,
+                        colorFilter: context.isLightTheme
+                            ? ColorFilter.mode(
+                                context.colors.iconPrimary,
+                                BlendMode.srcIn,
+                              )
+                            : null,
                       ),
                       title:
                           versionString.isNotEmpty

@@ -1606,9 +1606,9 @@ class _PrimaryButton extends HookWidget {
                     ? SizedBox(
                       width: 24.w,
                       height: 24.h,
-                      child: const CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: kBlackColor,
+                        color: context.colors.textInverse,
                       ),
                     )
                     : Text(
@@ -1616,7 +1616,7 @@ class _PrimaryButton extends HookWidget {
                       style: AppTypography.textMdMedium.copyWith(
                         color:
                             onTap != null
-                                ? kBlackColor
+                                ? context.colors.textInverse
                                 : context.colors.textPrimary.withValues(alpha: 0.5),
                       ),
                     ),

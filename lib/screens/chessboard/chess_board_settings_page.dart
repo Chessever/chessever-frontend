@@ -136,10 +136,12 @@ class _ChessBoardSettingsPageState
             bottom: 16.sp + bottomPadding,
           ),
           children: [
-            _SectionLabel(title: 'Appearance'),
-            SizedBox(height: 12.h),
-            _ThemeModeCard(),
-            SizedBox(height: 24.h),
+            // Light theme is shelved — Appearance section hidden until the
+            // light theme polish is reopened. Re-enable by uncommenting:
+            // _SectionLabel(title: 'Appearance'),
+            // SizedBox(height: 12.h),
+            // _ThemeModeCard(),
+            // SizedBox(height: 24.h),
             _SectionLabel(title: 'Engine Experience'),
             SizedBox(height: 12.h),
             _SettingCard(

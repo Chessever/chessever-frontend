@@ -81,6 +81,8 @@ class CountrymenCardWidget extends ConsumerWidget {
                 semanticsLabel: 'Country Man',
                 height: 32.h,
                 width: 32.w,
+                // Brand-coloured (green) artwork — keep as-is in both themes.
+                preserveOriginalColors: true,
               ),
             ),
           ],

@@ -27,7 +27,19 @@ class AppBarIcons extends StatelessWidget {
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(4.br),
         ),
-        child: SvgPicture.asset(image),
+        // The bundled glyphs (three-dots etc.) ship with a white fill so
+        // they read on the dark `surface`. In light theme that becomes
+        // white-on-white and the button disappears, so we recolour to
+        // `iconPrimary`. Dark theme keeps the asset's original fill.
+        child: SvgPicture.asset(
+          image,
+          colorFilter: context.isLightTheme
+              ? ColorFilter.mode(
+                  context.colors.iconPrimary,
+                  BlendMode.srcIn,
+                )
+              : null,
+        ),
       ),
     );
   }

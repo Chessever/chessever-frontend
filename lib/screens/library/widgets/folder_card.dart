@@ -82,6 +82,12 @@ class FolderCard extends ConsumerWidget {
                     SvgAsset.folderOutline,
                     width: 18.sp,
                     height: 18.sp,
+                    colorFilter: context.isLightTheme
+                        ? ColorFilter.mode(
+                            context.colors.iconPrimary,
+                            BlendMode.srcIn,
+                          )
+                        : null,
                   ),
                 ),
               ),
@@ -181,6 +187,12 @@ class FolderCard extends ConsumerWidget {
                       SvgAsset.folderOutline,
                       width: svgSize,
                       height: svgSize,
+                      colorFilter: context.isLightTheme
+                          ? ColorFilter.mode(
+                              context.colors.iconPrimary,
+                              BlendMode.srcIn,
+                            )
+                          : null,
                     ),
                   ),
                 ),

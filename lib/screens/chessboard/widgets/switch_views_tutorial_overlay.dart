@@ -162,7 +162,10 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                       24.h,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: context.colors.textPrimary,
+                                      // Card sits on the dim scrim in both
+                                      // themes — keep the surface white so
+                                      // black text remains legible.
+                                      color: Colors.white,
                                       borderRadius: BorderRadius.circular(
                                         28.br,
                                       ),
@@ -233,13 +236,13 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                     ),
                                   ],
                                   border: Border.all(
-                                    color: context.colors.textPrimary,
+                                    color: Colors.white,
                                     width: 3,
                                   ),
                                 ),
                                 child: Icon(
                                   Icons.swap_horiz_rounded,
-                                  color: context.colors.textPrimary,
+                                  color: Colors.white,
                                   size: 22.sp,
                                 ),
                               ),
@@ -277,7 +280,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                   child: Center(
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: context.colors.textPrimary.withValues(
+                                        color: Colors.white.withValues(
                                           alpha: 0.15,
                                         ),
                                         shape: BoxShape.circle,
@@ -295,7 +298,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                                       child: Icon(
                                         Icons.touch_app_rounded,
                                         size: 52.sp,
-                                        color: context.colors.textPrimary,
+                                        color: Colors.white,
                                         shadows: [
                                           BoxShadow(
                                             color: Colors.black.withValues(
@@ -321,7 +324,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                           TextButton(
                             onPressed: _handleDontShowAgain,
                             style: TextButton.styleFrom(
-                              foregroundColor: context.colors.textPrimary.withValues(
+                              foregroundColor: Colors.white.withValues(
                                 alpha: 0.6,
                               ),
                             ),
@@ -334,8 +337,8 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                           TextButton(
                             onPressed: _animateOut,
                             style: TextButton.styleFrom(
-                              foregroundColor: context.colors.textPrimary,
-                              backgroundColor: context.colors.textPrimary.withValues(
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.white.withValues(
                                 alpha: 0.1,
                               ),
                               padding: EdgeInsets.symmetric(

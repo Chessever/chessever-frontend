@@ -105,6 +105,9 @@ class _AuthButtonState extends State<AuthButton>
                 widget.svgIconPath,
                 height: 20.h,
                 width: ResponsiveHelper.isTablet ? 24 : 29.w,
+                // Apple/Google brand logos must keep their original colours
+                // (multi-colour Google glyph, black Apple silhouette).
+                preserveOriginalColors: true,
                 fallback: Icon(
                   Icons.apple,
                   size: 24.ic,

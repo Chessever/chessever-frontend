@@ -153,8 +153,10 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.only(bottom: bottomPadding + 20),
-              child: const Center(
-                child: CircularProgressIndicator(color: kBoardLightDefault),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: context.isLightTheme ? kPrimaryColor : kBoardLightDefault,
+                ),
               ),
             ),
           ),

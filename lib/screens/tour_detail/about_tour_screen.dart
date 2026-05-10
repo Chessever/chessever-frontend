@@ -327,6 +327,12 @@ countryCode,
                         SvgAsset.websiteIcon,
                         height: 12.h,
                         width: 12.h,
+                        colorFilter: context.isLightTheme
+                            ? const ColorFilter.mode(
+                                kPrimaryColor,
+                                BlendMode.srcIn,
+                              )
+                            : null,
                       ),
                       SizedBox(width: 4.w),
                       Flexible(

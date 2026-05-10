@@ -975,7 +975,12 @@ class MyApp extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
+    // Light theme is shelved — force dark mode app-wide regardless of any
+    // previously persisted user preference. The themeModeProvider still
+    // exists so the saved preference isn't wiped, but it's not consulted
+    // here. Re-enable by restoring `ref.watch(themeModeProvider)`.
+    // final themeMode = ref.watch(themeModeProvider);
+    const themeMode = ThemeMode.dark;
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
 

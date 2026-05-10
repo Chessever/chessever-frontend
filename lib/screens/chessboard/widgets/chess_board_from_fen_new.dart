@@ -1151,13 +1151,29 @@ class _ChessBoardWidget extends ConsumerWidget {
         height: boardSize,
         width: boardSize,
         decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: kBoardLightGrey.withValues(alpha: 0.5),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          // Light theme: layered drop shadow grounds the board on the
+          // light-grey scaffold (Principle 3 — shadows over borders). Dark
+          // theme keeps the original soft kBoardLightGrey shadow.
+          boxShadow: context.isLightTheme
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 1,
+                    offset: const Offset(0, 1),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: kBoardLightGrey.withValues(alpha: 0.5),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: AbsorbPointer(
           child: Chessboard.fixed(
