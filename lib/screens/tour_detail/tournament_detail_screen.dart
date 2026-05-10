@@ -304,6 +304,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         key: UniqueKey(),
+        backgroundColor: context.colors.popup,
+        selectedBackgroundColor: context.colors.popup,
         options: _mappedName.values.toList(),
         initialSelection: _mappedName.values.toList().indexOf(
           _mappedName[selectedTourMode]!,
