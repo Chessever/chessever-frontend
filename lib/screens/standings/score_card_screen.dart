@@ -1362,6 +1362,9 @@ class _SliverScoreboardAppBarState
                   semanticsLabel: 'Favorite Icon',
                   height: 20.h,
                   width: 20.w,
+                  // Red heart keeps its fill; outline heart is auto-tinted
+                  // by SvgWidget so it stays visible on light surfaces.
+                  preserveOriginalColors: isFavorite,
                 ),
               ),
             ),

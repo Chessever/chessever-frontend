@@ -19,7 +19,10 @@ class SkeletonWidget extends StatelessWidget {
       ignoreContainers: true,
       ignorePointers: true,
       effect: ShimmerEffect(
-        baseColor: kBlackColor,
+        // Dark theme keeps the original kBlackColor base; light theme swaps
+        // to a theme-aware skeleton tone so the shimmer doesn't paint as a
+        // black smear on white surfaces.
+        baseColor: context.isLightTheme ? context.colors.skeleton : kBlackColor,
         highlightColor: context.colors.surfaceRecessed,
       ),
       child: child,

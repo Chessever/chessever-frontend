@@ -25,6 +25,12 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Bundled SVGs ship with white tints baked in (correct on the dark app
+    // bar). In light theme that becomes white-on-light-grey, so we recolour
+    // to `iconPrimary` only when the theme is light; dark theme is unchanged.
+    final iconFilter = context.isLightTheme
+        ? ColorFilter.mode(context.colors.iconPrimary, BlendMode.srcIn)
+        : null;
     return AppBar(
       leading: IconButton(
         icon: SvgWidget(
@@ -32,6 +38,7 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
           width: 20.w,
           'assets/svgs/left_arrow.svg',
           semanticsLabel: 'Back',
+          colorFilter: iconFilter,
         ),
         onPressed: onBackPressed ?? () => Navigator.of(context).pop(),
       ),
@@ -54,6 +61,7 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
               width: 20.w,
               'assets/svgs/arrow_down.svg',
               semanticsLabel: 'Back',
+              colorFilter: iconFilter,
             ),
           ],
         ],
@@ -67,6 +75,7 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
             width: 20.w,
             'assets/svgs/folderPlus.svg',
             semanticsLabel: 'Settings',
+            colorFilter: iconFilter,
           ),
           onPressed: onSettingsPressed,
         ),
@@ -77,6 +86,7 @@ class ChessMatchAppBar extends StatelessWidget implements PreferredSizeWidget {
             width: 20.w,
             'assets/svgs/share.svg',
             semanticsLabel: 'Share',
+            colorFilter: iconFilter,
           ),
           onPressed: onMoreOptionsPressed,
         ),

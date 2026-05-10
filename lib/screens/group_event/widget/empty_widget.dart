@@ -16,7 +16,17 @@ class EmptyWidget extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        SvgWidget(SvgAsset.infoIcon, height: 24.h, width: 24.w),
+        SvgWidget(
+          SvgAsset.infoIcon,
+          height: 24.h,
+          width: 24.w,
+          colorFilter: context.isLightTheme
+              ? ColorFilter.mode(
+                  context.colors.iconSecondary,
+                  BlendMode.srcIn,
+                )
+              : null,
+        ),
         SizedBox(height: 12.h),
         Text(
           title,

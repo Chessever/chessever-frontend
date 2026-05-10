@@ -147,7 +147,7 @@ class EventCard extends ConsumerWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary,
+                    color: Colors.white,
                     fontSize: 15.sp,
                     height: 1.3,
                     shadows: [
@@ -167,7 +167,7 @@ class EventCard extends ConsumerWidget {
                         dates: _compactDates(tourEventCardModel),
                         timeControlSpan: _timeControlSpan(
                           AppTypography.textXsMedium.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                           ),
                         ),
                         showLocation: false,
@@ -206,6 +206,23 @@ class EventCard extends ConsumerWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
+        // Light theme adds a faint border + subtle drop shadow so the white
+        // card pops off the light-grey scaffold (matches the settings-page
+        // _SettingCard look). Dark theme is unchanged.
+        border: context.isLightTheme
+            ? Border.all(
+                color: context.colors.divider.withValues(alpha: 0.4),
+              )
+            : null,
+        boxShadow: context.isLightTheme
+            ? [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : null,
       ),
       padding: EdgeInsets.all(6.sp),
       child: ConstrainedBox(
@@ -346,8 +363,11 @@ class _MetaLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `onLight` is misnamed — it really means "rendered over the dark image
+    // gradient on the tablet card," so the text always needs to be a light
+    // ink with a soft shadow regardless of theme.
     final baseColor = onLight
-        ? context.colors.textPrimary.withValues(alpha: 0.9)
+        ? Colors.white.withValues(alpha: 0.9)
         : context.colors.textPrimaryMuted;
     final style = AppTypography.textXsMedium.copyWith(
       color: baseColor,
@@ -460,6 +480,13 @@ class _EventImage extends ConsumerWidget {
         decoration: BoxDecoration(
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(6.br),
+          // Subtle 1px image outline so the photo edge reads cleanly on the
+          // white card in light theme. Pure black-at-0.1 is the convention
+          // (avoid tinted neutrals — they look like dirt at the edge).
+          // Dark theme keeps no border to preserve the original look.
+          border: context.isLightTheme
+              ? Border.all(color: Colors.black.withValues(alpha: 0.1))
+              : null,
         ),
         clipBehavior: Clip.antiAlias,
         child: imageAsync.when(
@@ -681,11 +708,19 @@ class _TabletEventBackground extends ConsumerWidget {
   Widget _buildLoadingBackground(BuildContext context) {
     return Skeletonizer(
       enabled: true,
-      effect: const ShimmerEffect(
-        baseColor: Color(0xFF2A2A2A),
-        highlightColor: Color(0xFF3A3A3A),
-        duration: Duration(seconds: 1),
-      ),
+      // Dark theme keeps the original tuned greys; only light theme swaps to
+      // theme-aware tokens so the shimmer doesn't paint as a dark patch.
+      effect: context.isLightTheme
+          ? ShimmerEffect(
+              baseColor: context.colors.skeleton,
+              highlightColor: context.colors.divider,
+              duration: const Duration(seconds: 1),
+            )
+          : const ShimmerEffect(
+              baseColor: Color(0xFF2A2A2A),
+              highlightColor: Color(0xFF3A3A3A),
+              duration: Duration(seconds: 1),
+            ),
       child: ColoredBox(color: context.colors.surface),
     );
   }
@@ -875,6 +910,10 @@ class _StarWidget extends ConsumerWidget {
           semanticsLabel: 'Favorite Icon',
           height: 20.h,
           width: 20.w,
+          // Filled star is gold; outline star looks fine when re-tinted by
+          // the SvgWidget light-mode default. We only need to preserve when
+          // showing the filled (yellow) variant.
+          preserveOriginalColors: showFilledStar,
         ),
       ),
     );
@@ -924,12 +963,13 @@ class _HeartIconWithCount extends StatelessWidget {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Heart icon
+        // Heart icon — keep the red fill in both themes.
         SvgWidget(
           SvgAsset.favouriteRedIcon,
           semanticsLabel: 'Has Favorite Players',
           height: 20.h,
           width: 20.w,
+          preserveOriginalColors: true,
         ),
         // Count text centered in the middle (only show if > 1)
         if (count > 1)
@@ -1035,8 +1075,10 @@ class _NextRoundLine extends ConsumerWidget {
     final roundName = (nextRound?.name ?? 'Round 1').trim();
     final showName = roundName.isNotEmpty;
 
+    // Tablet image background path always needs light ink; the rest of the
+    // card uses theme-aware muted text.
     final baseColor = onLight
-        ? context.colors.textPrimary.withValues(alpha: 0.9)
+        ? Colors.white.withValues(alpha: 0.9)
         : context.colors.textPrimaryMuted;
 
     final textStyle = AppTypography.textXxsMedium.copyWith(

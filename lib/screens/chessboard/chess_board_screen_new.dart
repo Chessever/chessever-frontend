@@ -2084,7 +2084,10 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                         24.h,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: context.colors.textPrimary,
+                                        // Tutorial card sits on top of a dark
+                                        // dim scrim in both themes, so it stays
+                                        // white with black text for clarity.
+                                        color: Colors.white,
                                         borderRadius: BorderRadius.circular(
                                           28.br,
                                         ),
@@ -2156,13 +2159,13 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                       ),
                                     ],
                                     border: Border.all(
-                                      color: context.colors.textPrimary,
+                                      color: Colors.white,
                                       width: 3,
                                     ),
                                   ),
                                   child: Icon(
                                     Icons.view_carousel_rounded,
-                                    color: context.colors.textPrimary,
+                                    color: Colors.white,
                                     size: 22.sp,
                                   ),
                                 ),
@@ -2206,7 +2209,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                     child: Center(
                                       child: Container(
                                         decoration: BoxDecoration(
-                                          color: context.colors.textPrimary.withValues(
+                                          color: Colors.white.withValues(
                                             alpha: 0.15,
                                           ),
                                           shape: BoxShape.circle,
@@ -2224,7 +2227,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                         child: Icon(
                                           Icons.touch_app_rounded,
                                           size: 52.sp,
-                                          color: context.colors.textPrimary,
+                                          color: Colors.white,
                                           shadows: [
                                             BoxShadow(
                                               color: Colors.black.withValues(
@@ -2251,7 +2254,7 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                             TextButton(
                               onPressed: _handleDontShowAgain,
                               style: TextButton.styleFrom(
-                                foregroundColor: context.colors.textPrimary.withValues(
+                                foregroundColor: Colors.white.withValues(
                                   alpha: 0.6,
                                 ),
                               ),
@@ -2264,8 +2267,8 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                             TextButton(
                               onPressed: animateOut,
                               style: TextButton.styleFrom(
-                                foregroundColor: context.colors.textPrimary,
-                                backgroundColor: context.colors.textPrimary.withValues(
+                                foregroundColor: Colors.white,
+                                backgroundColor: Colors.white.withValues(
                                   alpha: 0.1,
                                 ),
                                 padding: EdgeInsets.symmetric(
@@ -6423,12 +6426,28 @@ class _MoveLadder {
   });
 }
 
-class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
+class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
+    with TickerProviderStateMixin {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
   bool _clearBoardSelectionForFrame = false;
   bool _selectionRestoreScheduled = false;
   int? _lastSelectionClearRequestId;
+
+  // Swipe-to-flip: a single spring controller drives an X-axis card flip.
+  // Range is ±0.5 (= ±π/2 = edge-on). The orientation swap happens at the
+  // edge-on midpoint so the flip is visually continuous: animate to ±0.5,
+  // call flipBoard(), snap to the opposite ±0.5, then spring back to 0.
+  static const double _flipMaxProgress = 0.5;
+  static const double _flipCommitProgressThreshold = 0.18;
+  static const double _flipCommitVelocityThreshold = 600.0;
+  late final SingleMotionController _flipController;
+  bool _flipDragActive = false;
+  bool _flipCommitting = false;
+  // Bumped on every drag start and on every commit. An in-flight commit bails
+  // if its captured token is stale, so a new gesture can preempt the previous
+  // animation cleanly without leaving _flipCommitting stuck true.
+  int _flipCommitToken = 0;
 
   void _scheduleSelectionRestore() {
     if (_selectionRestoreScheduled) return;
@@ -6709,6 +6728,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     }
 
     _wasAtEnd = isAtGameEnd;
+
+    // External flip (e.g., bottom-nav button): if orientation changed
+    // without us driving the spring, play a quick swing-in so it doesn't
+    // snap. We start at edge-on with the new orientation already rendered
+    // and let the spring settle to flat.
+    if (widget.isFlipped != oldWidget.isFlipped &&
+        !_flipDragActive &&
+        !_flipCommitting &&
+        _flipController.value == 0) {
+      _flipController.value = _flipMaxProgress;
+      _flipController.animateTo(0);
+    }
   }
 
   @override
@@ -6724,6 +6755,146 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     if (isGameOver && _wasAtEnd) {
       _showDelayedGameEndingEffect = true;
     }
+
+    _flipController = SingleMotionController.bounded(
+      // Tighter, no-bounce spring with snap-to-end so the flip lands on
+      // exactly 0 / ±_flipMaxProgress instead of drifting near them. Spring
+      // residual was leaving _flipCommitting stuck and making the settle
+      // feel sloppy.
+      motion: const CupertinoMotion.smooth(
+        duration: Duration(milliseconds: 220),
+        snapToEnd: true,
+      ),
+      vsync: this,
+      lowerBound: -_flipMaxProgress,
+      upperBound: _flipMaxProgress,
+    );
+  }
+
+  @override
+  void dispose() {
+    _flipController.dispose();
+    super.dispose();
+  }
+
+  void _onFlipDragStart(DragStartDetails details) {
+    // Always allow a fresh gesture to take over — even mid-commit. We bump
+    // the token so any in-flight _commitFlip bails on its next await, then
+    // stop the controller so the user picks up rotation from where it is.
+    _flipCommitToken++;
+    _flipCommitting = false;
+    _flipDragActive = true;
+    _flipController.stop(canceled: true);
+  }
+
+  void _onFlipDragUpdate(DragUpdateDetails details) {
+    if (!_flipDragActive) return;
+    final delta = details.primaryDelta ?? 0.0;
+    if (delta == 0.0 || widget.size <= 0) return;
+    // Map raw pixels to progress: a full board height of swipe corresponds
+    // to the full ±_flipMaxProgress range (i.e., edge-on).
+    final progressDelta = (delta / widget.size) * _flipMaxProgress;
+    _flipController.value = (_flipController.value + progressDelta)
+        .clamp(-_flipMaxProgress, _flipMaxProgress);
+  }
+
+  void _onFlipDragEnd(DragEndDetails details) {
+    if (!_flipDragActive) return;
+    _flipDragActive = false;
+    final v = _flipController.value;
+    final velocity = details.primaryVelocity ?? 0.0;
+    final pastThreshold = v.abs() >= _flipCommitProgressThreshold;
+    final hasFlingVelocity = velocity.abs() >= _flipCommitVelocityThreshold;
+    // If the fling agrees with the current direction (or is dominant),
+    // commit. Otherwise either cancel (small drag, low velocity) or commit
+    // if the user already dragged past the visual threshold.
+    if (hasFlingVelocity || pastThreshold) {
+      final commitSign = hasFlingVelocity
+          ? (velocity > 0 ? 1.0 : -1.0)
+          : (v >= 0 ? 1.0 : -1.0);
+      _commitFlip(commitSign);
+    } else {
+      _flipController.animateTo(0);
+    }
+  }
+
+  void _onFlipDragCancel() {
+    if (!_flipDragActive) return;
+    _flipDragActive = false;
+    if (_flipCommitting) return;
+    _flipController.animateTo(0);
+  }
+
+  /// Two-phase flip: animate to edge-on, swap orientation under cover of
+  /// the invisible 90° midpoint, jump to the opposite edge-on, then spring
+  /// back to flat. Driven by awaited TickerFutures so the state machine
+  /// can't desync — and any new drag bumps the token to bail us out.
+  Future<void> _commitFlip(double sign) async {
+    final token = ++_flipCommitToken;
+    _flipCommitting = true;
+    try {
+      // Phase 1: drive rotation to edge-on in the gesture direction.
+      await _flipController.animateTo(sign * _flipMaxProgress);
+      if (!mounted || token != _flipCommitToken) return;
+
+      // At the invisible midpoint, swap the real orientation. The board
+      // rebuild is queued by Riverpod and lands on the next frame, by which
+      // time we're already on the back half of the rotation.
+      ref
+          .read(
+            chessBoardScreenProviderNew(
+              ChessBoardProviderParams(
+                game: widget.game,
+                index: widget.index,
+              ),
+            ).notifier,
+          )
+          .flipBoard();
+      HapticFeedback.lightImpact();
+
+      // Jump to the opposite edge-on (visually identical — both render as
+      // a horizontal line) and spring back to flat with the new orientation.
+      _flipController.value = -sign * _flipMaxProgress;
+      await _flipController.animateTo(0);
+      if (!mounted || token != _flipCommitToken) return;
+      // Belt-and-braces: snap to a clean zero so a future drag starts from
+      // exactly flat, even if the spring's snapToEnd left a sub-pixel ε.
+      _flipController.value = 0;
+    } finally {
+      if (mounted && token == _flipCommitToken) {
+        _flipCommitting = false;
+      }
+    }
+  }
+
+  // 3D card-flip wrapper. Listens to the spring controller and applies an
+  // X-axis rotation with perspective. The outer GestureDetector picks up
+  // vertical drags only — taps still resolve to the Chessboard's tap
+  // recognizer through Flutter's gesture arena, so tap-to-move is intact.
+  Widget _wrapWithFlipGesture(Widget child) {
+    return GestureDetector(
+      behavior: HitTestBehavior.deferToChild,
+      onVerticalDragStart: _onFlipDragStart,
+      onVerticalDragUpdate: _onFlipDragUpdate,
+      onVerticalDragEnd: _onFlipDragEnd,
+      onVerticalDragCancel: _onFlipDragCancel,
+      child: AnimatedBuilder(
+        animation: _flipController,
+        builder: (context, c) {
+          final progress = _flipController.value;
+          if (progress == 0.0) return c!;
+          final rotation = progress * math.pi;
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0015)
+              ..rotateX(rotation),
+            child: c,
+          );
+        },
+        child: child,
+      ),
+    );
   }
 
   @override
@@ -6983,20 +7154,22 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
         baseSquareColor,
       );
 
-      return RepaintBoundary(
-        child: Stack(
-          children: [
-            chessboard,
-            if (boardAnnotationBadge != null) boardAnnotationBadge,
-            // Animated falling king overlay using motor springs
-            _FallenKingOverlay(
-              left: effectiveFile * squareSize,
-              top: effectiveRank * squareSize,
-              squareSize: squareSize,
-              pieceImage: pieceImage!,
-              squareColor: compositeColor,
-            ),
-          ],
+      return _wrapWithFlipGesture(
+        RepaintBoundary(
+          child: Stack(
+            children: [
+              chessboard,
+              if (boardAnnotationBadge != null) boardAnnotationBadge,
+              // Animated falling king overlay using motor springs
+              _FallenKingOverlay(
+                left: effectiveFile * squareSize,
+                top: effectiveRank * squareSize,
+                squareSize: squareSize,
+                pieceImage: pieceImage!,
+                squareColor: compositeColor,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -7012,37 +7185,41 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       final blackKingSquare = board.kingOf(Side.black);
 
       if (whiteKingSquare != null && blackKingSquare != null) {
-        return RepaintBoundary(
-          child: Stack(
-            children: [
-              chessboard,
-              if (boardAnnotationBadge != null) boardAnnotationBadge,
-              // Animated peace icon on white king
-              _AnimatedPeaceIcon(
-                square: whiteKingSquare,
-                squareSize: squareSize,
-                isFlipped: widget.isFlipped,
-                delayMs: 0,
-              ),
-              // Animated peace icon on black king (slight delay for stagger effect)
-              _AnimatedPeaceIcon(
-                square: blackKingSquare,
-                squareSize: squareSize,
-                isFlipped: widget.isFlipped,
-                delayMs: 100,
-              ),
-            ],
+        return _wrapWithFlipGesture(
+          RepaintBoundary(
+            child: Stack(
+              children: [
+                chessboard,
+                if (boardAnnotationBadge != null) boardAnnotationBadge,
+                // Animated peace icon on white king
+                _AnimatedPeaceIcon(
+                  square: whiteKingSquare,
+                  squareSize: squareSize,
+                  isFlipped: widget.isFlipped,
+                  delayMs: 0,
+                ),
+                // Animated peace icon on black king (slight delay for stagger effect)
+                _AnimatedPeaceIcon(
+                  square: blackKingSquare,
+                  squareSize: squareSize,
+                  isFlipped: widget.isFlipped,
+                  delayMs: 100,
+                ),
+              ],
+            ),
           ),
         );
       }
     }
 
-    return RepaintBoundary(
-      child: Stack(
-        children: [
-          chessboard,
-          if (boardAnnotationBadge != null) boardAnnotationBadge,
-        ],
+    return _wrapWithFlipGesture(
+      RepaintBoundary(
+        child: Stack(
+          children: [
+            chessboard,
+            if (boardAnnotationBadge != null) boardAnnotationBadge,
+          ],
+        ),
       ),
     );
   }

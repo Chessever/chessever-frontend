@@ -121,7 +121,9 @@ class RecentOpponentsList extends StatelessWidget {
     // - Top half: player's color (white if playedAsWhite, black otherwise)
     // - Bottom half: result color (green=win, gray=draw, red=loss)
     final resultColor = _getResultColor(context, opponent.result);
-    final playerColor = opponent.playedAsWhite ? context.colors.textPrimary : kBlackColor;
+    // Literal piece colors — always white square for "played as white" and
+    // black square for "played as black", independent of theme.
+    final playerColor = opponent.playedAsWhite ? Colors.white : Colors.black;
 
     return Container(
       width: 20.w,

@@ -58,19 +58,43 @@ class _PremiumCollectionCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isLight = context.isLightTheme;
     return GestureDetector(
       onTap: () => _handleTap(context, ref),
       child: Container(
         height: 108.sp,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12.br),
+          borderRadius: BorderRadius.circular(14.br),
+          // Light theme: hairline border (`black @ 8%`) for crisp edge.
+          // Dark theme keeps the original divider border.
           border: Border.all(
-            color: context.colors.divider,
+            color: isLight
+                ? Colors.black.withValues(alpha: 0.08)
+                : context.colors.divider,
             width: 1,
           ),
+          // Light theme: layered drop shadow (close + far) for premium depth,
+          // following Principle 3 (shadows over borders). Dark theme: no
+          // shadow — the tile sits on a dark surface and doesn't need lift.
+          boxShadow: isLight
+              ? [
+                  // Close, tight shadow defines the edge contour.
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 1,
+                    offset: const Offset(0, 1),
+                  ),
+                  // Wider, softer shadow for ambient lift off the scaffold.
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12.br),
+          borderRadius: BorderRadius.circular(14.br),
           child: Stack(
             clipBehavior: Clip.hardEdge,
             children: [
@@ -79,26 +103,35 @@ class _PremiumCollectionCard extends ConsumerWidget {
                 const Positioned.fill(child: _FavoritePlayersGridBackground())
               else
                 _FlagFullBackground(ref: ref),
-              // Gradient overlay for text readability
+              // Gradient overlay for text readability. Light theme uses a
+              // softer ramp (less aggressive black) so the bottom edge of
+              // the tile doesn't slam into the white scaffold; dark theme
+              // keeps the original deep gradient.
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.6),
-                        Colors.black.withValues(alpha: 0.95),
-                      ],
+                      colors: isLight
+                          ? [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.45),
+                              Colors.black.withValues(alpha: 0.78),
+                            ]
+                          : [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.6),
+                              Colors.black.withValues(alpha: 0.95),
+                            ],
                       stops: const [0.0, 0.5, 1.0],
                     ),
                   ),
                 ),
               ),
-              // Foreground content - clean text-only design
+              // Foreground content - clean text-only design.
               Padding(
-                padding: EdgeInsets.all(12.sp),
+                padding: EdgeInsets.all(14.sp),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -106,18 +139,51 @@ class _PremiumCollectionCard extends ConsumerWidget {
                     Text(
                       title,
                       style: AppTypography.textMdBold.copyWith(
-                        color: context.colors.textPrimary,
+                        color: Colors.white,
                         letterSpacing: 0.3,
+                        // Subtle text shadow guarantees legibility regardless
+                        // of the artwork underneath the lighter light-theme
+                        // gradient.
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
                     ),
                     SizedBox(height: 2.sp),
-                    Text(
-                      'Tap to view→',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.7),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Tap to view',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                blurRadius: 3,
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(width: 4.w),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 12.sp,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withValues(alpha: 0.4),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ],
                 ),

@@ -71,6 +71,20 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
     // Adjust for reversed mode (invert the evaluation visually)
     final displayEval = widget.isReversedMode ? (1.0 - evaluation) : evaluation;
 
+    // The bar's two halves are *piece colours*, not theme colours: the
+    // foreground = white side's share, background = black side's share.
+    // Dark theme used `surface`/`textPrimary` because both happen to be
+    // black/white-shaped in dark mode, but in light mode that flips and
+    // shows white advantage as a dark pixel block. Force literal piece
+    // colours in light theme; dark theme keeps the original tokens so its
+    // appearance is unchanged.
+    final barBg = context.isLightTheme
+        ? kMoveStatBlackColor
+        : context.colors.surface;
+    final barFg = context.isLightTheme
+        ? kMoveStatWhiteColor
+        : context.colors.textPrimary;
+
     return SizedBox(
       width: 48.w,
       height: 12.h,
@@ -82,7 +96,7 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
             width: 48.w,
             height: 12.h,
             decoration: BoxDecoration(
-              color: context.colors.surface,
+              color: barBg,
               borderRadius: BorderRadius.circular(4.br),
             ),
           ),
@@ -98,7 +112,7 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
               width: (48.w * displayEval).clamp(0.0, 48.w),
               height: 12.h,
               decoration: BoxDecoration(
-                color: context.colors.textPrimary,
+                color: barFg,
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(
                     widget.isReversedMode && displayEval < 0.99 ? 0 : 4.br,

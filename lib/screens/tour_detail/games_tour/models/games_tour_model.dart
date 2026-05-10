@@ -79,6 +79,7 @@ class GamesTourModel {
   final String? tourSlug;
   final DateTime? lastMoveTime;
   final DateTime? dateStart;
+  final DateTime? gameDay;
   final String? eco;
   final String? openingName;
   final String?
@@ -108,6 +109,7 @@ class GamesTourModel {
     this.boardNr,
     this.lastMoveTime,
     this.dateStart,
+    this.gameDay,
     this.eco,
     this.openingName,
     this.timeControl,
@@ -117,12 +119,13 @@ class GamesTourModel {
 
   /// Calendar day the game belongs to, for UI bucketing.
   ///
-  /// Why: `last_move_time` and `game_day` can be clobbered by Lichess refresh
-  /// pushes (every game in a round gets its timestamp bumped to "now"), which
-  /// makes week-old games appear under "Today". `date_start` is written once
-  /// at ingestion from the round's scheduled start and is stable, so we prefer
-  /// it when present.
-  DateTime? get bucketDate => dateStart ?? lastMoveTime;
+  /// Priority: `gameDay` (PGN [Date], stable per round) → `lastMoveTime` (UTC
+  /// day of latest move) → `dateStart` (broadcast pairing-upload day).
+  /// `dateStart` is the day the broadcast pairings were uploaded to Lichess,
+  /// which can drift several days from the actual round day on tournaments
+  /// whose rounds are pre-created (e.g. GCT multi-round formats), so it is
+  /// only used as a last-resort fallback.
+  DateTime? get bucketDate => gameDay ?? lastMoveTime ?? dateStart;
 
   GamesTourModel copyWith({
     String? gameId,
@@ -146,6 +149,7 @@ class GamesTourModel {
     String? tourSlug,
     DateTime? lastMoveTime,
     DateTime? dateStart,
+    DateTime? gameDay,
     String? eco,
     String? openingName,
     String? timeControl,
@@ -176,6 +180,7 @@ class GamesTourModel {
       tourSlug: tourSlug ?? this.tourSlug,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
       dateStart: dateStart ?? this.dateStart,
+      gameDay: gameDay ?? this.gameDay,
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
       timeControl: timeControl ?? this.timeControl,
@@ -309,6 +314,7 @@ class GamesTourModel {
         // Prefer lastMoveTime, then gameDay (round start), then dateStart.
         lastMoveTime: game.lastMoveTime ?? game.gameDay ?? game.dateStart,
         dateStart: game.dateStart,
+        gameDay: game.gameDay,
         eco: resolvedEco,
         openingName: resolvedOpening,
         timeControl: game.timeControl,
@@ -571,6 +577,7 @@ class GamesTourModel {
         other.blackClockSeconds == blackClockSeconds &&
         other.lastMoveTime == lastMoveTime &&
         other.dateStart == dateStart &&
+        other.gameDay == gameDay &&
         other.gameStatus == gameStatus &&
         other.lastMove == lastMove &&
         other.fen == fen &&
@@ -602,6 +609,7 @@ class GamesTourModel {
       blackClockSeconds,
       lastMoveTime,
       dateStart,
+      gameDay,
       gameStatus,
       lastMove,
       fen,

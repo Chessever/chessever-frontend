@@ -161,6 +161,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
                   semanticsLabel: 'Favorite Icon',
                   height: 20.h,
                   width: 20.w,
+                  preserveOriginalColors: isFavorite,
                 ),
               ),
             ),

@@ -89,7 +89,7 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
                       child: Text(
                         'Player',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: Colors.white,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                     ),
@@ -100,7 +100,7 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
                       child: Text(
                         'Elo',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: Colors.white,
+                          color: context.colors.textPrimary,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -112,7 +112,7 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
                       child: Text(
                         'Age',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: Colors.white,
+                          color: context.colors.textPrimary,
                         ),
 
                         textAlign: TextAlign.center,

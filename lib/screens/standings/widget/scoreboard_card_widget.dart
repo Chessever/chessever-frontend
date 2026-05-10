@@ -157,7 +157,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
                     matchScore!,
                     textAlign: TextAlign.center,
                     style: AppTypography.textMdBold.copyWith(
-                      color: isWhite! ? Colors.black : context.colors.textPrimary,
+                      // Score sits on a literal white/black piece-color
+                      // circle, so contrast is always inverted from the bg.
+                      color: isWhite! ? Colors.black : Colors.white,
                     ),
                   ),
                 ),

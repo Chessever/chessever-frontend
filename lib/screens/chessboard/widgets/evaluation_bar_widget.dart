@@ -166,8 +166,19 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 
         final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
         final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
-        final topColor = widget.isFlipped ? context.colors.textPrimary : context.colors.popup;
-        final bottomColor = widget.isFlipped ? context.colors.popup : context.colors.textPrimary;
+        // Eval bar segments are *piece colours*, not theme colours. Dark
+        // theme worked because `textPrimary` and `popup` happened to be
+        // white and near-black; in light theme they flip and the bar would
+        // display upside down. Use literal piece colours in light theme;
+        // keep the original tokens in dark for byte-identical rendering.
+        final whitePieceColor = context.isLightTheme
+            ? kMoveStatWhiteColor
+            : context.colors.textPrimary;
+        final blackPieceColor = context.isLightTheme
+            ? kMoveStatBlackColor
+            : context.colors.popup;
+        final topColor = widget.isFlipped ? whitePieceColor : blackPieceColor;
+        final bottomColor = widget.isFlipped ? blackPieceColor : whitePieceColor;
 
         return SizedBox(
           width: widget.width,
@@ -450,6 +461,15 @@ class _Bars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Same piece-colour rationale as in the live eval bar above: light
+    // theme uses literal piece colours, dark theme keeps the original
+    // tokens so its rendering is unchanged.
+    final whitePieceColor = context.isLightTheme
+        ? kMoveStatWhiteColor
+        : context.colors.textPrimary;
+    final blackPieceColor = context.isLightTheme
+        ? kMoveStatBlackColor
+        : context.colors.popup;
     return SizedBox(
       width: width,
       height: height,
@@ -460,7 +480,7 @@ class _Bars extends StatelessWidget {
             child: Container(
               width: width,
               height: isFlipped ? whiteHeight : blackHeight,
-              color: isFlipped ? context.colors.textPrimary : context.colors.popup,
+              color: isFlipped ? whitePieceColor : blackPieceColor,
             ),
           ),
           Align(
@@ -468,7 +488,7 @@ class _Bars extends StatelessWidget {
             child: Container(
               width: width,
               height: isFlipped ? blackHeight : whiteHeight,
-              color: isFlipped ? context.colors.popup : context.colors.textPrimary,
+              color: isFlipped ? blackPieceColor : whitePieceColor,
             ),
           ),
           // Evaluation text positioned at the meeting point of black/white
