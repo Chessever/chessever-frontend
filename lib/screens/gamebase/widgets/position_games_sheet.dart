@@ -25,6 +25,7 @@ class PositionGamesSheet extends ConsumerStatefulWidget {
     this.uci,
     this.moves = const <String>[],
     this.filters = const GamebaseFilters(),
+    this.useFenEndpoint = false,
   });
 
   final String fen;
@@ -32,6 +33,11 @@ class PositionGamesSheet extends ConsumerStatefulWidget {
   final String? uci;
   final List<String> moves;
   final GamebaseFilters filters;
+
+  /// When true, fetch via `/api/game-position/fen/games` (exact-FEN match)
+  /// instead of the move-aggregate endpoint. Used by the pasted-PGN /
+  /// FEN-position flow where there is no selected move path.
+  final bool useFenEndpoint;
 
   @override
   ConsumerState<PositionGamesSheet> createState() => _PositionGamesSheetState();
@@ -113,6 +119,34 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     );
   }
 
+  Future<GamebaseSearchQueryResponse> _fetchFenPage(int pageNumber) {
+    final timeControlFilter = widget.filters.timeControls.isNotEmpty
+        ? widget.filters.timeControls.first
+        : null;
+    final playerIdFilter = widget.filters.playerIds.isNotEmpty
+        ? widget.filters.playerIds.first
+        : null;
+    return ref
+        .read(gamebaseRepositoryProvider)
+        .getFenPositionGames(
+          fen: widget.fen,
+          uci: widget.uci,
+          timeControl: timeControlFilter,
+          playerId: playerIdFilter,
+          color: widget.filters.playerColor?.name,
+          result: widget.filters.gameResult?.apiValue,
+          isOnline: widget.filters.isOnline,
+          minRating: widget.filters.minRating,
+          maxRating: widget.filters.maxRating,
+          yearFrom: widget.filters.yearFrom,
+          yearTo: widget.filters.yearTo,
+          sortBy: _sortBy,
+          sortDirection: _sortDirection,
+          pageNumber: pageNumber,
+          pageSize: _pageSize,
+        );
+  }
+
   Future<void> _fetchPage({bool reset = false}) async {
     if (reset) {
       setState(() {
@@ -135,9 +169,11 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
     final requestToken = ++_requestToken;
     try {
-      final response = await ref.read(
-        positionGamesProvider(_buildQuery(_nextPageNumber)).future,
-      );
+      final response = widget.useFenEndpoint
+          ? await _fetchFenPage(_nextPageNumber)
+          : await ref.read(
+              positionGamesProvider(_buildQuery(_nextPageNumber)).future,
+            );
       if (!mounted || requestToken != _requestToken) return;
 
       final mergedRows = List<Map<String, dynamic>>.from(_rows);

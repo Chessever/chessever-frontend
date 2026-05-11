@@ -8185,6 +8185,7 @@ class _FenPositionGamesTableState
             fen: widget.fen,
             title: 'Games',
             filters: _filters,
+            useFenEndpoint: true,
           ),
     );
   }
