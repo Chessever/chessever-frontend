@@ -7,7 +7,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -72,10 +72,8 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
     );
     final totalCount =
         initialState.totalCount ?? initialState.filteredGames.length;
-    if (totalCount > 1) {
-      final hasPremium = await requirePremiumGuard(context, ref);
-      if (!hasPremium || !mounted) return;
-    }
+    final allowed = await canSaveMoreGames(context, gamesToAdd: totalCount);
+    if (!allowed || !mounted) return;
 
     setState(() => _isLoadingAll = true);
     try {

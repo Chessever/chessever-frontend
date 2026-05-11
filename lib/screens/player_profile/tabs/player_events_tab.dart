@@ -983,6 +983,9 @@ class _PlayerEventCard extends ConsumerWidget {
               EventCard(
                 tourEventCardModel: eventCard,
                 heroTagSuffix: 'player-profile-$index',
+                // Embedded inside a SliverList (unbounded height) — must use
+                // the compact phone layout to avoid Stack-expand crash.
+                forceCompactLayout: true,
               ),
               // Player stats row
               Container(

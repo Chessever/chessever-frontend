@@ -14,6 +14,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -36,7 +37,7 @@ Future<bool> showImportPgnToFolderSheet({
   String? sourceLabel,
 }) async {
   if (games.isEmpty) return false;
-  final allowed = await requirePremiumGuardNoRef(context);
+  final allowed = await canSaveMoreGames(context, gamesToAdd: games.length);
   if (!allowed) return false;
   if (!context.mounted) return false;
 
@@ -237,6 +238,13 @@ class _ImportPgnToFolderPageState
       );
       return;
     }
+
+    // Pre-flight used games.length only; actual rows = games × folders.
+    final allowed = await canSaveMoreGames(
+      context,
+      gamesToAdd: widget.games.length * selected.length,
+    );
+    if (!allowed || !mounted) return;
 
     setState(() {
       _isSaving = true;

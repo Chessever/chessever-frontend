@@ -12,8 +12,10 @@ import 'package:chessever2/repository/local_storage/favorite/favourate_standings
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
 
@@ -291,7 +293,11 @@ class _PlayerList extends ConsumerWidget {
                   return true;
                 },
                 onFavoriteToggle:
-                    () => _toggleFavorite(ref, player['fideId'].toString()),
+                    () => _toggleFavorite(
+                          context,
+                          ref,
+                          player['fideId'].toString(),
+                        ),
                 index: index,
                 isFirst: index == 0,
                 isLast: index == filteredPlayers.length - 1,
@@ -303,7 +309,11 @@ class _PlayerList extends ConsumerWidget {
     );
   }
 
-  void _toggleFavorite(WidgetRef ref, String playerId) async {
+  void _toggleFavorite(
+    BuildContext context,
+    WidgetRef ref,
+    String playerId,
+  ) async {
     final viewModel = ref.read(playerViewModelProvider);
     viewModel.toggleFavorite(playerId);
 
@@ -349,6 +359,12 @@ class _PlayerList extends ConsumerWidget {
             'source': 'player_list',
           },
         );
+      }
+    } on FavoriteLimitExceededException {
+      // Pre-flight `canAddMoreFavorites` already gates the common path; this
+      // catches the race where the server-side count is ahead of local state.
+      if (context.mounted) {
+        await showPremiumPaywallSheet(context: context);
       }
     } catch (e) {
       debugPrint('Error updating Supabase favorites: $e');

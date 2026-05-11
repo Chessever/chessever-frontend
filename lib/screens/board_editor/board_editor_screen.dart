@@ -481,55 +481,71 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
     final evalBarWidth = 20.sp;
-    final availableHeight = constraints.maxHeight;
-    final outerPadding = 8.sp * 2; // vertical padding from Padding widget
-    final trayVPadding = 8.h * 2; // piece tray vertical padding
-    final trayRowGap = 4.h; // gap between piece tray rows
-    // Tray has 2 rows of pieces sized (boardSize/8)*0.9, so:
-    // totalHeight = boardSize + trayVPadding + trayRowGap + boardSize*0.225
-    // Solve for boardSize:
-    final boardSize =
-        ((availableHeight - outerPadding - trayVPadding - trayRowGap) / 1.225)
-            .clamp(200.0, double.infinity);
-    final boardColumnWidth = boardSize + evalBarWidth;
-    final squareSize = boardSize / 8;
+    // Tray total vertical overhead: 2 rows × (boardSize/8)*0.9 = boardSize*0.225,
+    // plus tray vertical padding (16.h) + tray row gap (4.h). Add a small safety
+    // margin so subpixel rounding never overflows.
+    final trayOverhead = 20.h + 4.h;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Left column: board + piece tray
-          SizedBox(
-            width: boardColumnWidth,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _BoardWithEvalBar(
-                  editorState: editorState,
-                  boardSettings: boardSettings,
-                  availableWidth: boardColumnWidth,
-                  evalBarWidth: evalBarWidth,
-                  showEval: editorState.isEvaluatable,
+      child: LayoutBuilder(
+        builder: (context, inner) {
+          // Compute the largest square board that fits both height and width.
+          final maxBoardFromHeight =
+              ((inner.maxHeight - trayOverhead) / 1.225)
+                  .clamp(0.0, double.infinity);
+          // Reserve at least 280px on the right for controls + fen + actions.
+          final maxBoardFromWidth =
+              (inner.maxWidth - 12.sp - 280.0 - evalBarWidth)
+                  .clamp(0.0, double.infinity);
+          final boardSize =
+              (maxBoardFromHeight < maxBoardFromWidth
+                      ? maxBoardFromHeight
+                      : maxBoardFromWidth)
+                  .clamp(160.0, double.infinity)
+                  .toDouble();
+          final boardColumnWidth = boardSize + evalBarWidth;
+          final squareSize = boardSize / 8;
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left column: board + piece tray
+              SizedBox(
+                width: boardColumnWidth,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _BoardWithEvalBar(
+                      editorState: editorState,
+                      boardSettings: boardSettings,
+                      availableWidth: boardColumnWidth,
+                      evalBarWidth: evalBarWidth,
+                      showEval: editorState.isEvaluatable,
+                    ),
+                    _buildPieceTray(squareSize),
+                  ],
                 ),
-                _buildPieceTray(squareSize),
-              ],
-            ),
-          ),
-          SizedBox(width: 12.sp),
-          // Right column: controls, FEN, actions
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildTopControls(),
-                const Spacer(),
-                _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
-                _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
-              ],
-            ),
-          ),
-        ],
+              ),
+              SizedBox(width: 12.sp),
+              // Right column: controls, FEN, actions
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildTopControls(),
+                    const Spacer(),
+                    _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
+                    _ActionRow(
+                      onPasteFen: _pasteFen,
+                      onPastePgn: _pastePgn,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -542,27 +558,56 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
     final contentMaxWidth = (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
     final evalBarWidth = 20.sp;
-    final squareSize = contentMaxWidth / 8;
+    // Same tray overhead reasoning as landscape.
+    final trayOverhead = 20.h + 4.h;
 
-    return SizedBox.expand(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: contentMaxWidth),
-          child: Column(
-            children: [
-              _buildTopControls(),
-              _BoardWithEvalBar(
-                editorState: editorState,
-                boardSettings: boardSettings,
-                availableWidth: contentMaxWidth,
-                evalBarWidth: evalBarWidth,
-                showEval: editorState.isEvaluatable,
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: contentMaxWidth),
+        child: Column(
+          children: [
+            _buildTopControls(),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, inner) {
+                  final maxBoardFromHeight =
+                      ((inner.maxHeight - trayOverhead) / 1.225)
+                          .clamp(0.0, double.infinity);
+                  final maxBoardFromWidth = inner.maxWidth;
+                  final boardSize =
+                      (maxBoardFromHeight < maxBoardFromWidth
+                              ? maxBoardFromHeight
+                              : maxBoardFromWidth)
+                          .clamp(160.0, double.infinity)
+                          .toDouble();
+                  final squareSize = boardSize / 8;
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: boardSize,
+                          child: _BoardWithEvalBar(
+                            editorState: editorState,
+                            boardSettings: boardSettings,
+                            availableWidth: boardSize,
+                            evalBarWidth: evalBarWidth,
+                            showEval: editorState.isEvaluatable,
+                          ),
+                        ),
+                        SizedBox(
+                          width: boardSize,
+                          child: _buildPieceTray(squareSize),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
-              _buildPieceTray(squareSize),
-              _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
-              _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
-            ],
-          ),
+            ),
+            _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
+            _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
+          ],
         ),
       ),
     );

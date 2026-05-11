@@ -169,7 +169,10 @@ class GamesTourScreenProvider
     // recreations triggered by tourDetailScreenProvider (category change,
     // live tour ID pushes). Republish state when it changes externally —
     // e.g. after the notifier is rebuilt and reads the persisted value.
-    ref.listen<GameDisplayMode>(gameDisplayModeProvider, (previous, next) {
+    ref.listen<GameDisplayMode>(gameDisplayModeProvider(aboutTourModel!.id), (
+      previous,
+      next,
+    ) {
       if (previous == next) return;
       final current = state.valueOrNull;
       if (current != null && !current.isSearchMode) {
@@ -391,8 +394,11 @@ class GamesTourScreenProvider
       // Read the persisted display mode so it survives notifier recreations
       // (category change, live-tour-id push). `current?.gameDisplayMode` is
       // null on a freshly recreated notifier, which is what produced the
-      // "Focus on live games → Show all games" snap-back.
-      final persistedDisplayMode = ref.read(gameDisplayModeProvider);
+      // "Focus on live games → Show all games" snap-back. The provider is
+      // family-keyed by tourId so state can't bleed across tournaments.
+      final persistedDisplayMode = ref.read(
+        gameDisplayModeProvider(aboutTourModel!.id),
+      );
 
       if (mounted) {
         state = AsyncValue.data(
@@ -519,7 +525,7 @@ class GamesTourScreenProvider
     final sortedGames = _sortGamesForFilters(finishedGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
-    ref.read(gameDisplayModeProvider.notifier).state =
+    ref.read(gameDisplayModeProvider(aboutTourModel!.id).notifier).state =
         GameDisplayMode.showfinishedGame;
 
     state = AsyncValue.data(
@@ -541,7 +547,7 @@ class GamesTourScreenProvider
     final sortedGames = _sortGamesForFilters(unfinishedGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
-    ref.read(gameDisplayModeProvider.notifier).state =
+    ref.read(gameDisplayModeProvider(aboutTourModel!.id).notifier).state =
         GameDisplayMode.hideFinishedGames;
 
     state = AsyncValue.data(
@@ -562,7 +568,8 @@ class GamesTourScreenProvider
     final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
-    ref.read(gameDisplayModeProvider.notifier).state = GameDisplayMode.all;
+    ref.read(gameDisplayModeProvider(aboutTourModel!.id).notifier).state =
+        GameDisplayMode.all;
 
     state = AsyncValue.data(
       GamesScreenModel(

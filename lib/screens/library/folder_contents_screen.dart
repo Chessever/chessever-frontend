@@ -22,7 +22,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -758,9 +757,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     padding: EdgeInsets.only(bottom: 12.h),
                     child: BookSavedGameCard(
                       analysis: analysis,
-                      onTap: () async {
-                        final allowed = await requirePremiumGuard(context, ref);
-                        if (!allowed || !mounted) return;
+                      onTap: () {
                         loadSavedAnalysisWithSwiping(
                           context,
                           filteredAnalyses,
@@ -783,9 +780,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     behavior: SwipeActionBehavior.dismiss,
                     child: BookSavedGameCard(
                       analysis: analysis,
-                      onTap: () async {
-                        final allowed = await requirePremiumGuard(context, ref);
-                        if (!allowed || !mounted) return;
+                      onTap: () {
                         loadSavedAnalysisWithSwiping(
                           context,
                           filteredAnalyses,

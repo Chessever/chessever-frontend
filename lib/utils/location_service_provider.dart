@@ -185,6 +185,59 @@ class LocationService {
     'NIR': 'GB',
   };
 
+  // Online platform hosts that appear in `tours.info.location` for online
+  // events (e.g. "Chess.com", "lichess.org", "tcec-chess.com"). Tournaments
+  // played on these platforms have no physical city, so the Location row
+  // should switch to a globe + "Online" label rather than show a fake flag.
+  static const Set<String> _onlinePlatformHosts = {
+    'chess.com',
+    'lichess.org',
+    'lichess',
+    'tcec-chess.com',
+    'tcec',
+    'chess24.com',
+    'chess24',
+    'chessbase.com',
+    'playchess.com',
+    'iccf.com',
+  };
+
+  /// Whether `location` should be rendered as an online platform rather
+  /// than a physical place.
+  ///
+  /// Detected when the value matches a known platform host or looks like a
+  /// bare URL/domain (no comma, no spaces, contains a dot).
+  bool isOnlinePlatform(String location) {
+    final raw = location.trim().toLowerCase();
+    if (raw.isEmpty) return false;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return true;
+    final host = _stripUrl(raw);
+    if (_onlinePlatformHosts.contains(host)) return true;
+    return !host.contains(',') && !host.contains(' ') && host.contains('.');
+  }
+
+  /// Returns a display-friendly platform name for `location`, e.g.
+  /// "Chess.com" → "Chess.com", "lichess.org" → "Lichess",
+  /// "https://lichess.org/broadcast/foo" → "Lichess".
+  String prettifyPlatformName(String location) {
+    final host = _stripUrl(location.trim().toLowerCase());
+    if (host.contains('chess.com')) return 'Chess.com';
+    if (host.contains('lichess')) return 'Lichess';
+    if (host.contains('tcec')) return 'TCEC';
+    if (host.contains('chess24')) return 'Chess24';
+    if (host.contains('chessbase')) return 'ChessBase';
+    if (host.contains('playchess')) return 'Playchess';
+    if (host.contains('iccf')) return 'ICCF';
+    return host.isEmpty ? location.trim() : host;
+  }
+
+  String _stripUrl(String value) {
+    var s = value.replaceFirst(RegExp(r'^https?://'), '');
+    s = s.split('/').first;
+    if (s.startsWith('www.')) s = s.substring(4);
+    return s;
+  }
+
   String getCountryCode(String location) {
     try {
       // Extract country name from location (assuming it's the last part after comma)

@@ -425,21 +425,21 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           },
         ),
         // Filter flash overlay - elegant wave effect
-        SingleMotionBuilder(
-          motion: const CupertinoMotion.bouncy(),
-          value: _filterFlashValue,
-          builder: (context, flashValue, _) {
-            if (flashValue < 0.01) {
-              return const SizedBox.shrink();
-            }
+        Positioned.fill(
+          child: IgnorePointer(
+            child: SingleMotionBuilder(
+              motion: const CupertinoMotion.bouncy(),
+              value: _filterFlashValue,
+              builder: (context, flashValue, _) {
+                if (flashValue < 0.01) {
+                  return const SizedBox.shrink();
+                }
 
-            // Wave effect - flash sweeps down then fades
-            final waveProgress = flashValue;
-            final opacity = waveProgress * 0.35;
+                // Wave effect - flash sweeps down then fades
+                final waveProgress = flashValue;
+                final opacity = waveProgress * 0.35;
 
-            return Positioned.fill(
-              child: IgnorePointer(
-                child: ShaderMask(
+                return ShaderMask(
                   shaderCallback: (bounds) {
                     return LinearGradient(
                       begin: Alignment.topCenter,
@@ -470,10 +470,10 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                       ),
                     ),
                   ),
-                ),
-              ),
-            );
-          },
+                );
+              },
+            ),
+          ),
         ),
       ],
     );
