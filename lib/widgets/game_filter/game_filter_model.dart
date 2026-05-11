@@ -60,6 +60,23 @@ extension GameColorFilterX on GameColorFilter {
   }
 }
 
+/// Live/completed filter — filters games by ongoing vs finished state.
+/// Mirrors the EventStatus filter from the event view, but applied to games.
+enum GameLiveFilter { all, live, completed }
+
+extension GameLiveFilterX on GameLiveFilter {
+  String get displayText {
+    switch (this) {
+      case GameLiveFilter.all:
+        return 'All Games';
+      case GameLiveFilter.live:
+        return 'Live';
+      case GameLiveFilter.completed:
+        return 'Completed';
+    }
+  }
+}
+
 /// Online vs OTB filter options
 enum GameOnlineFilter { all, online, otb }
 
@@ -181,6 +198,7 @@ class GameFilter {
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     this.online = GameOnlineFilter.all,
+    this.live = GameLiveFilter.all,
     GameEcoFilter? eco,
     this.minYear = defaultMinYear,
     int? maxYear,
@@ -193,6 +211,7 @@ class GameFilter {
   final GameColorFilter color;
   final GameTimeControlFilter timeControl;
   final GameOnlineFilter online;
+  final GameLiveFilter live;
   final GameEcoFilter eco;
   final int minYear;
   final int maxYear;
@@ -205,6 +224,7 @@ class GameFilter {
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
       online != GameOnlineFilter.all ||
+      live != GameLiveFilter.all ||
       !eco.isAll ||
       minYear != defaultMinYear ||
       maxYear != DateTime.now().year ||
@@ -218,6 +238,7 @@ class GameFilter {
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
     if (online != GameOnlineFilter.all) count++;
+    if (live != GameLiveFilter.all) count++;
     if (!eco.isAll) count++;
     if (minYear != defaultMinYear || maxYear != DateTime.now().year) count++;
     if (minRating != defaultMinRating ||
@@ -231,6 +252,7 @@ class GameFilter {
     GameColorFilter? color,
     GameTimeControlFilter? timeControl,
     GameOnlineFilter? online,
+    GameLiveFilter? live,
     GameEcoFilter? eco,
     int? minYear,
     int? maxYear,
@@ -242,6 +264,7 @@ class GameFilter {
       color: color ?? this.color,
       timeControl: timeControl ?? this.timeControl,
       online: online ?? this.online,
+      live: live ?? this.live,
       eco: eco ?? this.eco,
       minYear: minYear ?? this.minYear,
       maxYear: maxYear ?? this.maxYear,
@@ -260,6 +283,7 @@ class GameFilter {
         other.color == color &&
         other.timeControl == timeControl &&
         other.online == online &&
+        other.live == live &&
         other.eco == eco &&
         other.minYear == minYear &&
         other.maxYear == maxYear &&
@@ -273,6 +297,7 @@ class GameFilter {
     color,
     timeControl,
     online,
+    live,
     eco,
     minYear,
     maxYear,
@@ -297,6 +322,14 @@ class GameFilterHelper {
     int? targetFideId,
   }) {
     return games.where((game) {
+      // Live/completed filter — use effectiveGameStatus so games whose clock
+      // hit 00:00 but DB hasn't caught up still count as completed.
+      if (filter.live != GameLiveFilter.all) {
+        final isLive = game.effectiveGameStatus.isOngoing;
+        if (filter.live == GameLiveFilter.live && !isLive) return false;
+        if (filter.live == GameLiveFilter.completed && isLive) return false;
+      }
+
       // Result filter
       if (!filter.result.matches(game.gameStatus)) return false;
 

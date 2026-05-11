@@ -24,7 +24,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -844,12 +843,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     onAdd: () => _showAddToFolderSheet(context, game),
                     onLiveAdd:
                         (liveGame) => _showAddToFolderSheet(context, liveGame),
-                    onLiveTap: (liveGame, updatedGames, liveIndex) async {
-                      final hasPremium = await requirePremiumGuard(
-                        context,
-                        ref,
-                      );
-                      if (!hasPremium) return;
+                    onLiveTap: (liveGame, updatedGames, liveIndex) {
                       _navigateToChessBoard(liveGame, updatedGames, liveIndex);
                     },
                   ),
@@ -920,13 +914,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       game: game,
       orderedGames: allGames,
       gameIndex: gameIndex,
-      onChangedWithLiveGames: (updatedGames) async {
-        // Premium guard - show paywall if not subscribed
-        final hasPremium = await requirePremiumGuard(context, ref);
-        if (!hasPremium) return;
+      onChangedWithLiveGames: (updatedGames) {
         if (!mounted) return;
-
-        // Navigate to chess board with the live-updated games
         _navigateToChessBoard(updatedGames[gameIndex], updatedGames, gameIndex);
       },
       pinnedIds: const [],
@@ -1287,13 +1276,8 @@ class _FavoritesLiveBoardGameCard extends ConsumerStatefulWidget {
 
 class _FavoritesLiveBoardGameCardState
     extends ConsumerState<_FavoritesLiveBoardGameCard> {
-  Future<void> _handleNavigate(List<GamesTourModel> updatedGames) async {
-    // Premium guard - show paywall if not subscribed
-    final hasPremium = await requirePremiumGuard(context, ref);
-    if (!hasPremium) return;
+  void _handleNavigate(List<GamesTourModel> updatedGames) {
     if (!mounted) return;
-
-    // Navigate to chess board with the live-updated games
     widget.onNavigateToChessBoard(
       updatedGames[widget.gameIndex],
       updatedGames,

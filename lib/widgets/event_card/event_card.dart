@@ -36,12 +36,20 @@ class EventCard extends ConsumerWidget {
   /// Optional suffix to make hero tag unique when same event appears in multiple lists
   final String? heroTagSuffix;
 
+  /// Forces the phone (compact) layout regardless of tablet detection.
+  /// The tablet layout uses `Stack(fit: StackFit.expand)` which needs a
+  /// bounded height — passing this card into a SliverList (e.g. as a section
+  /// header) leaves height unbounded and crashes layout. Call sites that
+  /// embed the card inside a vertical list must set this to true.
+  final bool forceCompactLayout;
+
   const EventCard({
     required this.tourEventCardModel,
     this.onTap,
     this.showHeartIndicator = false,
     this.favoritePlayersSource = EventFavoritePlayersSource.automatic,
     this.heroTagSuffix,
+    this.forceCompactLayout = false,
     super.key,
   });
 
@@ -85,7 +93,7 @@ class EventCard extends ConsumerWidget {
         ref.watch(eventNextRoundProvider(tourEventCardModel.id)).isLoading;
 
     final body =
-        ResponsiveHelper.isTablet
+        (ResponsiveHelper.isTablet && !forceCompactLayout)
             ? _buildTabletGridCard(context, ref)
             : _buildPhoneCard(context, ref);
 

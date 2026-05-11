@@ -1431,34 +1431,46 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildLoadingState() {
-    return Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (int i = 0; i < 4; i++) ...[
-                Container(
-                  width: double.infinity,
-                  height: 96.h,
-                  margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
-                  decoration: BoxDecoration(
-                    color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(12.br),
+    // Shimmer is decorative; exclude from semantics and isolate paint so the
+    // repeating animation can't dirty the parent semantics tree mid-frame
+    // (was throwing `!semantics.parentDataDirty` on tablet under
+    // SliverFillRemaining + Center/ConstrainedBox wrap).
+    return ExcludeSemantics(
+      child: RepaintBoundary(
+        child:
+            Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (int i = 0; i < 4; i++) ...[
+                        Container(
+                          width: double.infinity,
+                          height: 96.h,
+                          margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
+                          decoration: BoxDecoration(
+                            color: context.colors.surface,
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 16.h),
+                      Text(
+                        'Loading games...',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
+                )
+                .animate(onPlay: (controller) => controller.repeat())
+                .shimmer(
+                  duration: 1400.ms,
+                  color: context.colors.textPrimary.withValues(alpha: 0.1),
                 ),
-              ],
-              SizedBox(height: 16.h),
-              Text(
-                'Loading games...',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        )
-        .animate(onPlay: (controller) => controller.repeat())
-        .shimmer(duration: 1400.ms, color: context.colors.textPrimary.withValues(alpha: 0.1));
+      ),
+    );
   }
 
   Widget _buildErrorState(String error) {
@@ -1742,6 +1754,9 @@ class _EventSection extends StatelessWidget {
             EventCard(
               tourEventCardModel: eventCard!,
               heroTagSuffix: '_player_games_$tourId',
+              // Embedded inside a SliverList (unbounded height) — must use
+              // the compact phone layout to avoid Stack-expand crash.
+              forceCompactLayout: true,
             )
           else
             _buildFallbackCard(context),

@@ -110,9 +110,32 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
       orElse: () => true,
     );
 
-    final countryCode = ref
-        .read(locationServiceProvider)
-        .getCountryCode(aboutModel.location);
+    final locationService = ref.read(locationServiceProvider);
+    final isOnlineLocation = locationService.isOnlinePlatform(
+      aboutModel.location,
+    );
+    final countryCode =
+        isOnlineLocation
+            ? ''
+            : locationService.getCountryCode(aboutModel.location);
+    final locationTitle = isOnlineLocation ? 'Online' : 'Location';
+    final locationDescription =
+        isOnlineLocation
+            ? locationService.prettifyPlatformName(aboutModel.location)
+            : aboutModel.location;
+    final Widget? locationLeading =
+        isOnlineLocation
+            ? Icon(
+              Icons.language_rounded,
+              size: 14.sp,
+              color: context.colors.textPrimaryMuted,
+            )
+            : (countryCode.isNotEmpty
+                ? CountryFlag.fromCountryCode(
+                  countryCode,
+                  theme: ImageTheme(width: 16.w, height: 12.h),
+                )
+                : null);
 
     var ratedPlayers =
         aboutModel.players.where((p) => p.rating != null).toList();
@@ -197,16 +220,9 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                         ),
                         SizedBox(height: 12.h),
                         _CountryFlag(
-                          title: 'Location',
-                          flag:
-                              countryCode.isNotEmpty
-                                  ? CountryFlag.fromCountryCode(
-countryCode,
-  theme: ImageTheme(width: 16.w,
-                                    height: 12.h,),
-)
-                                  : null,
-                          description: aboutModel.location,
+                          title: locationTitle,
+                          flag: locationLeading,
+                          description: locationDescription,
                         ),
                         if (aboutModel.tourUrl.trim().isNotEmpty ||
                             isSkeleton) ...[

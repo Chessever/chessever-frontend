@@ -16,6 +16,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -26,7 +27,7 @@ Future<void> showAddToFolderSheet({
   required BuildContext context,
   required GamesTourModel game,
 }) async {
-  final allowed = await requirePremiumGuardNoRef(context);
+  final allowed = await canSaveMoreGames(context);
   if (!allowed) return;
   if (!context.mounted) return;
 
@@ -296,6 +297,10 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       );
       return;
     }
+
+    // Pre-flight only counted 1 row; one game × N folders = N rows.
+    final allowed = await canSaveMoreGames(context, gamesToAdd: selected.length);
+    if (!allowed || !mounted) return;
 
     setState(() => _isSaving = true);
     try {

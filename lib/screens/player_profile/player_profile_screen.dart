@@ -820,54 +820,63 @@ countryCode,
     required bool hasActiveFilter,
     required bool isTwicLoading,
   }) {
-    return SizedBox(
-      height: 2.h,
-      child: Stack(
-        children: [
-          // Filter active indicator bar
-          SingleMotionBuilder(
-            motion: const CupertinoMotion.snappy(),
-            value: hasActiveFilter ? 1.0 : 0.0,
-            builder: (context, barProgress, _) {
-              if (barProgress < 0.01) return const SizedBox.shrink();
-              return Positioned.fill(
-                child: Container(
-                  height: 2.h * barProgress,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        kPrimaryColor.withValues(alpha: 0.0),
-                        kPrimaryColor.withValues(alpha: 0.8 * barProgress),
-                        kPrimaryColor.withValues(alpha: 0.8 * barProgress),
-                        kPrimaryColor.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.2, 0.8, 1.0],
-                    ),
-                  ),
+    // The TWIC LinearProgressIndicator has an internal repeating animation
+    // that updates its Semantics node every frame. Combined with the extra
+    // semantic boundaries on tablet (Center + ConstrainedBox), this dirtied
+    // parent semantics mid-assembly and blocked everything below from
+    // rendering. Exclude from semantics + isolate paint.
+    return ExcludeSemantics(
+      child: RepaintBoundary(
+        child: SizedBox(
+          height: 2.h,
+          child: Stack(
+            children: [
+              // Filter active indicator bar
+              Positioned.fill(
+                child: SingleMotionBuilder(
+                  motion: const CupertinoMotion.snappy(),
+                  value: hasActiveFilter ? 1.0 : 0.0,
+                  builder: (context, barProgress, _) {
+                    if (barProgress < 0.01) return const SizedBox.shrink();
+                    return Container(
+                      height: 2.h * barProgress,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            kPrimaryColor.withValues(alpha: 0.0),
+                            kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                            kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                            kPrimaryColor.withValues(alpha: 0.0),
+                          ],
+                          stops: const [0.0, 0.2, 0.8, 1.0],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
-          // TWIC loading indicator
-          SingleMotionBuilder(
-            motion: const CupertinoMotion.snappy(),
-            value: isTwicLoading ? 1.0 : 0.0,
-            builder: (context, loadingProgress, _) {
-              if (loadingProgress < 0.01) return const SizedBox.shrink();
-              return Positioned.fill(
-                child: Opacity(
-                  opacity: loadingProgress.clamp(0.0, 1.0),
-                  child: LinearProgressIndicator(
-                    backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      kPrimaryColor.withValues(alpha: 0.92),
-                    ),
-                  ),
+              ),
+              // TWIC loading indicator
+              Positioned.fill(
+                child: SingleMotionBuilder(
+                  motion: const CupertinoMotion.snappy(),
+                  value: isTwicLoading ? 1.0 : 0.0,
+                  builder: (context, loadingProgress, _) {
+                    if (loadingProgress < 0.01) return const SizedBox.shrink();
+                    return Opacity(
+                      opacity: loadingProgress.clamp(0.0, 1.0),
+                      child: LinearProgressIndicator(
+                        backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          kPrimaryColor.withValues(alpha: 0.92),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -956,19 +965,22 @@ countryCode,
         value: showStudyOpening ? 1.0 : 0.0,
         builder: (context, t, _) {
           // t: 1 = both cards visible (TWIC), 0 = only save-to-library.
-          final gap = 12.w * t;
+          // Clamp aggressively — bouncy spring overshoots, and any NaN/inf
+          // leaking into Opacity/Transform downstream produces an invalid
+          // matrix in the layer tree (manifests on tablet under TWIC).
+          final tt = t.isFinite ? t.clamp(0.0, 1.0) : 0.0;
+          final buildTreeFlex = (tt * 1000).round();
 
           return Row(
             children: [
-              // Study opening — collapses via flex weight + fade + scale.
-              if (t > 0.001)
+              if (buildTreeFlex > 0) ...[
                 Flexible(
-                  flex: (t * 1000).round().clamp(1, 1000),
+                  flex: buildTreeFlex,
                   child: ClipRect(
                     child: Opacity(
-                      opacity: t.clamp(0.0, 1.0),
+                      opacity: tt,
                       child: Transform.scale(
-                        scale: 0.92 + 0.08 * t,
+                        scale: 0.92 + 0.08 * tt,
                         alignment: Alignment.centerLeft,
                         child: _ActionCard(
                           icon: Icons.account_tree_outlined,
@@ -984,15 +996,18 @@ countryCode,
                     ),
                   ),
                 ),
-              if (t > 0.001) SizedBox(width: gap),
-              // Save to Library — always present, smoothly fills full width.
+                SizedBox(width: 12.w * tt),
+              ],
+              // Save to Library — always present, fills remaining width.
               Flexible(
                 flex: 1000,
                 child: _ActionCard(
                   icon: Icons.library_add_outlined,
                   title: 'Save to Library',
                   subtitle:
-                      hasActiveFilter ? 'Filtered games' : 'Games collection',
+                      hasActiveFilter
+                          ? 'Filtered games'
+                          : 'Games collection',
                   isHighlighted: hasActiveFilter,
                   onTap: () {
                     showSaveToLibrarySheet(
@@ -1469,12 +1484,14 @@ class _ActionCardState extends State<_ActionCard> {
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
                                       widget.title,
                                       style: AppTypography.textSmBold.copyWith(
                                         color: context.colors.textPrimary,
+                                        height: 1.15,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -1486,6 +1503,7 @@ class _ActionCardState extends State<_ActionCard> {
                                       overflow: TextOverflow.ellipsis,
                                       style: AppTypography.textXsRegular
                                           .copyWith(
+                                            height: 1.15,
                                             color:
                                                 widget.isHighlighted
                                                     ? _filterRed.withValues(

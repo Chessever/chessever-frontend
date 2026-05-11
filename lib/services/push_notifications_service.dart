@@ -2,6 +2,7 @@ import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PushNotificationsService {
@@ -57,6 +58,16 @@ class PushNotificationsService {
       _pendingPushObservers.clear();
     }
 
+    // Keep RC's customer profile in sync with the device's OneSignal subscription
+    // ID. RC uses this to route subscription-state push notifications via the
+    // OneSignal integration (e.g. "your trial converted"). The subscription ID
+    // can be null at boot before APNs/FCM registers, and can change later, so
+    // we forward both the current value and any subsequent changes.
+    _forwardSubscriptionIdToRevenueCat(OneSignal.User.pushSubscription.id);
+    OneSignal.User.pushSubscription.addObserver((state) {
+      _forwardSubscriptionIdToRevenueCat(state.current.id);
+    });
+
     if (_pendingUserId != null && _pendingUserId!.isNotEmpty) {
       OneSignal.login(_pendingUserId!);
       _pendingUserId = null;
@@ -64,6 +75,20 @@ class PushNotificationsService {
 
     _initialized = true;
     debugPrint('[PushNotifications] OneSignal initialized.');
+  }
+
+  /// Read the current OneSignal subscription ID — used by RevenueCatService.logIn
+  /// to re-tag the RC customer profile when a new user signs in on the same
+  /// device. The subscription ID itself is device-scoped, so it doesn't change
+  /// across user switches; what changes is which RC customer it's stamped on.
+  String? get currentOneSignalSubscriptionId =>
+      _initialized ? OneSignal.User.pushSubscription.id : null;
+
+  void _forwardSubscriptionIdToRevenueCat(String? id) {
+    if (id == null || id.isEmpty) return;
+    Purchases.setOnesignalID(id).catchError((Object e) {
+      debugPrint('[PushNotifications] Purchases.setOnesignalID failed: $e');
+    });
   }
 
   void addPushSubscriptionObserver(

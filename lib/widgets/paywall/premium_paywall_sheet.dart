@@ -206,8 +206,17 @@ class _PaywallContent extends HookConsumerWidget {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.w, topPadding + 16.h, 20.w, 24.h),
-      child: Column(
-        children: [
+      // "Fill or scroll" — on tall screens the Column fills the sheet and
+      // Spacer() pushes pricing to the bottom; on shorter heights (tablet
+      // landscape) the content scrolls instead of overflowing the flex.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
+                  children: [
           // Handle bar
           Center(
             child: Container(
@@ -351,7 +360,12 @@ class _PaywallContent extends HookConsumerWidget {
             ],
           ),
           SizedBox(height: 12.h),
-        ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

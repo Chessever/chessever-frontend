@@ -1,3 +1,4 @@
+import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -54,6 +55,21 @@ class RevenueCatService {
         await Purchases.collectDeviceIdentifiers();
       } catch (e) {
         debugPrint('RevenueCatService: collectDeviceIdentifiers failed: $e');
+      }
+
+      // Forward the device's OneSignal subscription ID to the new RC customer
+      // profile so RC's OneSignal integration can target this device with
+      // subscription-state push notifications (trial expiring, billing issue,
+      // etc.). The subscription ID is device-scoped, but RC scopes attributes
+      // per-customer — so every user switch needs to re-stamp it.
+      try {
+        final osId = PushNotificationsService.instance
+            .currentOneSignalSubscriptionId;
+        if (osId != null && osId.isNotEmpty) {
+          await Purchases.setOnesignalID(osId);
+        }
+      } catch (e) {
+        debugPrint('RevenueCatService: setOnesignalID failed: $e');
       }
     } catch (e) {
       debugPrint('❌ RevenueCat login error: $e');

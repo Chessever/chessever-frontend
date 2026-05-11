@@ -49,6 +49,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameColorFilter _color;
   late GameTimeControlFilter _timeControl;
   late GameOnlineFilter _online;
+  late GameLiveFilter _live;
   late GameEcoFilter _eco;
   late RangeValues _yearRange;
   late int? _selectedMinRating;
@@ -63,6 +64,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     _color = widget.initialFilter.color;
     _timeControl = widget.initialFilter.timeControl;
     _online = widget.initialFilter.online;
+    _live = widget.initialFilter.live;
     _eco = widget.initialFilter.eco;
     _yearRange = RangeValues(
       widget.initialFilter.minYear.toDouble(),
@@ -152,6 +154,17 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Live/completed filter
+                      _sectionLabel('Status'),
+                      SizedBox(height: 8.h),
+                      ExpandableFilterDropdown<GameLiveFilter>(
+                        value: _live,
+                        items: GameLiveFilter.values,
+                        itemLabel: (v) => v.displayText,
+                        onChanged: (v) => setState(() => _live = v),
+                      ),
+                      SizedBox(height: 20.h),
+
                       // Result filter
                       _sectionLabel('Result'),
                       SizedBox(height: 8.h),
@@ -331,6 +344,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       color: _color,
       timeControl: _timeControl,
       online: _online,
+      live: _live,
       eco: _eco,
       minYear: _yearRange.start.round(),
       maxYear: _yearRange.end.round(),

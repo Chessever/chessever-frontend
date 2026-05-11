@@ -8,6 +8,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -285,6 +286,12 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         HapticFeedback.lightImpact();
         return;
       }
+    }
+
+    // Creating a new analysis adds a row to user_saved_analyses; updates do not.
+    if (!_isEditMode || _existingAnalysisId == null) {
+      final allowed = await canSaveMoreGames(context, gamesToAdd: 1);
+      if (!allowed || !mounted) return;
     }
 
     setState(() {

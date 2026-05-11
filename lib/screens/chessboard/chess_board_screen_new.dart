@@ -6434,14 +6434,30 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   bool _selectionRestoreScheduled = false;
   int? _lastSelectionClearRequestId;
 
-  // Swipe-to-flip: a single spring controller drives an X-axis card flip.
-  // Range is ±0.5 (= ±π/2 = edge-on). The orientation swap happens at the
-  // edge-on midpoint so the flip is visually continuous: animate to ±0.5,
-  // call flipBoard(), snap to the opposite ±0.5, then spring back to 0.
+  // Swipe-to-flip: drag-driven progress + a fixed-duration commit animation.
+  // Progress is the unit-π rotation factor (×π → radians for Transform.rotateX).
+  // ±0.5 = ±π/2 = edge-on. The orientation swap happens at the edge-on
+  // midpoint so the visible rotation stays continuous: animate to ±0.5, call
+  // flipBoard(), jump to the opposite ±0.5, animate to 0.
+  //
+  // Pacing is symmetric by construction: each phase uses an AnimationController
+  // whose duration scales linearly with the rotation distance, so angular
+  // velocity is identical in both swipe directions regardless of how far the
+  // user dragged before releasing.
   static const double _flipMaxProgress = 0.5;
   static const double _flipCommitProgressThreshold = 0.18;
   static const double _flipCommitVelocityThreshold = 600.0;
-  late final SingleMotionController _flipController;
+  static const Duration _flipPhaseFullDuration = Duration(milliseconds: 220);
+  static const Duration _flipPhaseMinDuration = Duration(milliseconds: 90);
+
+  late final AnimationController _flipCommitCtrl;
+  // Live rotation progress (in units of π). Bound to a ValueNotifier so the
+  // wrapper rebuilds only when rotation changes, leaving the chessboard
+  // subtree untouched on every other frame.
+  late final ValueNotifier<double> _flipProgress;
+  // Current commit phase tween — re-targeted before each forward().
+  double _flipPhaseFrom = 0.0;
+  double _flipPhaseTo = 0.0;
   bool _flipDragActive = false;
   bool _flipCommitting = false;
   // Bumped on every drag start and on every commit. An in-flight commit bails
@@ -6730,15 +6746,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     _wasAtEnd = isAtGameEnd;
 
     // External flip (e.g., bottom-nav button): if orientation changed
-    // without us driving the spring, play a quick swing-in so it doesn't
+    // without us driving the commit, play a quick swing-in so it doesn't
     // snap. We start at edge-on with the new orientation already rendered
-    // and let the spring settle to flat.
+    // and animate back to flat.
     if (widget.isFlipped != oldWidget.isFlipped &&
         !_flipDragActive &&
         !_flipCommitting &&
-        _flipController.value == 0) {
-      _flipController.value = _flipMaxProgress;
-      _flipController.animateTo(0);
+        _flipProgress.value == 0) {
+      _flipPhaseFrom = _flipMaxProgress;
+      _flipPhaseTo = 0.0;
+      _flipProgress.value = _flipPhaseFrom;
+      _flipCommitCtrl.duration = _flipPhaseFullDuration;
+      _flipCommitCtrl.forward(from: 0.0);
     }
   }
 
@@ -6756,35 +6775,53 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _showDelayedGameEndingEffect = true;
     }
 
-    _flipController = SingleMotionController.bounded(
-      // Tighter, no-bounce spring with snap-to-end so the flip lands on
-      // exactly 0 / ±_flipMaxProgress instead of drifting near them. Spring
-      // residual was leaving _flipCommitting stuck and making the settle
-      // feel sloppy.
-      motion: const CupertinoMotion.smooth(
-        duration: Duration(milliseconds: 220),
-        snapToEnd: true,
-      ),
+    _flipProgress = ValueNotifier<double>(0.0);
+    _flipCommitCtrl = AnimationController(
       vsync: this,
-      lowerBound: -_flipMaxProgress,
-      upperBound: _flipMaxProgress,
-    );
+      duration: _flipPhaseFullDuration,
+    )..addListener(_drivePhaseFromController);
   }
 
   @override
   void dispose() {
-    _flipController.dispose();
+    _flipCommitCtrl.dispose();
+    _flipProgress.dispose();
     super.dispose();
   }
 
+  // Drive the live rotation from the phase tween. easeInOutCubic keeps
+  // angular velocity continuous across the edge-on midpoint (the curve's
+  // derivative is 0 at both endpoints), so the two phases visually weld
+  // into one continuous flip with no bump or wobble.
+  void _drivePhaseFromController() {
+    final t = Curves.easeInOutCubic.transform(_flipCommitCtrl.value);
+    _flipProgress.value =
+        _flipPhaseFrom + (_flipPhaseTo - _flipPhaseFrom) * t;
+  }
+
+  // Duration scales linearly with how much of the half-rotation this phase
+  // covers, so angular speed stays constant — a short phase (user already
+  // dragged most of the way) finishes quickly, a full phase takes the base
+  // duration. Floored at _flipPhaseMinDuration so a near-edge release still
+  // reads as motion instead of a snap.
+  Duration _scaledPhaseDuration(double phaseDistance) {
+    final normalized = (phaseDistance / _flipMaxProgress).clamp(0.0, 1.0);
+    final scaledMs =
+        (_flipPhaseFullDuration.inMilliseconds * normalized).round();
+    final minMs = _flipPhaseMinDuration.inMilliseconds;
+    return Duration(milliseconds: scaledMs < minMs ? minMs : scaledMs);
+  }
+
   void _onFlipDragStart(DragStartDetails details) {
-    // Always allow a fresh gesture to take over — even mid-commit. We bump
-    // the token so any in-flight _commitFlip bails on its next await, then
-    // stop the controller so the user picks up rotation from where it is.
+    // Always allow a fresh gesture to take over — even mid-commit. Bump the
+    // token so any in-flight _commitFlip bails on its next await, then stop
+    // the commit controller so the user picks up rotation from where it is.
     _flipCommitToken++;
     _flipCommitting = false;
     _flipDragActive = true;
-    _flipController.stop(canceled: true);
+    _flipCommitCtrl.stop();
+    _flipProgress.value =
+        _flipProgress.value.clamp(-_flipMaxProgress, _flipMaxProgress);
   }
 
   void _onFlipDragUpdate(DragUpdateDetails details) {
@@ -6794,14 +6831,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // Map raw pixels to progress: a full board height of swipe corresponds
     // to the full ±_flipMaxProgress range (i.e., edge-on).
     final progressDelta = (delta / widget.size) * _flipMaxProgress;
-    _flipController.value = (_flipController.value + progressDelta)
+    _flipProgress.value = (_flipProgress.value + progressDelta)
         .clamp(-_flipMaxProgress, _flipMaxProgress);
   }
 
   void _onFlipDragEnd(DragEndDetails details) {
     if (!_flipDragActive) return;
     _flipDragActive = false;
-    final v = _flipController.value;
+    final v = _flipProgress.value;
     final velocity = details.primaryVelocity ?? 0.0;
     final pastThreshold = v.abs() >= _flipCommitProgressThreshold;
     final hasFlingVelocity = velocity.abs() >= _flipCommitVelocityThreshold;
@@ -6814,7 +6851,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           : (v >= 0 ? 1.0 : -1.0);
       _commitFlip(commitSign);
     } else {
-      _flipController.animateTo(0);
+      _animateToFlat();
     }
   }
 
@@ -6822,19 +6859,34 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     if (!_flipDragActive) return;
     _flipDragActive = false;
     if (_flipCommitting) return;
-    _flipController.animateTo(0);
+    _animateToFlat();
+  }
+
+  void _animateToFlat() {
+    _flipPhaseFrom = _flipProgress.value;
+    _flipPhaseTo = 0.0;
+    _flipCommitCtrl.duration =
+        _scaledPhaseDuration((_flipPhaseTo - _flipPhaseFrom).abs());
+    _flipCommitCtrl.forward(from: 0.0);
   }
 
   /// Two-phase flip: animate to edge-on, swap orientation under cover of
-  /// the invisible 90° midpoint, jump to the opposite edge-on, then spring
-  /// back to flat. Driven by awaited TickerFutures so the state machine
-  /// can't desync — and any new drag bumps the token to bail us out.
+  /// the invisible 90° midpoint, jump to the opposite edge-on, then animate
+  /// back to flat. Both phases share the same per-π-radian duration and the
+  /// same easeInOutCubic curve, so the angular speed is identical regardless
+  /// of swipe direction or how far the user dragged before releasing.
+  /// Driven by awaited TickerFutures so the state machine can't desync —
+  /// and any new drag bumps the token to bail us out.
   Future<void> _commitFlip(double sign) async {
     final token = ++_flipCommitToken;
     _flipCommitting = true;
     try {
-      // Phase 1: drive rotation to edge-on in the gesture direction.
-      await _flipController.animateTo(sign * _flipMaxProgress);
+      // Phase 1: drive rotation from current position to edge-on.
+      _flipPhaseFrom = _flipProgress.value;
+      _flipPhaseTo = sign * _flipMaxProgress;
+      _flipCommitCtrl.duration =
+          _scaledPhaseDuration((_flipPhaseTo - _flipPhaseFrom).abs());
+      await _flipCommitCtrl.forward(from: 0.0);
       if (!mounted || token != _flipCommitToken) return;
 
       // At the invisible midpoint, swap the real orientation. The board
@@ -6852,14 +6904,19 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           .flipBoard();
       HapticFeedback.lightImpact();
 
-      // Jump to the opposite edge-on (visually identical — both render as
-      // a horizontal line) and spring back to flat with the new orientation.
-      _flipController.value = -sign * _flipMaxProgress;
-      await _flipController.animateTo(0);
+      // Phase 2: jump to the opposite edge-on (visually identical — both
+      // render as a horizontal line) and animate back to flat over the full
+      // half-rotation. Always the base duration, so the second half feels
+      // identical between swipe directions.
+      _flipPhaseFrom = -sign * _flipMaxProgress;
+      _flipPhaseTo = 0.0;
+      _flipProgress.value = _flipPhaseFrom;
+      _flipCommitCtrl.duration = _flipPhaseFullDuration;
+      await _flipCommitCtrl.forward(from: 0.0);
       if (!mounted || token != _flipCommitToken) return;
       // Belt-and-braces: snap to a clean zero so a future drag starts from
-      // exactly flat, even if the spring's snapToEnd left a sub-pixel ε.
-      _flipController.value = 0;
+      // exactly flat, even if the curve left a sub-pixel ε.
+      _flipProgress.value = 0.0;
     } finally {
       if (mounted && token == _flipCommitToken) {
         _flipCommitting = false;
@@ -6867,10 +6924,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     }
   }
 
-  // 3D card-flip wrapper. Listens to the spring controller and applies an
-  // X-axis rotation with perspective. The outer GestureDetector picks up
-  // vertical drags only — taps still resolve to the Chessboard's tap
-  // recognizer through Flutter's gesture arena, so tap-to-move is intact.
+  // 3D card-flip wrapper. Listens to the rotation progress and applies an
+  // X-axis rotation with perspective plus a subtle scale dip toward edge-on
+  // so the flip reads as a tactile, physical card turn. The outer
+  // GestureDetector picks up vertical drags only — taps still resolve to
+  // the Chessboard's tap recognizer through Flutter's gesture arena, so
+  // tap-to-move is intact.
   Widget _wrapWithFlipGesture(Widget child) {
     return GestureDetector(
       behavior: HitTestBehavior.deferToChild,
@@ -6878,21 +6937,25 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       onVerticalDragUpdate: _onFlipDragUpdate,
       onVerticalDragEnd: _onFlipDragEnd,
       onVerticalDragCancel: _onFlipDragCancel,
-      child: AnimatedBuilder(
-        animation: _flipController,
-        builder: (context, c) {
-          final progress = _flipController.value;
+      child: ValueListenableBuilder<double>(
+        valueListenable: _flipProgress,
+        child: child,
+        builder: (context, progress, c) {
           if (progress == 0.0) return c!;
           final rotation = progress * math.pi;
+          // Peaks at ~6% shrink when edge-on (|rotation| = π/2), eases back
+          // to 1.0 at flat. Sells the depth without making pieces lose
+          // tap-target presence mid-flip.
+          final scale = 1.0 - 0.06 * math.sin(rotation.abs());
           return Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.0015)
-              ..rotateX(rotation),
+              ..setEntry(3, 2, 0.0014)
+              ..rotateX(rotation)
+              ..scaleByDouble(scale, scale, scale, 1.0),
             child: c,
           );
         },
-        child: child,
       ),
     );
   }
@@ -14083,14 +14146,7 @@ class _EventInfoSheet extends ConsumerWidget {
 
         // Location info
         if (headers['Site'] != null && headers['Site'] != '?') ...[
-          _EventInfoRow(
-            icon: Icons.location_on_rounded,
-            label: 'Location',
-            value: headers['Site']!,
-            trailing: _buildCountryFlag(
-              locationService.getCountryCode(headers['Site']!),
-            ),
-          ),
+          _buildLocationRow(headers['Site']!, locationService),
           SizedBox(height: 12.h),
         ],
 
@@ -14349,14 +14405,7 @@ class _EventInfoSheet extends ConsumerWidget {
           SizedBox(height: 12.h),
         ],
         if (aboutModel.location.isNotEmpty)
-          _EventInfoRow(
-            icon: Icons.location_on_rounded,
-            label: 'Location',
-            value: aboutModel.location,
-            trailing: _buildCountryFlag(
-              locationService.getCountryCode(aboutModel.location),
-            ),
-          ),
+          _buildLocationRow(aboutModel.location, locationService),
         // Players section with game players highlighted
         SizedBox(height: 16.h),
         Text(
@@ -14432,6 +14481,26 @@ class _EventInfoSheet extends ConsumerWidget {
     return CountryFlag.fromCountryCode(
       countryCode,
       theme: ImageTheme(width: 20.w, height: 14.h),
+    );
+  }
+
+  // Online events have `location` set to a platform host (Chess.com,
+  // lichess.org, tcec-chess.com, ...) rather than a city. Render those with
+  // a globe icon and an "Online" label so the row stops looking like a
+  // broken hyperlink with no flag.
+  Widget _buildLocationRow(String location, LocationService locationService) {
+    if (locationService.isOnlinePlatform(location)) {
+      return _EventInfoRow(
+        icon: Icons.language_rounded,
+        label: 'Online',
+        value: locationService.prettifyPlatformName(location),
+      );
+    }
+    return _EventInfoRow(
+      icon: Icons.location_on_rounded,
+      label: 'Location',
+      value: location,
+      trailing: _buildCountryFlag(locationService.getCountryCode(location)),
     );
   }
 }
