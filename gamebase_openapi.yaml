@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.0.10
+  version: 1.1.0
 
 servers:
   - url: http://localhost:3232
@@ -209,6 +209,8 @@ paths:
         **Coverage:** Position data is indexed for the first 21 plies (~10-11 full moves) of each game.
         For deeper exploration, use `POST /api/game-position/games/query` and provide
         the explored `moves` line in UCI notation.
+
+        Pass `notationPlies` (1–20) to include a UCI continuation slice per row, starting from the queried position. Off by default.
       operationId: getPositionGames
       tags:
         - Game Position
@@ -311,6 +313,18 @@ paths:
             minimum: 1
             maximum: 50
             default: 20
+        - name: notationPlies
+          in: query
+          required: false
+          description: |
+            Number of plies of continuation to include per row, in UCI notation, starting
+            from the queried position (exclusive of the move that reached it). `0` (default)
+            disables the field. Values above 20 are clamped to 20.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 20
+            default: 0
       responses:
         "200":
           description: Successful response with games
@@ -341,6 +355,8 @@ paths:
         This endpoint supports deep exploration by accepting the explored move list (`moves`).
         When the position is beyond the indexed opening window, the server uses the first
         21 plies as a key and validates the rest of the line from stored game move lists.
+
+        Pass `notationPlies` (1–20) to include a UCI continuation slice per row, starting from the queried position. Off by default.
       operationId: postPositionGamesQuery
       tags:
         - Game Position
@@ -382,12 +398,14 @@ paths:
         number are ignored.
 
         **Coverage:** Uses the existing indexed position data, currently through
-        the 61-ply opening/deep-position window.
+        the 150-ply opening/deep-position window.
 
         Supports the same filter and sort surface as `GET /api/game-position/games`,
         with the exception of the explorer's `moves` parameter (the FEN is the
         lookup key directly here). For multi-key sort, use
         `POST /api/game-position/fen/games/query`.
+
+        Pass `notationPlies` (1–20) to include a UCI continuation slice per row, starting from the queried position. Off by default.
       operationId: getFenPositionGames
       tags:
         - Game Position
@@ -506,6 +524,18 @@ paths:
             minimum: 1
             maximum: 50
             default: 20
+        - name: notationPlies
+          in: query
+          required: false
+          description: |
+            Number of plies of continuation to include per row, in UCI notation, starting
+            from the queried position (exclusive of the move that reached it). `0` (default)
+            disables the field. Values above 20 are clamped to 20.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 20
+            default: 0
       responses:
         "200":
           description: Successful response with games
@@ -536,6 +566,8 @@ paths:
 
         Use this endpoint when you need multi-key sort via `orderBy`. Filter
         semantics are identical to the GET variant.
+
+        Pass `notationPlies` (1–20) to include a UCI continuation slice per row, starting from the queried position. Off by default.
       operationId: postFenPositionGamesQuery
       tags:
         - Game Position
@@ -1140,6 +1172,158 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/player/{id}/events:
+    get:
+      summary: List events for a player
+      description: >
+        Lists tournaments/events that contain games by a specific Gamebase player. Results are aggregated
+        from the player's games, ordered by each event's latest game date descending, and paginated with
+        0-indexed pages. This endpoint is intended for TWIC player profile event lists.
+      operationId: getPlayerEvents
+      tags:
+        - Player
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Player UUID
+          schema:
+            type: string
+            format: uuid
+        - name: color
+          in: query
+          required: false
+          description: Filter by the player's color in the game
+          schema:
+            type: string
+            enum: [all, white, black]
+            default: all
+        - name: timeControl
+          in: query
+          required: false
+          description: Filter by time control bucket
+          schema:
+            type: string
+            enum: [CLASSICAL, RAPID, BLITZ]
+        - name: outcome
+          in: query
+          required: false
+          description: Filter by outcome from the player's perspective
+          schema:
+            type: string
+            enum: [win, loss, draw]
+        - name: opponentId
+          in: query
+          required: false
+          description: Filter by opponent player UUID
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          required: false
+          description: Search within the player's games by player, event, opening, site, result, or date
+          schema:
+            type: string
+        - name: eco
+          in: query
+          required: false
+          description: ECO prefix or substring (e.g. `B9`, `C45`)
+          schema:
+            type: string
+        - name: opening
+          in: query
+          required: false
+          description: Opening name substring (case-insensitive)
+          schema:
+            type: string
+        - name: variation
+          in: query
+          required: false
+          description: Variation substring (case-insensitive)
+          schema:
+            type: string
+        - name: event
+          in: query
+          required: false
+          description: Event substring (case-insensitive)
+          schema:
+            type: string
+        - name: site
+          in: query
+          required: false
+          description: Site substring (case-insensitive)
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          required: false
+          description: Start date (inclusive)
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          required: false
+          description: End date (exclusive)
+          schema:
+            type: string
+            format: date-time
+        - name: ratingFrom
+          in: query
+          required: false
+          description: Minimum opponent Elo (inclusive)
+          schema:
+            type: integer
+        - name: ratingTo
+          in: query
+          required: false
+          description: Maximum opponent Elo (inclusive)
+          schema:
+            type: integer
+        - name: isOnline
+          in: query
+          required: false
+          description: Filter by online vs OTB games
+          schema:
+            type: boolean
+        - name: pageNumber
+          in: query
+          required: false
+          description: Page number (0-indexed)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of events per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Successful response with player events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerEventsResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/player/{id}/stats:
     get:
       summary: Get exact player stats
@@ -1538,6 +1722,15 @@ components:
           maximum: 50
           default: 20
           description: Number of results per page
+        notationPlies:
+          type: integer
+          minimum: 0
+          maximum: 20
+          default: 0
+          description: |
+            Number of plies of continuation to include per row, in UCI notation,
+            starting from the queried position (exclusive of the move that reached it).
+            `0` (default) disables the field. Values above 20 are clamped to 20.
 
     PositionGamesQueryRequest:
       type: object
@@ -1625,6 +1818,15 @@ components:
           maximum: 50
           default: 20
           description: Number of results per page
+        notationPlies:
+          type: integer
+          minimum: 0
+          maximum: 20
+          default: 0
+          description: |
+            Number of plies of continuation to include per row, in UCI notation,
+            starting from the queried position (exclusive of the move that reached it).
+            `0` (default) disables the field. Values above 20 are clamped to 20.
     SearchColumn:
       type: object
       required: [name, type, nullable, searchable, filterable, sortable, operators]
@@ -1714,6 +1916,18 @@ components:
         blackElo: { type: integer, nullable: true }
         whiteFed: { type: string, nullable: true, description: "White player's country/federation" }
         blackFed: { type: string, nullable: true, description: "Black player's country/federation" }
+        continuation:
+          type: array
+          nullable: true
+          description: |
+            Continuation in UCI notation starting from the queried position (exclusive of
+            the move that reached it). Truncated to at most `notationPlies` entries.
+            Omitted when `notationPlies` is `0` (default). Returns `[]` when the game has
+            no remaining moves from this position.
+          items:
+            type: string
+            pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$"
+          example: ["d2c3", "f8c5", "d1e2", "d8e7", "e1g1"]
 
     PlayerGamePreview:
       allOf:
@@ -1747,6 +1961,55 @@ components:
             pageNumber: { type: integer }
             pageSize: { type: integer }
             hasMore: { type: boolean }
+
+    PlayerEventItem:
+      allOf:
+        - $ref: "#/components/schemas/EventSearchItem"
+        - type: object
+          required: [wins, draws, losses, score]
+          properties:
+            wins:
+              type: integer
+              description: Wins from the player's perspective in this event
+            draws:
+              type: integer
+              description: Draws by the player in this event
+            losses:
+              type: integer
+              description: Losses from the player's perspective in this event
+            score:
+              type: number
+              description: Player score in this event, counting wins as 1 and draws as 0.5
+
+    PlayerEventsResponse:
+      type: object
+      required: [status, data]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          required: [events, metadata]
+          properties:
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/PlayerEventItem"
+            metadata:
+              type: object
+              required: [pageNumber, pageSize, hasMore]
+              properties:
+                pageNumber:
+                  type: integer
+                  description: 0-indexed page number
+                pageSize:
+                  type: integer
+                hasMore:
+                  type: boolean
+                totalCount:
+                  type: integer
+                  description: Total number of matching player events when available
 
     PlayerStatsOpening:
       type: object
@@ -1835,6 +2098,12 @@ components:
             pageNumber: { type: integer }
             pageSize: { type: integer }
             hasMore: { type: boolean }
+            totalCount:
+              type: integer
+              description: Total matching games when it can be returned without an expensive broad count.
+            totalCountIsEstimate:
+              type: boolean
+              description: False when totalCount is exact; omitted when no cheap count is available.
 
     SearchResult:
       oneOf:
