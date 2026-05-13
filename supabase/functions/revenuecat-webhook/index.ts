@@ -34,7 +34,9 @@ async function trimToFreeTier(
     );
   } else {
     console.log(
-      `Trimmed ${favRes.data ?? 0} favorite players for ${appUserId} (cap ${FREE_FAVORITE_PLAYERS_LIMIT}).`,
+      `Trimmed ${
+        favRes.data ?? 0
+      } favorite players for ${appUserId} (cap ${FREE_FAVORITE_PLAYERS_LIMIT}).`,
     );
   }
 
@@ -44,13 +46,16 @@ async function trimToFreeTier(
     );
   } else {
     console.log(
-      `Trimmed ${savedRes.data ?? 0} saved analyses for ${appUserId} (cap ${FREE_SAVED_ANALYSES_LIMIT}).`,
+      `Trimmed ${
+        savedRes.data ?? 0
+      } saved analyses for ${appUserId} (cap ${FREE_SAVED_ANALYSES_LIMIT}).`,
     );
   }
 }
 
 type Platform = "ios" | "android" | "web" | "unknown";
 type AttributionSource = "install" | "stamp";
+type SubscriptionProvider = "apple" | "google" | "revenuecat";
 
 type SubscriberAttributes = Record<string, { value?: string }>;
 
@@ -68,6 +73,62 @@ type AffiliateRow = {
   is_active: boolean;
 };
 
+async function writeSubscriptionMirror(
+  supabase: ReturnType<typeof createClient>,
+  row: Record<string, unknown>,
+): Promise<void> {
+  const provider = nonEmpty(row.provider);
+  const userId = nonEmpty(row.user_id);
+  const productId = nonEmpty(row.product_id);
+  if (!provider || !userId || !productId) return;
+
+  const readExisting = () =>
+    supabase
+      .from("subscriptions")
+      .select("id")
+      .eq("provider", provider)
+      .eq("user_id", userId)
+      .eq("product_id", productId)
+      .maybeSingle();
+
+  const { data, error: readError } = await readExisting();
+  if (readError) throw readError;
+
+  const existing = data as { id?: string } | null;
+  if (existing?.id) {
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({ ...row, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from("subscriptions")
+    .insert({ ...row, updated_at: new Date().toISOString() });
+  if (!insertError) return;
+
+  // Another webhook can create the row between our read and insert. Retry as an
+  // update when the partial unique index catches that race.
+  if (insertError.code === "23505") {
+    const { data: racedData, error: racedReadError } = await readExisting();
+    if (racedReadError) throw racedReadError;
+
+    const raced = racedData as { id?: string } | null;
+    if (raced?.id) {
+      const { error } = await supabase
+        .from("subscriptions")
+        .update({ ...row, updated_at: new Date().toISOString() })
+        .eq("id", raced.id);
+      if (error) throw error;
+      return;
+    }
+  }
+
+  throw insertError;
+}
+
 function storeToPlatform(store: string | undefined): Platform {
   if (!store) return "unknown";
   const s = store.toLowerCase();
@@ -84,6 +145,144 @@ function storeToPlatform(store: string | undefined): Platform {
   }
   if (s === "stripe" || s === "rc_billing" || s === "web") return "web";
   return "unknown";
+}
+
+function storeToSubscriptionProvider(
+  store: string | undefined,
+): SubscriptionProvider {
+  const s = store?.toLowerCase();
+  if (s === "app_store" || s === "mac_app_store" || s === "apple") {
+    return "apple";
+  }
+  if (
+    s === "play_store" ||
+    s === "amazon" ||
+    s === "google" ||
+    s === "google_play"
+  ) {
+    return "google";
+  }
+  // RC Billing / Stripe-on-RC should not be treated as first-party Stripe:
+  // only our Stripe webhook creates provider='stripe' rows that can open the
+  // Stripe customer portal.
+  return "revenuecat";
+}
+
+function statusFromRcEvent(
+  eventType: string,
+  cancelReason: string | null,
+  isTrialPeriod: boolean,
+): string | null {
+  switch (eventType) {
+    case "INITIAL_PURCHASE":
+      return isTrialPeriod ? "trialing" : "active";
+    case "RENEWAL":
+    case "NON_RENEWING_PURCHASE":
+    case "TRIAL_CONVERTED":
+    case "UNCANCELLATION":
+    case "PRODUCT_CHANGE":
+      return "active";
+    case "TRIAL_STARTED":
+      return "trialing";
+    case "TRIAL_CANCELLED":
+    case "EXPIRATION":
+      return "canceled";
+    case "CANCELLATION":
+      // User-initiated store cancellations keep access through period end.
+      // Refund/fraud/support cancellations revoke the entitlement immediately.
+      if (
+        cancelReason === "CUSTOMER_SUPPORT" ||
+        cancelReason === "FRAUD" ||
+        cancelReason === "REFUND"
+      ) {
+        return "canceled";
+      }
+      return "active";
+    case "BILLING_ISSUE":
+      return "past_due";
+    case "SUBSCRIPTION_PAUSED":
+      return "paused";
+    default:
+      return null;
+  }
+}
+
+async function upsertSubscriptionState(
+  supabase: ReturnType<typeof createClient>,
+  event: Record<string, unknown>,
+  isTrialPeriod: boolean,
+): Promise<void> {
+  try {
+    const eventType = String(event.type ?? "");
+    const appUserId = nonEmpty(event.app_user_id);
+    const productId = nonEmpty(event.product_id);
+    const status = statusFromRcEvent(
+      eventType,
+      nonEmpty(event.cancel_reason),
+      isTrialPeriod,
+    );
+    if (!status || !appUserId || !productId) return;
+
+    const periodStartMs = typeof event.purchased_at_ms === "number"
+      ? event.purchased_at_ms
+      : typeof event.original_purchase_at_ms === "number"
+      ? event.original_purchase_at_ms
+      : null;
+    const periodEndMs = typeof event.expiration_at_ms === "number"
+      ? event.expiration_at_ms
+      : null;
+    const eventTimestampMs = typeof event.event_timestamp_ms === "number"
+      ? event.event_timestamp_ms
+      : null;
+    const cancellationMs = typeof event.cancellation_at_ms === "number"
+      ? event.cancellation_at_ms
+      : null;
+
+    const store = nonEmpty(event.store) ?? undefined;
+    const isCancelAtPeriodEnd = eventType === "CANCELLATION" &&
+      status === "active";
+    const isTerminal = eventType === "CANCELLATION" ||
+      eventType === "EXPIRATION" ||
+      eventType === "TRIAL_CANCELLED";
+
+    const row: Record<string, unknown> = {
+      user_id: appUserId,
+      provider: storeToSubscriptionProvider(store),
+      status,
+      product_id: productId,
+      currency: (nonEmpty(event.currency) ?? "USD").toUpperCase(),
+      amount_cents: typeof event.price === "number"
+        ? Math.round(event.price * 100)
+        : null,
+      current_period_start: periodStartMs
+        ? new Date(periodStartMs).toISOString()
+        : null,
+      current_period_end: periodEndMs
+        ? new Date(periodEndMs).toISOString()
+        : null,
+      cancel_at: isCancelAtPeriodEnd && (cancellationMs ?? eventTimestampMs)
+        ? new Date((cancellationMs ?? eventTimestampMs)!).toISOString()
+        : null,
+      canceled_at: isTerminal && (cancellationMs ?? eventTimestampMs)
+        ? new Date((cancellationMs ?? eventTimestampMs)!).toISOString()
+        : null,
+      trial_end: status === "trialing" && periodEndMs
+        ? new Date(periodEndMs).toISOString()
+        : null,
+      rc_app_user_id: appUserId,
+      rc_original_app_user_id: nonEmpty(event.original_app_user_id),
+      raw: event,
+    };
+
+    if (eventType === "UNCANCELLATION") {
+      row.cancel_at = null;
+      row.canceled_at = null;
+    }
+
+    await writeSubscriptionMirror(supabase, row);
+  } catch (e) {
+    console.warn("subscription mirror write failed", e);
+  }
 }
 
 function nonEmpty(value: unknown): string | null {
@@ -124,24 +323,24 @@ function dateFromMillis(value: unknown): Date | null {
 function eventDate(event: Record<string, unknown>): Date {
   return (
     dateFromMillis(event.purchased_at_ms) ??
-    dateFromMillis(event.event_timestamp_ms) ??
-    new Date()
+      dateFromMillis(event.event_timestamp_ms) ??
+      new Date()
   );
 }
 
 function referralInstallDate(referral: ReferralRow): Date | null {
   return (
     parseDate(referral.install_at) ??
-    parseDate(referral.appsflyer_data?.install_time) ??
-    parseDate(referral.created_at)
+      parseDate(referral.appsflyer_data?.install_time) ??
+      parseDate(referral.created_at)
   );
 }
 
 function installDateFromAttributes(attrs: SubscriberAttributes): Date | null {
   return (
     parseDate(attrValue(attrs, "appsflyer_install_at")) ??
-    parseDate(attrValue(attrs, "redemption_install_at")) ??
-    parseDate(attrValue(attrs, "install_at"))
+      parseDate(attrValue(attrs, "redemption_install_at")) ??
+      parseDate(attrValue(attrs, "install_at"))
   );
 }
 
@@ -241,21 +440,18 @@ Deno.serve(async (req) => {
     const isInitial = eventType === "INITIAL_PURCHASE";
     const isRenewal = eventType === "RENEWAL";
     const isNonRenew = eventType === "NON_RENEWING_PURCHASE";
-    const isTrialPeriod =
-      event.is_trial_period === true || periodType === "TRIAL";
-    const isTrialStarted =
-      eventType === "TRIAL_STARTED" || (isInitial && isTrialPeriod);
-    const isTrialConverted =
-      eventType === "TRIAL_CONVERTED" ||
+    const isTrialPeriod = event.is_trial_period === true ||
+      periodType === "TRIAL";
+    const isTrialStarted = eventType === "TRIAL_STARTED" ||
+      (isInitial && isTrialPeriod);
+    const isTrialConverted = eventType === "TRIAL_CONVERTED" ||
       (isRenewal && event.is_trial_conversion === true);
     const isTrialCancelled = eventType === "TRIAL_CANCELLED";
-    const isPurchase =
-      (isInitial && !isTrialPeriod) ||
+    const isPurchase = (isInitial && !isTrialPeriod) ||
       isRenewal ||
       isNonRenew ||
       isTrialConverted;
-    const isRefund =
-      eventType === "CANCELLATION" &&
+    const isRefund = eventType === "CANCELLATION" &&
       (cancelReason === "CUSTOMER_SUPPORT" ||
         cancelReason === "FRAUD" ||
         cancelReason === "REFUND");
@@ -263,6 +459,11 @@ Deno.serve(async (req) => {
     console.log(
       `Event: ${eventType} env=${event.environment} user=${appUserId} store=${event.store} period=${periodType}`,
     );
+
+    // Mirror every RevenueCat subscription lifecycle event before affiliate
+    // handling. This keeps public.subscriptions as the Supabase source of
+    // truth for mobile, web, and desktop entitlement checks.
+    await upsertSubscriptionState(supabase, event, isTrialPeriod);
 
     // EXPIRATION fires when the user's entitlement actually ends (auto-renew
     // off + period_end reached, or revoked). At that point the user is back
@@ -329,7 +530,7 @@ Deno.serve(async (req) => {
     // a recovery path when affiliate_referrals can't be joined by user id.
     const stampedAffiliateCode =
       attrValue(subAttrs, "redemption_affiliate_code") ??
-      attrValue(subAttrs, "appsflyer_affiliate_code");
+        attrValue(subAttrs, "appsflyer_affiliate_code");
 
     let affiliateCode: string | null = null;
     let attributionSource: AttributionSource = "install";
@@ -338,7 +539,9 @@ Deno.serve(async (req) => {
 
     const { data: referral } = await supabase
       .from("affiliate_referrals")
-      .select("affiliate_code, install_at, created_at, appsflyer_data, platform")
+      .select(
+        "affiliate_code, install_at, created_at, appsflyer_data, platform",
+      )
       .eq("referred_user_id", appUserId)
       .maybeSingle();
 
@@ -358,7 +561,10 @@ Deno.serve(async (req) => {
       stampedAffiliateCode &&
       attributesAreNonOrganic(subAttrs)
     ) {
-      const affiliate = await findActiveAffiliate(supabase, stampedAffiliateCode);
+      const affiliate = await findActiveAffiliate(
+        supabase,
+        stampedAffiliateCode,
+      );
       if (affiliate) {
         affiliateCode = affiliate.code;
         installAt = installDateFromAttributes(subAttrs);
@@ -396,7 +602,9 @@ Deno.serve(async (req) => {
       !withinAttributionWindow(installAt, convertedAt)
     ) {
       console.log(
-        `Affiliate attribution expired for ${appUserId}: install=${installAt?.toISOString() ?? "unknown"} conversion=${convertedAt.toISOString()}`,
+        `Affiliate attribution expired for ${appUserId}: install=${
+          installAt?.toISOString() ?? "unknown"
+        } conversion=${convertedAt.toISOString()}`,
       );
       return new Response(
         JSON.stringify({ message: "Affiliate attribution window expired" }),
@@ -416,8 +624,7 @@ Deno.serve(async (req) => {
           appsflyer_data: {
             source: attributionSource,
             via: "redemption",
-            af_status:
-              attrValue(subAttrs, "redemption_af_status") ??
+            af_status: attrValue(subAttrs, "redemption_af_status") ??
               attrValue(subAttrs, "appsflyer_af_status"),
           },
           install_at: installAt?.toISOString(),
