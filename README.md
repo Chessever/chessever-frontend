@@ -2,6 +2,14 @@
 
 This is a Flutter project for the Chessever application.
 
+## Contributing
+
+We love open-source contributions! If you'd like to contribute, please read our
+[Contribution Guidelines](CONTRIBUTION_GUIDELINES.md) first. In short: open
+your Pull Request against the `main` branch, and we'll review it for roadmap
+fit and overall net-positive impact on the app. Every PR — big or small — is
+welcome and appreciated.
+
 ## Getting Started
 
 ### Prerequisites
