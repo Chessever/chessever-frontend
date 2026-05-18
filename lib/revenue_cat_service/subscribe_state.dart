@@ -113,15 +113,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final results = await Future.wait([
         _revenueCat.getProducts(),
         _revenueCat.getCustomerInfo(),
+        _revenueCat.getBackendEntitlement(),
       ]);
       final products = results[0] as List<Package>;
       final customerInfo = results[1] as CustomerInfo?;
+      final backendEntitlement = results[2] as BackendEntitlementSnapshot?;
 
       // Derive isSubscribed from customerInfo (no extra API call)
       bool isSubscribed = false;
       DateTime? expirationDate;
       String? managementUrl;
       bool willRenew = true;
+      String? provider;
 
       if (customerInfo != null) {
         // Check entitlements from the already-fetched customerInfo
@@ -138,21 +141,31 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             expirationDate = DateTime.tryParse(entitlement.expirationDate!);
           }
           willRenew = entitlement.willRenew;
+          provider = 'revenuecat';
         }
         managementUrl = customerInfo.managementURL;
       }
 
-      state = state.copyWith(
+      final merged = _mergeBackendEntitlement(
         isSubscribed: isSubscribed,
+        expirationDate: expirationDate,
+        willRenew: willRenew,
+        provider: provider,
+        backendEntitlement: backendEntitlement,
+      );
+
+      state = state.copyWith(
+        isSubscribed: merged.isSubscribed,
         products: products,
         isLoading: false,
-        expirationDate: expirationDate,
+        expirationDate: merged.expirationDate,
         managementUrl: managementUrl,
-        willRenew: willRenew,
+        willRenew: merged.willRenew,
+        provider: merged.provider,
       );
 
       // Schedule expiration check if subscribed
-      if (isSubscribed && expirationDate != null) {
+      if (merged.isSubscribed && merged.expirationDate != null) {
         _scheduleExpirationCheck();
       }
     } catch (e) {
@@ -170,15 +183,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final results = await Future.wait([
         _revenueCat.getProducts(),
         _revenueCat.getCustomerInfo(),
+        _revenueCat.getBackendEntitlement(),
       ]);
       final products = results[0] as List<Package>;
       final customerInfo = results[1] as CustomerInfo?;
+      final backendEntitlement = results[2] as BackendEntitlementSnapshot?;
 
       // Derive isSubscribed from customerInfo (no extra API call)
       bool isSubscribed = false;
       DateTime? expirationDate;
       String? managementUrl;
       bool willRenew = true;
+      String? provider;
 
       if (customerInfo != null) {
         final activeEntitlements = customerInfo.entitlements.active;
@@ -194,21 +210,31 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             expirationDate = DateTime.tryParse(entitlement.expirationDate!);
           }
           willRenew = entitlement.willRenew;
+          provider = 'revenuecat';
         }
         managementUrl = customerInfo.managementURL;
       }
 
-      state = state.copyWith(
+      final merged = _mergeBackendEntitlement(
         isSubscribed: isSubscribed,
+        expirationDate: expirationDate,
+        willRenew: willRenew,
+        provider: provider,
+        backendEntitlement: backendEntitlement,
+      );
+
+      state = state.copyWith(
+        isSubscribed: merged.isSubscribed,
         products: products,
         isLoading: false,
-        expirationDate: expirationDate,
+        expirationDate: merged.expirationDate,
         managementUrl: managementUrl,
-        willRenew: willRenew,
+        willRenew: merged.willRenew,
+        provider: merged.provider,
       );
 
       // Schedule expiration check if subscribed
-      if (isSubscribed && expirationDate != null) {
+      if (merged.isSubscribed && merged.expirationDate != null) {
         _scheduleExpirationCheck();
       }
     } catch (e) {
@@ -225,6 +251,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       if (customerInfo != null) {
         _updateStateFromCustomerInfo(customerInfo);
       }
+      await _refreshBackendEntitlement();
     } catch (e) {
       debugPrint('❌ Subscription sync error: $e');
     }
@@ -251,17 +278,23 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
 
     final previouslySubscribed = state.isSubscribed;
+    final nextIsSubscribed =
+        isSubscribed || (state.isSubscribed && state.provider == 'stripe');
     state = state.copyWith(
-      isSubscribed: isSubscribed,
-      expirationDate: expirationDate,
-      managementUrl: customerInfo.managementURL,
-      willRenew: willRenew,
+      isSubscribed: nextIsSubscribed,
+      expirationDate: isSubscribed ? expirationDate : state.expirationDate,
+      managementUrl:
+          customerInfo.managementURL?.isNotEmpty == true
+              ? customerInfo.managementURL
+              : state.managementUrl,
+      willRenew: isSubscribed ? willRenew : state.willRenew,
+      provider: isSubscribed ? 'revenuecat' : state.provider,
     );
 
     // Log subscription status changes for debugging
-    if (previouslySubscribed != isSubscribed) {
+    if (previouslySubscribed != nextIsSubscribed) {
       debugPrint(
-        '🔄 Subscription status changed: $previouslySubscribed → $isSubscribed',
+        '🔄 Subscription status changed: $previouslySubscribed → $nextIsSubscribed',
       );
     }
 
@@ -271,13 +304,65 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     // close. Direct purchases go through `purchaseSubscription` and already
     // log via that path, so we'd double-count if we didn't gate on the
     // pending-redemption marker.
-    if (!previouslySubscribed && isSubscribed) {
+    if (!previouslySubscribed && nextIsSubscribed) {
       _maybeAttributeRedemption(activeProductId);
     }
 
     // Schedule a check for when subscription expires (if subscribed)
-    if (isSubscribed && expirationDate != null) {
+    if (nextIsSubscribed && expirationDate != null) {
       _scheduleExpirationCheck();
+    }
+
+    unawaited(_refreshBackendEntitlement());
+  }
+
+  _MergedSubscription _mergeBackendEntitlement({
+    required bool isSubscribed,
+    required DateTime? expirationDate,
+    required bool willRenew,
+    required String? provider,
+    required BackendEntitlementSnapshot? backendEntitlement,
+  }) {
+    if (backendEntitlement?.isActive != true) {
+      return _MergedSubscription(
+        isSubscribed: isSubscribed,
+        expirationDate: expirationDate,
+        willRenew: willRenew,
+        provider: provider,
+      );
+    }
+
+    return _MergedSubscription(
+      isSubscribed: true,
+      expirationDate: backendEntitlement!.expiresAt ?? expirationDate,
+      willRenew: backendEntitlement.willRenew,
+      provider: backendEntitlement.provider ?? provider,
+    );
+  }
+
+  Future<void> _refreshBackendEntitlement() async {
+    final backendEntitlement = await _revenueCat.getBackendEntitlement();
+    if (backendEntitlement == null) return;
+
+    if (backendEntitlement.isActive) {
+      state = state.copyWith(
+        isSubscribed: true,
+        expirationDate: backendEntitlement.expiresAt,
+        willRenew: backendEntitlement.willRenew,
+        provider: backendEntitlement.provider,
+      );
+      if (backendEntitlement.expiresAt != null) {
+        _scheduleExpirationCheck();
+      }
+      return;
+    }
+
+    if (state.provider == 'stripe') {
+      state = state.copyWith(
+        isSubscribed: false,
+        willRenew: false,
+        provider: backendEntitlement.provider,
+      );
     }
   }
 
@@ -345,7 +430,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final result = await _revenueCat.purchaseSubscription(package);
 
       if (result.success) {
-        state = state.copyWith(isSubscribed: true, isLoading: false);
+        state = state.copyWith(
+          isSubscribed: true,
+          isLoading: false,
+          provider: 'revenuecat',
+        );
 
         final productId = package.storeProduct.identifier;
         final price = package.storeProduct.price;
@@ -365,12 +454,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         // AppsFlyer predefined revenue event — drives partner payout reporting
         // and store-level ROAS dashboards. Sent alongside the generic analytics
         // event above so Amplitude and AppsFlyer both receive the purchase.
-        unawaited(AppsflyerService.instance.logSubscriptionPurchase(
-          productId: productId,
-          price: price,
-          currency: currency,
-          packageType: packageType,
-        ));
+        unawaited(
+          AppsflyerService.instance.logSubscriptionPurchase(
+            productId: productId,
+            price: price,
+            currency: currency,
+            packageType: packageType,
+          ),
+        );
       } else if (result.wasCancelled) {
         // User cancelled - not an error, just reset loading state
         state = state.copyWith(isLoading: false);
@@ -406,7 +497,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final result = await _revenueCat.purchaseSubscriptionOption(option);
 
       if (result.success) {
-        state = state.copyWith(isSubscribed: true, isLoading: false);
+        state = state.copyWith(
+          isSubscribed: true,
+          isLoading: false,
+          provider: 'revenuecat',
+        );
 
         final productId = package.storeProduct.identifier;
         // The base-plan price is what AppsFlyer's revenue dashboards expect as
@@ -428,12 +523,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           },
         );
 
-        unawaited(AppsflyerService.instance.logSubscriptionPurchase(
-          productId: productId,
-          price: price,
-          currency: currency,
-          packageType: packageType,
-        ));
+        unawaited(
+          AppsflyerService.instance.logSubscriptionPurchase(
+            productId: productId,
+            price: price,
+            currency: currency,
+            packageType: packageType,
+          ),
+        );
       } else if (result.wasCancelled) {
         state = state.copyWith(isLoading: false);
       } else {
@@ -456,7 +553,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
     try {
       final success = await _revenueCat.restorePurchases();
-      state = state.copyWith(isSubscribed: success, isLoading: false);
+      state = state.copyWith(
+        isSubscribed: success,
+        isLoading: false,
+        provider: success ? 'revenuecat' : state.provider,
+      );
       return success;
     } catch (e) {
       debugPrint('❌ Restore purchases error: $e');
@@ -478,6 +579,7 @@ class SubscriptionState {
   final String? error;
   final DateTime? expirationDate;
   final String? managementUrl;
+  final String? provider;
 
   /// True if the subscription will auto-renew at the end of the billing period.
   /// False if user has cancelled (but may still have access until expirationDate).
@@ -490,6 +592,7 @@ class SubscriptionState {
     this.error,
     this.expirationDate,
     this.managementUrl,
+    this.provider,
     this.willRenew = true,
   });
 
@@ -500,6 +603,7 @@ class SubscriptionState {
     String? error,
     DateTime? expirationDate,
     String? managementUrl,
+    String? provider,
     bool? willRenew,
   }) {
     return SubscriptionState(
@@ -509,9 +613,24 @@ class SubscriptionState {
       error: error,
       expirationDate: expirationDate ?? this.expirationDate,
       managementUrl: managementUrl ?? this.managementUrl,
+      provider: provider ?? this.provider,
       willRenew: willRenew ?? this.willRenew,
     );
   }
+}
+
+class _MergedSubscription {
+  const _MergedSubscription({
+    required this.isSubscribed,
+    required this.expirationDate,
+    required this.willRenew,
+    required this.provider,
+  });
+
+  final bool isSubscribed;
+  final DateTime? expirationDate;
+  final bool willRenew;
+  final String? provider;
 }
 
 class _PendingRedemption {

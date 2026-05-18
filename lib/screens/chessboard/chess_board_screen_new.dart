@@ -5807,6 +5807,11 @@ class _AnalysisGameBody extends ConsumerWidget {
             movesDisplay: movesDisplay,
             gamebaseDisplay: gamebaseDisplay,
             syncWithGamebaseToggle: showGamebaseButton,
+            // Tablet landscape relies on the outer PageView for game switching;
+            // letting the inner notation↔gamebase PageView claim horizontal
+            // gestures would steal those swipes. Toggle button + provider sync
+            // still navigate between the two analysis panels.
+            disableHorizontalSwipe: isTabletLandscape,
           );
         }
 
@@ -7579,11 +7584,13 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
     required this.movesDisplay,
     required this.gamebaseDisplay,
     required this.syncWithGamebaseToggle,
+    this.disableHorizontalSwipe = false,
   });
 
   final Widget movesDisplay;
   final Widget gamebaseDisplay;
   final bool syncWithGamebaseToggle;
+  final bool disableHorizontalSwipe;
 
   @override
   ConsumerState<_AnalysisSwipePanels> createState() =>
@@ -7806,7 +7813,10 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
 
     return PageView(
       controller: _pageController,
-      physics: const ClampingScrollPhysics(),
+      physics:
+          widget.disableHorizontalSwipe
+              ? const NeverScrollableScrollPhysics()
+              : const ClampingScrollPhysics(),
       onPageChanged: (page) {
         if (_showTutorialOverlay) return;
         _currentPage = page;
@@ -9302,8 +9312,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
 
-    // On tablet landscape, wrap in a gesture detector that absorbs horizontal
-    // drags to prevent them from reaching the parent PageView.
+    // Tablet landscape: outer game-switching PageView owns horizontal drags
+    // (notation area lets them pass through), and the reset icon is hidden
+    // since tablets navigate position-search flows differently.
     final isTabletLandscape =
         ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
@@ -9329,7 +9340,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(child: notationContent),
-          if (isPositionSearchFlow)
+          if (isPositionSearchFlow && !isTabletLandscape)
             Positioned(
               top: 4.h,
               right: 4.w,
@@ -9590,18 +9601,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
 
-    // On tablet landscape, wrap in gesture detector to absorb horizontal
-    // drags and prevent them from triggering PageView scroll.
-    if (isTabletLandscape) {
-      return GestureDetector(
-        onHorizontalDragStart: (_) {},
-        onHorizontalDragUpdate: (_) {},
-        onHorizontalDragEnd: (_) {},
-        behavior: HitTestBehavior.translucent,
-        child: content,
-      );
-    }
-
+    // On tablet landscape, the outer game-switching PageView owns horizontal
+    // drags. The inner notation↔explorer PageView already disables its own
+    // horizontal physics in landscape, so we let drags pass through the
+    // notation area to the outer PageView for swiping between games.
     return content;
   }
 

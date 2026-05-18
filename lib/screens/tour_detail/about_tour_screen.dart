@@ -196,6 +196,13 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
+                          aboutModel.name,
+                          style: AppTypography.textLgBold.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                        ),
+                        SizedBox(height: 12.h),
+                        Text(
                           aboutModel.description,
                           style: AppTypography.textSmMedium.copyWith(
                             color: context.colors.textPrimaryMuted,

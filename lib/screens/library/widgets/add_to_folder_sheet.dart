@@ -338,6 +338,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       }
 
       ref.invalidate(libraryFoldersStreamProvider);
+      ref.invalidate(folderAnalysisCountProvider);
 
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);

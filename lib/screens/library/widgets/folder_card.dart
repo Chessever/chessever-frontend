@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
+import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -116,12 +117,20 @@ class FolderCard extends ConsumerWidget {
 
     final Widget countWidget;
     if (isTwic) {
-      countWidget = Text(
-        '4.5 million master games',
-        style: AppTypography.textXsRegular.copyWith(
-          color: const Color(0xFFA1A1A1),
-          height: 16 / 12,
+      final twicTotalAsync = ref.watch(twicDatabaseTotalGamesProvider);
+      final twicLabelStyle = AppTypography.textXsRegular.copyWith(
+        color: const Color(0xFFA1A1A1),
+        height: 16 / 12,
+      );
+      countWidget = twicTotalAsync.when(
+        data: (count) => Text(
+          count > 0
+              ? '${formatCompactCount(count)} master games'
+              : 'Master games',
+          style: twicLabelStyle,
         ),
+        loading: () => Text('Master games', style: twicLabelStyle),
+        error: (_, __) => Text('Master games', style: twicLabelStyle),
       );
     } else {
       final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
@@ -483,7 +492,7 @@ class FolderCard extends ConsumerWidget {
                   style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
                 ),
                 content: Text(
-                  'This removes the database. Games in it will stay saved but become unassigned.',
+                  'This permanently deletes the database and every game inside it. This cannot be undone.',
                   style: AppTypography.textXsRegular.copyWith(
                     color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
@@ -519,6 +528,9 @@ class FolderCard extends ConsumerWidget {
       final repo = ref.read(libraryRepositoryProvider);
       await repo.deleteFolder(folder.id);
       ref.invalidate(libraryFoldersStreamProvider);
+      // Deleting a folder cascades its analyses; any parent folder's
+      // recursive count must be re-queried.
+      ref.invalidate(folderAnalysisCountProvider);
       if (!context.mounted) return;
       HapticFeedbackService.success();
       ScaffoldMessenger.of(context).showSnackBar(

@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Result of a purchase attempt
 class PurchaseAttemptResult {
@@ -34,6 +38,11 @@ class RevenueCatService {
   /// Must match the lookup_key in RevenueCat dashboard
   static const String premiumEntitlement = 'Chessever Subscription';
 
+  static const String _billingApiBase = String.fromEnvironment(
+    'BILLING_API_BASE',
+    defaultValue: 'https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1',
+  );
+
   /// Callback to be invoked on app resume to sync subscription state.
   /// Set by SubscriptionNotifier to ensure state is updated after sync.
   Future<void> Function()? onAppResumeCallback;
@@ -63,8 +72,8 @@ class RevenueCatService {
       // etc.). The subscription ID is device-scoped, but RC scopes attributes
       // per-customer — so every user switch needs to re-stamp it.
       try {
-        final osId = PushNotificationsService.instance
-            .currentOneSignalSubscriptionId;
+        final osId =
+            PushNotificationsService.instance.currentOneSignalSubscriptionId;
         if (osId != null && osId.isNotEmpty) {
           await Purchases.setOnesignalID(osId);
         }
@@ -97,11 +106,13 @@ class RevenueCatService {
       );
       // Fallback: also check if any entitlement is active
       final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
-      return hasEntitlement || hasAnyEntitlement;
+      if (hasEntitlement || hasAnyEntitlement) return true;
     } catch (e) {
       debugPrint('Error checking subscription: $e');
-      return false;
     }
+
+    final backendEntitlement = await getBackendEntitlement();
+    return backendEntitlement?.isActive ?? false;
   }
 
   /// Get current customer info
@@ -110,6 +121,35 @@ class RevenueCatService {
       return await Purchases.getCustomerInfo();
     } catch (e) {
       debugPrint('Error getting customer info: $e');
+      return null;
+    }
+  }
+
+  /// Read the Supabase entitlement authority shared by web, desktop, and
+  /// mobile. This makes Stripe subscriptions purchased outside the app unlock
+  /// mobile while RevenueCat still handles App Store / Play Store purchases.
+  Future<BackendEntitlementSnapshot?> getBackendEntitlement() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return null;
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_billingApiBase/entitlement'),
+        headers: <String, String>{
+          'authorization': 'Bearer ${session.accessToken}',
+        },
+      );
+      if (response.statusCode != 200) {
+        debugPrint(
+          'Backend entitlement returned ${response.statusCode}: ${response.body}',
+        );
+        return null;
+      }
+      return BackendEntitlementSnapshot.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    } catch (e) {
+      debugPrint('Error getting backend entitlement: $e');
       return null;
     }
   }
@@ -157,10 +197,7 @@ class RevenueCatService {
   ) async {
     return _runPurchase(
       label: '${option.productId} / offer=${option.id}',
-      run:
-          () => Purchases.purchase(
-            PurchaseParams.subscriptionOption(option),
-          ),
+      run: () => Purchases.purchase(PurchaseParams.subscriptionOption(option)),
     );
   }
 
@@ -322,5 +359,39 @@ class RevenueCatService {
     } catch (e) {
       debugPrint('❌ tagRedemptionAttempt error: $e');
     }
+  }
+}
+
+@immutable
+class BackendEntitlementSnapshot {
+  const BackendEntitlementSnapshot({
+    required this.isActive,
+    this.provider,
+    this.expiresAt,
+    this.willRenew = false,
+    this.productId,
+  });
+
+  final bool isActive;
+  final String? provider;
+  final DateTime? expiresAt;
+  final bool willRenew;
+  final String? productId;
+
+  factory BackendEntitlementSnapshot.fromJson(Map<String, dynamic> json) {
+    final cancelAt = switch (json['cancel_at']) {
+      String s => DateTime.tryParse(s),
+      _ => null,
+    };
+    return BackendEntitlementSnapshot(
+      isActive: json['is_premium'] as bool? ?? false,
+      provider: json['provider'] as String?,
+      expiresAt: switch (json['expires_at']) {
+        String s => DateTime.tryParse(s),
+        _ => null,
+      },
+      willRenew: cancelAt == null,
+      productId: json['product_id'] as String?,
+    );
   }
 }

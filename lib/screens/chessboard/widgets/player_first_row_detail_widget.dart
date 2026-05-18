@@ -617,21 +617,37 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               child:
                   effectiveGameModel.gameStatus.isFinished
                       ? Center(
-                        child: Text(
-                          effectiveGameModel.gameStatus == GameStatus.whiteWins
-                              ? (isWhitePlayer ? '1' : '0')
-                              : effectiveGameModel.gameStatus ==
-                                  GameStatus.blackWins
-                              ? (isWhitePlayer ? '0' : '1')
-                              : '½',
-                          style: TextStyle(
-                            fontSize:
-                                playerView == PlayerView.gridView ? 9.f : 10.f,
-                            fontWeight: FontWeight.w700,
-                            color: context.colors.textPrimary,
-                            height: 1.0,
-                          ),
-                          textAlign: TextAlign.center,
+                        child: Builder(
+                          builder: (context) {
+                            final status = effectiveGameModel.gameStatus;
+                            final isDraw = status == GameStatus.draw;
+                            final isWin =
+                                (status == GameStatus.whiteWins &&
+                                    isWhitePlayer) ||
+                                (status == GameStatus.blackWins &&
+                                    !isWhitePlayer);
+                            final label =
+                                isDraw ? '½' : (isWin ? '1' : '0');
+                            final resultColor =
+                                isDraw
+                                    ? context.colors.textPrimaryMuted
+                                    : isWin
+                                        ? context.colors.success
+                                        : context.colors.danger;
+                            return Text(
+                              label,
+                              style: TextStyle(
+                                fontSize:
+                                    playerView == PlayerView.gridView
+                                        ? 9.f
+                                        : 10.f,
+                                fontWeight: FontWeight.w700,
+                                color: resultColor,
+                                height: 1.0,
+                              ),
+                              textAlign: TextAlign.center,
+                            );
+                          },
                         ),
                       )
                       : null,

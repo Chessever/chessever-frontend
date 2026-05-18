@@ -185,7 +185,6 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       topPadding: topPadding,
                       bottomPadding: bottomPadding,
                       onSignIn: () async {
-                        // Request notification permission on last page of onboarding
                         if (!E2eConfig.suppressInterruptivePrompts) {
                           unawaited(
                             PushNotificationsService.instance
@@ -193,10 +192,6 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                           );
                         }
 
-                        // Mark onboarding as seen BEFORE navigating to auth
-                        // This ensures user won't see onboarding again after signing in
-                        // The pending favorites will be flushed by auth_state_listener
-                        // when authentication completes
                         try {
                           await ref
                               .read(onboardingRepositoryProvider)
@@ -228,8 +223,6 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                           );
                         }
                       },
-                      onContinueAsGuest:
-                          () => markOnboardingComplete(context, ref),
                     ),
                 ],
               ),
@@ -250,13 +243,11 @@ class _AuthStep extends HookWidget {
     required this.topPadding,
     required this.bottomPadding,
     required this.onSignIn,
-    required this.onContinueAsGuest,
   });
 
   final double topPadding;
   final double bottomPadding;
   final VoidCallback onSignIn;
-  final VoidCallback onContinueAsGuest;
 
   @override
   Widget build(BuildContext context) {
@@ -350,39 +341,6 @@ class _AuthStep extends HookWidget {
                       .animate(delay: 600.ms)
                       .fadeIn(duration: 400.ms, curve: _smoothSpring)
                       .move(begin: const Offset(0, 30), curve: _smoothSpring),
-
-                  SizedBox(height: 10.h),
-
-                  // Continue as guest (secondary)
-                  _SecondaryButton(
-                        label: 'Continue without account',
-                        onTap: onContinueAsGuest,
-                      )
-                      .animate(delay: 700.ms)
-                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
-
-                  SizedBox(height: 10.h),
-
-                  // Warning note
-                  Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            size: 14.ic,
-                            color: const Color(0xFFFFAA00).withOpacity(0.7),
-                          ),
-                          SizedBox(width: 6.w),
-                          Text(
-                            'Guest data can\'t be recovered if lost',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.5),
-                            ),
-                          ),
-                        ],
-                      )
-                      .animate(delay: 800.ms)
-                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
 
                   SizedBox(height: 12.h),
 
@@ -517,7 +475,7 @@ class _FeaturesList extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'What you\'ll miss as a guest:',
+            'What you\'ll get with an account:',
             style: AppTypography.textXsMedium.copyWith(
               color: context.colors.textPrimary.withValues(alpha: 0.5),
               letterSpacing: 0.5,
@@ -594,49 +552,6 @@ class _FeatureItem extends StatelessWidget {
           color: context.colors.textPrimary.withValues(alpha: 0.25),
         ),
       ],
-    );
-  }
-}
-
-class _SecondaryButton extends HookWidget {
-  const _SecondaryButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPressed = useState(false);
-
-    return GestureDetector(
-      onTapDown: (_) => isPressed.value = true,
-      onTapUp: (_) {
-        isPressed.value = false;
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      onTapCancel: () => isPressed.value = false,
-      child: AnimatedScale(
-        scale: isPressed.value ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        curve: _snappySpring,
-        child: Container(
-          width: double.infinity,
-          height: 48.h,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.15)),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: AppTypography.textMdMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.7),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

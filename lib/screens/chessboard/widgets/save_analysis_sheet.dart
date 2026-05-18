@@ -4,6 +4,8 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
+import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -286,6 +288,15 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         HapticFeedback.lightImpact();
         return;
       }
+    } else if (_selectedFolder == null) {
+      // user_saved_analyses.folder_id is NOT NULL at the DB layer; saving
+      // without a folder used to succeed at insert and then orphan the row
+      // (visible only via SQL, still counting toward the free-tier limit).
+      setState(() {
+        _errorMessage = 'Pick a database to save into';
+      });
+      HapticFeedback.lightImpact();
+      return;
     }
 
     // Creating a new analysis adds a row to user_saved_analyses; updates do not.
@@ -418,6 +429,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         resolvedAnalysisId = created.id;
       }
 
+      // Library home cards show per-folder counts; without invalidating the
+      // count family + folder stream they stay stale after a save.
+      ref.invalidate(folderAnalysisCountProvider);
+      ref.invalidate(libraryFoldersStreamProvider);
+
       // Refresh provider's snapshot so auto-save uses the latest title/folder
       // and treats current tree as the saved baseline.
       ref
@@ -430,6 +446,16 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
       if (mounted && context.mounted) {
         HapticFeedback.mediumImpact();
+
+        // Drop the spinner *before* attempting to pop. If the host context
+        // is in a weird state (e.g. the user just bought premium through the
+        // paywall and the surrounding nav stack reshuffled mid-flight), the
+        // pop call below can silently no-op — without this reset the button
+        // would stay stuck in the loading state even though the analysis
+        // already landed in the library.
+        setState(() {
+          _isSaving = false;
+        });
 
         // Show success feedback
         ScaffoldMessenger.of(widget.config.hostContext).showSnackBar(
@@ -468,8 +494,17 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           ),
         );
 
-        // Close the sheet - pop twice to exit both Navigator and route
-        Navigator.of(widget.config.hostContext).pop();
+        // Close the sheet. Prefer the host navigator (which owns the route
+        // wrapping the whole PagedSheet), but fall back to the local
+        // context if the host stack got reshuffled — the spinner has
+        // already been reset above, so the worst case is the sheet sticks
+        // around in its idle state rather than locked.
+        final hostNav = Navigator.maybeOf(widget.config.hostContext);
+        if (hostNav != null && hostNav.canPop()) {
+          hostNav.pop();
+        } else if (context.mounted) {
+          Navigator.maybeOf(context)?.maybePop();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1689,7 +1724,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   }
 }
 
-class _FolderListItem extends StatelessWidget {
+class _FolderListItem extends ConsumerWidget {
   final LibraryFolder folder;
   final bool isSelected;
   final bool isDisabled;
@@ -1712,10 +1747,17 @@ class _FolderListItem extends StatelessWidget {
     }
   }
 
+  String _formatGameCount(int count) {
+    if (count == 0) return 'Empty';
+    if (count == 1) return '1 game';
+    return '${formatCompactCount(count)} games';
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final folderColor = _parseColorString(folder.color);
     final isSubdatabase = folder.parentId != null;
+    final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
 
     return GestureDetector(
       onTap: isDisabled ? null : onTap,
@@ -1771,14 +1813,36 @@ class _FolderListItem extends StatelessWidget {
                 ),
                 SizedBox(width: 14.w),
 
-                // Folder name
+                // Folder name + game count
                 Expanded(
-                  child: Text(
-                    folder.name,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.9),
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        folder.name,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color:
+                              context.colors.textPrimary.withValues(alpha: 0.9),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      SizedBox(height: 2.h),
+                      Text(
+                        countAsync.when(
+                          data: _formatGameCount,
+                          loading: () => '…',
+                          error: (_, __) => '',
+                        ),
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: const Color(0xFFA1A1A1),
+                          height: 16 / 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
 

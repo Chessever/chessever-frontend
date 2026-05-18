@@ -399,6 +399,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             HapticFeedbackService.medium();
             ref.invalidate(libraryFoldersStreamProvider);
             ref.invalidate(subscribedBooksProvider);
+            ref.invalidate(folderAnalysisCountProvider);
+            // Await the refetch so the spinner stays visible until data
+            // actually arrives. Without the await, RefreshIndicator dismisses
+            // immediately and the user thinks nothing happened.
+            await Future.wait([
+              ref.read(libraryFoldersStreamProvider.future),
+              ref.read(subscribedBooksProvider.future),
+            ]);
           },
           color: context.colors.textPrimary,
           backgroundColor: context.colors.surface,
@@ -912,7 +920,7 @@ class _LibraryFolderLoadingCard extends StatelessWidget {
                 ),
                 SizedBox(height: 4.h),
                 Text(
-                  isFeatured ? '4.5 million master games' : '124 saved games',
+                  isFeatured ? 'Master games' : '124 saved games',
                   style: AppTypography.textXsRegular.copyWith(
                     color: const Color(0xFFA1A1A1),
                     height: 16 / 12,

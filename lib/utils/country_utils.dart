@@ -687,10 +687,8 @@ class CountryUtils {
     return flag;
   }
 
-  /// Gets the country name from a FIDE 3-letter federation code.
-  /// Returns the full country name or empty string if not found.
-  static String getCountryName(String fideCode) {
-    const fideToCountryName = {
+  /// FIDE 3-letter federation code → full country name.
+  static const Map<String, String> fideCodeToCountryName = {
       'USA': 'United States',
       'ENG': 'England',
       'SCO': 'Scotland',
@@ -784,9 +782,57 @@ class CountryUtils {
       'LIE': 'Liechtenstein',
       'SMR': 'San Marino',
       'FAI': 'Faroe Islands',
-    };
+  };
 
-    final upper = fideCode.toUpperCase();
-    return fideToCountryName[upper] ?? '';
+  /// Gets the country name from a FIDE 3-letter federation code.
+  /// Returns the full country name or empty string if not found.
+  static String getCountryName(String fideCode) {
+    return fideCodeToCountryName[fideCode.toUpperCase()] ?? '';
+  }
+
+  /// Lowercased country name → FIDE 3-letter federation code.
+  /// Includes a few common aliases (USA, UK, Türkiye, etc.).
+  static final Map<String, String> _countryNameLowerToFideCode = () {
+    final map = <String, String>{};
+    fideCodeToCountryName.forEach((code, name) {
+      map[name.toLowerCase()] = code;
+    });
+    const aliases = {
+      'usa': 'USA',
+      'united states of america': 'USA',
+      'america': 'USA',
+      'uk': 'ENG',
+      'united kingdom': 'ENG',
+      'britain': 'ENG',
+      'great britain': 'ENG',
+      'türkiye': 'TUR',
+      'turkiye': 'TUR',
+      'czechia': 'CZE',
+      'iran': 'IRI',
+      'south korea': 'KOR',
+      'korea': 'KOR',
+      'bosnia and herzegovina': 'BIH',
+      'uae': 'UAE',
+      'holland': 'NED',
+    };
+    map.addAll(aliases);
+    return map;
+  }();
+
+  /// Resolves a user-typed search query into a FIDE federation code.
+  ///
+  /// Accepts either the FIDE 3-letter code itself (e.g. "AZE") or a full
+  /// country name (e.g. "Azerbaijan"). Returns null if the query does not
+  /// look like a known federation.
+  static String? resolveFideCode(String query) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return null;
+
+    final upper = trimmed.toUpperCase();
+    if (upper.length == 3 && fideCodeToCountryName.containsKey(upper)) {
+      return upper;
+    }
+
+    return _countryNameLowerToFideCode[trimmed.toLowerCase()];
   }
 }

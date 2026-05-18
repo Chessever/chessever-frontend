@@ -159,29 +159,6 @@ class _AuthUpgradePage extends HookWidget {
                   label: 'Create free account',
                   onTap: startAuthFlow,
                 ),
-                SizedBox(height: 12.h),
-                _SecondaryButton(
-                  label: 'Continue without account',
-                  onTap: () => Navigator.of(hostContext).pop(),
-                ),
-                SizedBox(height: 14.h),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 14.ic,
-                      color: kPrimaryColor.withValues(alpha: 0.7),
-                    ),
-                    SizedBox(width: 6.w),
-                    Text(
-                      'Guest data can\'t be recovered if lost',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ],
-                ),
                 SizedBox(height: 8.h),
               ],
             ),
@@ -297,7 +274,7 @@ class _FeaturesList extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            'What you\'ll miss as a guest:',
+            'What you\'ll get with an account:',
             style: AppTypography.textXsMedium.copyWith(
               color: context.colors.textPrimary.withValues(alpha: 0.5),
               letterSpacing: 0.5,
@@ -434,47 +411,6 @@ class _PrimaryButton extends HookWidget {
                         color: Colors.white,
                       ),
                     ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SecondaryButton extends HookWidget {
-  const _SecondaryButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPressed = useState(false);
-
-    return GestureDetector(
-      onTapDown: (_) => isPressed.value = true,
-      onTapUp: (_) {
-        isPressed.value = false;
-        onTap();
-      },
-      onTapCancel: () => isPressed.value = false,
-      child: AnimatedScale(
-        scale: isPressed.value ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Container(
-          width: double.infinity,
-          height: 52.h,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.15)),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: AppTypography.textMdMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.7),
-              ),
-            ),
           ),
         ),
       ),

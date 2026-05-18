@@ -170,6 +170,36 @@ app.*.symbols
 .gclient_previous_sync_commits
 # MCP configuration (personal development tools)
 .mcp.json
+.mcp.json.bak*
+.mcp.*.json
+
+# AI assistant MCP configs (local credentials / personal tokens)
+.claude/settings.json
+.claude/settings.local.json
+.claude/settings*.json
+.claude/settings*.json.bak*
+.claude/*.bak*
+.claude/*mcp*.json
+.codex/
+.gemini/settings.json
+.gemini/settings.local.json
+.gemini/settings*.json
+.gemini/settings*.json.bak*
+.gemini/*.bak*
+.gemini/*mcp*.json
+opencode.json
+opencode.jsonc.bak*
+opencode.json.bak*
+opencode.yaml
+opencode.yml
+opencode.toml
+opencode.*.bak*
+.opencode/
+.opencode.json
+.opencode.jsonc
+.opencode.yaml
+.opencode.yml
+.opencode.toml
 openapi.json
 openapi.yaml
 lichessopenapi.json

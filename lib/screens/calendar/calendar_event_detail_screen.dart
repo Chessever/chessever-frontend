@@ -13,8 +13,90 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class CalendarEventDetailScreen extends StatelessWidget {
-  const CalendarEventDetailScreen({super.key, required this.event});
+class CalendarEventDetailScreen extends StatefulWidget {
+  const CalendarEventDetailScreen({
+    super.key,
+    required this.events,
+    required this.initialIndex,
+  }) : assert(events.length > 0);
+
+  /// Context-aware, ordered list of community events to swipe through.
+  /// Must match the order of the source view (calendar list / month detail).
+  final List<CalendarEvent> events;
+  final int initialIndex;
+
+  @override
+  State<CalendarEventDetailScreen> createState() =>
+      _CalendarEventDetailScreenState();
+}
+
+class _CalendarEventDetailScreenState extends State<CalendarEventDetailScreen> {
+  static const int _virtualBase = 10000;
+
+  late final PageController _controller;
+  late int _currentIndex;
+
+  bool get _canSwipe => widget.events.length > 1;
+  int get _virtualCount => _canSwipe ? _virtualBase * widget.events.length : 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, widget.events.length - 1);
+    final initialPage = _canSwipe
+        ? (_virtualBase ~/ 2) * widget.events.length + _currentIndex
+        : 0;
+    _controller = PageController(initialPage: initialPage);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onPageChanged(int virtualIndex) {
+    final next = virtualIndex % widget.events.length;
+    if (next != _currentIndex) {
+      setState(() => _currentIndex = next);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final event = widget.events[_currentIndex];
+    return Scaffold(
+      key: e2eKey(E2eIds.calendarEventDetailRoot),
+      backgroundColor: context.colors.background,
+      appBar: AppBar(
+        title: Text(
+          event.name,
+          style: AppTypography.textLgBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
+        ),
+        backgroundColor: context.colors.surface,
+        iconTheme: IconThemeData(color: context.colors.iconPrimary),
+      ),
+      bottomNavigationBar: _EventBottomBar(event: event),
+      body: PageView.builder(
+        controller: _controller,
+        physics: _canSwipe
+            ? const BouncingScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        itemCount: _virtualCount,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (_, virtualIndex) {
+          final e = widget.events[virtualIndex % widget.events.length];
+          return _EventDetailBody(event: e);
+        },
+      ),
+    );
+  }
+}
+
+class _EventDetailBody extends StatelessWidget {
+  const _EventDetailBody({required this.event});
 
   final CalendarEvent event;
 
@@ -30,16 +112,6 @@ class CalendarEventDetailScreen extends StatelessWidget {
       return dateFormat.format(event.startDate!);
     }
     return dateFormat.format(event.endDate!);
-  }
-
-  String _extractDomain() {
-    if (event.websiteUrl == null || event.websiteUrl!.isEmpty) return '';
-    try {
-      final uri = Uri.parse(event.websiteUrl!);
-      return uri.host.replaceFirst('www.', '');
-    } catch (_) {
-      return '';
-    }
   }
 
   List<String> _getTopPlayers() {
@@ -59,7 +131,6 @@ class CalendarEventDetailScreen extends StatelessWidget {
       }
     }
 
-    // Sort by rating if available
     playerNames.sort(
       (a, b) => (b['rating'] as int).compareTo(a['rating'] as int),
     );
@@ -67,108 +138,89 @@ class CalendarEventDetailScreen extends StatelessWidget {
     return playerNames.take(4).map((p) => p['name'] as String).toList();
   }
 
-  Future<void> _launchWebsite() async {
-    if (event.websiteUrl != null && event.websiteUrl!.isNotEmpty) {
-      final uri = Uri.parse(event.websiteUrl!);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final domain = _extractDomain();
     final topPlayers = _getTopPlayers();
 
-    return Scaffold(
-      key: e2eKey(E2eIds.calendarEventDetailRoot),
-      backgroundColor: context.colors.background,
-      appBar: AppBar(
-        title: Text(
-          event.name,
-          style: AppTypography.textLgBold.copyWith(
-            color: context.colors.textPrimary,
-          ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.contentMaxWidth,
         ),
-        backgroundColor: context.colors.surface,
-        iconTheme: IconThemeData(color: context.colors.iconPrimary),
-      ),
-      bottomNavigationBar: _buildBottomBar(context, domain),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Container(
-            margin: EdgeInsets.symmetric(
-              horizontal: ResponsiveHelper.adaptive(
-                phone: 20.sp,
-                tablet: 32.sp,
-              ),
+        child: Container(
+          margin: EdgeInsets.symmetric(
+            horizontal: ResponsiveHelper.adaptive(
+              phone: 20.sp,
+              tablet: 32.sp,
             ),
-            child: SingleChildScrollView(
-              padding: EdgeInsets.zero,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: 16.h),
-                  ClipRRect(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(12.br),
-                      topRight: Radius.circular(12.br),
-                    ),
-                    child: SizedBox(
-                      height: 240.h,
-                      width: double.infinity,
-                      child: _buildHeroImage(context),
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.zero,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: 16.h),
+                ClipRRect(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12.br),
+                    topRight: Radius.circular(12.br),
+                  ),
+                  child: SizedBox(
+                    height: 240.h,
+                    width: double.infinity,
+                    child: _buildHeroImage(context),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                SelectableText(
+                  event.name,
+                  style: AppTypography.textLgBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                if (event.description != null &&
+                    event.description!.isNotEmpty) ...[
+                  SelectableText(
+                    event.description!,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textPrimaryMuted,
                     ),
                   ),
                   SizedBox(height: 12.h),
-                  if (event.description != null &&
-                      event.description!.isNotEmpty) ...[
-                    SelectableText(
-                      event.description!,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimaryMuted,
-                      ),
-                    ),
-                    SizedBox(height: 12.h),
-                  ],
-                  if (topPlayers.isNotEmpty) ...[
-                    _TitleDescWidget(
-                      title: 'Players',
-                      description: topPlayers.join(', '),
-                    ),
-                    SizedBox(height: 12.h),
-                  ],
-                  _TitleDescWidget(
-                    title: 'Time Control',
-                    description: event.timeControl ?? 'Standard',
-                  ),
-                  SizedBox(height: 12.h),
-                  _TitleDescWidget(
-                    title: 'Date',
-                    description: _formatDateRange(),
-                  ),
-                  SizedBox(height: 12.h),
-                  _CountryFlag(
-                    title: 'Location',
-                    flag:
-                        event.countryCode != null &&
-                                event.countryCode!.isNotEmpty
-                            ? CountryFlag.fromCountryCode(
-event.countryCode!,
-  theme: ImageTheme(width: 16.w,
-                              height: 12.h,),
-)
-                            : null,
-                    description: event.location ?? 'TBA',
-                  ),
-                  SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
                 ],
-              ),
+                if (topPlayers.isNotEmpty) ...[
+                  _TitleDescWidget(
+                    title: 'Players',
+                    description: topPlayers.join(', '),
+                  ),
+                  SizedBox(height: 12.h),
+                ],
+                _TitleDescWidget(
+                  title: 'Time Control',
+                  description: event.timeControl ?? 'Standard',
+                ),
+                SizedBox(height: 12.h),
+                _TitleDescWidget(
+                  title: 'Date',
+                  description: _formatDateRange(),
+                ),
+                SizedBox(height: 12.h),
+                _CountryFlag(
+                  title: 'Location',
+                  flag:
+                      event.countryCode != null &&
+                              event.countryCode!.isNotEmpty
+                          ? CountryFlag.fromCountryCode(
+                            event.countryCode!,
+                            theme: ImageTheme(width: 16.w, height: 12.h),
+                          )
+                          : null,
+                  description: event.location ?? 'TBA',
+                ),
+                SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
+              ],
             ),
           ),
         ),
@@ -196,7 +248,6 @@ event.countryCode!,
   }
 
   Widget _buildPlaceholder(BuildContext context) {
-    // Show country flag as placeholder if available
     if (event.countryCode != null && event.countryCode!.isNotEmpty) {
       return Container(
         height: 240.h,
@@ -206,9 +257,8 @@ event.countryCode!,
           width: 120.w,
           height: 80.h,
           child: CountryFlag.fromCountryCode(
-event.countryCode!,
-  theme: ImageTheme(shape: const RoundedRectangle(12),
-),
+            event.countryCode!,
+            theme: ImageTheme(shape: const RoundedRectangle(12)),
           ),
         ),
       );
@@ -225,8 +275,35 @@ event.countryCode!,
       ),
     );
   }
+}
 
-  Widget _buildBottomBar(BuildContext context, String domain) {
+class _EventBottomBar extends StatelessWidget {
+  const _EventBottomBar({required this.event});
+
+  final CalendarEvent event;
+
+  String _extractDomain() {
+    if (event.websiteUrl == null || event.websiteUrl!.isEmpty) return '';
+    try {
+      final uri = Uri.parse(event.websiteUrl!);
+      return uri.host.replaceFirst('www.', '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _launchWebsite() async {
+    if (event.websiteUrl != null && event.websiteUrl!.isNotEmpty) {
+      final uri = Uri.parse(event.websiteUrl!);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final domain = _extractDomain();
     if (domain.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -244,8 +321,6 @@ event.countryCode!,
               SvgAsset.websiteIcon,
               height: 12.h,
               width: 12.h,
-              // Match the cyan link text in light theme so the icon stays
-              // visible on white surfaces; dark theme keeps the original asset.
               colorFilter: context.isLightTheme
                   ? const ColorFilter.mode(kPrimaryColor, BlendMode.srcIn)
                   : null,
@@ -329,8 +404,8 @@ class _CountryFlag extends StatelessWidget {
                 description,
                 maxLines: 1,
                 style: AppTypography.textXsMedium.copyWith(
-            color: context.colors.textPrimary,
-          ),
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ],

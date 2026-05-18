@@ -1,5 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
+import 'package:chessever2/utils/country_utils.dart';
 
 // --- Model ---
 
@@ -68,10 +69,17 @@ class ChessPlayerRepository extends BaseRepository {
     }
 
     final term = '%${query.trim()}%';
+    final fedCode = CountryUtils.resolveFideCode(query);
+
+    final orFilters = StringBuffer('name.ilike.$term,title.ilike.$term');
+    if (fedCode != null) {
+      orFilters.write(',country.eq.$fedCode');
+    }
+
     final data = await supabase
         .from('chess_players')
         .select('fideid, name, title, rating, country')
-        .or('name.ilike.$term,title.ilike.$term')
+        .or(orFilters.toString())
         .gt('rating', 0)
         .lt('rating', 3300)
         .order('rating', ascending: false)

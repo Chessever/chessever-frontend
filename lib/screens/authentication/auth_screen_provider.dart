@@ -4,7 +4,6 @@ import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_screen_state.dart';
 
 // Provider definition
@@ -27,31 +26,6 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
   Future<AppUser?> signInWithApple() async {
     return _performSignIn(
       () => ref.read(authStateProvider.notifier).signInWithApple(),
-    );
-  }
-
-  Future<AppUser?> signInAsGuest() async {
-    // Mark that this flow started from the auth screen so listeners can redirect anon users.
-    state = state.copyWith(guestFlowStarted: true);
-
-    // Check Supabase client directly as the source of truth
-    final currentSupabaseUser = Supabase.instance.client.auth.currentUser;
-
-    if (currentSupabaseUser?.isAnonymous == true) {
-      debugPrint(
-        'ℹ️ [AUTH] Already in anonymous session (Supabase), skipping re-sign-in',
-      );
-      // Ensure state reflects this user
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: null,
-        user: AppUser.fromSupabaseUser(currentSupabaseUser!),
-      );
-      return state.user;
-    }
-
-    return _performSignIn(
-      () => ref.read(authStateProvider.notifier).signInAnonymously(),
     );
   }
 

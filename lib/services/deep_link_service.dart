@@ -315,22 +315,11 @@ class DeepLinkService {
         }
       }
 
-      var isAuthenticated =
-          resolvedState?.status == AppAuthStatus.authenticated;
+      final isAuthenticated = _isFullyAuthenticated(resolvedState);
       if (!isAuthenticated) {
         debugPrint(
-          'DeepLinkService: No authenticated session available for book link, attempting anonymous sign-in...',
+          'DeepLinkService: User not authenticated, routing to auth screen',
         );
-        try {
-          await ref.read(authStateProvider.notifier).signInAnonymously();
-          isAuthenticated = true;
-        } catch (e) {
-          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
-        }
-      }
-
-      if (!isAuthenticated) {
-        debugPrint('DeepLinkService: User not authenticated, routing to home');
         _captureDeepLinkException(
           Exception('Deep link ignored because user is not authenticated'),
           StackTrace.current,
@@ -339,7 +328,7 @@ class DeepLinkService {
           captureAsException: false,
         );
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
+          '/auth_screen',
           (route) => false,
         );
         return;
@@ -399,22 +388,11 @@ class DeepLinkService {
         }
       }
 
-      var isAuthenticated =
-          resolvedState?.status == AppAuthStatus.authenticated;
+      final isAuthenticated = _isFullyAuthenticated(resolvedState);
       if (!isAuthenticated) {
         debugPrint(
-          'DeepLinkService: No authenticated session available for folder link, attempting anonymous sign-in...',
+          'DeepLinkService: User not authenticated, routing to auth screen',
         );
-        try {
-          await ref.read(authStateProvider.notifier).signInAnonymously();
-          isAuthenticated = true;
-        } catch (e) {
-          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
-        }
-      }
-
-      if (!isAuthenticated) {
-        debugPrint('DeepLinkService: User not authenticated, routing to home');
         _captureDeepLinkException(
           Exception(
             'Folder deep link ignored because user is not authenticated',
@@ -425,7 +403,7 @@ class DeepLinkService {
           captureAsException: false,
         );
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
+          '/auth_screen',
           (route) => false,
         );
         return;
@@ -531,22 +509,10 @@ class DeepLinkService {
       );
 
       // Auth is required before we can proceed.
-      var isAuthenticated = await authFuture;
+      final isAuthenticated = await authFuture;
       if (!isAuthenticated) {
         debugPrint(
-          'DeepLinkService: No authenticated session available for game link, attempting anonymous sign-in...',
-        );
-        try {
-          await ref.read(authStateProvider.notifier).signInAnonymously();
-          isAuthenticated = true;
-        } catch (e) {
-          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
-        }
-      }
-
-      if (!isAuthenticated) {
-        debugPrint(
-          'DeepLinkService: Still no authenticated session, routing to home',
+          'DeepLinkService: No authenticated session, routing to auth screen',
         );
         _captureDeepLinkException(
           Exception(
@@ -559,7 +525,7 @@ class DeepLinkService {
         );
         await appReadyFuture;
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
+          '/auth_screen',
           (route) => false,
         );
         return;
@@ -698,28 +664,38 @@ class DeepLinkService {
     final deadline = DateTime.now().add(kAuthRestoreTimeout);
 
     while (DateTime.now().isBefore(deadline)) {
-      final state = ref.read(authStateProvider).valueOrNull;
-      if (state?.status == AppAuthStatus.authenticated) {
+      if (_isFullyAuthenticated(ref.read(authStateProvider).valueOrNull)) {
         return true;
       }
 
       final session = Supabase.instance.client.auth.currentSession;
       final user = Supabase.instance.client.auth.currentUser;
-      if (session != null && user != null && !session.isExpired) {
+      if (session != null &&
+          user != null &&
+          !session.isExpired &&
+          user.isAnonymous != true) {
         return true;
       }
 
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
 
-    final state = ref.read(authStateProvider).valueOrNull;
-    if (state?.status == AppAuthStatus.authenticated) {
+    if (_isFullyAuthenticated(ref.read(authStateProvider).valueOrNull)) {
       return true;
     }
 
     final session = Supabase.instance.client.auth.currentSession;
     final user = Supabase.instance.client.auth.currentUser;
-    return session != null && user != null && !session.isExpired;
+    return session != null &&
+        user != null &&
+        !session.isExpired &&
+        user.isAnonymous != true;
+  }
+
+  /// Anonymous sessions are no longer treated as authenticated.
+  bool _isFullyAuthenticated(AppAuthState? state) {
+    if (state?.status != AppAuthStatus.authenticated) return false;
+    return state?.user?.isAnonymous != true;
   }
 
   /// Route based on OneSignal notification data payload.
@@ -855,22 +831,11 @@ class DeepLinkService {
         }
       }
 
-      var isAuthenticated =
-          resolvedState?.status == AppAuthStatus.authenticated;
+      final isAuthenticated = _isFullyAuthenticated(resolvedState);
       if (!isAuthenticated) {
         debugPrint(
-          'DeepLinkService: No authenticated session available for event link, attempting anonymous sign-in...',
+          'DeepLinkService: User not authenticated, routing to auth screen',
         );
-        try {
-          await ref.read(authStateProvider.notifier).signInAnonymously();
-          isAuthenticated = true;
-        } catch (e) {
-          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
-        }
-      }
-
-      if (!isAuthenticated) {
-        debugPrint('DeepLinkService: User not authenticated, routing to home');
         _captureDeepLinkException(
           Exception(
             'Event deep link ignored because user is not authenticated',
@@ -885,7 +850,7 @@ class DeepLinkService {
           captureAsException: false,
         );
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/home_screen',
+          '/auth_screen',
           (route) => false,
         );
         return;

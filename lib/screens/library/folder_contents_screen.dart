@@ -102,11 +102,25 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     final repository = ref.read(libraryRepositoryProvider);
     try {
-      await repository.moveAnalysisToFolder(analysis.id, null);
+      // Hard delete the row so the free-tier save counter (which sums
+      // all user_saved_analyses rows, folder or not) reflects reality.
+      // Previously we set folder_id = NULL which kept the row alive and
+      // accumulated phantom orphans that still counted toward the cap.
+      await repository.deleteSavedAnalysis(analysis.id);
 
       if (!mounted) return;
       // Refresh the paginated list after removal.
       ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+      // Library home cards cache per-folder game counts; without this
+      // invalidation they keep showing the pre-delete number until app restart.
+      ref.invalidate(folderAnalysisCountProvider);
+      ref.invalidate(libraryFoldersStreamProvider);
+
+      // Snapshot the deleted analysis so Undo can re-insert it. The new
+      // row gets a fresh id; chess_game / analysis_state / variation
+      // comments / move nags are preserved so the user's work survives.
+      final snapshot = analysis;
+      final targetFolderId = widget.folder.id;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -121,13 +135,32 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             textColor: kPrimaryColor,
             onPressed: () async {
               try {
-                await repository.moveAnalysisToFolder(
-                  analysis.id,
-                  widget.folder.id,
+                final now = DateTime.now();
+                final restored = SavedAnalysis(
+                  id: '',
+                  userId: snapshot.userId,
+                  folderId: targetFolderId,
+                  title: snapshot.title,
+                  sourceGameId: snapshot.sourceGameId,
+                  sourceTournamentId: snapshot.sourceTournamentId,
+                  chessGame: snapshot.chessGame,
+                  analysisState: snapshot.analysisState,
+                  variationComments: snapshot.variationComments,
+                  moveNags: snapshot.moveNags,
+                  lastViewedPosition: snapshot.lastViewedPosition,
+                  tags: snapshot.tags,
+                  notes: snapshot.notes,
+                  isFavorite: snapshot.isFavorite,
+                  createdAt: snapshot.createdAt,
+                  updatedAt: now,
                 );
+                await repository.createSavedAnalysis(restored);
+                if (!mounted) return;
                 ref
                     .read(bookGamesPaginatedProvider(_paginationKey).notifier)
                     .refresh();
+                ref.invalidate(folderAnalysisCountProvider);
+                ref.invalidate(libraryFoldersStreamProvider);
               } catch (_) {
                 // Best-effort undo; show nothing if it fails.
               }
@@ -213,6 +246,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
     if (!mounted) return;
     ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+    ref.invalidate(folderAnalysisCountProvider);
+    ref.invalidate(libraryFoldersStreamProvider);
   }
 
   Future<void> _handleImportPgnFromClipboard() async {
@@ -263,6 +298,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     if (!mounted) return;
     // Refresh in case games were saved into this folder from the sheet.
     ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+    ref.invalidate(folderAnalysisCountProvider);
+    ref.invalidate(libraryFoldersStreamProvider);
   }
 
   Future<void> _handleCreateSubfolder() async {
@@ -518,13 +555,6 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     final bool showExport = (bookAsync.valueOrNull?.totalCount ?? 0) > 0;
     final bool showRename = !_isSubscribed;
     final bool showAdd = !_isSubscribed;
-    final int rightIconCount =
-        (showExport ? 1 : 0) + (showRename ? 1 : 0) + (showAdd ? 1 : 0);
-    // IconButton default min tap target ≈ 48 logical px. Mirror the larger
-    // side's width as symmetric padding so the title stays centered and
-    // never overflows into the icon buttons.
-    final double titleSidePadding =
-        (rightIconCount > 1 ? rightIconCount * 48.w : 56.w);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -533,91 +563,91 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         horizontalPadding,
         8.h,
       ),
-      child: Stack(
-        alignment: Alignment.center,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              onPressed: () {
-                HapticFeedbackService.light();
-                Navigator.of(context).pop();
-              },
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
+          IconButton(
+            onPressed: () {
+              HapticFeedbackService.light();
+              Navigator.of(context).pop();
+            },
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.symmetric(horizontal: 6.w),
+            constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+            icon: Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: context.colors.textPrimary,
+              size: 20.ic,
             ),
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showExport)
-                  IconButton(
-                    onPressed: _handleExportPgn,
-                    tooltip: 'Export as PGN',
-                    icon: Icon(
-                      Icons.ios_share_rounded,
-                      color: context.colors.textPrimary,
-                      size: 22.ic,
-                    ),
-                  ),
-                // Rename is only available for owned databases (subscribed
-                // folders are read-only — you can't rename someone else's book).
-                if (showRename)
-                  IconButton(
-                    onPressed: _handleRename,
-                    tooltip: 'Rename Database',
-                    icon: Icon(
-                      Icons.edit_rounded,
-                      color: context.colors.textPrimary,
-                      size: 22.ic,
-                    ),
-                  ),
-                // Shown for owned databases at both root and sub levels.
-                // The sheet itself hides "Create Sub-Database" on sub-level
-                // folders since 2-layer hierarchy doesn't allow deeper nesting.
-                if (showAdd)
-                  IconButton(
-                    onPressed: _handlePlusButton,
-                    icon: Icon(
-                      Icons.add_rounded,
-                      color: context.colors.textPrimary,
-                      size: 28.ic,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: titleSidePadding),
+          SizedBox(width: 4.w),
+          Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   _currentFolderName,
-                  style: AppTypography.textLgBold.copyWith(
+                  style: AppTypography.textMdBold.copyWith(
                     color: context.colors.textPrimary,
-                    height: 1.1,
+                    height: 1.15,
+                    letterSpacing: -0.2,
                   ),
                   textAlign: TextAlign.center,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (totalCount != null)
+                if (totalCount != null) ...[
+                  SizedBox(height: 2.h),
                   Text(
                     totalCount == 1 ? '1 game' : '$totalCount games',
                     style: AppTypography.textXsRegular.copyWith(
                       color: context.colors.textPrimary.withValues(alpha: 0.5),
-                      height: 1.2,
+                      height: 1.1,
                     ),
                   ),
+                ],
               ],
             ),
           ),
+          SizedBox(width: 4.w),
+          if (showExport)
+            IconButton(
+              onPressed: _handleExportPgn,
+              tooltip: 'Export as PGN',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.symmetric(horizontal: 6.w),
+              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+              icon: Icon(
+                Icons.ios_share_rounded,
+                color: context.colors.textPrimary,
+                size: 20.ic,
+              ),
+            ),
+          if (showRename)
+            IconButton(
+              onPressed: _handleRename,
+              tooltip: 'Rename Database',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.symmetric(horizontal: 6.w),
+              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+              icon: Icon(
+                Icons.edit_rounded,
+                color: context.colors.textPrimary,
+                size: 20.ic,
+              ),
+            ),
+          if (showAdd)
+            IconButton(
+              onPressed: _handlePlusButton,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.symmetric(horizontal: 6.w),
+              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+              icon: Icon(
+                Icons.add_rounded,
+                color: context.colors.textPrimary,
+                size: 26.ic,
+              ),
+            ),
         ],
       ),
     );

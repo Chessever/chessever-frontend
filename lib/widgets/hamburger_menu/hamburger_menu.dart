@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
@@ -10,6 +13,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -52,12 +56,19 @@ Future<void> _launchEmail() async {
   }
 }
 
-Future<void> _launchPrivacyPolicy() async {
-  final Uri privacyPolicyUri = Uri.parse(
-    'https://chessever.com/privacy-policy',
-  );
-  if (await canLaunchUrl(privacyPolicyUri)) {
-    await launchUrl(privacyPolicyUri, mode: LaunchMode.externalApplication);
+Future<void> _openStoreListing() async {
+  try {
+    await InAppReview.instance.openStoreListing(appStoreId: '6752567269');
+  } catch (_) {
+    // Fallback to web URLs if the native store sheet can't open.
+    final Uri fallback = Uri.parse(
+      Platform.isIOS
+          ? 'https://apps.apple.com/app/id6752567269'
+          : 'https://play.google.com/store/apps/details?id=com.chessEver.app',
+    );
+    if (await canLaunchUrl(fallback)) {
+      await launchUrl(fallback, mode: LaunchMode.externalApplication);
+    }
   }
 }
 
@@ -274,26 +285,14 @@ class HamburgerMenu extends HookConsumerWidget {
                       showChevron: true,
                     ),
                     _MenuItem(
-                      customIcon: SvgWidget(
-                        SvgAsset.privacyPolicy,
-                        semanticsLabel: 'Privacy Policy Icon',
-                        height: 20.h,
-                        width: 20.w,
-                        colorFilter: context.isLightTheme
-                            ? ColorFilter.mode(
-                                context.colors.iconPrimary,
-                                BlendMode.srcIn,
-                              )
-                            : null,
-                      ),
-                      icon: Icons.lock_outline,
-                      title: 'Privacy Policy',
+                      icon: Icons.star_outline,
+                      title: 'Rate this app',
                       textStyle: AppTypography.textSmRegular.copyWith(
                         color: context.colors.iconPrimary,
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
-                        _launchPrivacyPolicy();
+                        _openStoreListing();
                       },
                       showChevron: true,
                     ),
@@ -535,17 +534,33 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
               ),
             ),
             SizedBox(height: 12.h),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(69.br),
-              ),
-              child: InkWell(
-                onTap: () async {
-                  HapticFeedbackService.buttonPress();
-                  await requirePremiumGuard(context, ref);
-                },
+            // GestureDetector wraps the whole pill so the full padded area
+            // is tappable. Previously an InkWell sat *inside* the Container,
+            // so only the bare Text glyph was hit-testable and the pill
+            // appeared unresponsive on tablet sizes where the padding is
+            // large relative to the text.
+            //
+            // Calls showPremiumPaywallSheet directly instead of
+            // requirePremiumGuard because the guard short-circuits to `true`
+            // in kDebugMode — which made this button silently no-op for
+            // anyone running a debug build.
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                HapticFeedbackService.buttonPress();
+                final authOk = await requireFullAuthGuard(context);
+                if (!authOk || !context.mounted) return;
+                await showPremiumPaywallSheet(context: context);
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.sp,
+                  vertical: 8.sp,
+                ),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor,
+                  borderRadius: BorderRadius.circular(69.br),
+                ),
                 child: Text(
                   'Upgrade to Premium',
                   style: AppTypography.textXsMedium.copyWith(

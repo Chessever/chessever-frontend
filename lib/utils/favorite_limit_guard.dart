@@ -1,12 +1,11 @@
-import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Checks whether the user can add another favorite player.
 ///
@@ -45,9 +44,23 @@ Future<bool> canAddMoreFavorites(
   final isSubscribed = ref.read(subscriptionProvider).isSubscribed;
   if (isSubscribed) return true;
 
-  final currentCount =
-      currentSelectedCount ??
-      (ref.read(favoritePlayersProviderNew).valueOrNull?.length ?? 0);
+  // Fresh server-side count. Reading the realtime AsyncNotifier's cached
+  // length lags after a just-completed INSERT and let users slip in extra
+  // favorites without the paywall firing — same race that affected the
+  // saved-games guard. The onboarding path passes currentSelectedCount
+  // (local) and bypasses this query.
+  final int currentCount;
+  if (currentSelectedCount != null) {
+    currentCount = currentSelectedCount;
+  } else {
+    final supabase = Supabase.instance.client;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return false;
+    currentCount = await supabase
+        .from('user_favorite_players')
+        .count(CountOption.exact)
+        .eq('user_id', userId);
+  }
 
   if (currentCount < kFreeFavoriteLimit) return true;
 

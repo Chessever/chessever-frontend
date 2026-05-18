@@ -127,7 +127,8 @@ class LibraryRepository extends BaseRepository {
         return LibraryFolder.fromSupabase(response);
       });
 
-  /// Delete a folder (analyses in it will have folder_id set to NULL)
+  /// Delete a folder. FK is ON DELETE CASCADE — every analysis inside is
+  /// hard-deleted with the folder. Confirm with the user before calling.
   Future<void> deleteFolder(String folderId) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -521,8 +522,12 @@ class LibraryRepository extends BaseRepository {
             .eq('user_id', userId);
       });
 
-  /// Move analysis to a different folder
-  Future<void> moveAnalysisToFolder(String analysisId, String? folderId) =>
+  /// Move analysis to a different folder. `folderId` is required — the DB
+  /// rejects NULL on user_saved_analyses.folder_id. Previously this accepted
+  /// nullable folderId; callers used `null` to "remove from folder" which
+  /// silently orphaned rows and made them count toward the free save cap
+  /// while being invisible in the UI.
+  Future<void> moveAnalysisToFolder(String analysisId, String folderId) =>
       handleApiCall(() async {
         final userId = supabase.auth.currentUser?.id;
         if (userId == null) throw Exception('User not authenticated');
@@ -544,6 +549,23 @@ class LibraryRepository extends BaseRepository {
             .from('user_saved_analyses')
             .update({'is_favorite': isFavorite})
             .eq('id', analysisId)
+            .eq('user_id', userId);
+      });
+
+  /// Total number of analyses the current user owns across every folder.
+  /// Fresh, server-side count — do not derive this from the realtime stream
+  /// provider, which can return a stale cached value right after a save and
+  /// let the user squeak past the free-tier cap (we hit exactly that bug:
+  /// users were adding an 11th game without the paywall firing because the
+  /// stream had not yet emitted the freshly-inserted row).
+  Future<int> getTotalAnalysisCountForCurrentUser() =>
+      handleApiCall(() async {
+        final userId = supabase.auth.currentUser?.id;
+        if (userId == null) throw Exception('User not authenticated');
+
+        return supabase
+            .from('user_saved_analyses')
+            .count(CountOption.exact)
             .eq('user_id', userId);
       });
 

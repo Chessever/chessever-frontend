@@ -6,7 +6,6 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
-import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/players/providers/player_providers.dart';
@@ -385,58 +384,20 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
     unawaited(PushNotificationsService.instance.requestPermissionWithDialog());
   }
 
-  // Ensure we don't lose onboarding selections: do not navigate away if we fail here
-  // (user can retry without losing in-memory providers)
   try {
-    // If user is not authenticated at all, create an anonymous account
-    // This preserves their onboarding selections (favorites, country, etc.)
-    var user = Supabase.instance.client.auth.currentUser;
+    final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       if (kDebugMode) {
-        debugPrint('[Onboarding] No user - creating anonymous account...');
-      }
-      try {
-        await ref.read(authStateProvider.notifier).signInAnonymously();
-        user = Supabase.instance.client.auth.currentUser;
-        if (kDebugMode) {
-          debugPrint('[Onboarding] Anonymous account created: ${user?.id}');
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[Onboarding] Failed to create anonymous account: $e');
-        }
-        // Without an auth session we cannot persist selections safely
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not start guest session. Please try again.'),
-            ),
-          );
-        }
-        return;
-      }
-    }
-
-    // If we still failed to obtain a user, bail out early to avoid losing selections
-    if (user == null) {
-      if (kDebugMode) {
-        debugPrint('[Onboarding] No user session available after attempt');
+        debugPrint('[Onboarding] No user session - routing to auth screen');
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not start session. Please try again.'),
-          ),
-        );
+        Navigator.pushReplacementNamed(context, '/auth_screen');
       }
       return;
     }
 
-    // Clean up any legacy favorite event pollution before syncing
     await FavoritesMigration.cleanupBadMigrationDataIfNeeded();
 
-    // Now flush any pending favorite selections to Supabase
-    // (works for both anonymous and authenticated users)
     try {
       await ref
           .read(pendingFavoriteSelectionsProvider.notifier)
@@ -450,17 +411,15 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
       }
     }
 
-    await ref.read(onboardingRepositoryProvider).markCompleted(user?.id);
+    await ref.read(onboardingRepositoryProvider).markCompleted(user.id);
     final favoritePlayers = ref.read(favoritePlayersProviderNew);
     final favoriteCount = favoritePlayers.valueOrNull?.length;
-    final isAuthenticated = user?.isAnonymous == false;
 
     AnalyticsService.instance.trackEventDetached(
       'Onboarding Completed',
       properties: {
         'favorite_player_count': favoriteCount,
-        'is_authenticated': isAuthenticated,
-        'is_anonymous': user?.isAnonymous == true,
+        'is_authenticated': true,
       },
     );
   } catch (e) {

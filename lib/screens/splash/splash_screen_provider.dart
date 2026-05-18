@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Exception thrown when network is unavailable during splash initialization
 class NoNetworkException implements Exception {
@@ -151,6 +152,15 @@ class _SplashScreenProvider {
       if (kDebugMode) {
         print('⚠️ Startup session warm-up failed/timeout: $e');
       }
+      isLoggedIn = false;
+    }
+
+    // Anonymous sessions are no longer treated as logged in — legacy anon
+    // users are routed to the auth screen so they can sign in (favorites get
+    // migrated by the OAuth link flow once they pick a provider).
+    final isAnonymous =
+        Supabase.instance.client.auth.currentUser?.isAnonymous == true;
+    if (isAnonymous) {
       isLoggedIn = false;
     }
 

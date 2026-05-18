@@ -278,21 +278,42 @@ class _CalendarDetailScreenController
     try {
       // Check if this is a calendar event (community event)
       if (id.startsWith('cal_event_')) {
-        final sanitizedName = id.replaceFirst('cal_event_', '');
+        String sanitize(String name) => name
+            .replaceAll(' ', '_')
+            .replaceAll(RegExp(r'[^\w\-]'), '')
+            .toLowerCase();
 
-        final event = calendarEvents.firstWhere((e) {
-          final eventSanitized =
-              e.name
-                  .replaceAll(' ', '_')
-                  .replaceAll(RegExp(r'[^\w\-]'), '')
-                  .toLowerCase();
-          return eventSanitized == sanitizedName;
-        }, orElse: () => throw Exception('Event not found'));
+        final byId = <String, CalendarEvent>{
+          for (final e in calendarEvents) 'cal_event_${sanitize(e.name)}': e,
+        };
+
+        // Build community subset of currently filtered events, preserving order.
+        final visible = state.valueOrNull ?? const <GroupEventCardModel>[];
+        final ordered = <CalendarEvent>[];
+        var initialIndex = 0;
+        for (final v in visible) {
+          if (v.eventSource != EventSource.communityEvent) continue;
+          final match = byId[v.id];
+          if (match == null) continue;
+          if (v.id == id) initialIndex = ordered.length;
+          ordered.add(match);
+        }
+
+        if (ordered.isEmpty) {
+          // Defensive fallback — tapped event missing from filtered/cache.
+          final fallback = byId[id];
+          if (fallback == null) throw Exception('Event not found');
+          ordered.add(fallback);
+          initialIndex = 0;
+        }
 
         if (context.mounted) {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => CalendarEventDetailScreen(event: event),
+              builder: (_) => CalendarEventDetailScreen(
+                events: ordered,
+                initialIndex: initialIndex,
+              ),
             ),
           );
         }

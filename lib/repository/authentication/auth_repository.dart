@@ -533,52 +533,6 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
   }
 
-  Future<AppUser> signInAnonymously() async {
-    state = const AsyncValue.data(AppAuthState.loading());
-    unawaited(
-      AnalyticsService.instance.trackAuthEvent(
-        action: 'anonymous_sign_in_started',
-        method: 'anonymous',
-      ),
-    );
-
-    try {
-      final response = await _supabase.auth.signInAnonymously();
-
-      final user = response.user;
-      final session = response.session;
-      if (user == null || session == null) {
-        throw Exception('Failed to sign in anonymously.');
-      }
-
-      await _sessionManager.saveSession(session, user);
-
-      final appUser = AppUser.fromSupabaseUser(user);
-      state = AsyncValue.data(AppAuthState.authenticated(appUser));
-      unawaited(
-        AnalyticsService.instance.trackAuthEvent(
-          action: 'anonymous_sign_in',
-          method: 'anonymous',
-          success: true,
-          user: appUser,
-        ),
-      );
-      return appUser;
-    } catch (e, st) {
-      await ref.read(errorLoggerProvider).logError(e, st);
-      state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
-      unawaited(
-        AnalyticsService.instance.trackAuthEvent(
-          action: 'anonymous_sign_in',
-          method: 'anonymous',
-          success: false,
-          reason: e.toString(),
-        ),
-      );
-      rethrow;
-    }
-  }
-
   Future<void> signOut() async {
     state = const AsyncValue.data(AppAuthState.loading());
 

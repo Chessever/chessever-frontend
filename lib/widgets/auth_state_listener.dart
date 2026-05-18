@@ -71,6 +71,22 @@ class AuthStateListener extends ConsumerWidget {
         if (authState.status == AppAuthStatus.authenticated) {
           final currentUserId = authState.user?.id;
           final previousUserId = previousState?.user?.id;
+          final isAnonymous = authState.user?.isAnonymous == true;
+
+          // Anonymous accounts are no longer allowed in the app. Redirect any
+          // lingering anon session (e.g. legacy installs) to the auth screen so
+          // they can sign in. Onboarding and auth screens themselves stay open
+          // so existing anon favorites can be migrated by the OAuth link flow.
+          if (isAnonymous) {
+            const protectedRoutes = {'/', '/auth_screen', '/onboarding'};
+            if (!protectedRoutes.contains(currentRoute)) {
+              navigator.pushNamedAndRemoveUntil(
+                '/auth_screen',
+                (route) => false,
+              );
+            }
+            return;
+          }
 
           // Only run sync when:
           // 1. We're transitioning FROM unauthenticated/loading TO authenticated, OR
@@ -216,33 +232,17 @@ class AuthStateListener extends ConsumerWidget {
             );
           }
 
-          // Auth screen routing:
-          // - Non-anonymous: redirect to onboarding/home.
-          // - Anonymous: redirect only if the auth screen initiated an anon flow (guest).
-          final isAnonymous = authState.user?.isAnonymous == true;
-          final authScreenState = ref.read(authScreenProvider);
-          final fromGuestFlow =
-              authScreenState.guestFlowStarted ||
-              authScreenState.user?.isAnonymous == true;
-          final isOnAuthScreen =
-              currentRoute == '/auth_screen' ||
-              (fromGuestFlow && currentRoute.isEmpty);
-
-          if (isOnAuthScreen) {
+          // After OAuth completes on the auth screen, route the user into the
+          // app (home or onboarding depending on whether they finished it).
+          if (currentRoute == '/auth_screen') {
             final hasSeenOnboarding = await ref
                 .read(onboardingRepositoryProvider)
                 .hasSeenOnboarding(userId: currentUserId);
 
-            final shouldRedirect =
-                (!isAnonymous) || (isAnonymous && fromGuestFlow);
-
-            if (shouldRedirect) {
-              final targetRoute =
-                  hasSeenOnboarding ? '/home_screen' : '/onboarding';
-              navigator.pushNamedAndRemoveUntil(targetRoute, (route) => false);
-              // Reset auth screen state to avoid stale flags on next visit
-              ref.read(authScreenProvider.notifier).reset();
-            }
+            final targetRoute =
+                hasSeenOnboarding ? '/home_screen' : '/onboarding';
+            navigator.pushNamedAndRemoveUntil(targetRoute, (route) => false);
+            ref.read(authScreenProvider.notifier).reset();
           }
         } else if (authState.status == AppAuthStatus.unauthenticated) {
           // Clear the sync tracking when user logs out

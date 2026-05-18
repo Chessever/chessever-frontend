@@ -130,11 +130,17 @@ class PlayersRepository extends BaseRepository {
       if (query.trim().isEmpty) return [];
 
       final term = '%${query.trim()}%';
+      final fedCode = CountryUtils.resolveFideCode(query);
+
+      final orFilters = StringBuffer('name.ilike.$term,title.ilike.$term');
+      if (fedCode != null) {
+        orFilters.write(',country.eq.$fedCode');
+      }
 
       final data = await supabase
           .from('chess_players')
           .select('fideid, name, title, rating, country')
-          .or('name.ilike.$term,title.ilike.$term')
+          .or(orFilters.toString())
           .or('rating.lt.3300,rating.is.null')
           .order('rating', ascending: false, nullsFirst: false)
           .range(offset, offset + pageSize - 1);

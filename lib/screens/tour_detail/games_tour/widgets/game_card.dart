@@ -321,12 +321,16 @@ class _CenterContent extends ConsumerWidget {
     // kBlackColor / surface tokens read fine.
     final isLight = context.isLightTheme;
 
-    // If game is not ongoing, show result text
+    // If game is not ongoing, show result text with colored win/loss digits
     if (effectiveStatus != GameStatus.ongoing) {
+      final neutralColor =
+          isLight ? context.colors.textPrimary : kBlackColor;
       return Center(
-        child: StatusText(
+        child: _ResultText(
           status: _displayTextSupporter(matchWithComparison),
-          color: isLight ? context.colors.textPrimary : kBlackColor,
+          winColor: context.colors.success,
+          loseColor: context.colors.danger,
+          neutralColor: neutralColor,
         ),
       );
     }
@@ -519,6 +523,41 @@ class StatusText extends StatelessWidget {
       status,
       textAlign: TextAlign.center,
       style: AppTypography.textXsMedium.copyWith(color: color),
+    );
+  }
+}
+
+class _ResultText extends StatelessWidget {
+  const _ResultText({
+    required this.status,
+    required this.winColor,
+    required this.loseColor,
+    required this.neutralColor,
+  });
+
+  final String status;
+  final Color winColor;
+  final Color loseColor;
+  final Color neutralColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = AppTypography.textXsMedium.copyWith(color: neutralColor);
+    final spans = <InlineSpan>[];
+    for (final ch in status.split('')) {
+      Color color;
+      if (ch == '1') {
+        color = winColor;
+      } else if (ch == '0') {
+        color = loseColor;
+      } else {
+        color = neutralColor;
+      }
+      spans.add(TextSpan(text: ch, style: baseStyle.copyWith(color: color)));
+    }
+    return RichText(
+      textAlign: TextAlign.center,
+      text: TextSpan(style: baseStyle, children: spans),
     );
   }
 }

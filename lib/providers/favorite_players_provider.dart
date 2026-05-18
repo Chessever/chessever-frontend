@@ -148,21 +148,29 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     String? title,
   }) async {
     try {
-      // Enforce favorite limit for free users
-      final currentCount = state.valueOrNull?.length ?? 0;
-      if (currentCount >= kFreeFavoriteLimit) {
-        final isSubscribed = await RevenueCatService().isSubscribed();
-        if (!isSubscribed) {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User must be logged in to favorite players');
+      }
+
+      // Enforce free-tier favorite cap. The count comes from a fresh
+      // server-side COUNT, NOT from `state.valueOrNull?.length`, because
+      // the AsyncNotifier reflects the cached Supabase realtime stream
+      // which lags behind the latest INSERT by the round-trip time. The
+      // same race let users slip past the saved-games cap before — same
+      // pattern, same fix.
+      final isSubscribed = await RevenueCatService().isSubscribed();
+      if (!isSubscribed) {
+        final currentCount = await _supabase
+            .from('user_favorite_players')
+            .count(CountOption.exact)
+            .eq('user_id', userId);
+        if (currentCount >= kFreeFavoriteLimit) {
           debugPrint(
             '[FavoritePlayers] Free user at limit ($kFreeFavoriteLimit), blocking add',
           );
           throw FavoriteLimitExceededException(kFreeFavoriteLimit);
         }
-      }
-
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('User must be logged in to favorite players');
       }
 
       // Check if already exists by fide_id to prevent duplicates

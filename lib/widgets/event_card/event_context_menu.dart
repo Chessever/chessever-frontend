@@ -1,17 +1,19 @@
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Actions available from the event card long-press context menu.
-enum EventContextAction { share }
+enum EventContextAction { share, copyPgn }
 
 /// Builds the canonical shareable URL for an event, mirroring
 /// `lichess.org/broadcast/<tour.slug>/<tour.id>` on chessever.com.
@@ -76,6 +78,9 @@ Future<void> showEventContextMenu({
     case EventContextAction.share:
       await _shareEvent(context: context, ref: ref, model: model);
       break;
+    case EventContextAction.copyPgn:
+      await _copyEventPgn(context: context, ref: ref, model: model);
+      break;
   }
 }
 
@@ -91,6 +96,11 @@ List<PopupMenuEntry<EventContextAction>> _buildMenuItems() {
       value: EventContextAction.share,
       label: 'Share',
       icon: Icons.ios_share,
+    ),
+    _menuItem(
+      value: EventContextAction.copyPgn,
+      label: 'Copy PGN',
+      icon: Icons.copy,
     ),
   ];
 }
@@ -145,6 +155,97 @@ Future<void> _shareEvent({
   );
 
   await Share.share(url, sharePositionOrigin: origin);
+}
+
+Future<void> _copyEventPgn({
+  required BuildContext context,
+  required WidgetRef ref,
+  required GroupEventCardModel model,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final textColor = context.colors.textPrimary;
+  final bgColor = context.colors.surface.withValues(alpha: 0.95);
+
+  try {
+    final tourIds = await ref
+        .read(groupBroadcastRepositoryProvider)
+        .getTourIdsForGroupBroadcast(model.id);
+
+    if (tourIds.isEmpty) {
+      _showPgnSnackBar(messenger, 'No games to copy', textColor, bgColor);
+      return;
+    }
+
+    final gameRepo = ref.read(gameRepositoryProvider);
+    final pgnBuffer = StringBuffer();
+    const pageSize = 500;
+    var offset = 0;
+    var copied = 0;
+
+    while (true) {
+      final games = await gameRepo.getGamesFromTourIds(
+        tourIds: tourIds,
+        limit: pageSize,
+        offset: offset,
+      );
+      if (games.isEmpty) break;
+
+      for (final g in games) {
+        final pgn = g.pgn;
+        if (pgn == null || pgn.trim().isEmpty) continue;
+        if (copied > 0) pgnBuffer.write('\n\n');
+        pgnBuffer.write(pgn.trim());
+        copied++;
+      }
+
+      if (games.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    if (copied == 0) {
+      _showPgnSnackBar(messenger, 'No games to copy', textColor, bgColor);
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: pgnBuffer.toString()));
+    HapticFeedbackService.success();
+
+    AnalyticsService.instance.trackEventDetached(
+      'Event PGN Copied',
+      properties: {
+        'event_id': model.id,
+        'event_name': model.title,
+        'game_count': copied,
+      },
+    );
+
+    _showPgnSnackBar(
+      messenger,
+      copied == 1 ? 'PGN copied' : '$copied PGNs copied',
+      textColor,
+      bgColor,
+    );
+  } catch (_) {
+    _showPgnSnackBar(messenger, 'Failed to copy PGN', textColor, bgColor);
+  }
+}
+
+void _showPgnSnackBar(
+  ScaffoldMessengerState messenger,
+  String message,
+  Color textColor,
+  Color bgColor,
+) {
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        message,
+        style: AppTypography.textSmMedium.copyWith(color: textColor),
+      ),
+      backgroundColor: bgColor,
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
 }
 
 class _EventMenuRow extends StatelessWidget {

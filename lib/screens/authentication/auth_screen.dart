@@ -55,11 +55,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       final user = state.user;
       if (user == null) return;
 
-      // Only navigate for non-anonymous users (OAuth users)
-      // Anonymous users are handled by the "Continue as Guest" button directly
-      final supabaseUser = Supabase.instance.client.auth.currentUser;
-      if (supabaseUser?.isAnonymous == true) return;
-
       final onboardingRepo = ref.read(onboardingRepositoryProvider);
       final hasCompleted = await onboardingRepo.isCompleted(user.id);
       if (!mounted) return;
@@ -270,35 +265,6 @@ class _AuthButtonWidget extends ConsumerWidget {
           onPressed: () async {
             await ref.read(authScreenProvider.notifier).signInWithGoogle();
           },
-        ),
-        SizedBox(height: 12.h),
-        TextButton(
-          onPressed: () async {
-            final appUser =
-                await ref.read(authScreenProvider.notifier).signInAsGuest();
-
-            if (!context.mounted || appUser == null || !appUser.isAnonymous)
-              return;
-
-            final onboardingRepo = ref.read(onboardingRepositoryProvider);
-            final hasCompleted = await onboardingRepo.isCompleted(appUser.id);
-
-            if (!context.mounted) return;
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              hasCompleted ? '/home_screen' : '/onboarding',
-              (_) => false,
-            );
-            ref.read(authScreenProvider.notifier).reset();
-          },
-          child: Text(
-            'Continue as Guest',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-              decoration: TextDecoration.underline,
-              decorationColor: context.colors.textPrimary.withValues(alpha: 0.7),
-            ),
-          ),
         ),
       ],
     );

@@ -210,6 +210,26 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       }
 
       const subscriptions = await fetchLiveSubscriptions(item.game_id);
+
+      // Strip users who muted this event. Without this, "Disable notifications"
+      // in the tournament menu still leaked LiveActivity updates, Android live
+      // notifications, and live_game_update alert pushes.
+      const mutedLiveUserIds = await fetchMutedUserIds(
+        context.groupBroadcastId,
+        [
+          ...subscriptions.ios.map((row) => row.user_id),
+          ...subscriptions.android.map((row) => row.user_id),
+        ],
+      );
+      if (mutedLiveUserIds.size > 0) {
+        subscriptions.ios = subscriptions.ios.filter(
+          (row) => !mutedLiveUserIds.has(row.user_id),
+        );
+        subscriptions.android = subscriptions.android.filter(
+          (row) => !mutedLiveUserIds.has(row.user_id),
+        );
+      }
+
       const iosUserIdsRaw = subscriptions.ios.map((row) => row.user_id);
       const androidUserIdsRaw = subscriptions.android.map((row) => row.user_id);
 
@@ -1398,6 +1418,25 @@ async function fetchLiveSubscriptions(gameId: string) {
   }
 
   return { ios, android };
+}
+
+async function fetchMutedUserIds(
+  groupBroadcastId: string | null,
+  candidateUserIds: string[],
+): Promise<Set<string>> {
+  const muted = new Set<string>();
+  if (!groupBroadcastId || candidateUserIds.length === 0) return muted;
+  const unique = Array.from(new Set(candidateUserIds));
+  const { data, error } = await supabase
+    .from("user_muted_events")
+    .select("user_id")
+    .eq("group_broadcast_id", groupBroadcastId)
+    .in("user_id", unique);
+  if (error) return muted;
+  for (const row of data ?? []) {
+    muted.add(row.user_id as string);
+  }
+  return muted;
 }
 
 async function filterLiveUpdateEnabled(userIds: string[]) {

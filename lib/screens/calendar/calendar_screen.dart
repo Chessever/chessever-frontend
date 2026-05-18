@@ -536,7 +536,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   return EventCard(
                     tourEventCardModel: event,
                     heroTagSuffix: 'calendar-list-$index',
-                    onTap: () => _onEventTap(event),
+                    onTap: () => _onEventTap(event, sortedEvents),
                   );
                 },
               )
@@ -556,7 +556,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     child: EventCard(
                       tourEventCardModel: event,
                       heroTagSuffix: 'calendar-list-$index',
-                      onTap: () => _onEventTap(event),
+                      onTap: () => _onEventTap(event, sortedEvents),
                     ),
                   );
                 },
@@ -564,35 +564,79 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     );
   }
 
-  Future<void> _onEventTap(GroupEventCardModel event) async {
+  Future<void> _onEventTap(
+    GroupEventCardModel event,
+    List<GroupEventCardModel> visibleEvents,
+  ) async {
     try {
       if (event.eventSource == EventSource.communityEvent) {
         final repo = ref.read(calendarEventRepositoryProvider);
-        final results = await repo.searchCalendarEvents(event.title);
-        CalendarEvent? match;
-        final targetId = event.id;
-        for (final cal in results) {
-          final calId = _sanitizeCalendarEventId(cal.name);
-          if (calId == targetId) {
-            match = cal;
-            break;
+        final selectedYear = ref.read(selectedYearProvider);
+
+        // Visible community events in display order — defines swipe sequence.
+        final visibleCommunity = visibleEvents
+            .where((e) => e.eventSource == EventSource.communityEvent)
+            .toList(growable: false);
+
+        // Fetch full CalendarEvent rows for current year, then map to the
+        // visible community subset by sanitized id. Falls back to title-search
+        // if year fetch returns nothing useful.
+        final yearEvents = await repo.getCalendarEventsForYear(
+          year: selectedYear,
+        );
+
+        final byId = <String, CalendarEvent>{
+          for (final cal in yearEvents)
+            _sanitizeCalendarEventId(cal.name): cal,
+        };
+
+        final ordered = <CalendarEvent>[];
+        var initialIndex = 0;
+        for (final visible in visibleCommunity) {
+          final match = byId[visible.id];
+          if (match == null) continue;
+          if (visible.id == event.id) {
+            initialIndex = ordered.length;
+          }
+          ordered.add(match);
+        }
+
+        // Fallback: tapped event not in year set (defensive) — try title search.
+        if (ordered.isEmpty || byId[event.id] == null) {
+          final results = await repo.searchCalendarEvents(event.title);
+          CalendarEvent? match;
+          for (final cal in results) {
+            if (_sanitizeCalendarEventId(cal.name) == event.id) {
+              match = cal;
+              break;
+            }
+          }
+          match ??= results.isNotEmpty ? results.first : null;
+
+          if (!mounted) return;
+
+          if (match == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Event details not found')),
+            );
+            return;
+          }
+          if (ordered.isEmpty) {
+            ordered.add(match);
+            initialIndex = 0;
           }
         }
-        match ??= results.isNotEmpty ? results.first : null;
 
         if (!mounted) return;
 
-        if (match != null) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => CalendarEventDetailScreen(event: match!),
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CalendarEventDetailScreen(
+              events: ordered,
+              initialIndex: initialIndex,
             ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Event details not found')),
-          );
-        }
+          ),
+        );
         return;
       }
 

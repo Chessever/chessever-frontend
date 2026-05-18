@@ -29,6 +29,11 @@ Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
 
   final result = await showModalBottomSheet<bool>(
     context: context,
+    // Save flow / chess board sheets host their own nested Navigator
+    // (smooth_sheets PagedSheet). Without rootNavigator:true the paywall
+    // is pushed inside that nested scope and gets clipped to the host
+    // sheet's bounds. Route via the root navigator so it spans the screen.
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
@@ -105,12 +110,18 @@ class _PaywallContent extends HookConsumerWidget {
     final selectedPlan = useState<PlanType>(PlanType.annual);
     final isLoading = useState(false);
 
-    // Auto-close + celebrate when entitlement activates from any source —
-    // including offer-code redemption on iOS or returning from Play Store on Android.
+    // Single source of truth for "subscription activated → close paywall +
+    // celebrate". Covers every activation path: direct purchase, restore,
+    // offer-code redemption (iOS native sheet), Play Store deferred-return,
+    // and backend-side Stripe sync. handlePurchase / handleRestore do NOT
+    // also pop or celebrate — duplicating that pop here used to race with
+    // them and end up popping the *caller's* sheet (e.g. the Save Analysis
+    // sheet underneath), leaving its spinner stuck while the action it
+    // gated had already completed.
     ref.listen<SubscriptionState>(subscriptionProvider, (prev, next) {
       final wasSubscribed = prev?.isSubscribed ?? false;
       if (!wasSubscribed && next.isSubscribed && hostContext.mounted) {
-        Navigator.of(hostContext).pop(true);
+        Navigator.of(hostContext, rootNavigator: true).pop(true);
         unawaited(showPremiumCelebration(hostContext));
       }
     });
@@ -139,29 +150,18 @@ class _PaywallContent extends HookConsumerWidget {
       await ref
           .read(subscriptionProvider.notifier)
           .purchaseSubscription(package);
-      isLoading.value = false;
-
-      final newState = ref.read(subscriptionProvider);
-      if (newState.isSubscribed) {
-        if (hostContext.mounted) {
-          Navigator.of(hostContext).pop(true);
-          // Show celebration animation
-          await showPremiumCelebration(hostContext);
-        }
-      }
+      // ref.listen above closes the sheet on success. We only need to
+      // unfreeze the button on the cancel / error paths.
+      if (context.mounted) isLoading.value = false;
     }
 
     Future<void> handleRestore() async {
       isLoading.value = true;
       await ref.read(subscriptionProvider.notifier).restorePurchases();
-      isLoading.value = false;
-
-      final newState = ref.read(subscriptionProvider);
-      if (newState.isSubscribed) {
-        if (hostContext.mounted) {
-          Navigator.of(hostContext).pop(true);
-        }
-      }
+      if (context.mounted) isLoading.value = false;
+      // ref.listen closes the sheet if the restore actually reactivated
+      // a subscription; otherwise we stay on the paywall so the user can
+      // see the "no purchases found" feedback that the notifier surfaces.
     }
 
     Future<void> handleHaveCode() async {
@@ -233,7 +233,9 @@ class _PaywallContent extends HookConsumerWidget {
           Align(
             alignment: Alignment.centerRight,
             child: GestureDetector(
-              onTap: () => Navigator.of(hostContext).pop(false),
+              onTap:
+                  () =>
+                      Navigator.of(hostContext, rootNavigator: true).pop(false),
               child: Container(
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
@@ -776,7 +778,7 @@ class _PurchaseButton extends HookWidget {
         buttonText =
             'Try $trialCount ${unitString.capitalize()} Free, then $priceString/$periodSuffix';
       } else {
-        buttonText = 'Try 1 Week Free, then $priceString/$periodSuffix';
+        buttonText = 'Try 3 Days Free, then $priceString/$periodSuffix';
       }
     } else if (hasAndroidFreeTrial) {
       // Android trial info from freePhase.billingPeriod
@@ -790,10 +792,10 @@ class _PurchaseButton extends HookWidget {
           buttonText =
               'Try $trialCount ${unitString.capitalize()} Free, then $priceString/$periodSuffix';
         } else {
-          buttonText = 'Try 1 Week Free, then $priceString/$periodSuffix';
+          buttonText = 'Try 3 Days Free, then $priceString/$periodSuffix';
         }
       } else {
-        buttonText = 'Try 1 Week Free, then $priceString/$periodSuffix';
+        buttonText = 'Try 3 Days Free, then $priceString/$periodSuffix';
       }
     } else {
       buttonText = 'Continue';
@@ -896,6 +898,7 @@ Future<void> _showAndroidCodeRedeemSheet(
 }) async {
   await showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,

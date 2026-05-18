@@ -62,7 +62,7 @@ class UserAvatar extends HookConsumerWidget {
     final avatarWidget = AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: size.w,
-      height: size.h,
+      height: size.w,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: avatarUrl == null ? kProfileInitialsGradient : null,
@@ -113,7 +113,7 @@ class UserAvatar extends HookConsumerWidget {
         imageUrl: avatarUrl,
         fit: BoxFit.cover,
         width: size.w,
-        height: size.h,
+        height: size.w,
         memCacheWidth: cacheSize,
         placeholder: (context, url) => _buildFallback(context, initials),
         errorWidget: (context, url, error) => _buildFallback(context, initials),
