@@ -11,6 +11,7 @@ import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
+import 'package:chessever2/screens/library/widgets/twic_player_search_cards.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -413,9 +414,15 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       eventRow = const SizedBox.shrink();
     }
 
+    final searchQuery = ref.watch(librarySearchQueryProvider).trim();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ── Player search cards (above chip row, mirrors home page) ──
+        if (searchQuery.isNotEmpty)
+          TwicPlayerSearchCards(searchQuery: searchQuery),
+
         // ── Collapsible chip row + detail bar ──
         _buildCollapsibleHeader(
           eventRow: eventRow,

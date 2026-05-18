@@ -380,6 +380,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
+  Future<void> _shareGeneratedGif(Uint8List gifBytes) async {
+    final tempDir = await getTemporaryDirectory();
+    final file = io.File('${tempDir.path}/chessever_game.gif');
+    await file.writeAsBytes(gifBytes);
+
+    await _shareFiles([XFile(file.path)]);
+  }
+
   void _updateGifProgress(int captured, int accepted, int total) {
     final progress = (captured / total * 0.6 + accepted / total * 0.4).clamp(
       0.0,
@@ -699,11 +707,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
       // Save and share
       if (mounted) setState(() => _gifProgress = 0.95);
-      final tempDir = await getTemporaryDirectory();
-      final file = io.File('${tempDir.path}/chessever_game.gif');
-      await file.writeAsBytes(gifBytes);
-
-      await _shareFiles([XFile(file.path)]);
+      await _shareGeneratedGif(gifBytes);
     } finally {
       await subscription.cancel();
       mainPort.close();
@@ -826,11 +830,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
 
     if (mounted) setState(() => _gifProgress = 0.95);
-    final tempDir = await getTemporaryDirectory();
-    final file = io.File('${tempDir.path}/chessever_game.gif');
-    await file.writeAsBytes(gifBytes);
-
-    await _shareFiles([XFile(file.path)]);
+    await _shareGeneratedGif(gifBytes);
   }
 
   Future<void> _copyPgn() async {
@@ -884,13 +884,17 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           Icon(
             Icons.analytics_outlined,
             size: 16.sp,
-            color: _showEvalBar ? kPrimaryColor : context.colors.textPrimaryMuted,
+            color:
+                _showEvalBar ? kPrimaryColor : context.colors.textPrimaryMuted,
           ),
           SizedBox(width: 8.w),
           Text(
             'Eval Bar',
             style: TextStyle(
-              color: _showEvalBar ? context.colors.textPrimary : context.colors.textPrimaryMuted,
+              color:
+                  _showEvalBar
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimaryMuted,
               fontSize: 13.sp,
               fontWeight: FontWeight.w500,
             ),
@@ -904,7 +908,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               width: 40.w,
               height: 22.h,
               decoration: BoxDecoration(
-                color: _showEvalBar ? kPrimaryColor : context.colors.surfaceRecessed,
+                color:
+                    _showEvalBar
+                        ? kPrimaryColor
+                        : context.colors.surfaceRecessed,
                 borderRadius: BorderRadius.circular(11.br),
                 border: Border.all(
                   color: _showEvalBar ? kPrimaryColor : context.colors.divider,
@@ -958,17 +965,30 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       decoration: BoxDecoration(
         color: isPrimary ? kPrimaryColor : context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(8.br),
-        border: isPrimary ? null : Border.all(color: context.colors.divider, width: 1),
+        border:
+            isPrimary
+                ? null
+                : Border.all(color: context.colors.divider, width: 1),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 18.sp, color: isPrimary ? context.colors.textPrimary : context.colors.textPrimary),
+          Icon(
+            icon,
+            size: 18.sp,
+            color:
+                isPrimary
+                    ? context.colors.textPrimary
+                    : context.colors.textPrimary,
+          ),
           SizedBox(width: 8.w),
           Text(
             label,
             style: TextStyle(
-              color: isPrimary ? context.colors.textPrimary : context.colors.textPrimary,
+              color:
+                  isPrimary
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimary,
               fontSize: 13.sp,
               fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w500,
             ),
@@ -1660,7 +1680,10 @@ class _ShareCard extends ConsumerWidget {
           if (roundInfo != null)
             Text(
               roundInfo!,
-              style: TextStyle(color: context.colors.textPrimaryMuted, fontSize: 9.sp),
+              style: TextStyle(
+                color: context.colors.textPrimaryMuted,
+                fontSize: 9.sp,
+              ),
             ),
           SizedBox(height: 12.h),
           // Top player row - matching PlayerFirstRowDetailWidget exactly
@@ -1872,7 +1895,11 @@ class _ShareCard extends ConsumerWidget {
                 color: Colors.black.withValues(alpha: 0.4),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.close, size: 16.sp, color: context.colors.textPrimary),
+              child: Icon(
+                Icons.close,
+                size: 16.sp,
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ),

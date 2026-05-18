@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:chessever2/screens/chessboard/widgets/gif_export_worker.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 
 void main() {
   group('computeGifExportWindow', () {
@@ -220,5 +221,171 @@ void main() {
 
       expect(result, isNull);
     });
+
+    test('writes smaller GIFs for sparse frame changes', () {
+      const w = 80;
+      const h = 80;
+      final frames = <Uint8List>[];
+      final widths = <int>[];
+      final heights = <int>[];
+      final durations = <int>[];
+
+      for (int i = 0; i < 18; i++) {
+        final rgba = _solidFrame(w, h, r: 245, g: 245, b: 245);
+        final markerX = 4 + i * 3;
+        final markerY = 12 + (i % 4) * 8;
+        _fillRect(
+          rgba,
+          w,
+          x: markerX,
+          y: markerY,
+          width: 6,
+          height: 6,
+          r: 20,
+          g: 90,
+          b: 220,
+        );
+        frames.add(rgba);
+        widths.add(w);
+        heights.add(h);
+        durations.add(50);
+      }
+
+      final optimized = encodeGifFallback(
+        rgbaFrames: frames,
+        widths: widths,
+        heights: heights,
+        durationsCs: durations,
+      );
+      final fullFrame = _encodeFullFrameGif(
+        frames: frames,
+        widths: widths,
+        heights: heights,
+        durationsCs: durations,
+      );
+
+      expect(optimized, isNotNull);
+      expect(optimized!.length, lessThan(fullFrame.length));
+    });
+
+    test('preserves the final composited frame', () {
+      const w = 24;
+      const h = 24;
+      final frames = <Uint8List>[];
+      final widths = <int>[];
+      final heights = <int>[];
+      final durations = <int>[];
+
+      for (int i = 0; i < 4; i++) {
+        final rgba = _solidFrame(w, h, r: 255, g: 255, b: 255);
+        _fillRect(
+          rgba,
+          w,
+          x: 2 + i * 4,
+          y: 3 + i * 3,
+          width: 5,
+          height: 5,
+          r: 0,
+          g: 0,
+          b: 0,
+        );
+        frames.add(rgba);
+        widths.add(w);
+        heights.add(h);
+        durations.add(50);
+      }
+
+      final optimized = encodeGifFallback(
+        rgbaFrames: frames,
+        widths: widths,
+        heights: heights,
+        durationsCs: durations,
+      );
+
+      expect(optimized, isNotNull);
+      final decoded = img.GifDecoder().decode(optimized!);
+      expect(decoded, isNotNull);
+      expect(decoded!.frames, isNotEmpty);
+
+      final finalFrame = decoded.frames.last;
+      final expected = frames.last;
+      for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+          final expectedOffset = (y * w + x) * 4;
+          final pixel = finalFrame.getPixel(x, y);
+          expect(pixel.r.toInt(), expected[expectedOffset]);
+          expect(pixel.g.toInt(), expected[expectedOffset + 1]);
+          expect(pixel.b.toInt(), expected[expectedOffset + 2]);
+        }
+      }
+    });
   });
+}
+
+Uint8List _solidFrame(
+  int width,
+  int height, {
+  required int r,
+  required int g,
+  required int b,
+}) {
+  final rgba = Uint8List(width * height * 4);
+  for (int p = 0; p < width * height; p++) {
+    rgba[p * 4] = r;
+    rgba[p * 4 + 1] = g;
+    rgba[p * 4 + 2] = b;
+    rgba[p * 4 + 3] = 255;
+  }
+  return rgba;
+}
+
+void _fillRect(
+  Uint8List rgba,
+  int frameWidth, {
+  required int x,
+  required int y,
+  required int width,
+  required int height,
+  required int r,
+  required int g,
+  required int b,
+}) {
+  for (int yy = y; yy < y + height; yy++) {
+    for (int xx = x; xx < x + width; xx++) {
+      final offset = (yy * frameWidth + xx) * 4;
+      rgba[offset] = r;
+      rgba[offset + 1] = g;
+      rgba[offset + 2] = b;
+      rgba[offset + 3] = 255;
+    }
+  }
+}
+
+Uint8List _encodeFullFrameGif({
+  required List<Uint8List> frames,
+  required List<int> widths,
+  required List<int> heights,
+  required List<int> durationsCs,
+}) {
+  final gif = img.GifEncoder(
+    delay: 50,
+    dither: img.DitherKernel.none,
+    quantizerType: img.QuantizerType.neural,
+    numColors: 256,
+    samplingFactor: 30,
+  );
+
+  for (int i = 0; i < frames.length; i++) {
+    final image = img.Image.fromBytes(
+      width: widths[i],
+      height: heights[i],
+      bytes: frames[i].buffer,
+      bytesOffset: frames[i].offsetInBytes,
+      numChannels: 4,
+      order: img.ChannelOrder.rgba,
+    );
+    gif.addFrame(image, duration: durationsCs[i]);
+  }
+
+  return gif.finish()!;
 }
