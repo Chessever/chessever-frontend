@@ -9,9 +9,9 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart'
     show getTitleBadgeColor;
-import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -218,16 +218,12 @@ class _TwicPlayerCard extends ConsumerWidget {
                     SizedBox(height: 2.sp),
                     Row(
                       children: [
-                        if (countryCode != null) ...[
-                          ClipRRect(
+                        if (player.fed.trim().isNotEmpty) ...[
+                          FederationFlag(
+                            federation: player.fed,
+                            width: isCompact ? 14.sp : 16.sp,
+                            height: isCompact ? 10.sp : 12.sp,
                             borderRadius: BorderRadius.circular(2.br),
-                            child: CountryFlag.fromCountryCode(
-                              countryCode,
-                              theme: ImageTheme(
-                                width: isCompact ? 14.sp : 16.sp,
-                                height: isCompact ? 10.sp : 12.sp,
-                              ),
-                            ),
                           ),
                           SizedBox(width: 5.sp),
                         ],
@@ -275,8 +271,23 @@ class _TwicPlayerCard extends ConsumerWidget {
   String? _getIso2CountryCode() {
     final fed = player.fed.trim();
     if (fed.isEmpty) return null;
-    final iso = CountryUtils.toIso2Code(fed);
-    return iso.isEmpty ? null : iso;
+    final lower = fed.toLowerCase();
+    // Treat TWIC's "Unknown" / sentinel feds as no flag.
+    if (const {'unknown', 'none', 'unrated', 'n/a', 'na', '?', '-'}
+        .contains(lower)) {
+      return null;
+    }
+    // fed can be 2-letter ISO, 3-letter FIDE, or a country name (TWIC uses names).
+    final upper = fed.toUpperCase();
+    if (upper.length == 2) return upper;
+    if (upper.length == 3) {
+      final iso = CountryUtils.toIso2Code(upper);
+      return (iso.length == 2) ? iso : null;
+    }
+    final mapped = CountryUtils.countryNameToIso2(fed);
+    if (mapped.isNotEmpty) return mapped;
+    final fallback = CountryUtils.getCountryCode(fed);
+    return (fallback != null && fallback.length == 2) ? fallback : null;
   }
 }
 
@@ -293,9 +304,11 @@ class _FlagBackground extends StatelessWidget {
         opacity: 0.20,
         child: FittedBox(
           fit: BoxFit.cover,
-          child: CountryFlag.fromCountryCode(
-            countryCode,
-            theme: ImageTheme(width: 300, height: 200),
+          child: FederationFlag(
+            federation: countryCode,
+            width: 300,
+            height: 200,
+            borderRadius: BorderRadius.zero,
           ),
         ),
       ),

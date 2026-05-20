@@ -1,6 +1,5 @@
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_country_flags/flutter_country_flags.dart' as fcf;
 
@@ -28,16 +27,33 @@ class FederationFlag extends StatelessWidget {
     'WLS': fcf.Country.wales,
   };
 
+  /// Federation values from the Gamebase API that mean "no real federation
+  /// resolved" — TWIC fills this in for historical / unrated / unknown players.
+  /// Treat them as an unknown placeholder, not as a FIDE-stateless tag.
+  static const Set<String> _unknownSentinels = {
+    'unknown',
+    'none',
+    'unrated',
+    'n/a',
+    'na',
+    '?',
+    '-',
+  };
+
   @override
   Widget build(BuildContext context) {
     final raw = (federation ?? '').trim();
     final normalized = raw.toUpperCase();
 
     if (raw.isEmpty) {
-      return _fallback(context);
+      return _unknownPlaceholder(context);
     }
 
     final lowerRaw = raw.toLowerCase();
+
+    if (_unknownSentinels.contains(lowerRaw)) {
+      return _unknownPlaceholder(context);
+    }
 
     // Lichess returns the literal "FIDE" for stateless / sanctioned players;
     // when no real federation can be resolved, render the FIDE logo.
@@ -66,17 +82,24 @@ class FederationFlag extends StatelessWidget {
     }
 
     if (iso2 == null || iso2.length != 2) {
-      return _fallback(context);
+      return _unknownPlaceholder(context);
     }
 
-    final child = CountryFlag.fromCountryCode(
-iso2,
-  theme: ImageTheme(width: width,
-      height: height,),
-);
+    return _iso2Flag(context, iso2);
+  }
 
+  Widget _iso2Flag(BuildContext context, String iso2) {
     final radius = borderRadius ?? BorderRadius.circular(3);
-    return ClipRRect(borderRadius: radius, child: child);
+    return ClipRRect(
+      borderRadius: radius,
+      child: fcf.FlutterCountryFlags(
+        country: iso2,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        borderRadius: 0,
+      ),
+    );
   }
 
   Widget _ukSubdivisionFlag(BuildContext context, String fideCode) {
@@ -116,6 +139,36 @@ iso2,
   }
 
   Widget _fallback(BuildContext context) {
-    return _fideLogo(context);
+    return _unknownPlaceholder(context);
+  }
+
+  /// Renders a neutral globe placeholder when no real federation can be
+  /// resolved (e.g. TWIC `fed: "Unknown"` or a country name that isn't in any
+  /// of our mapping tables). Previously this returned the FIDE webp logo,
+  /// which is mostly-white and looked like a blank rectangle at flag sizes.
+  Widget _unknownPlaceholder(BuildContext context) {
+    final w = width;
+    final h = height;
+    final iconSize = (h ?? w ?? 16) * 0.85;
+    final brightness = Theme.of(context).brightness;
+    // High-contrast surface so the globe placeholder is clearly visible
+    // against the card body, regardless of the active theme.
+    final bg = brightness == Brightness.light
+        ? const Color(0xFF6B7280)
+        : const Color(0xFF374151);
+    return ClipRRect(
+      borderRadius: borderRadius ?? BorderRadius.circular(3),
+      child: Container(
+        width: w,
+        height: h,
+        alignment: Alignment.center,
+        color: bg,
+        child: Icon(
+          Icons.public_rounded,
+          size: iconSize,
+          color: Colors.white,
+        ),
+      ),
+    );
   }
 }

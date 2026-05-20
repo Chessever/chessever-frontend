@@ -4,9 +4,11 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
+import 'package:chessever2/utils/player_name_search.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -110,6 +112,7 @@ class LibraryCombinedSearchNotifier
 
   /// Page size for initial dropdown search (smaller for quick results)
   static const int _dropdownPageSize = 10;
+  static const int _supabasePlayerHintLimit = 8;
 
   LibraryCombinedSearchNotifier(this._ref, this._query)
     : super(const AsyncValue.loading()) {
@@ -117,7 +120,7 @@ class LibraryCombinedSearchNotifier
   }
 
   void _search() {
-    debugPrint('[LibrarySearch] _search called with query="${_query}"');
+    debugPrint('[LibrarySearch] _search called with query="$_query"');
     if (_query.trim().isEmpty) {
       debugPrint('[LibrarySearch] Query is empty, returning empty result');
       state = const AsyncValue.data(LibrarySearchResult());
@@ -250,8 +253,6 @@ class LibraryCombinedSearchNotifier
           }
         }
 
-        // Calculate pagination info from metadata
-        final totalCount = searchResponse.metadata.totalCount ?? 0;
         // Estimate player/game counts (API doesn't separate them)
         playerTotalCount = players.length;
         gameTotalCount = games.length;
@@ -358,6 +359,16 @@ class LibraryCombinedSearchNotifier
         }
       }
 
+      await _mergeSupabaseFidePlayerHints(
+        players: players,
+        query: queryTrimmed,
+        gamebaseRepo: gamebaseRepo,
+      );
+
+      players = _dedupePlayers(players);
+      players.sort((a, b) => _comparePlayersForQuery(a, b, queryTrimmed));
+      playerTotalCount = players.length;
+
       debugPrint(
         '[LibrarySearch] Final results - players: ${players.length}, games: ${games.length}',
       );
@@ -383,6 +394,114 @@ class LibraryCombinedSearchNotifier
       debugPrint('[LibrarySearch] _performSearch ERROR: $e');
       state = AsyncValue.error(e, st);
     }
+  }
+
+  Future<void> _mergeSupabaseFidePlayerHints({
+    required List<GamebasePlayer> players,
+    required String query,
+    required GamebaseRepository gamebaseRepo,
+  }) async {
+    try {
+      final fideHints = await _ref
+          .read(chessPlayerRepositoryProvider)
+          .searchPlayersByNameWords(
+            query: query,
+            limit: _supabasePlayerHintLimit,
+          );
+      if (fideHints.isEmpty) return;
+
+      final existingFideIds =
+          players
+              .map((player) => player.fideId.trim())
+              .where((fideId) => fideId.isNotEmpty)
+              .toSet();
+
+      final missingHints =
+          fideHints
+              .where(
+                (player) =>
+                    player.fideid > 0 &&
+                    !existingFideIds.contains(player.fideid.toString()),
+              )
+              .toList();
+      if (missingHints.isEmpty) return;
+
+      final fetchedPlayers = await Future.wait(
+        missingHints.map((hint) async {
+          try {
+            final matches = await gamebaseRepo
+                .getPlayers(
+                  fideId: hint.fideid.toString(),
+                  pageNumber: 0,
+                  pageSize: 1,
+                )
+                .timeout(
+                  const Duration(seconds: 3),
+                  onTimeout: () => <GamebasePlayer>[],
+                );
+            if (matches.isEmpty) return null;
+            final match = matches.first;
+            return GamebasePlayer(
+              id: match.id,
+              fideId: match.fideId,
+              name: match.name,
+              gender: match.gender,
+              fed: match.fed,
+              title: ChessTitleUtils.normalize(match.title),
+              ratingClassical: match.ratingClassical,
+              ratingRapid: match.ratingRapid,
+              ratingBlitz: match.ratingBlitz,
+            );
+          } catch (_) {
+            return null;
+          }
+        }),
+        eagerError: false,
+      );
+
+      for (final player in fetchedPlayers.whereType<GamebasePlayer>()) {
+        players.add(player);
+      }
+    } catch (e) {
+      debugPrint('[LibrarySearch] Supabase player hint merge failed: $e');
+    }
+  }
+
+  List<GamebasePlayer> _dedupePlayers(List<GamebasePlayer> players) {
+    final byKey = <String, GamebasePlayer>{};
+    for (final player in players) {
+      final fideId = player.fideId.trim();
+      final key =
+          fideId.isNotEmpty
+              ? 'fide:$fideId'
+              : 'name:${normalizePlayerSearchText(player.name)}';
+      final existing = byKey[key];
+      if (existing == null ||
+          (player.highestRating ?? 0) > (existing.highestRating ?? 0)) {
+        byKey[key] = player;
+      }
+    }
+    return byKey.values.toList();
+  }
+
+  int _comparePlayersForQuery(
+    GamebasePlayer a,
+    GamebasePlayer b,
+    String query,
+  ) {
+    final aScore = playerNameSearchMatchScore(a.name, query);
+    final bScore = playerNameSearchMatchScore(b.name, query);
+    if (aScore != bScore) return bScore.compareTo(aScore);
+
+    final aRating = a.highestRating ?? 0;
+    final bRating = b.highestRating ?? 0;
+    if (aRating != bRating) return bRating.compareTo(aRating);
+
+    final aHasFideId = a.fideId.trim().isNotEmpty;
+    final bHasFideId = b.fideId.trim().isNotEmpty;
+    if (aHasFideId != bHasFideId) return aHasFideId ? -1 : 1;
+
+    return a.displayName.compareTo(b.displayName);
   }
 
   @override

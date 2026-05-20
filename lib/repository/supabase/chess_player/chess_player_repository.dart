@@ -88,6 +88,41 @@ class ChessPlayerRepository extends BaseRepository {
     return (data as List).map((row) => ChessPlayer.fromMap(row)).toList();
   }
 
+  /// Search players by name words in any order.
+  ///
+  /// Handles FIDE-style names such as "Carlsen, Magnus" when the user types
+  /// natural-order text such as "Magnus" or "Magnus Carlsen".
+  Future<List<ChessPlayer>> searchPlayersByNameWords({
+    required String query,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final words =
+        query
+            .trim()
+            .replaceAll(',', ' ')
+            .split(RegExp(r'\s+'))
+            .where((word) => word.length >= 2)
+            .toList();
+
+    if (words.isEmpty) return [];
+
+    var builder = supabase
+        .from('chess_players')
+        .select('fideid, name, title, rating, country');
+
+    for (final word in words) {
+      builder = builder.ilike('name', '%$word%');
+    }
+
+    final data = await builder
+        .or('rating.lt.3300,rating.is.null')
+        .order('rating', ascending: false, nullsFirst: false)
+        .range(offset, offset + limit - 1);
+
+    return (data as List).map((row) => ChessPlayer.fromMap(row)).toList();
+  }
+
   /// Get players by country (FIDE federation code)
   Future<List<ChessPlayer>> getPlayersByCountry({
     required String countryCode,

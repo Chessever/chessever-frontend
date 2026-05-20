@@ -325,12 +325,15 @@ class _CenterContent extends ConsumerWidget {
     if (effectiveStatus != GameStatus.ongoing) {
       final neutralColor =
           isLight ? context.colors.textPrimary : kBlackColor;
-      return Center(
-        child: _ResultText(
-          status: _displayTextSupporter(matchWithComparison),
-          winColor: context.colors.success,
-          loseColor: context.colors.danger,
-          neutralColor: neutralColor,
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6.w),
+        child: Center(
+          child: _ResultText(
+            status: _displayTextSupporter(matchWithComparison),
+            winColor: context.colors.success,
+            loseColor: context.colors.danger,
+            neutralColor: neutralColor,
+          ),
         ),
       );
     }
@@ -542,7 +545,11 @@ class _ResultText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = AppTypography.textXsMedium.copyWith(color: neutralColor);
+    final baseStyle = AppTypography.textSmBold.copyWith(
+      color: neutralColor,
+      height: 1.0,
+      letterSpacing: -0.2,
+    );
     final spans = <InlineSpan>[];
     for (final ch in status.split('')) {
       Color color;
@@ -557,6 +564,11 @@ class _ResultText extends StatelessWidget {
     }
     return RichText(
       textAlign: TextAlign.center,
+      strutStyle: const StrutStyle(
+        forceStrutHeight: true,
+        height: 1.0,
+        leading: 0,
+      ),
       text: TextSpan(style: baseStyle, children: spans),
     );
   }
@@ -808,11 +820,11 @@ String _displayTextSupporter(MatchWithComparison game) {
   if (game.comparison == MatchComparison.sameOrder) {
     switch (effectiveStatus) {
       case GameStatus.whiteWins:
-        return '1-0';
+        return '1–0';
       case GameStatus.blackWins:
-        return '0-1';
+        return '0–1';
       case GameStatus.draw:
-        return '½-½';
+        return '½–½';
       case GameStatus.ongoing:
         return '*';
       case GameStatus.unknown:
@@ -821,11 +833,11 @@ String _displayTextSupporter(MatchWithComparison game) {
   } else {
     switch (effectiveStatus) {
       case GameStatus.whiteWins:
-        return '0-1';
+        return '0–1';
       case GameStatus.blackWins:
-        return '1-0';
+        return '1–0';
       case GameStatus.draw:
-        return '½-½';
+        return '½–½';
       case GameStatus.ongoing:
         return '*';
       case GameStatus.unknown:

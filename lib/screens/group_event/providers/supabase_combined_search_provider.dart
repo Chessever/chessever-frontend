@@ -13,6 +13,7 @@ import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
+import 'package:chessever2/utils/player_name_search.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _countryPlayerCacheTtl = Duration(minutes: 10);
@@ -252,40 +253,6 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
     // Player search now relies entirely on chess_players table
   }
 
-  // Score how well a player name matches the query
-  int matchScore(String playerName, String query) {
-    String normalize(String s) =>
-        s
-            .toLowerCase()
-            .replaceAll(',', ' ')
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-
-    final nQuery = normalize(query);
-    final nName = normalize(playerName);
-
-    // Exact match (normalized) = highest score
-    if (nName == nQuery) return 100;
-
-    // Check if name starts with query (e.g., "giri" matches "Giri, Anish")
-    if (nName.startsWith(nQuery)) return 90;
-
-    // Check if any word in name starts with query
-    final nameWords = nName.split(' ');
-    if (nameWords.any((w) => w.startsWith(nQuery))) return 85;
-
-    // All query words match name words exactly
-    final queryWords = nQuery.split(' ').where((w) => w.isNotEmpty).toList();
-    int exactWordMatches = 0;
-    for (final qw in queryWords) {
-      if (nameWords.contains(qw)) exactWordMatches++;
-    }
-    if (exactWordMatches == queryWords.length) return 80;
-
-    // Partial word matches
-    return 50;
-  }
-
   // Final deduplication: prefer players with FIDE ID over those without
   final deduped = <String, SearchResult>{};
   for (final r in playerResults) {
@@ -328,8 +295,14 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
     if (aHasFideId != bHasFideId) return aHasFideId ? -1 : 1;
 
     // 2. Match score (higher = better match)
-    final aScore = matchScore(a.matchedText, trimmedQuery);
-    final bScore = matchScore(b.matchedText, trimmedQuery);
+    final aScore = playerNameSearchMatchScore(
+      a.player?.name ?? a.matchedText,
+      trimmedQuery,
+    );
+    final bScore = playerNameSearchMatchScore(
+      b.player?.name ?? b.matchedText,
+      trimmedQuery,
+    );
     if (aScore != bScore) return bScore.compareTo(aScore);
 
     // 3. ELO (higher first)

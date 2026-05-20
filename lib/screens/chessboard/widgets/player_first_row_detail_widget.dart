@@ -634,16 +634,25 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                                     : isWin
                                         ? context.colors.success
                                         : context.colors.danger;
+                            final scoreFontSize =
+                                playerView == PlayerView.listView
+                                    ? 12.f
+                                    : playerView == PlayerView.gridView
+                                        ? 13.f
+                                        : 15.f;
                             return Text(
                               label,
                               style: TextStyle(
-                                fontSize:
-                                    playerView == PlayerView.gridView
-                                        ? 9.f
-                                        : 10.f,
+                                fontSize: scoreFontSize,
                                 fontWeight: FontWeight.w700,
                                 color: resultColor,
                                 height: 1.0,
+                                letterSpacing: -0.2,
+                              ),
+                              strutStyle: const StrutStyle(
+                                forceStrutHeight: true,
+                                height: 1.0,
+                                leading: 0,
                               ),
                               textAlign: TextAlign.center,
                             );
@@ -652,6 +661,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                       )
                       : null,
             ),
+            if (effectiveGameModel.gameStatus.isFinished)
+              SizedBox(
+                width:
+                    playerView == PlayerView.gridView
+                        ? 4.w
+                        : playerView == PlayerView.listView
+                            ? 5.w
+                            : 6.w,
+              ),
             FederationFlag(
               federation:
                   effectivePlayerCard.countryCode.trim().isNotEmpty

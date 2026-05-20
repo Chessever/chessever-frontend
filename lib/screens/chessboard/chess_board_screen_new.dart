@@ -4965,12 +4965,12 @@ class _GameItemSimple extends StatelessWidget {
                     alignment: Alignment.center,
                     child:
                         resultText.isNotEmpty
-                            ? Text(
-                              resultText,
-                              style: AppTypography.textXxsMedium.copyWith(
-                                color: context.colors.textPrimary.withValues(alpha: 0.5),
-                                fontWeight: FontWeight.w500,
-                              ),
+                            ? _ColoredResultText(
+                              status: resultText,
+                              winColor: context.colors.success,
+                              loseColor: context.colors.danger,
+                              neutralColor: context.colors.textPrimary
+                                  .withValues(alpha: 0.5),
                             )
                             : Text(
                               'vs',
@@ -5339,13 +5339,13 @@ class _GameItemState extends State<_GameItem> {
               alignment: Alignment.center,
               child:
                   resultText.isNotEmpty
-                      ? Text(
-                        resultText,
-                        style: AppTypography.textXxsMedium.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.5),
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.2,
-                        ),
+                      ? _ColoredResultText(
+                        status: resultText,
+                        winColor: context.colors.success,
+                        loseColor: context.colors.danger,
+                        neutralColor: context.colors.textPrimary
+                            .withValues(alpha: 0.5),
+                        letterSpacing: -0.2,
                       )
                       : Text(
                         'vs',
@@ -14904,6 +14904,53 @@ class _NagChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ColoredResultText extends StatelessWidget {
+  const _ColoredResultText({
+    required this.status,
+    required this.winColor,
+    required this.loseColor,
+    required this.neutralColor,
+    this.letterSpacing,
+  });
+
+  final String status;
+  final Color winColor;
+  final Color loseColor;
+  final Color neutralColor;
+  final double? letterSpacing;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = AppTypography.textXxsMedium.copyWith(
+      color: neutralColor,
+      fontWeight: FontWeight.w500,
+      height: 1.0,
+      letterSpacing: letterSpacing,
+    );
+    final spans = <InlineSpan>[];
+    for (final ch in status.split('')) {
+      Color color;
+      if (ch == '1') {
+        color = winColor;
+      } else if (ch == '0') {
+        color = loseColor;
+      } else {
+        color = neutralColor;
+      }
+      spans.add(TextSpan(text: ch, style: baseStyle.copyWith(color: color)));
+    }
+    return RichText(
+      textAlign: TextAlign.center,
+      strutStyle: const StrutStyle(
+        forceStrutHeight: true,
+        height: 1.0,
+        leading: 0,
+      ),
+      text: TextSpan(style: baseStyle, children: spans),
     );
   }
 }
