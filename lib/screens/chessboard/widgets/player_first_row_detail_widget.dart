@@ -628,12 +628,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                                     !isWhitePlayer);
                             final label =
                                 isDraw ? '½' : (isWin ? '1' : '0');
-                            final resultColor =
-                                isDraw
+                            final isBoardView =
+                                playerView == PlayerView.boardView;
+                            final resultColor = isBoardView
+                                ? context.colors.textPrimary
+                                : isDraw
                                     ? context.colors.textPrimaryMuted
                                     : isWin
-                                        ? context.colors.success
-                                        : context.colors.danger;
+                                        ? kPrimaryColor
+                                        : context.colors.textPrimary;
                             final scoreFontSize =
                                 playerView == PlayerView.listView
                                     ? 12.f

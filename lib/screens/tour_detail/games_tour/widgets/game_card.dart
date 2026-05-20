@@ -325,13 +325,14 @@ class _CenterContent extends ConsumerWidget {
     if (effectiveStatus != GameStatus.ongoing) {
       final neutralColor =
           isLight ? context.colors.textPrimary : kBlackColor;
-      return Padding(
-        padding: EdgeInsets.symmetric(horizontal: 6.w),
-        child: Center(
+      return Center(
+        child: SizedBox(
+          width: 48.w,
           child: _ResultText(
             status: _displayTextSupporter(matchWithComparison),
-            winColor: context.colors.success,
-            loseColor: context.colors.danger,
+            winColor: kPrimaryColor,
+            loseColor: neutralColor,
+            drawColor: context.colors.textPrimaryMuted,
             neutralColor: neutralColor,
           ),
         ),
@@ -535,18 +536,21 @@ class _ResultText extends StatelessWidget {
     required this.status,
     required this.winColor,
     required this.loseColor,
+    required this.drawColor,
     required this.neutralColor,
   });
 
   final String status;
   final Color winColor;
   final Color loseColor;
+  final Color drawColor;
   final Color neutralColor;
 
   @override
   Widget build(BuildContext context) {
     final baseStyle = AppTypography.textSmBold.copyWith(
       color: neutralColor,
+      fontWeight: FontWeight.w800,
       height: 1.0,
       letterSpacing: -0.2,
     );
@@ -557,6 +561,8 @@ class _ResultText extends StatelessWidget {
         color = winColor;
       } else if (ch == '0') {
         color = loseColor;
+      } else if (ch == '½') {
+        color = drawColor;
       } else {
         color = neutralColor;
       }

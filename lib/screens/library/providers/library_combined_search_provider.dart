@@ -359,6 +359,27 @@ class LibraryCombinedSearchNotifier
         }
       }
 
+      // Supplement with a dedicated player-only fetch. globalSearch mixes
+      // players and games into one paginated stream, so name-rare queries
+      // (e.g. "carlsen") tend to return mostly game rows and only 1-2
+      // players — not enough to fill the 4-card grid the home page shows.
+      // This mirrors the home page's separate player fetch.
+      try {
+        final extraPlayers = await gamebaseRepo.getPlayers(
+          name: queryTrimmed,
+          pageNumber: 0,
+          pageSize: 25,
+        );
+        if (extraPlayers.isNotEmpty) {
+          players = [...players, ...extraPlayers];
+          debugPrint(
+            '[LibrarySearch] Supplemented with ${extraPlayers.length} players from getPlayers',
+          );
+        }
+      } catch (e) {
+        debugPrint('[LibrarySearch] getPlayers supplement failed: $e');
+      }
+
       await _mergeSupabaseFidePlayerHints(
         players: players,
         query: queryTrimmed,
