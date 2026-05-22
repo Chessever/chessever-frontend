@@ -10,7 +10,16 @@ enum EventFormat {
   rapid,
   standard;
 
-  String get caption => name[0].toUpperCase() + name.substring(1);
+  String get caption {
+    switch (this) {
+      case EventFormat.standard:
+        return 'Classical';
+      case EventFormat.blitz:
+        return 'Blitz';
+      case EventFormat.rapid:
+        return 'Rapid';
+    }
+  }
 }
 
 enum EventStatus {

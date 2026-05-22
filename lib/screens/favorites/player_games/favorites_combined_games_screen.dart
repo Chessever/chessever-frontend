@@ -124,18 +124,10 @@ class _FavoritesCombinedGamesScreenState
       final selectedFavorites =
           favorites.where((f) => _selectedPlayerIds.contains(f.id)).toList();
 
-      debugPrint(
-        '[FilterChips] Selected ${selectedFavorites.length} favorites: ${selectedFavorites.map((f) => '${f.playerName} (fideId: ${f.fideId})').join(', ')}',
-      );
-      debugPrint('[FilterChips] Total games to filter: ${games.length}');
-
-      // Log first 3 games to see their FIDE IDs
-      for (var i = 0; i < games.length && i < 3; i++) {
-        final g = games[i];
-        debugPrint(
-          '[FilterChips] Sample game $i: ${g.whitePlayer.name} (fideId: ${g.whitePlayer.fideId}) vs ${g.blackPlayer.name} (fideId: ${g.blackPlayer.fideId})',
-        );
-      }
+      // Stale selection (favorite removed while chip still tracked) — skip
+      // filtering rather than nuking the list to an empty state. Pruning of
+      // the underlying Set happens out-of-band via post-frame callback.
+      if (selectedFavorites.isEmpty) return filtered;
 
       filtered =
           filtered.where((game) {
@@ -164,11 +156,22 @@ class _FavoritesCombinedGamesScreenState
             }
             return false;
           }).toList();
-
-      debugPrint('[FilterChips] After filter: ${filtered.length} games');
     }
 
     return filtered;
+  }
+
+  /// Drop any tracked selection IDs that no longer correspond to a current
+  /// favorite (e.g. user unfavorited a player while their chip was selected).
+  void _pruneStaleSelections(List<FavoritePlayer> favorites) {
+    if (_selectedPlayerIds.isEmpty) return;
+    final liveIds = favorites.map((f) => f.id).toSet();
+    final stale = _selectedPlayerIds.difference(liveIds);
+    if (stale.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _selectedPlayerIds.removeAll(stale));
+    });
   }
 
   /// Normalize name for matching: lowercase, remove titles, handle "Last, First" format
@@ -273,6 +276,7 @@ class _FavoritesCombinedGamesScreenState
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final favorites = favoritesAsync.valueOrNull ?? [];
     final favoriteCount = favorites.length;
+    _pruneStaleSelections(favorites);
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -312,8 +316,8 @@ class _FavoritesCombinedGamesScreenState
                   ),
                 ),
 
-                // Filter chips (only show when not searching)
-                if (favorites.length > 1 && !state.isSearching)
+                // Filter chips — compose with search & filter dialog
+                if (favorites.length > 1)
                   SliverToBoxAdapter(child: _buildFilterChips(favorites)),
 
                 // Content
@@ -646,7 +650,9 @@ class _FavoritesCombinedGamesScreenState
                           fontSize: 13.sp,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color: context.colors.textPrimary,
+                          color: isSelected
+                              ? kWhiteColor
+                              : context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -691,9 +697,8 @@ class _FavoritesCombinedGamesScreenState
       );
     }
 
-    // Apply local favorite player filter when not searching
-    var filteredGames =
-        state.isSearching ? state.games : _filterGames(state.games, favorites);
+    // Apply local favorite player chip filter — composes with search results
+    var filteredGames = _filterGames(state.games, favorites);
 
     // Then apply the game filter (result, color, time control, year, rating)
     if (state.filter.hasActiveFilters) {
@@ -703,7 +708,7 @@ class _FavoritesCombinedGamesScreenState
     if (filteredGames.isEmpty && _selectedPlayerIds.isNotEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: _buildNoSearchResultsState(),
+        child: _buildNoChipResultsState(),
       );
     }
 
@@ -954,6 +959,56 @@ class _FavoritesCombinedGamesScreenState
               color: context.colors.textPrimary.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms);
+  }
+
+  Widget _buildNoChipResultsState() {
+    final selectedCount = _selectedPlayerIds.length;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person_off_outlined,
+            size: 56.sp,
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            selectedCount == 1
+                ? 'No games for this player'
+                : 'No games for these players',
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'Clear chips or load more games',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.55),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 20.h),
+          GestureDetector(
+            onTap: _clearAllFilters,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: context.colors.textPrimary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Text(
+                'Clear Chips',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ),
           ),
         ],
       ),

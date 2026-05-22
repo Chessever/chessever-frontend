@@ -1328,6 +1328,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   isAtGameEnd: _gifFrameIsFinal,
                   isPreview: false,
                   showEvalBar: false, // No eval bar in GIF
+                  reserveClockSpace: true,
                   gameId: widget.gameId,
                 ),
               ),
@@ -1340,6 +1341,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 }
 
 class _ShareCard extends ConsumerWidget {
+  static const String _clockPlaceholder = '00:00:00';
+
   final ChessboardSettings boardSettings;
   final String positionFen;
   final Move? lastMove;
@@ -1366,6 +1369,7 @@ class _ShareCard extends ConsumerWidget {
   final bool isAtGameEnd;
   final bool isPreview;
   final bool showEvalBar;
+  final bool reserveClockSpace;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
 
   const _ShareCard({
@@ -1395,6 +1399,7 @@ class _ShareCard extends ConsumerWidget {
     this.isAtGameEnd = false,
     this.isPreview = false,
     this.showEvalBar = true,
+    this.reserveClockSpace = false,
     required this.gameId, // REQUIRED for correct eval caching
   });
 
@@ -1441,6 +1446,7 @@ class _ShareCard extends ConsumerWidget {
     required String? playerClock,
     required bool isWhitePlayer,
     required double sideBarWidth,
+    required bool reserveClockSpace,
   }) {
     // Text styles matching PlayerFirstRowDetailWidget boardView
     final titleStyle = AppTypography.textXsMedium.copyWith(
@@ -1594,10 +1600,17 @@ class _ShareCard extends ConsumerWidget {
               },
             ),
           ),
-          // Clock time on far right (if available)
-          if (playerClock != null) ...[
+          // Clock time on far right. GIF captures reserve this slot from the
+          // initial frame so later clock updates cannot resize the card.
+          if (playerClock != null || reserveClockSpace) ...[
             SizedBox(width: 8.w),
-            Text(playerClock, style: timeStyle),
+            Visibility(
+              visible: playerClock != null,
+              maintainState: true,
+              maintainAnimation: true,
+              maintainSize: true,
+              child: Text(playerClock ?? _clockPlaceholder, style: timeStyle),
+            ),
           ],
         ],
       ),
@@ -1696,6 +1709,7 @@ class _ShareCard extends ConsumerWidget {
             playerClock: topPlayerClock,
             isWhitePlayer: topIsWhitePlayer,
             sideBarWidth: sideBarWidth,
+            reserveClockSpace: reserveClockSpace,
           ),
           SizedBox(height: 12.h),
           // Board with optional evaluation bar and game ending overlays
@@ -1868,6 +1882,7 @@ class _ShareCard extends ConsumerWidget {
             playerClock: bottomPlayerClock,
             isWhitePlayer: bottomIsWhitePlayer,
             sideBarWidth: sideBarWidth,
+            reserveClockSpace: reserveClockSpace,
           ),
           SizedBox(
             height: 20.h,

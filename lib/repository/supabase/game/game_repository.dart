@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -67,6 +68,131 @@ const String _gameListSelectColumns = '''
             group_broadcasts!tours_group_broadcast_id_fkey(time_control)
           )
         ''';
+
+/// Same column list as [_gameListSelectColumns], but forces an INNER join on
+/// `tours` + `group_broadcasts` so that filtering by `tours.group_broadcasts.time_control`
+/// narrows rows instead of just narrowing the embedded payload.
+const String _gameListSelectColumnsInnerTc = '''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          pgn,
+          players,
+          last_move,
+          think_time,
+          status,
+          search,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr,
+          last_move_time,
+          game_day,
+          last_clock_white,
+          last_clock_black,
+          eco,
+          opening_name,
+          tours!games_tour_id_fkey!inner(
+            avg_elo,
+            group_broadcasts!tours_group_broadcast_id_fkey!inner(time_control)
+          )
+        ''';
+
+/// Maps a `GameFilter` to the named-parameter map consumed by the Supabase
+/// RPCs (`get_distinct_dates_for_*`, etc). Keeps the mapping in one place so
+/// every server-side query layers in the same filters.
+Map<String, dynamic> _gameFilterRpcParams(GameFilter? filter) {
+  final params = <String, dynamic>{};
+  if (filter == null) return params;
+
+  // Live / completed
+  switch (filter.live) {
+    case GameLiveFilter.live:
+      params['p_status'] = 'live';
+      break;
+    case GameLiveFilter.completed:
+      params['p_status'] = 'completed';
+      break;
+    case GameLiveFilter.all:
+      break;
+  }
+
+  // Result
+  switch (filter.result) {
+    case GameResultFilter.whiteWins:
+      params['p_result'] = '1-0';
+      break;
+    case GameResultFilter.blackWins:
+      params['p_result'] = '0-1';
+      break;
+    case GameResultFilter.draw:
+      params['p_result'] = '1/2';
+      break;
+    case GameResultFilter.all:
+      break;
+  }
+
+  // Time control → DB tag on group_broadcasts
+  final tc = _timeControlDbValue(filter.timeControl);
+  if (tc != null) params['p_time_control'] = tc;
+
+  // Year range — only send when narrowed
+  if (filter.minYear != GameFilter.defaultMinYear) {
+    params['p_min_year'] = filter.minYear;
+  }
+  if (filter.maxYear < DateTime.now().year) {
+    params['p_max_year'] = filter.maxYear;
+  }
+
+  // Rating range — only send when narrowed
+  if (filter.minRating > GameFilter.defaultMinRating) {
+    params['p_min_rating'] = filter.minRating;
+  }
+  if (filter.maxRating < GameFilter.absoluteMaxRating) {
+    params['p_max_rating'] = filter.maxRating;
+  }
+
+  // ECO prefix
+  if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
+    params['p_eco'] = filter.eco.code;
+  }
+
+  // Color (white / black side)
+  switch (filter.color) {
+    case GameColorFilter.white:
+      params['p_color'] = 'white';
+      break;
+    case GameColorFilter.black:
+      params['p_color'] = 'black';
+      break;
+    case GameColorFilter.all:
+      break;
+  }
+  return params;
+}
+
+String? _timeControlDbValue(GameTimeControlFilter tc) {
+  switch (tc) {
+    case GameTimeControlFilter.classical:
+      return 'standard';
+    case GameTimeControlFilter.rapid:
+      return 'rapid';
+    case GameTimeControlFilter.blitz:
+      return 'blitz';
+    case GameTimeControlFilter.all:
+      return null;
+  }
+}
+
+/// Status values that map to GameResultFilter.draw on the games table. The
+/// table is denormalized and historic rows use any of these three encodings.
+const List<String> _drawStatusValues = ['1/2', '1/2-1/2', '½-½'];
 
 class GameRepository extends BaseRepository {
   List<int> _parseFideIds(List<String> fideIds) {
@@ -819,22 +945,35 @@ class GameRepository extends BaseRepository {
   /// Search games for a specific country with optional text query.
   /// Returns games where at least one player is from the country AND
   /// optionally matches the search query.
+  /// When [filter] is supplied, the active GameFilter is layered onto the
+  /// PostgREST query so the search respects the user's current filter set.
   Future<List<Games>> searchCountrymenGames({
     required String countryCode,
     String? query,
+    GameFilter? filter,
     int limit = 30,
     int offset = 0,
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
-      debugPrint(
-        '[GameRepository] searchCountrymenGames: country=$normalizedCode, query=$query',
+      final tcDb = _timeControlDbValue(
+        filter?.timeControl ?? GameTimeControlFilter.all,
       );
+      debugPrint(
+        '[GameRepository] searchCountrymenGames: country=$normalizedCode, query=$query, filter=${filter?.hasActiveFilters == true}',
+      );
+
+      final selectCols =
+          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
 
       var dbQuery = supabase
           .from('games')
-          .select(_gameListSelectColumns)
+          .select(selectCols)
           .contains('player_feds', [normalizedCode]);
+
+      if (filter != null && filter.minRating > GameFilter.defaultMinRating) {
+        dbQuery = dbQuery.gte('player_max_rating', filter.minRating);
+      }
 
       // Add text search if query provided (searches player names, ECO code, and opening name)
       if (query != null && query.trim().isNotEmpty) {
@@ -842,6 +981,13 @@ class GameRepository extends BaseRepository {
           'name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%',
         );
       }
+
+      dbQuery = _applyCountryFilterChain(
+        query: dbQuery,
+        filter: filter,
+        countryCode: normalizedCode,
+        tcDb: tcDb,
+      );
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await dbQuery
@@ -862,24 +1008,33 @@ class GameRepository extends BaseRepository {
 
   /// Search games for favorite players with optional text query.
   /// First filters by FIDE IDs (indexed), then applies text search.
+  /// When [filter] is supplied, the active GameFilter is layered onto the
+  /// PostgREST query so the search respects the user's current filter set.
   Future<List<Games>> searchFavoritesGames({
     required List<String> fideIds,
     required List<String> playerNames,
     String? query,
+    GameFilter? filter,
     int limit = 30,
     int offset = 0,
   }) async {
     return handleApiCall(() async {
       debugPrint(
-        '[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, query=$query, offset=$offset',
+        '[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, query=$query, offset=$offset, filter=${filter?.hasActiveFilters == true}',
       );
 
       final fideIdInts = _parseFideIds(fideIds);
       if (fideIdInts.isEmpty) return <Games>[];
 
+      final tcDb = _timeControlDbValue(
+        filter?.timeControl ?? GameTimeControlFilter.all,
+      );
+      final selectCols =
+          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+
       var dbQuery = supabase
           .from('games')
-          .select(_gameListSelectColumns)
+          .select(selectCols)
           .overlaps('player_fide_ids', fideIdInts);
 
       // Add text search if query provided (searches player names, ECO code, and opening name)
@@ -888,6 +1043,13 @@ class GameRepository extends BaseRepository {
           'name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%',
         );
       }
+
+      dbQuery = _applyFavoritesFilterChain(
+        query: dbQuery,
+        filter: filter,
+        fideIds: fideIdInts,
+        tcDb: tcDb,
+      );
 
       // Order and paginate
       final response = await dbQuery
@@ -1198,8 +1360,12 @@ class GameRepository extends BaseRepository {
 
   /// Get distinct game dates for favorited players.
   /// Returns dates in descending order (most recent first).
+  /// When [filter] is supplied, the same predicates that constrain the games
+  /// fetch are applied to the date pagination so users don't page through
+  /// empty days when, e.g. they've selected "Live + 1-0 + Classical".
   Future<List<DateTime>> getDistinctDatesForFavorites({
     required List<String> fideIds,
+    GameFilter? filter,
     int limit = 30,
     int offset = 0,
   }) async {
@@ -1217,6 +1383,7 @@ class GameRepository extends BaseRepository {
           'fide_ids': fideIdInts,
           'limit_count': limit,
           'offset_count': offset,
+          ..._gameFilterRpcParams(filter),
         },
       );
 
@@ -1242,10 +1409,12 @@ class GameRepository extends BaseRepository {
 
   /// Get ALL games by FIDE IDs for a specific date.
   /// No pagination - returns all games for the date.
+  /// Server-side filters from [filter] are applied so the result already
+  /// matches the active GameFilter without a client-side second pass.
   Future<List<Games>> getGamesByFideIdsAndDate({
     required List<String> fideIds,
     required DateTime date,
-    String? eco,
+    GameFilter? filter,
   }) async {
     return handleApiCall(() async {
       final fideIdInts = _parseFideIds(fideIds);
@@ -1264,20 +1433,30 @@ class GameRepository extends BaseRepository {
           'game_day.eq.$dateStr,'
           'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
           'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
+      final tcDb = _timeControlDbValue(
+        filter?.timeControl ?? GameTimeControlFilter.all,
+      );
       debugPrint(
-        '[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr, eco=$eco',
+        '[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr, filter=${filter?.hasActiveFilters == true}',
       );
 
-      // Fetch ALL games for this date (no limit)
+      // Switch to !inner embedding when filtering by time control so the
+      // PostgREST query narrows on tours.group_broadcasts.time_control.
+      final selectCols =
+          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+
       var dbQuery = supabase
           .from('games')
-          .select(_gameListSelectColumns)
+          .select(selectCols)
           .overlaps('player_fide_ids', fideIdInts)
           .or(dayFilter);
 
-      if (eco != null && eco.isNotEmpty) {
-        dbQuery = dbQuery.eq('eco', eco);
-      }
+      dbQuery = _applyFavoritesFilterChain(
+        query: dbQuery,
+        filter: filter,
+        fideIds: fideIdInts,
+        tcDb: tcDb,
+      );
 
       final response = await dbQuery.order(
         'last_move_time',
@@ -1299,9 +1478,14 @@ class GameRepository extends BaseRepository {
 
   /// Get distinct game dates for a country.
   /// Returns dates in descending order (most recent first).
+  /// When [filter] is supplied, all filter predicates are applied to the
+  /// date pagination on the server so pages are dense with matching games.
+  /// `filter.minRating` is folded into `minElo` (max of both) because the
+  /// RPC already exposes a single rating-floor parameter for this code path.
   Future<List<DateTime>> getDistinctDatesForCountry({
     required String countryCode,
     int minElo = 0,
+    GameFilter? filter,
     int limit = 30,
     int offset = 0,
   }) async {
@@ -1311,13 +1495,21 @@ class GameRepository extends BaseRepository {
         '[GameRepository] getDistinctDatesForCountry: countryCode=$normalizedCode',
       );
 
+      final mergedParams = _gameFilterRpcParams(filter)
+        ..remove('p_min_rating'); // folded into min_elo for country RPC
+      final effectiveMinElo =
+          (filter == null)
+              ? minElo
+              : (minElo > filter.minRating ? minElo : filter.minRating);
+
       final response = await supabase.rpc(
         'get_distinct_dates_for_country',
         params: {
           'country_code': normalizedCode,
-          'min_elo': minElo,
+          'min_elo': effectiveMinElo,
           'limit_count': limit,
           'offset_count': offset,
+          ...mergedParams,
         },
       );
 
@@ -1354,11 +1546,12 @@ class GameRepository extends BaseRepository {
   /// Get games by country for a specific date.
   /// Returns ALL games for the date (no limit) - the countrymen tab should display
   /// everything your countrymen played on that date.
+  /// Server-side filters from [filter] are applied to the PostgREST query.
   Future<List<Games>> getGamesByCountryAndDate({
     required String countryCode,
     required DateTime date,
     int minElo = 0,
-    String? eco,
+    GameFilter? filter,
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
@@ -1375,21 +1568,33 @@ class GameRepository extends BaseRepository {
           'game_day.eq.$dateStr,'
           'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
           'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
+      final tcDb = _timeControlDbValue(
+        filter?.timeControl ?? GameTimeControlFilter.all,
+      );
+      final effectiveMinElo =
+          filter == null
+              ? minElo
+              : (minElo > filter.minRating ? minElo : filter.minRating);
       debugPrint(
-        '[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr, eco=$eco',
+        '[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr, filter=${filter?.hasActiveFilters == true}',
       );
 
-      // No limit - fetch ALL games for this date
+      final selectCols =
+          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+
       var dbQuery = supabase
           .from('games')
-          .select(_gameListSelectColumns)
+          .select(selectCols)
           .contains('player_feds', [normalizedCode])
           .or(dayFilter)
-          .gte('player_max_rating', minElo);
+          .gte('player_max_rating', effectiveMinElo);
 
-      if (eco != null && eco.isNotEmpty) {
-        dbQuery = dbQuery.eq('eco', eco);
-      }
+      dbQuery = _applyCountryFilterChain(
+        query: dbQuery,
+        filter: filter,
+        countryCode: normalizedCode,
+        tcDb: tcDb,
+      );
 
       final response = await dbQuery.order(
         'last_move_time',
@@ -1407,6 +1612,126 @@ class GameRepository extends BaseRepository {
       );
       return games;
     });
+  }
+
+  /// Adds the server-side filter chain for the favorites-games path.
+  /// Returned builder type is the same as the input so it can keep chaining
+  /// (e.g. `.order(...)` after this call).
+  dynamic _applyFavoritesFilterChain({
+    required dynamic query,
+    required GameFilter? filter,
+    required List<int> fideIds,
+    required String? tcDb,
+  }) {
+    if (filter == null || !filter.hasActiveFilters) return query;
+
+    // Live / completed
+    switch (filter.live) {
+      case GameLiveFilter.live:
+        query = query.or('status.is.null,status.eq.*');
+        break;
+      case GameLiveFilter.completed:
+        query = query.not('status', 'is', null).neq('status', '*');
+        break;
+      case GameLiveFilter.all:
+        break;
+    }
+
+    // Result
+    switch (filter.result) {
+      case GameResultFilter.whiteWins:
+        query = query.eq('status', '1-0');
+        break;
+      case GameResultFilter.blackWins:
+        query = query.eq('status', '0-1');
+        break;
+      case GameResultFilter.draw:
+        query = query.inFilter('status', _drawStatusValues);
+        break;
+      case GameResultFilter.all:
+        break;
+    }
+
+    // Time control via embedded join
+    if (tcDb != null) {
+      query = query.eq('tours.group_broadcasts.time_control', tcDb);
+    }
+
+    // Rating range — date pagination handles year range and ECO already, but
+    // we re-apply rating here so per-day results are also narrowed.
+    if (filter.minRating > GameFilter.defaultMinRating) {
+      query = query.gte('player_max_rating', filter.minRating);
+    }
+    if (filter.maxRating < GameFilter.absoluteMaxRating) {
+      query = query.lte('player_max_rating', filter.maxRating);
+    }
+
+    // ECO prefix
+    if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
+      query = query.ilike('eco', '${filter.eco.code}%');
+    }
+
+    // Color — which side the favourited player is on
+    if (filter.color != GameColorFilter.all && fideIds.isNotEmpty) {
+      final idx = filter.color == GameColorFilter.white ? 0 : 1;
+      final ids = fideIds.join(',');
+      query = query.filter('players->$idx->>fideId', 'in', '($ids)');
+    }
+    return query;
+  }
+
+  /// Adds the server-side filter chain for the countrymen-games path.
+  dynamic _applyCountryFilterChain({
+    required dynamic query,
+    required GameFilter? filter,
+    required String countryCode,
+    required String? tcDb,
+  }) {
+    if (filter == null || !filter.hasActiveFilters) return query;
+
+    switch (filter.live) {
+      case GameLiveFilter.live:
+        query = query.or('status.is.null,status.eq.*');
+        break;
+      case GameLiveFilter.completed:
+        query = query.not('status', 'is', null).neq('status', '*');
+        break;
+      case GameLiveFilter.all:
+        break;
+    }
+
+    switch (filter.result) {
+      case GameResultFilter.whiteWins:
+        query = query.eq('status', '1-0');
+        break;
+      case GameResultFilter.blackWins:
+        query = query.eq('status', '0-1');
+        break;
+      case GameResultFilter.draw:
+        query = query.inFilter('status', _drawStatusValues);
+        break;
+      case GameResultFilter.all:
+        break;
+    }
+
+    if (tcDb != null) {
+      query = query.eq('tours.group_broadcasts.time_control', tcDb);
+    }
+
+    if (filter.maxRating < GameFilter.absoluteMaxRating) {
+      query = query.lte('player_max_rating', filter.maxRating);
+    }
+
+    if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
+      query = query.ilike('eco', '${filter.eco.code}%');
+    }
+
+    // Color — which side the player from `countryCode` is on
+    if (filter.color != GameColorFilter.all) {
+      final idx = filter.color == GameColorFilter.white ? 0 : 1;
+      query = query.eq('players->$idx->>fed', countryCode);
+    }
+    return query;
   }
 }
 

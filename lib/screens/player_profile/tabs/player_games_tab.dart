@@ -264,6 +264,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       context: context,
       currentFilter: _dialogFilter(currentState.filter),
       showFormatFilter: widget.dataSource == PlayerProfileDataSource.twic,
+      showLiveFilter: false,
     );
     if (result != null && mounted) {
       ref

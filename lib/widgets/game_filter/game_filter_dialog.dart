@@ -4,7 +4,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
-import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
@@ -18,6 +17,7 @@ Future<GameFilter?> showGameFilterDialog({
   required BuildContext context,
   required GameFilter currentFilter,
   bool showFormatFilter = true,
+  bool showLiveFilter = true,
 }) {
   return showDialog<GameFilter>(
     context: context,
@@ -26,6 +26,7 @@ Future<GameFilter?> showGameFilterDialog({
         (_) => GameFilterDialog(
           initialFilter: currentFilter,
           showFormatFilter: showFormatFilter,
+          showLiveFilter: showLiveFilter,
         ),
   );
 }
@@ -35,10 +36,12 @@ class GameFilterDialog extends StatefulWidget {
     super.key,
     required this.initialFilter,
     this.showFormatFilter = true,
+    this.showLiveFilter = true,
   });
 
   final GameFilter initialFilter;
   final bool showFormatFilter;
+  final bool showLiveFilter;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -50,7 +53,6 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameTimeControlFilter _timeControl;
   late GameOnlineFilter _online;
   late GameLiveFilter _live;
-  late GameEcoFilter _eco;
   late RangeValues _yearRange;
   late int? _selectedMinRating;
 
@@ -65,7 +67,6 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     _timeControl = widget.initialFilter.timeControl;
     _online = widget.initialFilter.online;
     _live = widget.initialFilter.live;
-    _eco = widget.initialFilter.eco;
     _yearRange = RangeValues(
       widget.initialFilter.minYear.toDouble(),
       widget.initialFilter.maxYear.toDouble(),
@@ -154,52 +155,82 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Live/completed filter
-                      _sectionLabel('Status'),
-                      SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameLiveFilter>(
-                        value: _live,
-                        items: GameLiveFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        onChanged: (v) => setState(() => _live = v),
-                      ),
-                      SizedBox(height: 20.h),
+                      // 1. Status (Live / Completed) — top priority when shown
+                      if (widget.showLiveFilter) ...[
+                        _sectionLabel('Status'),
+                        SizedBox(height: 8.h),
+                        _chipGrid<GameLiveFilter>(
+                          values: GameLiveFilter.values,
+                          selected: _live,
+                          label: (v) =>
+                              v == GameLiveFilter.all ? 'All' : v.displayText,
+                          onTap: (v) {
+                            HapticFeedbackService.selection();
+                            setState(() => _live = v);
+                          },
+                        ),
+                        SizedBox(height: 20.h),
+                      ],
 
-                      // Result filter
-                      _sectionLabel('Result'),
-                      SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameResultFilter>(
-                        value: _result,
-                        items: GameResultFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        onChanged: (v) => setState(() => _result = v),
-                      ),
-                      SizedBox(height: 20.h),
-
-                      // Color filter
-                      _sectionLabel('Color'),
-                      SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameColorFilter>(
-                        value: _color,
-                        items: GameColorFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        onChanged: (v) => setState(() => _color = v),
-                      ),
-                      SizedBox(height: 20.h),
-
-                      // Time Control filter
+                      // 2. Time Control
                       _sectionLabel('Time Control'),
                       SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameTimeControlFilter>(
-                        value: _timeControl,
-                        items: GameTimeControlFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        itemAssetPath: (v) => v.assetPath,
-                        onChanged: (v) => setState(() => _timeControl = v),
+                      _chipGrid<GameTimeControlFilter>(
+                        values: GameTimeControlFilter.values,
+                        selected: _timeControl,
+                        label: (v) => v == GameTimeControlFilter.all
+                            ? 'All'
+                            : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _timeControl = v);
+                        },
                       ),
                       SizedBox(height: 20.h),
 
-                      // Online filter
+                      // 3. Level
+                      _sectionLabel('Level'),
+                      SizedBox(height: 8.h),
+                      RatingTierFilter(
+                        selectedMinRating: _selectedMinRating,
+                        onChanged: (value) {
+                          HapticFeedbackService.selection();
+                          setState(() => _selectedMinRating = value);
+                        },
+                      ),
+                      SizedBox(height: 20.h),
+
+                      // 4. Result (box grid)
+                      _sectionLabel('Result'),
+                      SizedBox(height: 8.h),
+                      _chipGrid<GameResultFilter>(
+                        values: GameResultFilter.values,
+                        selected: _result,
+                        label: (v) =>
+                            v == GameResultFilter.all ? 'All' : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _result = v);
+                        },
+                      ),
+                      SizedBox(height: 20.h),
+
+                      // 5. Color (box grid)
+                      _sectionLabel('Color'),
+                      SizedBox(height: 8.h),
+                      _chipGrid<GameColorFilter>(
+                        values: GameColorFilter.values,
+                        selected: _color,
+                        label: (v) =>
+                            v == GameColorFilter.all ? 'All' : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _color = v);
+                        },
+                      ),
+                      SizedBox(height: 20.h),
+
+                      // 6. Format (online/OTB) — only when caller enables it
                       if (widget.showFormatFilter) ...[
                         _sectionLabel('Format'),
                         SizedBox(height: 8.h),
@@ -212,15 +243,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         SizedBox(height: 20.h),
                       ],
 
-                      _sectionLabel('Opening'),
-                      SizedBox(height: 8.h),
-                      EcoFilterDropdown(
-                        value: _eco,
-                        onChanged: (v) => setState(() => _eco = v),
-                      ),
-                      SizedBox(height: 20.h),
-
-                      // Year range slider
+                      // 7. Year range
                       _sectionLabel('Year'),
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
@@ -230,16 +253,6 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         divisions:
                             DateTime.now().year - GameFilter.absoluteMinYear,
                         onChanged: (v) => setState(() => _yearRange = v),
-                      ),
-                      SizedBox(height: 20.h),
-                      _sectionLabel('Level'),
-                      SizedBox(height: 8.h),
-                      RatingTierFilter(
-                        selectedMinRating: _selectedMinRating,
-                        onChanged: (value) {
-                          HapticFeedbackService.selection();
-                          setState(() => _selectedMinRating = value);
-                        },
                       ),
                       SizedBox(height: 12.h),
                     ],
@@ -345,7 +358,6 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       timeControl: _timeControl,
       online: _online,
       live: _live,
-      eco: _eco,
       minYear: _yearRange.start.round(),
       maxYear: _yearRange.end.round(),
       minRating: _selectedMinRating ?? GameFilter.defaultMinRating,
@@ -361,6 +373,38 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         color: context.colors.textPrimary,
         letterSpacing: 0.3,
       ),
+    );
+  }
+
+  Widget _chipGrid<T>({
+    required List<T> values,
+    required T selected,
+    required String Function(T) label,
+    required ValueChanged<T> onTap,
+  }) {
+    return Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children: values.map((v) {
+        final isSelected = v == selected;
+        return GestureDetector(
+          onTap: () => onTap(v),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+            decoration: BoxDecoration(
+              color: isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(8.br),
+            ),
+            child: Text(
+              label(v),
+              style: AppTypography.textXsMedium.copyWith(
+                color: isSelected ? kBlackColor : context.colors.textPrimary,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

@@ -331,7 +331,7 @@ class _CenterContent extends ConsumerWidget {
           child: _ResultText(
             status: _displayTextSupporter(matchWithComparison),
             winColor: kPrimaryColor,
-            loseColor: neutralColor,
+            loseColor: context.colors.textPrimaryMuted,
             drawColor: context.colors.textPrimaryMuted,
             neutralColor: neutralColor,
           ),
@@ -550,7 +550,7 @@ class _ResultText extends StatelessWidget {
   Widget build(BuildContext context) {
     final baseStyle = AppTypography.textSmBold.copyWith(
       color: neutralColor,
-      fontWeight: FontWeight.w800,
+      fontWeight: FontWeight.w500,
       height: 1.0,
       letterSpacing: -0.2,
     );
@@ -642,6 +642,9 @@ class _LastMoveNotation extends StatelessWidget {
 
   final String? lastMove;
   final String? fen;
+  static final RegExp _uciMovePattern = RegExp(
+    r'^[a-h][1-8][a-h][1-8][qrbn]?$',
+  );
 
   /// Extracts move number and side from FEN
   /// Returns (moveNumber, wasWhiteMove) or null if parsing fails
@@ -671,33 +674,34 @@ class _LastMoveNotation extends StatelessWidget {
 
   /// Converts UCI move (like "b8e8") to SAN notation (like "Re8", "Nf3", etc.)
   String? _convertUciToSan() {
-    if (lastMove == null || lastMove!.isEmpty) {
+    final uci = lastMove?.trim().toLowerCase();
+    if (uci == null || uci.isEmpty) {
       return null;
     }
+
+    if (!_uciMovePattern.hasMatch(uci)) return null;
+
+    if (uci.length < 4) return null;
+
+    final fromSquare = uci.substring(0, 2);
+    final toSquare = uci.substring(2, 4);
+    final promotion = uci.length == 5 ? uci[4] : null;
+    final castlingSan = _castlingSan(fromSquare, toSquare);
 
     // If FEN is not available, at least show the destination square
-    if (fen == null || fen!.isEmpty) {
-      // Extract just the destination square from UCI
-      if (lastMove!.length >= 4) {
-        return lastMove!.substring(2, 4);
-      }
-      return null;
-    }
+    if (fen == null || fen!.isEmpty) return castlingSan ?? toSquare;
 
     try {
-      // Parse UCI move manually (format: "e2e4" or "e7e8q" for promotion)
-      if (lastMove!.length < 4) return null;
-
-      final fromSquare = lastMove!.substring(0, 2);
-      final toSquare = lastMove!.substring(2, 4);
-      final promotion = lastMove!.length == 5 ? lastMove![4] : null;
-
       // Parse the current FEN (position AFTER the move)
       final currentSetup = Setup.parseFen(fen!);
       final currentPosition = Chess.fromSetup(currentSetup);
 
+      if (castlingSan != null) {
+        return _withCheckSuffix(castlingSan, currentPosition);
+      }
+
       // Parse destination square using dartchess
-      final move = Move.parse(lastMove!);
+      final move = Move.parse(uci);
       if (move == null) {
         // If Move.parse fails, just return destination square
         return toSquare;
@@ -708,11 +712,6 @@ class _LastMoveNotation extends StatelessWidget {
       final piece = currentPosition.board.pieceAt(destSquare);
 
       if (piece == null) {
-        // Castling moves: O-O or O-O-O
-        if ((fromSquare == 'e1' && (toSquare == 'g1' || toSquare == 'c1')) ||
-            (fromSquare == 'e8' && (toSquare == 'g8' || toSquare == 'c8'))) {
-          return toSquare == 'g1' || toSquare == 'g8' ? 'O-O' : 'O-O-O';
-        }
         // Move might have been a capture, just return destination
         return toSquare;
       }
@@ -751,11 +750,27 @@ class _LastMoveNotation extends StatelessWidget {
       return moveStr.toString();
     } catch (e) {
       // If conversion fails, at least return the destination square
-      if (lastMove!.length >= 4) {
-        return lastMove!.substring(2, 4);
-      }
-      return null;
+      return castlingSan ?? toSquare;
     }
+  }
+
+  String? _castlingSan(String fromSquare, String toSquare) {
+    final rank = switch (fromSquare) {
+      'e1' => '1',
+      'e8' => '8',
+      _ => null,
+    };
+    if (rank == null) return null;
+
+    if (toSquare == 'g$rank' || toSquare == 'h$rank') return 'O-O';
+    if (toSquare == 'c$rank' || toSquare == 'a$rank') return 'O-O-O';
+    return null;
+  }
+
+  String _withCheckSuffix(String san, Position position) {
+    if (position.isCheckmate) return '$san#';
+    if (position.isCheck) return '$san+';
+    return san;
   }
 
   String _getPieceSymbol(Role role) {
@@ -792,31 +807,37 @@ class _LastMoveNotation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Try to convert UCI to SAN
-    final sanMove = _convertUciToSan();
+    final displayText = formatGameCardLastMoveNotation(
+      lastMove: lastMove,
+      fen: fen,
+    );
 
-    // Display the converted SAN move if successful
-    // If conversion fails but we have lastMove, show the raw lastMove as fallback
-    // This ensures we always show something if a move exists
-    final moveNotation = sanMove ?? lastMove;
-
-    if (moveNotation == null || moveNotation.isEmpty) {
+    if (displayText == null || displayText.isEmpty) {
       return const SizedBox.shrink();
     }
-
-    // Format with move number
-    final displayText = _formatMoveWithNumber(moveNotation);
 
     return Center(
       child: Text(
         displayText,
-        style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+        style: AppTypography.textXsMedium.copyWith(
+          color: context.colors.textPrimary,
+        ),
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
       ),
     );
   }
+}
+
+String? formatGameCardLastMoveNotation({
+  required String? lastMove,
+  required String? fen,
+}) {
+  final notation = _LastMoveNotation(lastMove: lastMove, fen: fen);
+  final moveNotation = notation._convertUciToSan() ?? lastMove;
+  if (moveNotation == null || moveNotation.isEmpty) return null;
+  return notation._formatMoveWithNumber(moveNotation);
 }
 
 String _displayTextSupporter(MatchWithComparison game) {

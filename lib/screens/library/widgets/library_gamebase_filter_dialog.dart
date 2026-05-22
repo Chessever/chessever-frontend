@@ -338,12 +338,42 @@ class _LibraryGamebaseFilterDialogState
                       // Time Control filter
                       _sectionLabel('Time Control'),
                       SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameTimeControlFilter>(
-                        value: _timeControl,
-                        items: GameTimeControlFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        itemAssetPath: (v) => v.assetPath,
-                        onChanged: (v) => setState(() => _timeControl = v),
+                      Wrap(
+                        spacing: 8.w,
+                        runSpacing: 8.h,
+                        children: GameTimeControlFilter.values.map((v) {
+                          final isSelected = v == _timeControl;
+                          final label = v == GameTimeControlFilter.all
+                              ? 'All'
+                              : v.displayText;
+                          return GestureDetector(
+                            onTap: () {
+                              HapticFeedbackService.selection();
+                              setState(() => _timeControl = v);
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 14.w,
+                                vertical: 10.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? kPrimaryColor
+                                    : context.colors.surfaceRecessed,
+                                borderRadius: BorderRadius.circular(8.br),
+                              ),
+                              child: Text(
+                                label,
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: isSelected
+                                      ? kBlackColor
+                                      : context.colors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
                       SizedBox(height: 20.h),
 

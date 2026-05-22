@@ -9,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -49,6 +50,9 @@ class TournamentMenuButton extends ConsumerWidget {
             ? ref.watch(eventMuteProvider(groupBroadcastId)).valueOrNull ??
                 false
             : false;
+    final isGamesTab =
+        ref.watch(selectedTourModeProvider) ==
+            TournamentDetailScreenMode.games;
 
     return AppBarIcons(
       key: menuKey,
@@ -58,16 +62,24 @@ class TournamentMenuButton extends ConsumerWidget {
         final RenderBox? renderBox =
             menuKey.currentContext?.findRenderObject() as RenderBox?;
         if (renderBox != null) {
-          final visibleRoundIds =
-              ref.read(gamesAppBarProvider.notifier).getVisibleRoundIds();
-          final allRoundIds =
-              ref.read(gamesAppBarProvider.notifier).getAllRoundIdsWithGames();
-          final visibleMatchKeys = ref
-              .read(gamesAppBarProvider.notifier)
-              .getVisibleMatchKeys(visibleRoundIds);
-          final allMatchKeys = ref
-              .read(gamesAppBarProvider.notifier)
-              .getVisibleMatchKeys(allRoundIds);
+          final visibleRoundIds = isGamesTab
+              ? ref.read(gamesAppBarProvider.notifier).getVisibleRoundIds()
+              : const <String>[];
+          final allRoundIds = isGamesTab
+              ? ref
+                  .read(gamesAppBarProvider.notifier)
+                  .getAllRoundIdsWithGames()
+              : const <String>[];
+          final visibleMatchKeys = isGamesTab
+              ? ref
+                  .read(gamesAppBarProvider.notifier)
+                  .getVisibleMatchKeys(visibleRoundIds)
+              : const <String>[];
+          final allMatchKeys = isGamesTab
+              ? ref
+                  .read(gamesAppBarProvider.notifier)
+                  .getVisibleMatchKeys(allRoundIds)
+              : const <String>[];
           final Offset offset = renderBox.localToGlobal(Offset.zero);
 
           showTabletSafeMenu(
@@ -92,6 +104,7 @@ class TournamentMenuButton extends ConsumerWidget {
               allMatchKeys,
               tourData,
               isMuted,
+              isGamesTab,
             ),
           );
         }
@@ -108,9 +121,39 @@ class TournamentMenuButton extends ConsumerWidget {
     List<String> allMatchKeys,
     TourDetailViewModel tourData,
     bool isMuted,
+    bool isGamesTab,
   ) {
     final List<PopupMenuEntry<TournamentMenuAction>> items = [];
 
+    if (isGamesTab) {
+      _addGamesTabItems(
+        ref,
+        context,
+        items,
+        visibleRoundIds,
+        visibleMatchKeys,
+        allRoundIds,
+        allMatchKeys,
+        tourData,
+      );
+    }
+
+    // Notifications + share are shared across tabs.
+    _addSharedItems(ref, context, items, tourData, isMuted);
+
+    return items;
+  }
+
+  void _addGamesTabItems(
+    WidgetRef ref,
+    BuildContext context,
+    List<PopupMenuEntry<TournamentMenuAction>> items,
+    List<String> visibleRoundIds,
+    List<String> visibleMatchKeys,
+    List<String> allRoundIds,
+    List<String> allMatchKeys,
+    TourDetailViewModel tourData,
+  ) {
     final gamesScreenState = ref.read(gamesTourScreenProvider).valueOrNull;
     final isFocusingLiveGames =
         gamesScreenState?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
@@ -230,7 +273,15 @@ class TournamentMenuButton extends ConsumerWidget {
         ),
       ),
     );
+  }
 
+  void _addSharedItems(
+    WidgetRef ref,
+    BuildContext context,
+    List<PopupMenuEntry<TournamentMenuAction>> items,
+    TourDetailViewModel tourData,
+    bool isMuted,
+  ) {
     // 4. Notifications
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
     if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
@@ -318,8 +369,6 @@ class TournamentMenuButton extends ConsumerWidget {
         ),
       );
     }
-
-    return items;
   }
 }
 

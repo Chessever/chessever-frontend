@@ -632,11 +632,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                                 playerView == PlayerView.boardView;
                             final resultColor = isBoardView
                                 ? context.colors.textPrimary
-                                : isDraw
-                                    ? context.colors.textPrimaryMuted
-                                    : isWin
-                                        ? kPrimaryColor
-                                        : context.colors.textPrimary;
+                                : isWin
+                                    ? kPrimaryColor
+                                    : context.colors.textPrimaryMuted;
                             final scoreFontSize =
                                 playerView == PlayerView.listView
                                     ? 12.f
@@ -647,7 +645,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                               label,
                               style: TextStyle(
                                 fontSize: scoreFontSize,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                                 color: resultColor,
                                 height: 1.0,
                                 letterSpacing: -0.2,

@@ -41,7 +41,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       id: json['id'] as String,
       userId: json['user_id'] as String,
       boardColorIndex: json['board_color_index'] as int? ?? 0,
-      boardThemeIndex: json['board_theme_index'] as int? ?? 0,
+      boardThemeIndex: json['board_theme_index'] as int? ?? 9,
       showEvaluationBar: json['show_evaluation_bar'] as bool? ?? true,
       soundEnabled: json['sound_enabled'] as bool? ?? true,
       chatEnabled: json['chat_enabled'] as bool? ?? true,
@@ -94,11 +94,11 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       id: '',
       userId: userId,
       boardColorIndex: 0, // DEPRECATED
-      boardThemeIndex: 0, // Brown (default)
+      boardThemeIndex: 9, // Grey (default)
       showEvaluationBar: true,
       soundEnabled: true,
       chatEnabled: true,
-      pieceStyleIndex: 0, // cburnett (default)
+      pieceStyleIndex: 0, // cburnett / Colin M.L. Burnett (default)
       gamesListViewModeIndex: 1, // chessBoardGrid view (default)
       useFigurine: true, // Use figurine notation by default
       createdAt: DateTime.now(),

@@ -266,6 +266,7 @@ class CountrymenCombinedGamesNotifier
       final games = await gameRepo.searchCountrymenGames(
         countryCode: fideCode,
         query: query,
+        filter: state.filter,
         limit: _searchBatchSize,
         offset: isInitial ? 0 : state.games.length,
       );
@@ -332,6 +333,7 @@ class CountrymenCombinedGamesNotifier
       if (_availableDates.isEmpty && _hasMoreDates) {
         final dates = await gameRepo.getDistinctDatesForCountry(
           countryCode: fideCode,
+          filter: state.filter,
           limit: 30, // Get enough dates
           offset: 0,
         );
@@ -350,6 +352,7 @@ class CountrymenCombinedGamesNotifier
         if (_hasMoreDates) {
           final moreDates = await gameRepo.getDistinctDatesForCountry(
             countryCode: fideCode,
+            filter: state.filter,
             limit: 30,
             offset: _availableDates.length,
           );
@@ -407,7 +410,7 @@ class CountrymenCombinedGamesNotifier
       final dayGames = await gameRepo.getGamesByCountryAndDate(
         countryCode: fideCode,
         date: date,
-        eco: state.filter.eco.isAll ? null : state.filter.eco.code,
+        filter: state.filter,
       );
 
       debugPrint(
@@ -540,13 +543,17 @@ class CountrymenCombinedGamesNotifier
     debugPrint(
       '[CountrymenGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}, eco=${filter.eco.code}',
     );
-    final ecoChanged = filter.eco != state.filter.eco;
+    final filterChanged = filter != state.filter;
     state = state.copyWith(filter: filter);
 
-    // ECO filter is applied server-side, so we need to refetch
-    if (ecoChanged) {
+    // Every filter dimension is now applied server-side, so any change must
+    // trigger a fresh refetch — local lists are incomplete. Re-run whichever
+    // path is currently active (search vs date pagination) so the filter is
+    // respected even when the user has an open search query.
+    if (filterChanged) {
       _availableDates = [];
       _hasMoreDates = true;
+      final wasSearching = _currentSearchQuery.isNotEmpty;
       state = state.copyWith(
         games: [],
         seenGameIds: {},
@@ -555,7 +562,11 @@ class CountrymenCombinedGamesNotifier
         hasMore: true,
         isLoading: true,
       );
-      _fetchNextDates(isInitial: true);
+      if (wasSearching) {
+        _fetchSearchResults(isInitial: true);
+      } else {
+        _fetchNextDates(isInitial: true);
+      }
     }
   }
 

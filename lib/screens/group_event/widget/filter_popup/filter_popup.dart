@@ -48,8 +48,12 @@ class FilterPopup extends ConsumerWidget {
                 width: dialogWidth,
                 constraints: BoxConstraints(maxHeight: 500.h),
                 decoration: BoxDecoration(
-                  color: context.colors.surface,
-                  borderRadius: BorderRadius.circular(4.br),
+                  color: kBlackColor,
+                  borderRadius: BorderRadius.circular(16.br),
+                  border: Border.all(
+                    color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
                 ),
                 child: SingleChildScrollView(
                   child: Column(
@@ -68,62 +72,10 @@ class FilterPopup extends ConsumerWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Format',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                            ),
-                            SizedBox(height: 8.h),
-                            GridView.builder(
-                              shrinkWrap: true,
-                              padding: EdgeInsets.zero,
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    mainAxisSpacing: 8,
-                                    crossAxisSpacing: 8,
-                                    childAspectRatio: 3,
-                                  ),
-                              itemCount: readableFormat.length,
-                              itemBuilder: (context, index) {
-                                final current = readableFormat[index];
-                                final raw = formats[index];
-                                final isSelected = filterState.formatsAndStates
-                                    .contains(raw);
-                                return GestureDetector(
-                                  onTap:
-                                      () => ref
-                                          .read(filterPopupProvider.notifier)
-                                          .toggleFormatOrState(raw),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 150),
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color:
-                                          isSelected
-                                              ? kPrimaryColor
-                                              : context.colors.surface,
-                                      borderRadius: BorderRadius.circular(8.br),
-                                    ),
-                                    child: Text(
-                                      current,
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(
-                                            color:
-                                                isSelected
-                                                    ? kBlackColor
-                                                    : context.colors.textPrimary,
-                                          ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            SizedBox(height: 24.h),
-                            Text(
                               'Event Status',
-                              style: AppTypography.textXsMedium.copyWith(
+                              style: AppTypography.textSmMedium.copyWith(
                                 color: context.colors.textPrimary,
+                                letterSpacing: 0.3,
                               ),
                             ),
                             SizedBox(height: 8.h),
@@ -155,7 +107,7 @@ class FilterPopup extends ConsumerWidget {
                                       color:
                                           isSelected
                                               ? kPrimaryColor
-                                              : context.colors.surface,
+                                              : context.colors.surfaceRecessed,
                                       borderRadius: BorderRadius.circular(8.br),
                                     ),
                                     child: Text(
@@ -172,11 +124,66 @@ class FilterPopup extends ConsumerWidget {
                                 );
                               },
                             ),
-                            SizedBox(height: 24.h),
+                            SizedBox(height: 20.h),
+                            Text(
+                              'Time Control',
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: context.colors.textPrimary,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            GridView.builder(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    mainAxisSpacing: 8,
+                                    crossAxisSpacing: 8,
+                                    childAspectRatio: 3,
+                                  ),
+                              itemCount: readableFormat.length,
+                              itemBuilder: (context, index) {
+                                final current = readableFormat[index];
+                                final raw = formats[index];
+                                final isSelected = filterState.formatsAndStates
+                                    .contains(raw);
+                                return GestureDetector(
+                                  onTap:
+                                      () => ref
+                                          .read(filterPopupProvider.notifier)
+                                          .toggleFormatOrState(raw),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          isSelected
+                                              ? kPrimaryColor
+                                              : context.colors.surfaceRecessed,
+                                      borderRadius: BorderRadius.circular(8.br),
+                                    ),
+                                    child: Text(
+                                      current,
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(
+                                            color:
+                                                isSelected
+                                                    ? kBlackColor
+                                                    : context.colors.textPrimary,
+                                          ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            SizedBox(height: 20.h),
                             Text(
                               'Level',
-                              style: AppTypography.textXsMedium.copyWith(
+                              style: AppTypography.textSmMedium.copyWith(
                                 color: context.colors.textPrimary,
+                                letterSpacing: 0.3,
                               ),
                             ),
                             SizedBox(height: 8.h),
@@ -197,7 +204,7 @@ class FilterPopup extends ConsumerWidget {
                           children: [
                             Expanded(
                               child: SizedBox(
-                                height: 40.h,
+                                height: 48.h,
                                 child: OutlinedButton(
                                   onPressed: () {
                                     onResetFilters();
@@ -210,7 +217,7 @@ class FilterPopup extends ConsumerWidget {
                                     backgroundColor: context.colors.surface,
                                     side: BorderSide.none,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(4.br),
+                                      borderRadius: BorderRadius.circular(10.br),
                                     ),
                                     padding: EdgeInsets.zero,
                                   ),
@@ -228,7 +235,7 @@ class FilterPopup extends ConsumerWidget {
                             SizedBox(width: 12.w),
                             Expanded(
                               child: SizedBox(
-                                height: 40.h,
+                                height: 48.h,
                                 child: ElevatedButton(
                                   onPressed: () async {
                                     onApplyFilters(filterState);
@@ -239,7 +246,7 @@ class FilterPopup extends ConsumerWidget {
                                     foregroundColor: kBlackColor,
                                     elevation: 0,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(4.br),
+                                      borderRadius: BorderRadius.circular(10.br),
                                     ),
                                     padding: EdgeInsets.zero,
                                   ),

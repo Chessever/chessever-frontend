@@ -183,13 +183,17 @@ class FavoritesCombinedGamesNotifier
   }
 
   void applyFilter(GameFilter newFilter) {
-    final ecoChanged = newFilter.eco != state.filter.eco;
+    final filterChanged = newFilter != state.filter;
     state = state.copyWith(filter: newFilter);
 
-    // ECO filter is applied server-side, so we need to refetch
-    if (ecoChanged) {
+    // Every filter dimension is now applied server-side, so any change must
+    // trigger a fresh refetch — local lists are incomplete. Re-run whichever
+    // path is currently active (search vs date pagination) so the filter is
+    // respected even when the user has an open search query.
+    if (filterChanged) {
       _availableDates = [];
       _hasMoreDates = true;
+      final wasSearching = _currentSearchQuery.isNotEmpty;
       state = state.copyWith(
         games: [],
         seenGameIds: {},
@@ -197,7 +201,11 @@ class FavoritesCombinedGamesNotifier
         hasMore: true,
         isLoading: true,
       );
-      _fetchNextDates(isInitial: true);
+      if (wasSearching) {
+        _fetchSearchResults(isInitial: true);
+      } else {
+        _fetchNextDates(isInitial: true);
+      }
     }
   }
 
@@ -280,6 +288,7 @@ class FavoritesCombinedGamesNotifier
         fideIds: fideIds,
         playerNames: [],
         query: query,
+        filter: state.filter,
         limit: _searchBatchSize,
         offset: isInitial ? 0 : state.games.length,
       );
@@ -361,6 +370,7 @@ class FavoritesCombinedGamesNotifier
       if (_availableDates.isEmpty && _hasMoreDates) {
         final dates = await gameRepo.getDistinctDatesForFavorites(
           fideIds: fideIds,
+          filter: state.filter,
           limit: 30,
           offset: 0,
         );
@@ -379,6 +389,7 @@ class FavoritesCombinedGamesNotifier
         if (_hasMoreDates) {
           final moreDates = await gameRepo.getDistinctDatesForFavorites(
             fideIds: fideIds,
+            filter: state.filter,
             limit: 30,
             offset: _availableDates.length,
           );
@@ -435,7 +446,7 @@ class FavoritesCombinedGamesNotifier
       final dayGames = await gameRepo.getGamesByFideIdsAndDate(
         fideIds: fideIds,
         date: date,
-        eco: state.filter.eco.isAll ? null : state.filter.eco.code,
+        filter: state.filter,
       );
 
       debugPrint(

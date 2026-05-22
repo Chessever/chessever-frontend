@@ -25,12 +25,12 @@ enum BoardColor {
 class BoardSettingsNew {
   const BoardSettingsNew({
     this.boardColorIndex = 0,
-    this.boardThemeIndex = 0, // New: chessground theme index
+    this.boardThemeIndex = 9, // Grey (default chessground theme)
     this.showEvaluationBar = true,
     this.soundEnabled = true,
     this.chatEnabled = true,
-    this.pieceStyleIndex = 0, // Now used for chessground PieceSet
-    this.gamesListViewModeIndex = 0,
+    this.pieceStyleIndex = 0, // cburnett (Colin M.L. Burnett)
+    this.gamesListViewModeIndex = 1, // chessBoardGrid (Grid)
     this.useFigurine =
         true, // Use chess piece symbols (♔♕♖♗♘) instead of letters
   });
