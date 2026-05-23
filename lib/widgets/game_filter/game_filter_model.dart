@@ -242,8 +242,9 @@ class GameFilter {
     if (!eco.isAll) count++;
     if (minYear != defaultMinYear || maxYear != DateTime.now().year) count++;
     if (minRating != defaultMinRating ||
-        maxRating != GameFilter.absoluteMaxRating)
+        maxRating != GameFilter.absoluteMaxRating) {
       count++;
+    }
     return count;
   }
 
@@ -308,6 +309,43 @@ class GameFilter {
 
 /// Helper to filter games locally based on GameFilter
 class GameFilterHelper {
+  /// A game is live only while it is marked ongoing and belongs to today.
+  ///
+  /// Prefer `lastMoveTime` because it proves active play. For not-yet-moved
+  /// same-day games, fall back to the scheduled game day/date.
+  static bool isLiveNow(GamesTourModel game, {DateTime? now}) {
+    if (!game.effectiveGameStatus.isOngoing) return false;
+
+    final comparisonTime = now ?? DateTime.now();
+    if (game.lastMoveTime != null) {
+      return _isSameUtcDay(game.lastMoveTime!, comparisonTime);
+    }
+
+    final liveDate = game.gameDay ?? game.dateStart;
+    if (liveDate == null) return false;
+
+    return _isSameCalendarDay(liveDate, _todayUtc(comparisonTime));
+  }
+
+  static bool _isSameUtcDay(DateTime left, DateTime right) {
+    final leftUtc = left.toUtc();
+    final rightUtc = right.toUtc();
+    return leftUtc.year == rightUtc.year &&
+        leftUtc.month == rightUtc.month &&
+        leftUtc.day == rightUtc.day;
+  }
+
+  static DateTime _todayUtc(DateTime now) {
+    final nowUtc = now.toUtc();
+    return DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+  }
+
+  static bool _isSameCalendarDay(DateTime left, DateTime right) {
+    return left.year == right.year &&
+        left.month == right.month &&
+        left.day == right.day;
+  }
+
   /// Apply filter to a list of games
   ///
   /// [targetFideId] - When provided, color filter checks if target player
@@ -323,11 +361,15 @@ class GameFilterHelper {
   }) {
     return games.where((game) {
       // Live/completed filter — use effectiveGameStatus so games whose clock
-      // hit 00:00 but DB hasn't caught up still count as completed.
+      // hit 00:00 but DB hasn't caught up still count as completed. A stale
+      // ongoing marker from an old day is neither live nor completed.
       if (filter.live != GameLiveFilter.all) {
-        final isLive = game.effectiveGameStatus.isOngoing;
+        final isLive = isLiveNow(game);
+        final isCompleted = game.effectiveGameStatus.isFinished;
         if (filter.live == GameLiveFilter.live && !isLive) return false;
-        if (filter.live == GameLiveFilter.completed && isLive) return false;
+        if (filter.live == GameLiveFilter.completed && !isCompleted) {
+          return false;
+        }
       }
 
       // Result filter

@@ -1844,6 +1844,7 @@ bool playerProfileHasStructuredFilters(GameFilter filter) {
   return effective.result != GameResultFilter.all ||
       effective.color != GameColorFilter.all ||
       effective.timeControl != GameTimeControlFilter.all ||
+      effective.live != GameLiveFilter.all ||
       !effective.eco.isAll ||
       effective.minYear != GameFilter.absoluteMinYear ||
       effective.maxYear != DateTime.now().year ||
@@ -1887,8 +1888,16 @@ class PlayerProfileGamesState {
     var games = allGames;
 
     if (playerKey.source == PlayerProfileDataSource.twic) {
-      // TWIC games are strictly server-side filtered, paginated exactly as returned from the API.
-      return games;
+      if (filter.live == GameLiveFilter.all) return games;
+
+      // TWIC handles most filters server-side, but lifecycle status is a local
+      // app concept and must still obey the shared Live/Completed semantics.
+      return GameFilterHelper.applyFilter(
+        games,
+        GameFilter(live: filter.live),
+        targetFideId: playerKey.fideId,
+        playerNameQuery: playerKey.hasFideId ? null : playerKey.playerName,
+      );
     }
 
     // Apply search query (supports chained AND / OR / NOT terms).

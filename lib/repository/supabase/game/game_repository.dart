@@ -194,6 +194,40 @@ String? _timeControlDbValue(GameTimeControlFilter tc) {
 /// table is denormalized and historic rows use any of these three encodings.
 const List<String> _drawStatusValues = ['1/2', '1/2-1/2', '½-½'];
 
+DateTime _todayUtc([DateTime? now]) {
+  final nowUtc = (now ?? DateTime.now()).toUtc();
+  return DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+}
+
+String _dateKey(DateTime date) {
+  return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+}
+
+String _currentLiveDayFilter() {
+  final todayUtc = _todayUtc();
+  final nextDayUtc = todayUtc.add(const Duration(days: 1));
+  final dateStr = _dateKey(todayUtc);
+
+  return 'and(last_move_time.gte.${todayUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
+      'and(last_move_time.is.null,game_day.eq.$dateStr),'
+      'and(last_move_time.is.null,game_day.is.null,date_start.eq.$dateStr)';
+}
+
+bool _isSameCalendarDay(DateTime left, DateTime right) {
+  return left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
+}
+
+List<DateTime> _filterDatesForLiveFilter(
+  List<DateTime> dates,
+  GameFilter? filter,
+) {
+  if (filter?.live != GameLiveFilter.live) return dates;
+  final todayUtc = _todayUtc();
+  return dates.where((date) => _isSameCalendarDay(date, todayUtc)).toList();
+}
+
 class GameRepository extends BaseRepository {
   List<int> _parseFideIds(List<String> fideIds) {
     return fideIds.map((id) => int.tryParse(id)).whereType<int>().toList();
@@ -966,10 +1000,10 @@ class GameRepository extends BaseRepository {
       final selectCols =
           tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
 
-      var dbQuery = supabase
-          .from('games')
-          .select(selectCols)
-          .contains('player_feds', [normalizedCode]);
+      var dbQuery = supabase.from('games').select(selectCols).contains(
+        'player_feds',
+        [normalizedCode],
+      );
 
       if (filter != null && filter.minRating > GameFilter.defaultMinRating) {
         dbQuery = dbQuery.gte('player_max_rating', filter.minRating);
@@ -1399,7 +1433,10 @@ class GameRepository extends BaseRepository {
         }
       }
 
-      final filteredDates = _filterOutFutureDates(dates);
+      final filteredDates = _filterDatesForLiveFilter(
+        _filterOutFutureDates(dates),
+        filter,
+      );
       debugPrint(
         '[GameRepository] getDistinctDatesForFavorites: found ${filteredDates.length} dates',
       );
@@ -1525,7 +1562,10 @@ class GameRepository extends BaseRepository {
         }
       }
 
-      final filteredDates = _filterOutFutureDates(dates);
+      final filteredDates = _filterDatesForLiveFilter(
+        _filterOutFutureDates(dates),
+        filter,
+      );
       debugPrint(
         '[GameRepository] getDistinctDatesForCountry: found ${filteredDates.length} dates',
       );
@@ -1629,6 +1669,7 @@ class GameRepository extends BaseRepository {
     switch (filter.live) {
       case GameLiveFilter.live:
         query = query.or('status.is.null,status.eq.*');
+        query = query.or(_currentLiveDayFilter());
         break;
       case GameLiveFilter.completed:
         query = query.not('status', 'is', null).neq('status', '*');
@@ -1692,6 +1733,7 @@ class GameRepository extends BaseRepository {
     switch (filter.live) {
       case GameLiveFilter.live:
         query = query.or('status.is.null,status.eq.*');
+        query = query.or(_currentLiveDayFilter());
         break;
       case GameLiveFilter.completed:
         query = query.not('status', 'is', null).neq('status', '*');

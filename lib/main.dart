@@ -11,7 +11,6 @@ import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
-import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';

@@ -203,7 +203,7 @@ class AudioPlayerService with WidgetsBindingObserver {
       final results = <AudioSource>[];
 
       for (final path in paths) {
-        final source = await _loadAssetFromMemoryWithFrameDelay(path);
+        final source = await _loadAssetWithFrameDelay(path);
         results.add(source);
       }
 
@@ -223,13 +223,8 @@ class AudioPlayerService with WidgetsBindingObserver {
     debugPrint('🎧 AudioPlayerService initialized successfully');
   }
 
-  Future<AudioSource> _loadAssetFromMemoryWithFrameDelay(String path) async {
-    final byteData = await rootBundle.load(path);
-    final bytes = byteData.buffer.asUint8List(
-      byteData.offsetInBytes,
-      byteData.lengthInBytes,
-    );
-    final source = await SoLoud.instance.loadMem(path, bytes);
+  Future<AudioSource> _loadAssetWithFrameDelay(String path) async {
+    final source = await SoLoud.instance.loadAsset(path, mode: LoadMode.memory);
 
     // Small delay between each load to yield UI.
     await Future.delayed(const Duration(milliseconds: 200));
