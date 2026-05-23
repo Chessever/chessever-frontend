@@ -27,6 +27,14 @@ subprojects {
         if (androidExt is com.android.build.gradle.BaseExtension) {
             androidExt.compileOptions.sourceCompatibility = JavaVersion.VERSION_17
             androidExt.compileOptions.targetCompatibility = JavaVersion.VERSION_17
+
+            if (project.name == "flutter_soloud") {
+                androidExt.defaultConfig.externalNativeBuild {
+                    cmake {
+                        cppFlags("-DMA_NO_AAUDIO")
+                    }
+                }
+            }
         }
         tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configureEach {
             kotlinOptions {

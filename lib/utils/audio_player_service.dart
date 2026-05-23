@@ -175,7 +175,15 @@ class AudioPlayerService with WidgetsBindingObserver {
     await _configureAudioSession();
 
     if (!player.isInitialized) {
-      await SoLoud.instance.init();
+      if (Platform.isAndroid) {
+        await SoLoud.instance.init(
+          sampleRate: 48000,
+          bufferSize: 4096,
+          channels: Channels.stereo,
+        );
+      } else {
+        await SoLoud.instance.init();
+      }
       // Re-apply after init just in case SoLoud native layer reset the category
       _audioSessionConfigured = false;
       await _configureAudioSession();
