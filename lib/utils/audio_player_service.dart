@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -11,6 +10,8 @@ enum SfxType { move, castling, check, checkmate, draw, promotion, takeover }
 
 class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
+  static const Duration _minimumAnyPlaySpacing = Duration(milliseconds: 60);
+  static const Duration _minimumSameSoundSpacing = Duration(milliseconds: 120);
 
   // Note: These MUST NOT be `final` - they need to be reassignable
   // after the native SoLoud engine is torn down and reinitialized
@@ -34,6 +35,9 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _initialized = false;
   bool _assetsLoaded = false;
   Future<void>? _initializing;
+  Future<void> _operationQueue = Future<void>.value();
+  DateTime _lastPlayAt = DateTime.fromMillisecondsSinceEpoch(0);
+  SfxType? _lastPlayedType;
   bool _audioSessionConfigured = false;
 
   /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
@@ -112,11 +116,28 @@ class AudioPlayerService with WidgetsBindingObserver {
   /// Play a sound effect by type. Resolves the native handle AFTER ensuring
   /// the engine is initialized, preventing stale-handle issues.
   void playSound(SfxType type) {
-    unawaited(_playWithRecovery(type));
+    final now = DateTime.now();
+    final elapsed = now.difference(_lastPlayAt);
+    if (elapsed < _minimumAnyPlaySpacing ||
+        (_lastPlayedType == type && elapsed < _minimumSameSoundSpacing)) {
+      return;
+    }
+
+    _lastPlayedType = type;
+    _lastPlayAt = now;
+    unawaited(_enqueueAudioOperation(() => _playWithRecovery(type)));
   }
 
   /// Convenience: determine sound from SAN notation and play it.
   void playSfxForSan(String san) => playSound(sfxTypeForSan(san));
+
+  Future<void> _enqueueAudioOperation(Future<void> Function() operation) {
+    final next = _operationQueue.then((_) => operation()).catchError((e, s) {
+      debugPrint('⚠️ Audio operation failed: $e\n$s');
+    });
+    _operationQueue = next;
+    return next;
+  }
 
   Future<void> _playWithRecovery(SfxType type) async {
     try {
@@ -127,6 +148,7 @@ class AudioPlayerService with WidgetsBindingObserver {
       debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
       _teardownPlayer();
       try {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
         await initializeAndLoadAllAssets(force: true);
         // _resolve reads the freshly-loaded field — no stale handles.
         player.play(_resolve(type));
@@ -207,8 +229,7 @@ class AudioPlayerService with WidgetsBindingObserver {
     return source;
   }
 
-  /// Dispose the native engine to avoid stale handles when the app goes
-  /// background or is torn down by the OS.
+  /// Tear down the native engine only during explicit recovery.
   // SoLoud.instance is per-isolate state, so deinit MUST run on the main
   // isolate. A previous version off-loaded this to Isolate.run, which both
   // failed to sendport-encode the closure (it captured `this`, which holds a
@@ -241,7 +262,9 @@ class AudioPlayerService with WidgetsBindingObserver {
         debugPrint(
           '🎧 AudioPlayerService: engine dead after resume, reinitializing',
         );
-        unawaited(initializeAndLoadAllAssets(force: true));
+        unawaited(
+          _enqueueAudioOperation(() => initializeAndLoadAllAssets(force: true)),
+        );
       } else {
         debugPrint(
           '🎧 AudioPlayerService: engine still alive after resume, no action',
@@ -255,11 +278,9 @@ class AudioPlayerService with WidgetsBindingObserver {
     // and tearing down there causes sound to disappear on Android.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      // IMPORTANT: Skip native teardown in debug mode to prevent hot-restarts
-      // from triggering native FFI teardowns that crash the VM (Service disappeared).
-      if (!kDebugMode) {
-        _teardownPlayer();
-      }
+      // Do not deinit during normal lifecycle transitions. SoLoud's native
+      // audio callback can still be mixing a short SFX while Dart receives
+      // paused/detached, and tearing down then can corrupt the active voice.
       return;
     }
 
