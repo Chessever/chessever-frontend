@@ -5,7 +5,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
-import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
@@ -316,75 +315,61 @@ class _LibraryGamebaseFilterDialogState
                       // Result filter
                       _sectionLabel('Result'),
                       SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameResultFilter>(
-                        value: _result,
-                        items: GameResultFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        onChanged: (v) => setState(() => _result = v),
+                      _chipGrid<GameResultFilter>(
+                        values: GameResultFilter.values,
+                        selected: _result,
+                        label: (v) =>
+                            v == GameResultFilter.all ? 'All' : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _result = v);
+                        },
                       ),
                       SizedBox(height: 20.h),
 
                       // Color filter
                       _sectionLabel('Color'),
                       SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameColorFilter>(
-                        value: _color,
-                        items: GameColorFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        onChanged: (v) => setState(() => _color = v),
+                      _chipGrid<GameColorFilter>(
+                        values: GameColorFilter.values,
+                        selected: _color,
+                        label: (v) =>
+                            v == GameColorFilter.all ? 'All' : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _color = v);
+                        },
                       ),
                       SizedBox(height: 20.h),
 
                       // Time Control filter
                       _sectionLabel('Time Control'),
                       SizedBox(height: 8.h),
-                      Wrap(
-                        spacing: 8.w,
-                        runSpacing: 8.h,
-                        children: GameTimeControlFilter.values.map((v) {
-                          final isSelected = v == _timeControl;
-                          final label = v == GameTimeControlFilter.all
-                              ? 'All'
-                              : v.displayText;
-                          return GestureDetector(
-                            onTap: () {
-                              HapticFeedbackService.selection();
-                              setState(() => _timeControl = v);
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 14.w,
-                                vertical: 10.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? kPrimaryColor
-                                    : context.colors.surfaceRecessed,
-                                borderRadius: BorderRadius.circular(8.br),
-                              ),
-                              child: Text(
-                                label,
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: isSelected
-                                      ? kBlackColor
-                                      : context.colors.textPrimary,
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
+                      _chipGrid<GameTimeControlFilter>(
+                        values: GameTimeControlFilter.values,
+                        selected: _timeControl,
+                        label: (v) => v == GameTimeControlFilter.all
+                            ? 'All'
+                            : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _timeControl = v);
+                        },
                       ),
                       SizedBox(height: 20.h),
 
                       // Online filter
                       _sectionLabel('Format'),
                       SizedBox(height: 8.h),
-                      ExpandableFilterDropdown<GameOnlineFilter>(
-                        value: _isOnline,
-                        items: GameOnlineFilter.values,
-                        itemLabel: (v) => v.displayText,
-                        onChanged: (v) => setState(() => _isOnline = v),
+                      _chipGrid<GameOnlineFilter>(
+                        values: GameOnlineFilter.values,
+                        selected: _isOnline,
+                        label: (v) =>
+                            v == GameOnlineFilter.all ? 'All' : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _isOnline = v);
+                        },
                       ),
                       SizedBox(height: 20.h),
 
@@ -637,6 +622,40 @@ class _LibraryGamebaseFilterDialogState
         color: context.colors.textPrimary,
         letterSpacing: 0.3,
       ),
+    );
+  }
+
+  Widget _chipGrid<T>({
+    required List<T> values,
+    required T selected,
+    required String Function(T) label,
+    required ValueChanged<T> onTap,
+  }) {
+    return Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children: values.map((v) {
+        final isSelected = v == selected;
+        return GestureDetector(
+          onTap: () => onTap(v),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? kPrimaryColor
+                  : context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(8.br),
+            ),
+            child: Text(
+              label(v),
+              style: AppTypography.textXsMedium.copyWith(
+                color: isSelected ? kBlackColor : context.colors.textPrimary,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

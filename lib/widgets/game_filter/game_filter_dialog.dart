@@ -4,7 +4,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
-import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
@@ -234,11 +233,16 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       if (widget.showFormatFilter) ...[
                         _sectionLabel('Format'),
                         SizedBox(height: 8.h),
-                        ExpandableFilterDropdown<GameOnlineFilter>(
-                          value: _online,
-                          items: GameOnlineFilter.values,
-                          itemLabel: (v) => v.displayText,
-                          onChanged: (v) => setState(() => _online = v),
+                        _chipGrid<GameOnlineFilter>(
+                          values: GameOnlineFilter.values,
+                          selected: _online,
+                          label: (v) => v == GameOnlineFilter.all
+                              ? 'All'
+                              : v.displayText,
+                          onTap: (v) {
+                            HapticFeedbackService.selection();
+                            setState(() => _online = v);
+                          },
                         ),
                         SizedBox(height: 20.h),
                       ],
