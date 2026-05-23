@@ -173,7 +173,7 @@ class AudioPlayerService with WidgetsBindingObserver {
       final results = <AudioSource>[];
 
       for (final path in paths) {
-        final source = await _loadWithFrameDelay(path);
+        final source = await _loadAssetFromMemoryWithFrameDelay(path);
         results.add(source);
       }
 
@@ -193,23 +193,18 @@ class AudioPlayerService with WidgetsBindingObserver {
     debugPrint('🎧 AudioPlayerService initialized successfully');
   }
 
-  Future<AudioSource> _loadWithFrameDelay(String path) async {
-    final completer = Completer<AudioSource>();
+  Future<AudioSource> _loadAssetFromMemoryWithFrameDelay(String path) async {
+    final byteData = await rootBundle.load(path);
+    final bytes = byteData.buffer.asUint8List(
+      byteData.offsetInBytes,
+      byteData.lengthInBytes,
+    );
+    final source = await SoLoud.instance.loadMem(path, bytes);
 
-    // Schedule the actual work in a microtask to avoid jank during frame build.
-    scheduleMicrotask(() async {
-      try {
-        final source = await SoLoud.instance.loadAsset(path);
-        completer.complete(source);
-      } catch (e) {
-        completer.completeError(e);
-      }
-    });
-
-    // Small delay between each to yield UI (approx one frame at 60fps)
+    // Small delay between each load to yield UI.
     await Future.delayed(const Duration(milliseconds: 200));
 
-    return completer.future;
+    return source;
   }
 
   /// Dispose the native engine to avoid stale handles when the app goes
