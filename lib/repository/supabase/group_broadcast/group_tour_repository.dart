@@ -138,6 +138,23 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  Future<List<GroupBroadcast>> getCurrentGroupBroadcastsByIds(
+    List<String> ids,
+  ) async {
+    if (ids.isEmpty) return <GroupBroadcast>[];
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('group_broadcasts_current')
+          .select()
+          .inFilter('id', ids);
+
+      return (response as List)
+          .map((json) => GroupBroadcast.fromJson(json))
+          .toList();
+    });
+  }
+
   Future<List<GroupBroadcast>> getUpcomingGroupBroadcasts({
     int? limit,
     int? offset,

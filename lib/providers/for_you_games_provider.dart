@@ -23,6 +23,37 @@ const int kGamesPerEvent = 4;
 const int _kPageSize = 20;
 const Duration _kForYouStaleThreshold = Duration(minutes: 5);
 
+@visibleForTesting
+List<GroupBroadcast> mergeMissingFavoriteCurrentBroadcasts({
+  required List<GroupBroadcast> pageBroadcasts,
+  required List<GroupBroadcast> favoriteBroadcasts,
+  required List<String> favoriteIds,
+}) {
+  if (favoriteIds.isEmpty || favoriteBroadcasts.isEmpty) {
+    return pageBroadcasts;
+  }
+
+  final existingIds = pageBroadcasts.map((broadcast) => broadcast.id).toSet();
+  final favoriteById = {
+    for (final broadcast in favoriteBroadcasts) broadcast.id: broadcast,
+  };
+
+  final missingFavorites = <GroupBroadcast>[];
+  for (final favoriteId in favoriteIds) {
+    if (existingIds.contains(favoriteId)) continue;
+    final broadcast = favoriteById[favoriteId];
+    if (broadcast == null) continue;
+    missingFavorites.add(broadcast);
+    existingIds.add(favoriteId);
+  }
+
+  if (missingFavorites.isEmpty) {
+    return pageBroadcasts;
+  }
+
+  return [...missingFavorites, ...pageBroadcasts];
+}
+
 // ============================================================================
 // FOR YOU EVENTS - PAGINATED WITH SUPABASE QUERIES
 // ============================================================================
@@ -136,13 +167,39 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
       // Query Supabase with filters
       final repo = ref.read(groupBroadcastRepositoryProvider);
-      final broadcasts = await repo.getCurrentGroupBroadcasts(
+      var broadcasts = await repo.getCurrentGroupBroadcasts(
         limit: _kPageSize,
         offset: _offset,
         timeControlFilters: formatFilters.isNotEmpty ? formatFilters : null,
         minElo: hasEloFilter ? minElo : null,
         maxElo: hasEloFilter ? maxElo : null,
       );
+      final fetchedPageLength = broadcasts.length;
+
+      final hasDefaultFilters =
+          formatFilters.isEmpty && statusFilters.isEmpty && !hasEloFilter;
+      if (isInitial && hasDefaultFilters) {
+        final favoriteEvents = ref.read(favoriteEventsProvider).valueOrNull ?? [];
+        final favoriteIds = favoriteEvents
+            .map((event) => event.eventId)
+            .where((eventId) => eventId.isNotEmpty)
+            .toList();
+        final pageIds = broadcasts.map((broadcast) => broadcast.id).toSet();
+        final missingFavoriteIds = favoriteIds
+            .where((eventId) => !pageIds.contains(eventId))
+            .toList();
+
+        if (missingFavoriteIds.isNotEmpty) {
+          final favoriteBroadcasts = await repo.getCurrentGroupBroadcastsByIds(
+            missingFavoriteIds,
+          );
+          broadcasts = mergeMissingFavoriteCurrentBroadcasts(
+            pageBroadcasts: broadcasts,
+            favoriteBroadcasts: favoriteBroadcasts,
+            favoriteIds: favoriteIds,
+          );
+        }
+      }
 
       debugPrint('[ForYou] Fetched ${broadcasts.length} from Supabase (offset: $_offset, filters: format=$formatFilters, elo=$hasEloFilter)');
 
@@ -175,17 +232,21 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         state = ForYouState(
           events: sortedModels,
           isLoading: false,
-          hasMore: broadcasts.length >= _kPageSize,
+          hasMore: fetchedPageLength >= _kPageSize,
         );
         _lastRefreshAt = DateTime.now();
       } else {
+        final existingIds = state.events.map((event) => event.id).toSet();
+        final newEvents = sortedModels
+            .where((event) => !existingIds.contains(event.id))
+            .toList();
         state = state.copyWith(
-          events: [...state.events, ...sortedModels],
-          hasMore: broadcasts.length >= _kPageSize,
+          events: [...state.events, ...newEvents],
+          hasMore: fetchedPageLength >= _kPageSize,
         );
       }
 
-      _offset += broadcasts.length;
+      _offset += fetchedPageLength;
 
     } catch (e, stack) {
       debugPrint('[ForYou] Error: $e');
