@@ -5,6 +5,7 @@ import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart'
     show AllRatingsRequest, allRatingsProvider;
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -143,15 +144,6 @@ class ScoreCardScreen extends ConsumerWidget {
     return 1500.0;
   }
 
-  // Calculate K-factor
-  int _getKFactor(double rating) {
-    if (rating >= 2400) {
-      return 10;
-    } else {
-      return 20;
-    }
-  }
-
   // Calculate FIDE Elo rating change
   double _calculateFideRatingChange(
     double playerRating,
@@ -177,12 +169,11 @@ class ScoreCardScreen extends ConsumerWidget {
         return 0;
     }
 
-    double ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
-    double expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-    int kFactor = _getKFactor(playerRating);
-    double ratingChange = kFactor * (actualScore - expectedScore);
-
-    return ratingChange;
+    return calculateFideRatingChange(
+      playerRating: playerRating,
+      opponentRating: opponentRating,
+      actualScore: actualScore,
+    );
   }
 
   List<GamesTourModel> _toGamesTourModels(List<Games> games) {
