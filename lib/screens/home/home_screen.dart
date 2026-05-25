@@ -21,6 +21,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
+import 'package:chessever2/services/att_prompt_service.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
@@ -51,6 +52,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForShorebirdUpdate();
+      // Final safety net: ensure ATT was shown before any post-login tracking
+      // surface. Service guards against double-prompting if onboarding /
+      // auth_screen already triggered it.
+      if (mounted) {
+        AttPromptService.instance.ensurePrompted(context);
+      }
       if (!E2eConfig.suppressInterruptivePrompts) {
         // Plan B: request notification permission if not already granted.
         // Delayed to avoid clashing with onboarding or other early dialogs.
