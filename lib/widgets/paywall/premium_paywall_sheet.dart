@@ -380,7 +380,7 @@ class _FeaturesList extends StatelessWidget {
       (Icons.people_rounded, 'Countrymen & Favorites'),
       (Icons.sports_esports_rounded, 'Opponent Prep Tools'),
       (Icons.auto_stories_rounded, 'Database Storage'),
-      (Icons.filter_alt_rounded, 'Advanced Search & Filters'),
+      (Icons.filter_alt_rounded, 'ChessEver Desktop Beta'),
     ];
 
     return Column(
