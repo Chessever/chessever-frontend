@@ -52,11 +52,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForShorebirdUpdate();
-      // Final safety net: ensure ATT was shown before any post-login tracking
-      // surface. Service guards against double-prompting if onboarding /
-      // auth_screen already triggered it.
+      // Safety net: fire system ATT dialog without explainer sheet for users
+      // already past onboarding. Onboarding triggers it with the sheet.
       if (mounted) {
-        AttPromptService.instance.ensurePrompted(context);
+        AttPromptService.instance.ensurePrompted(
+          context,
+          showExplainer: false,
+        );
       }
       if (!E2eConfig.suppressInterruptivePrompts) {
         // Plan B: request notification permission if not already granted.

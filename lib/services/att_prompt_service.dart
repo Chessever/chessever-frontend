@@ -37,7 +37,10 @@ class AttPromptService {
   /// Ensure Apple's ATT system dialog has been shown exactly once per app
   /// launch. Always fires `startSdkIfNotYetStarted` afterwards so AppsFlyer's
   /// install event carries the correct ATT/IDFA state.
-  Future<void> ensurePrompted(BuildContext context) async {
+  Future<void> ensurePrompted(
+    BuildContext context, {
+    bool showExplainer = true,
+  }) async {
     if (!Platform.isIOS) return;
     if (E2eConfig.suppressInterruptivePrompts) return;
     if (_done || _inFlight) return;
@@ -50,7 +53,7 @@ class AttPromptService {
         return;
       }
 
-      if (context.mounted) {
+      if (showExplainer && context.mounted) {
         await showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,

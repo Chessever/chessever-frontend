@@ -35,12 +35,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     Future.microtask(() async {
       await ref.read(countryDropdownProvider);
     });
-    // Safety net for reviewers / users who land on auth without going through
-    // the onboarding ATT trigger (e.g. tapped "Sign In" on the welcome step
-    // before that path was wired). Service guards against double-prompting.
+    // Safety net for users who reach auth without going through onboarding ATT
+    // trigger. System dialog only — no explainer sheet outside onboarding.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      AttPromptService.instance.ensurePrompted(context);
+      AttPromptService.instance.ensurePrompted(context, showExplainer: false);
     });
     super.initState();
   }
