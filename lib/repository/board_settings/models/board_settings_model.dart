@@ -14,6 +14,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
   final int pieceStyleIndex; // Index into chessground's PieceSet
   final int gamesListViewModeIndex; // 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final bool useFigurine; // Use chess piece symbols (♔♕♖♗♘) instead of letters
+  final bool enableCoordinates; // Show board edge coordinates (A-H, 1-8)
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -28,6 +29,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
     required this.pieceStyleIndex,
     required this.gamesListViewModeIndex,
     required this.useFigurine,
+    required this.enableCoordinates,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -46,6 +48,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       pieceStyleIndex: json['piece_style_index'] as int? ?? 0,
       gamesListViewModeIndex: json['games_list_view_mode_index'] as int? ?? 1, // Default to chessBoardGrid
       useFigurine: json['use_figurine'] as bool? ?? false,
+      enableCoordinates: json['enable_coordinates'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -64,6 +67,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'piece_style_index': pieceStyleIndex,
       'games_list_view_mode_index': gamesListViewModeIndex,
       'use_figurine': useFigurine,
+      'enable_coordinates': enableCoordinates,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -81,6 +85,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'piece_style_index': pieceStyleIndex,
       'games_list_view_mode_index': gamesListViewModeIndex,
       'use_figurine': useFigurine,
+      'enable_coordinates': enableCoordinates,
     };
   }
 
@@ -97,6 +102,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       pieceStyleIndex: 0, // cburnett (default)
       gamesListViewModeIndex: 1, // chessBoardGrid view (default)
       useFigurine: false, // Use letters by default
+      enableCoordinates: true, // Show board coordinates by default
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );

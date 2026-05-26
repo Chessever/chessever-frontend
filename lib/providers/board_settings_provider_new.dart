@@ -32,6 +32,7 @@ class BoardSettingsNew {
     this.pieceStyleIndex = 0, // Now used for chessground PieceSet
     this.gamesListViewModeIndex = 0,
     this.useFigurine = false, // Use chess piece symbols (♔♕♖♗♘) instead of letters
+    this.enableCoordinates = true, // Show board edge coordinates (A-H, 1-8)
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -47,6 +48,8 @@ class BoardSettingsNew {
   final int gamesListViewModeIndex;
   /// Use figurine notation (chess piece symbols) instead of letters (K, Q, R, B, N)
   final bool useFigurine;
+  /// Show board edge coordinates (A-H files and 1-8 ranks)
+  final bool enableCoordinates;
 
   /// Get the current piece set from chessground
   PieceSet get pieceSet => getPieceSetByIndex(pieceStyleIndex);
@@ -114,6 +117,7 @@ class BoardSettingsNew {
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
     bool? useFigurine,
+    bool? enableCoordinates,
   }) {
     return BoardSettingsNew(
       boardColorIndex: boardColorIndex ?? this.boardColorIndex,
@@ -124,6 +128,7 @@ class BoardSettingsNew {
       pieceStyleIndex: pieceStyleIndex ?? this.pieceStyleIndex,
       gamesListViewModeIndex: gamesListViewModeIndex ?? this.gamesListViewModeIndex,
       useFigurine: useFigurine ?? this.useFigurine,
+      enableCoordinates: enableCoordinates ?? this.enableCoordinates,
     );
   }
 }
@@ -195,6 +200,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         pieceStyleIndex: model.pieceStyleIndex,
         gamesListViewModeIndex: model.gamesListViewModeIndex,
         useFigurine: model.useFigurine,
+        enableCoordinates: model.enableCoordinates,
       );
 
       // Cache locally
@@ -305,6 +311,15 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     await _persist(newSettings);
   }
 
+  /// Toggle board edge coordinates (A-H, 1-8)
+  Future<void> toggleCoordinates(bool value) async {
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(enableCoordinates: value);
+    debugPrint('🔲 BoardSettings: Board coordinates ${value ? 'enabled' : 'disabled'}');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Refresh settings from Supabase
   Future<void> refresh() async {
     state = const AsyncValue.loading();
@@ -362,6 +377,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
           'piece_style_index': settings.pieceStyleIndex,
           'games_list_view_mode_index': settings.gamesListViewModeIndex,
           'use_figurine': settings.useFigurine,
+          'enable_coordinates': settings.enableCoordinates,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -385,6 +401,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'pieceStyleIndex': settings.pieceStyleIndex,
         'gamesListViewModeIndex': settings.gamesListViewModeIndex,
         'useFigurine': settings.useFigurine,
+        'enableCoordinates': settings.enableCoordinates,
       });
       await db.setString(_cacheKey, json);
       debugPrint('[BoardSettings] Cached settings locally');
@@ -422,6 +439,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         pieceStyleIndex: map['pieceStyleIndex'] as int? ?? 0,
         gamesListViewModeIndex: map['gamesListViewModeIndex'] as int? ?? 0,
         useFigurine: map['useFigurine'] as bool? ?? false,
+        enableCoordinates: map['enableCoordinates'] as bool? ?? true,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;

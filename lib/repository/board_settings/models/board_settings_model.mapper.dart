@@ -69,6 +69,11 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     'useFigurine',
     _$useFigurine,
   );
+  static bool _$enableCoordinates(BoardSettingsModel v) => v.enableCoordinates;
+  static const Field<BoardSettingsModel, bool> _f$enableCoordinates = Field(
+    'enableCoordinates',
+    _$enableCoordinates,
+  );
   static DateTime _$createdAt(BoardSettingsModel v) => v.createdAt;
   static const Field<BoardSettingsModel, DateTime> _f$createdAt = Field(
     'createdAt',
@@ -92,6 +97,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     #pieceStyleIndex: _f$pieceStyleIndex,
     #gamesListViewModeIndex: _f$gamesListViewModeIndex,
     #useFigurine: _f$useFigurine,
+    #enableCoordinates: _f$enableCoordinates,
     #createdAt: _f$createdAt,
     #updatedAt: _f$updatedAt,
   };
@@ -108,6 +114,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
       pieceStyleIndex: data.dec(_f$pieceStyleIndex),
       gamesListViewModeIndex: data.dec(_f$gamesListViewModeIndex),
       useFigurine: data.dec(_f$useFigurine),
+      enableCoordinates: data.dec(_f$enableCoordinates),
       createdAt: data.dec(_f$createdAt),
       updatedAt: data.dec(_f$updatedAt),
     );
@@ -195,6 +202,7 @@ abstract class BoardSettingsModelCopyWith<
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
     bool? useFigurine,
+    bool? enableCoordinates,
     DateTime? createdAt,
     DateTime? updatedAt,
   });
@@ -223,6 +231,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
     bool? useFigurine,
+    bool? enableCoordinates,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => $apply(
@@ -238,6 +247,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       if (gamesListViewModeIndex != null)
         #gamesListViewModeIndex: gamesListViewModeIndex,
       if (useFigurine != null) #useFigurine: useFigurine,
+      if (enableCoordinates != null) #enableCoordinates: enableCoordinates,
       if (createdAt != null) #createdAt: createdAt,
       if (updatedAt != null) #updatedAt: updatedAt,
     }),
@@ -260,6 +270,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       or: $value.gamesListViewModeIndex,
     ),
     useFigurine: data.get(#useFigurine, or: $value.useFigurine),
+    enableCoordinates: data.get(#enableCoordinates, or: $value.enableCoordinates),
     createdAt: data.get(#createdAt, or: $value.createdAt),
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),
   );

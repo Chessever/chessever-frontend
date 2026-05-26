@@ -5920,6 +5920,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final showPvArrows = ref.watch(
       engineSettingsProviderNew.select((s) => s.valueOrNull?.showPvArrows ?? true),
     );
+    final enableCoordinates = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.enableCoordinates ?? true,
+      ),
+    );
 
     // Check if game has ended and we're at the final position
     final gameStatus = widget.game.gameStatus;
@@ -5955,7 +5960,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final chessboard = Chessboard(
       size: widget.size,
       settings: ChessboardSettings(
-        enableCoordinates: true,
+        enableCoordinates: enableCoordinates,
         animationDuration: const Duration(milliseconds: 200),
         dragFeedbackScale: 1,
         dragTargetKind: DragTargetKind.none,

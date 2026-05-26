@@ -168,7 +168,7 @@ class _GamebaseChessBoard extends ConsumerWidget {
           child: Chessboard.fixed(
             size: boardSize,
             settings: ChessboardSettings(
-              enableCoordinates: true,
+              enableCoordinates: boardSettings.enableCoordinates,
               // Use theme colors from settings with our custom app colors
               colorScheme: boardSettings.colorScheme,
               // Use piece set from settings
