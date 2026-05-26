@@ -1,5 +1,4 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
-import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
@@ -10,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -20,7 +20,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'dart:ui';
 
 enum PlayerView { listView, gridView, boardView }
 
@@ -357,7 +356,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         // This handles cases where:
         // - view might not match expected case
         // - gamesContext filter returned empty (e.g., For You only has few games from event)
-        if ((gamesContext == null || gamesContext!.isEmpty) && gamesTourModel.tourId.isNotEmpty) {
+        if ((gamesContext == null || gamesContext.isEmpty) && gamesTourModel.tourId.isNotEmpty) {
           gamesContext = [gamesTourModel];
           hasEventContext = true;
         }
@@ -381,11 +380,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             child: gamesTourModel.gameStatus.isFinished
                 ? Center(
                     child: Text(
-                      gamesTourModel.gameStatus == GameStatus.whiteWins
-                          ? (isWhitePlayer ? '1' : '0')
-                          : gamesTourModel.gameStatus == GameStatus.blackWins
-                          ? (isWhitePlayer ? '0' : '1')
-                          : '½',
+                      customAwareResultLabelForSide(
+                            gamesTourModel.gameStatus,
+                            isWhite: isWhitePlayer,
+                            customPoints: playerCard.customPoints,
+                          ) ??
+                          '',
                       style: TextStyle(
                         fontSize: playerView == PlayerView.gridView ? 9.f : 10.f,
                         fontWeight: FontWeight.w700,

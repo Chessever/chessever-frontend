@@ -6,15 +6,17 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Provides player standings for the tournament detail "Players" tab.
 /// Uses [AutoDisposeAsyncNotifier] so the heavy computation only runs when needed
 /// and automatically refreshes when any dependency changes.
 final playerTourScreenProvider =
-    AutoDisposeAsyncNotifierProvider<PlayerTourScreenNotifier, List<PlayerStandingModel>>(
-      PlayerTourScreenNotifier.new,
-    );
+    AutoDisposeAsyncNotifierProvider<
+      PlayerTourScreenNotifier,
+      List<PlayerStandingModel>
+    >(PlayerTourScreenNotifier.new);
 
 class PlayerTourScreenNotifier
     extends AutoDisposeAsyncNotifier<List<PlayerStandingModel>> {
@@ -90,25 +92,23 @@ class PlayerTourScreenNotifier
     for (final player in tournamentPlayers) {
       final key = _canonicalName(player.name);
       final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
-      final referenceCard = playerGames.isNotEmpty ? playerGames.first.playerCard : null;
+      final referenceCard = playerGames.isNotEmpty
+          ? playerGames.first.playerCard
+          : null;
 
       final updatedPlayer = player.copyWith(
-        federation:
-            (player.federation?.trim().isNotEmpty ?? false)
-                ? player.federation
-                : _nonEmpty(referenceCard?.federation) ?? player.federation,
-        title:
-            (player.title?.trim().isNotEmpty ?? false)
-                ? player.title
-                : _nonEmpty(referenceCard?.title) ?? player.title,
-        rating:
-            (player.rating != null && player.rating! > 0)
-                ? player.rating
-                : _positive(referenceCard?.rating) ?? player.rating,
-        fideId:
-            (player.fideId != null && player.fideId! > 0)
-                ? player.fideId
-                : referenceCard?.fideId ?? player.fideId,
+        federation: (player.federation?.trim().isNotEmpty ?? false)
+            ? player.federation
+            : _nonEmpty(referenceCard?.federation) ?? player.federation,
+        title: (player.title?.trim().isNotEmpty ?? false)
+            ? player.title
+            : _nonEmpty(referenceCard?.title) ?? player.title,
+        rating: (player.rating != null && player.rating! > 0)
+            ? player.rating
+            : _positive(referenceCard?.rating) ?? player.rating,
+        fideId: (player.fideId != null && player.fideId! > 0)
+            ? player.fideId
+            : referenceCard?.fideId ?? player.fideId,
       );
 
       var calculatedScore = 0.0;
@@ -136,10 +136,17 @@ class PlayerTourScreenNotifier
         }
       }
 
+      final resolvedScore = resolveBroadcastStandingScore(
+        sourceScore: player.score,
+        sourcePlayed: player.played,
+        calculatedScore: calculatedScore,
+        calculatedPlayed: gamesPlayed,
+      );
+
       enrichedPlayers.add(
         updatedPlayer.copyWith(
-          score: calculatedScore,
-          played: gamesPlayed,
+          score: resolvedScore.score,
+          played: resolvedScore.played,
         ),
       );
     }
@@ -147,12 +154,12 @@ class PlayerTourScreenNotifier
     // Step 4: Sort by ABSOLUTE SCORE (not percentage!)
     // Example: 3.5/4 (87.5%) should rank HIGHER than 3/3 (100%) because 3.5 > 3
     enrichedPlayers.sort((a, b) {
-      final aScore = a.score ?? 0.0;  // Absolute points collected (e.g., 3.5)
-      final bScore = b.score ?? 0.0;  // Absolute points collected (e.g., 3.0)
-      
+      final aScore = a.score ?? 0.0; // Absolute points collected (e.g., 3.5)
+      final bScore = b.score ?? 0.0; // Absolute points collected (e.g., 3.0)
+
       // Primary sort: by absolute score descending (whoever collected MORE points)
       if (bScore != aScore) return bScore.compareTo(aScore);
-      
+
       // Secondary sort: by rating/ELO descending (higher rated player first when scores equal)
       return (b.rating ?? 0).compareTo(a.rating ?? 0);
     });

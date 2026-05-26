@@ -22,7 +22,8 @@ class Games {
   final DateTime? dateStart;
   final String? eco;
   final String? openingName;
-  final String? timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  final String?
+  timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
 
   Games({
     required this.id,
@@ -121,45 +122,38 @@ class Games {
         tourSlug: json['tour_slug'] as String,
         name: json['name'] as String?,
         fen: json['fen'] as String?,
-        players:
-            json['players'] != null
-                ? (json['players'] as List)
-                    .map(
-                      (player) =>
-                          Player.fromJson(player as Map<String, dynamic>),
-                    )
-                    .toList()
-                : null,
+        players: json['players'] != null
+            ? (json['players'] as List)
+                  .map(
+                    (player) => Player.fromJson(player as Map<String, dynamic>),
+                  )
+                  .toList()
+            : null,
         lastMove: json['last_move'] as String?,
-        thinkTime:
-            json['think_time'] != null
-                ? (json['think_time'] as num).toInt()
-                : null,
+        thinkTime: json['think_time'] != null
+            ? (json['think_time'] as num).toInt()
+            : null,
         status: json['status'] as String?,
         pgn: json['pgn'] as String?,
         search: (json['search'] as List).map((e) => e as String).toList(),
-        boardNr:
-            json['board_nr'] != null ? (json['board_nr'] as num).toInt() : null,
-        lastMoveTime:
-            json['last_move_time'] != null
-                ? DateTime.parse(json['last_move_time'] as String)
-                : null,
-        gameDay:
-            json['game_day'] != null
-                ? DateTime.parse(json['game_day'] as String)
-                : null,
-        lastClockWhite:
-            json['last_clock_white'] != null
-                ? (json['last_clock_white'] as num).toInt()
-                : null,
-        lastClockBlack:
-            json['last_clock_black'] != null
-                ? (json['last_clock_black'] as num).toInt()
-                : null,
-        dateStart:
-            json['date_start'] != null
-                ? DateTime.parse(json['date_start'] as String)
-                : null,
+        boardNr: json['board_nr'] != null
+            ? (json['board_nr'] as num).toInt()
+            : null,
+        lastMoveTime: json['last_move_time'] != null
+            ? DateTime.parse(json['last_move_time'] as String)
+            : null,
+        gameDay: json['game_day'] != null
+            ? DateTime.parse(json['game_day'] as String)
+            : null,
+        lastClockWhite: json['last_clock_white'] != null
+            ? (json['last_clock_white'] as num).toInt()
+            : null,
+        lastClockBlack: json['last_clock_black'] != null
+            ? (json['last_clock_black'] as num).toInt()
+            : null,
+        dateStart: json['date_start'] != null
+            ? DateTime.parse(json['date_start'] as String)
+            : null,
         eco: json['eco'] as String?,
         openingName: json['opening_name'] as String?,
         timeControl: timeControl,
@@ -252,6 +246,7 @@ class Player {
   final String fed;
   final int clock;
   final String team;
+  final double? customPoints;
 
   Player({
     required this.name,
@@ -261,6 +256,7 @@ class Player {
     required this.fed,
     required this.clock,
     required this.team,
+    this.customPoints,
   });
 
   factory Player.fromJsonString(String jsonString) {
@@ -283,6 +279,7 @@ class Player {
       fed: json['fed'] as String? ?? '',
       clock: (json['clock'] as num?)?.toInt() ?? 0,
       team: json['team'] as String? ?? '',
+      customPoints: (json['customPoints'] as num?)?.toDouble(),
     );
   }
 
@@ -295,6 +292,7 @@ class Player {
       'fed': fed,
       'clock': clock,
       'team': team,
+      if (customPoints != null) 'customPoints': customPoints,
     };
   }
 }
@@ -372,14 +370,12 @@ class SearchPlayer {
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       title: json['title']?.toString(),
-      rating:
-          json['rating'] != null
-              ? int.tryParse(json['rating'].toString())
-              : null,
-      fideId:
-          json['fideId'] != null
-              ? int.tryParse(json['fideId'].toString())
-              : null,
+      rating: json['rating'] != null
+          ? int.tryParse(json['rating'].toString())
+          : null,
+      fideId: json['fideId'] != null
+          ? int.tryParse(json['fideId'].toString())
+          : null,
       fed: json['fed']?.toString(),
       tournamentId: tournamentId,
       tournamentName: tournamentName,

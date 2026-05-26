@@ -68,7 +68,8 @@ class GamesTourModel {
   final DateTime? lastMoveTime;
   final String? eco;
   final String? openingName;
-  final String? timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  final String?
+  timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
 
   GamesTourModel({
     required this.gameId,
@@ -201,18 +202,18 @@ class GamesTourModel {
 
         whiteTimeDisplay =
             (game.lastClockWhite != null && game.lastClockWhite! > 0)
-                ? _formatTimeFromSeconds(game.lastClockWhite!)
-                : (white.clock > 0
-                    ? _formatTime(white.clock)
-                    : (pgnClocks.whiteSeconds != null
+            ? _formatTimeFromSeconds(game.lastClockWhite!)
+            : (white.clock > 0
+                  ? _formatTime(white.clock)
+                  : (pgnClocks.whiteSeconds != null
                         ? _formatTimeFromSeconds(pgnClocks.whiteSeconds!)
                         : '--:--'));
         blackTimeDisplay =
             (game.lastClockBlack != null && game.lastClockBlack! > 0)
-                ? _formatTimeFromSeconds(game.lastClockBlack!)
-                : (black.clock > 0
-                    ? _formatTime(black.clock)
-                    : (pgnClocks.blackSeconds != null
+            ? _formatTimeFromSeconds(game.lastClockBlack!)
+            : (black.clock > 0
+                  ? _formatTime(black.clock)
+                  : (pgnClocks.blackSeconds != null
                         ? _formatTimeFromSeconds(pgnClocks.blackSeconds!)
                         : '--:--'));
       } else {
@@ -601,6 +602,8 @@ class PlayerCard {
   final String countryCode;
   final int? fideId;
   final String? team;
+  final String? gamebasePlayerId;
+  final double? customPoints;
 
   PlayerCard({
     required this.name,
@@ -610,8 +613,9 @@ class PlayerCard {
     required this.countryCode,
     required this.team,
     this.fideId,
+    this.gamebasePlayerId,
+    this.customPoints,
   });
-
   factory PlayerCard.fromPlayer(Player player) {
     final name = player.name.trim();
     if (name.isEmpty) {
@@ -626,6 +630,7 @@ class PlayerCard {
       countryCode: player.fed.trim(),
       fideId: player.fideId > 0 ? player.fideId : null,
       team: player.team,
+      customPoints: player.customPoints,
     );
   }
 
@@ -637,6 +642,8 @@ class PlayerCard {
     String? countryCode,
     int? fideId,
     String? team,
+    String? gamebasePlayerId,
+    double? customPoints,
   }) {
     return PlayerCard(
       name: name ?? this.name,
@@ -646,6 +653,8 @@ class PlayerCard {
       countryCode: countryCode ?? this.countryCode,
       fideId: fideId ?? this.fideId,
       team: team ?? this.team,
+      gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
+      customPoints: customPoints ?? this.customPoints,
     );
   }
 
@@ -661,7 +670,11 @@ class PlayerCard {
         other.federation == federation &&
         other.title == title &&
         other.rating == rating &&
-        other.countryCode == countryCode;
+        other.countryCode == countryCode &&
+        other.fideId == fideId &&
+        other.team == team &&
+        other.gamebasePlayerId == gamebasePlayerId &&
+        other.customPoints == customPoints;
   }
 
   @override
@@ -670,7 +683,11 @@ class PlayerCard {
         federation.hashCode ^
         title.hashCode ^
         rating.hashCode ^
-        countryCode.hashCode;
+        countryCode.hashCode ^
+        (fideId?.hashCode ?? 0) ^
+        (team?.hashCode ?? 0) ^
+        (gamebasePlayerId?.hashCode ?? 0) ^
+        (customPoints?.hashCode ?? 0);
   }
 }
 
