@@ -1,17 +1,31 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class CalendarEventDetailScreen extends StatelessWidget {
+@visibleForTesting
+GroupEventCardModel calendarEventFavoriteModel(CalendarEvent event) =>
+    GroupEventCardModel.fromCalendarEvent(event);
+
+@visibleForTesting
+String calendarEventFavoriteId(CalendarEvent event) =>
+    calendarEventFavoriteModel(event).id;
+
+class CalendarEventDetailScreen extends ConsumerWidget {
   const CalendarEventDetailScreen({super.key, required this.event});
 
   final CalendarEvent event;
@@ -75,19 +89,26 @@ class CalendarEventDetailScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final domain = _extractDomain();
     final topPlayers = _getTopPlayers();
+    final favoriteModel = calendarEventFavoriteModel(event);
 
     return Scaffold(
       backgroundColor: kBlackColor,
       appBar: AppBar(
         title: Text(
           event.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
         ),
         backgroundColor: kBlack2Color,
         iconTheme: const IconThemeData(color: kWhiteColor),
+        actions: [
+          _CalendarEventFavoriteStar(event: favoriteModel),
+          SizedBox(width: 12.w),
+        ],
       ),
       bottomNavigationBar: _buildBottomBar(context, domain),
       body: Center(
@@ -97,68 +118,75 @@ class CalendarEventDetailScreen extends StatelessWidget {
           ),
           child: Container(
             margin: EdgeInsets.symmetric(
-              horizontal: ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp),
+              horizontal: ResponsiveHelper.adaptive(
+                phone: 20.sp,
+                tablet: 32.sp,
+              ),
             ),
             child: SingleChildScrollView(
               padding: EdgeInsets.zero,
               child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(height: 16.h),
-              ClipRRect(
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(12.br),
-                  topRight: Radius.circular(12.br),
-                ),
-                child: SizedBox(
-                  height: 240.h,
-                  width: double.infinity,
-                  child: _buildHeroImage(context),
-                ),
-              ),
-              SizedBox(height: 12.h),
-              if (event.description != null &&
-                  event.description!.isNotEmpty) ...[
-                SelectableText(
-                  event.description!,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor70,
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: 16.h),
+                  ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(12.br),
+                      topRight: Radius.circular(12.br),
+                    ),
+                    child: SizedBox(
+                      height: 240.h,
+                      width: double.infinity,
+                      child: _buildHeroImage(context),
+                    ),
                   ),
-                ),
-                SizedBox(height: 12.h),
-              ],
-              if (topPlayers.isNotEmpty) ...[
-                _TitleDescWidget(
-                  title: 'Players',
-                  description: topPlayers.join(', '),
-                ),
-                SizedBox(height: 12.h),
-              ],
-              _TitleDescWidget(
-                title: 'Time Control',
-                description: event.timeControl ?? 'Standard',
+                  SizedBox(height: 12.h),
+                  if (event.description != null &&
+                      event.description!.isNotEmpty) ...[
+                    SelectableText(
+                      event.description!,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor70,
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                  ],
+                  if (topPlayers.isNotEmpty) ...[
+                    _TitleDescWidget(
+                      title: 'Players',
+                      description: topPlayers.join(', '),
+                    ),
+                    SizedBox(height: 12.h),
+                  ],
+                  _TitleDescWidget(
+                    title: 'Time Control',
+                    description: event.timeControl ?? 'Standard',
+                  ),
+                  SizedBox(height: 12.h),
+                  _TitleDescWidget(
+                    title: 'Date',
+                    description: _formatDateRange(),
+                  ),
+                  SizedBox(height: 12.h),
+                  _CountryFlag(
+                    title: 'Location',
+                    flag:
+                        event.countryCode != null &&
+                                event.countryCode!.isNotEmpty
+                            ? CountryFlag.fromCountryCode(
+                              event.countryCode!,
+                              width: 16.w,
+                              height: 12.h,
+                            )
+                            : null,
+                    description: event.location ?? 'TBA',
+                  ),
+                  SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
+                ],
               ),
-              SizedBox(height: 12.h),
-              _TitleDescWidget(title: 'Date', description: _formatDateRange()),
-              SizedBox(height: 12.h),
-              _CountryFlag(
-                title: 'Location',
-                flag:
-                    event.countryCode != null && event.countryCode!.isNotEmpty
-                        ? CountryFlag.fromCountryCode(
-                          event.countryCode!,
-                          width: 16.w,
-                          height: 12.h,
-                        )
-                        : null,
-                description: event.location ?? 'TBA',
-              ),
-              SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
-            ],
+            ),
           ),
-          ),
-        ),
         ),
       ),
     );
@@ -200,7 +228,11 @@ class CalendarEventDetailScreen extends StatelessWidget {
       height: 240.h,
       color: kLightBlack,
       alignment: Alignment.center,
-      child: Image.asset(PngAsset.premiumIcon, height: 100.h, fit: BoxFit.contain),
+      child: Image.asset(
+        PngAsset.premiumIcon,
+        height: 100.h,
+        fit: BoxFit.contain,
+      ),
     );
   }
 
@@ -232,6 +264,75 @@ class CalendarEventDetailScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CalendarEventFavoriteStar extends ConsumerWidget {
+  const _CalendarEventFavoriteStar({required this.event});
+
+  final GroupEventCardModel event;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favoritesAsync = ref.watch(favoriteEventsProvider);
+    final isStarred = favoritesAsync.maybeWhen(
+      data: (events) => events.any((favorite) => favorite.eventId == event.id),
+      orElse: () => false,
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+    );
+    final favoritesCount = favoritesAsync.valueOrNull?.length ?? 0;
+
+    return IconButton(
+      tooltip: isStarred ? 'Remove from favorites' : 'Add to favorites',
+      onPressed: () async {
+        final allowed = await requireFullAuthGuard(context);
+        if (!allowed) return;
+
+        HapticFeedbackService.pin();
+
+        ref
+            .read(favoriteEventsProvider.notifier)
+            .toggleFavorite(
+              eventId: event.id,
+              eventName: event.title,
+              timeControl: event.timeControl,
+              maxAvgElo: event.maxAvgElo > 0 ? event.maxAvgElo : null,
+              dates: event.dates.isNotEmpty ? event.dates : null,
+            )
+            .then((favorited) {
+              final nextCount =
+                  favorited
+                      ? favoritesCount + 1
+                      : (favoritesCount - 1).clamp(0, favoritesCount);
+              AnalyticsService.instance.trackEventDetached(
+                'Event Favorite Toggled',
+                properties: {
+                  'event_id': event.id,
+                  'event_name': event.title,
+                  'time_control': event.timeControl,
+                  'event_source': event.eventSource.name,
+                  'tour_category': event.tourEventCategory.name,
+                  'is_favorited': favorited,
+                  'new_favorites_total': nextCount,
+                  if (event.location != null && event.location!.isNotEmpty)
+                    'location': event.location,
+                },
+              );
+              return favorited;
+            })
+            .catchError((e) {
+              debugPrint('[CalendarEventDetail] Error toggling favorite: $e');
+              return false;
+            });
+      },
+      icon: SvgWidget(
+        isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+        semanticsLabel: 'Favorite Icon',
+        height: 22.h,
+        width: 22.w,
       ),
     );
   }
