@@ -65,6 +65,16 @@ const String _gameListSelectColumns = '''
           tours!games_tour_id_fkey(group_broadcasts!tours_group_broadcast_id_fkey(time_control))
         ''';
 
+const int _tourGamesFetchPageSize = 1000;
+
+@visibleForTesting
+bool shouldFetchAnotherTourGamesPage(
+  int fetchedCount, {
+  int pageSize = _tourGamesFetchPageSize,
+}) {
+  return fetchedCount == pageSize;
+}
+
 class GameRepository extends BaseRepository {
   List<int> _parseFideIds(List<String> fideIds) {
     return fideIds.map((id) => int.tryParse(id)).whereType<int>().toList();
@@ -96,20 +106,45 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      var query = supabase
-          .from('games')
-          .select(_gameListSelectColumns)
-          .eq('tour_id', tourId)
-          .order('id', ascending: true);
+      final jsonList = <String>[];
+      var pageOffset = offset;
+      var remaining = limit;
 
-      if (limit != null) {
-        query = query.range(offset, offset + limit - 1);
+      while (true) {
+        final pageSize =
+            remaining == null || remaining > _tourGamesFetchPageSize
+                ? _tourGamesFetchPageSize
+                : remaining;
+        if (pageSize <= 0) {
+          break;
+        }
+
+        final response = await supabase
+            .from('games')
+            .select(_gameListSelectColumns)
+            .eq('tour_id', tourId)
+            .order('id', ascending: true)
+            .range(pageOffset, pageOffset + pageSize - 1);
+
+        final responseList = response as List;
+        jsonList.addAll(responseList.map((item) => json.encode(item)));
+
+        if (!shouldFetchAnotherTourGamesPage(
+          responseList.length,
+          pageSize: pageSize,
+        )) {
+          break;
+        }
+
+        if (remaining != null) {
+          remaining -= responseList.length;
+          if (remaining <= 0) {
+            break;
+          }
+        }
+
+        pageOffset += responseList.length;
       }
-
-      final response = await query;
-
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
