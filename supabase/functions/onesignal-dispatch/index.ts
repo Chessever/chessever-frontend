@@ -701,16 +701,23 @@ async function applyPreferences(
     const isEventFav = eventUserIds.has(userId);
     const isPlayerFav = playerUserIds.has(userId);
 
-    if (eventType === "game_started" || eventType === "game_finished") {
-      const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
+    if (eventType === "game_started") {
+      // Game-start notifications are for favorite-player matches only.
+      // Event-starred users are notified at the round/event level, so including
+      // them here can produce two pushes for the same visible game when the
+      // user has also favorited one or both players.
       const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-      if (isEventFav && eventAllowed) {
-        filtered.add(userId);
-        continue;
-      }
       if (isPlayerFav && playerAllowed) {
         filtered.add(userId);
-        continue;
+      }
+      continue;
+    }
+
+    if (eventType === "game_finished") {
+      const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
+      const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
+      if ((isEventFav && eventAllowed) || (isPlayerFav && playerAllowed)) {
+        filtered.add(userId);
       }
       continue;
     }
@@ -1985,7 +1992,15 @@ async function sendOneSignal(
   userIds: string[],
   notification: NotificationPayload,
 ) {
-  const chunks = chunk(userIds, 1000);
+  // Defensive recipient de-dupe: a user can match both sides of a game
+  // (e.g. Alireza and Magnus are both favorites) or match by both FIDE ID and
+  // player name. OneSignal receives each external user id at most once per
+  // notification payload.
+  const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+  if (uniqueUserIds.length === 0) return;
+
+  const chunks = chunk(uniqueUserIds, 1000);
+  const collapseId = notificationCollapseId(notification);
 
   for (const batch of chunks) {
     const payload: Record<string, unknown> = {
@@ -1995,6 +2010,10 @@ async function sendOneSignal(
       contents: { en: notification.body },
       data: notification.data,
     };
+
+    if (collapseId) {
+      payload.collapse_id = collapseId;
+    }
 
     if (notification.url) {
       payload.url = notification.url;
@@ -2013,6 +2032,31 @@ async function sendOneSignal(
 
     await sendOneSignalPayload(payload);
   }
+}
+
+function notificationCollapseId(notification: NotificationPayload): string | null {
+  const type = typeof notification.data?.type === "string"
+    ? notification.data.type
+    : null;
+  const gameId = typeof notification.data?.game_id === "string"
+    ? notification.data.game_id
+    : null;
+  const roundId = typeof notification.data?.round_id === "string"
+    ? notification.data.round_id
+    : null;
+
+  if (gameId) return compactCollapseId(`game:${type ?? "update"}:${gameId}`);
+  if (roundId) return compactCollapseId(`round:${type ?? "update"}:${roundId}`);
+  return null;
+}
+
+function compactCollapseId(value: string): string {
+  if (value.length <= 64) return value;
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return `${value.slice(0, 48)}:${Math.abs(hash).toString(36)}`;
 }
 
 function chunk<T>(list: T[], size: number) {
