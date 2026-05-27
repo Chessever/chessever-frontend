@@ -43,6 +43,13 @@ type RoundRow = {
   starts_at: string | null;
 };
 
+type TourRow = {
+  id: string;
+  name: string | null;
+  slug: string | null;
+  group_broadcast_id: string | null;
+};
+
 type LiveSubscriptionRow = {
   user_id: string;
   platform: "ios" | "android";
@@ -186,6 +193,24 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
 
   try {
     const context = await buildContext(item);
+    if (item.event_type === "round_started") {
+      if (await hasEarlierGroupedRoundStart(item, context)) {
+        await markSkipped(item.id, "duplicate_grouped_round_start");
+        return {
+          id: item.id,
+          status: "skipped",
+          reason: "duplicate_grouped_round_start",
+        };
+      }
+    }
+    if (item.event_type === "round_finished" && isCombinedTour(context.tour)) {
+      await markSkipped(item.id, "combined_round_results_suppressed");
+      return {
+        id: item.id,
+        status: "skipped",
+        reason: "combined_round_results_suppressed",
+      };
+    }
     if (item.event_type === "live_game_update") {
       if (!item.game_id) {
         await markSkipped(item.id, "missing_game_id");
@@ -513,6 +538,7 @@ async function markFailed(id: string, attempts: number, error: string) {
 async function buildContext(item: OutboxItem) {
   let game: GameRow | null = null;
   let round: RoundRow | null = null;
+  let tour: TourRow | null = null;
   let eventName: string | null = null;
   let groupBroadcastId = item.group_broadcast_id ?? null;
 
@@ -537,13 +563,14 @@ async function buildContext(item: OutboxItem) {
   }
 
   const tourId = item.tour_id ?? game?.tour_id ?? round?.tour_id ?? null;
-  if (!groupBroadcastId && tourId) {
+  if (tourId) {
     const { data } = await supabase
       .from("tours")
-      .select("group_broadcast_id")
+      .select("id,name,slug,group_broadcast_id")
       .eq("id", tourId)
       .maybeSingle();
-    groupBroadcastId = data?.group_broadcast_id ?? null;
+    tour = (data ?? null) as TourRow | null;
+    groupBroadcastId = groupBroadcastId ?? tour?.group_broadcast_id ?? null;
   }
 
   if (groupBroadcastId) {
@@ -596,11 +623,48 @@ async function buildContext(item: OutboxItem) {
   return {
     game,
     round,
+    tour,
     eventName,
     groupBroadcastId,
     eventUserIds,
     playerUserIds,
   };
+}
+
+function isCombinedTour(tour: TourRow | null): boolean {
+  const label = `${tour?.name ?? ""} ${tour?.slug ?? ""}`.toLowerCase();
+  return /(^|[^a-z0-9])combined([^a-z0-9]|$)/.test(label);
+}
+
+function groupedRoundStartCollapseKey(
+  context: { round: RoundRow | null; groupBroadcastId: string | null },
+): string | null {
+  const startsAt = context.round?.starts_at;
+  const groupId = context.groupBroadcastId;
+  if (!startsAt || !groupId) return null;
+  return `round_started:${groupId}:${startsAt}`;
+}
+
+async function hasEarlierGroupedRoundStart(
+  item: OutboxItem,
+  context: { round: RoundRow | null; groupBroadcastId: string | null },
+): Promise<boolean> {
+  const startsAt = context.round?.starts_at;
+  const groupId = context.groupBroadcastId;
+  if (!startsAt || !groupId) return false;
+
+  const { data, error } = await supabase
+    .from("notification_outbox")
+    .select("id")
+    .eq("event_type", "round_started")
+    .eq("group_broadcast_id", groupId)
+    .neq("id", item.id)
+    .eq("status", "sent")
+    .contains("payload", { starts_at: startsAt })
+    .limit(1);
+
+  if (error) return false;
+  return (data ?? []).length > 0;
 }
 
 async function fetchRoundPlayers(roundId: string) {
@@ -1118,7 +1182,11 @@ function buildRoundNotification(
     title,
     body,
     url: context.groupBroadcastId ? `https://chessever.com` : null,
-    data: { type: "round_started", round_id: context.round?.id },
+    data: {
+      type: "round_started",
+      round_id: context.round?.id,
+      grouped_round_start_key: groupedRoundStartCollapseKey(context),
+    },
     androidChannelId: channelForEvent("round_started"),
   };
 }
@@ -2046,6 +2114,12 @@ function notificationCollapseId(notification: NotificationPayload): string | nul
     : null;
 
   if (gameId) return compactCollapseId(`game:${type ?? "update"}:${gameId}`);
+  if (type === "round_started") {
+    const groupedRoundStartKey = notification.data?.grouped_round_start_key;
+    if (typeof groupedRoundStartKey === "string" && groupedRoundStartKey) {
+      return compactCollapseId(groupedRoundStartKey);
+    }
+  }
   if (roundId) return compactCollapseId(`round:${type ?? "update"}:${roundId}`);
   return null;
 }
