@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_display_sort.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -59,62 +60,13 @@ class _GamesProcessingArgs {
 
 // Top-level worker function for isolate
 List<GamesTourModel> _processGamesWorker(_GamesProcessingArgs args) {
-  // 1. Pre-parse numbers to avoid repeated regex operations during sort
-  final gameInfo = <String, (int, int)>{};
-  
-  // Helper to extract numbers (copied here to be accessible in isolate)
-  int extractRound(String roundSlug) {
-    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-                  RegExp(r'(\d+)').firstMatch(roundSlug);
-    return int.tryParse(match?.group(1) ?? '0') ?? 0;
-  }
-
-  int extractGame(String roundSlug) {
-    final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
-    return int.tryParse(match?.group(1) ?? '0') ?? 0;
-  }
-
-  for (final game in args.games) {
-    gameInfo[game.id] = (
-      extractRound(game.roundSlug),
-      extractGame(game.roundSlug),
-    );
-  }
-
-  // 2. Sort games
-  final sortedGames = List<Games>.from(args.games);
-  sortedGames.sort((a, b) {
-    // FIRST PRIORITY: Pinned games (only in non-search mode)
-    if (!args.isSearchMode) {
-      final aPinned = args.pinnedIds.contains(a.id);
-      final bPinned = args.pinnedIds.contains(b.id);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-
-      // If both are pinned, preserve pin order
-      if (aPinned && bPinned) {
-        final aIndex = args.pinnedIds.indexOf(a.id);
-        final bIndex = args.pinnedIds.indexOf(b.id);
-        if (aIndex != bIndex) return aIndex.compareTo(bIndex);
-      }
-    }
-
-    final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-    final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-    // Second, sort by round number DESCENDING
-    if (roundA != roundB) return roundB.compareTo(roundA);
-
-    // Within same round, sort by game number DESCENDING
-    if (gameA != gameB) return gameB.compareTo(gameA);
-
-    // Finally, sort by board number ASCENDING
-    final aBoard = a.boardNr, bBoard = b.boardNr;
-    if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
-    if (aBoard != null) return -1;
-    if (bBoard != null) return 1;
-    return 0;
-  });
+  // Sort games. Pinned games stay promoted, but pinned peers keep board order
+  // instead of the order in which the pin/auto-pin was created.
+  final sortedGames = sortGamesForEventDisplay(
+    args.games,
+    pinnedIds: args.pinnedIds,
+    prioritizePins: !args.isSearchMode,
+  );
 
   // 3. Map to models (heavy PGN parsing happens here inside fromGame)
   final models = <GamesTourModel>[];
@@ -576,39 +528,10 @@ class GamesTourScreenProvider
   ) {
     if (games.isEmpty) return const <Games>[];
 
-    final gameInfo = <String, (int, int)>{};
-    for (final game in games) {
-      gameInfo[game.id] = (
-        _extractRoundNumber(game.roundSlug),
-        _extractGameNumber(game.roundSlug),
-      );
-    }
-
-    final sortedGames = List<Games>.from(games);
-    sortedGames.sort((a, b) {
-      final aPinned = pinnedIds.contains(a.id);
-      final bPinned = pinnedIds.contains(b.id);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-
-      if (aPinned && bPinned) {
-        final aIndex = pinnedIds.indexOf(a.id);
-        final bIndex = pinnedIds.indexOf(b.id);
-        if (aIndex != bIndex) return aIndex.compareTo(bIndex);
-      }
-
-      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-      if (roundA != roundB) return roundB.compareTo(roundA);
-      if (gameA != gameB) return gameB.compareTo(gameA);
-
-      final aBoard = a.boardNr, bBoard = b.boardNr;
-      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
-      if (aBoard != null) return -1;
-      if (bBoard != null) return 1;
-      return 0;
-    });
+    final sortedGames = sortGamesForEventDisplay(
+      games,
+      pinnedIds: pinnedIds,
+    );
 
     return sortedGames;
   }

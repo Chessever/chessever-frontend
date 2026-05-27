@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_display_sort.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -164,14 +165,13 @@ class GamesTourContentBody extends ConsumerWidget {
       if (pinnedGameIds.isNotEmpty) {
         for (final roundId in gamesByRound.keys) {
           final roundGames = gamesByRound[roundId]!;
-          roundGames.sort((a, b) {
-            final aPinned = pinnedGameIds.contains(a.gameId);
-            final bPinned = pinnedGameIds.contains(b.gameId);
-            if (aPinned != bPinned) {
-              return aPinned ? -1 : 1; // Pinned games first
-            }
-            return 0; // Keep original order for same pin status
-          });
+          final sortedRoundGames = sortGameModelsForEventDisplay(
+            roundGames,
+            pinnedIds: pinnedGameIds,
+          );
+          roundGames
+            ..clear()
+            ..addAll(sortedRoundGames);
         }
       }
     } else if (isRoundSlugDerivedStages) {
@@ -205,14 +205,13 @@ class GamesTourContentBody extends ConsumerWidget {
       if (pinnedGameIds.isNotEmpty) {
         for (final roundId in gamesByRound.keys) {
           final roundGames = gamesByRound[roundId]!;
-          roundGames.sort((a, b) {
-            final aPinned = pinnedGameIds.contains(a.gameId);
-            final bPinned = pinnedGameIds.contains(b.gameId);
-            if (aPinned != bPinned) {
-              return aPinned ? -1 : 1;
-            }
-            return 0;
-          });
+          final sortedRoundGames = sortGameModelsForEventDisplay(
+            roundGames,
+            pinnedIds: pinnedGameIds,
+          );
+          roundGames
+            ..clear()
+            ..addAll(sortedRoundGames);
         }
       }
     } else {
