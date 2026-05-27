@@ -5,10 +5,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class CalendarEventDetailScreen extends StatelessWidget {
@@ -17,17 +17,8 @@ class CalendarEventDetailScreen extends StatelessWidget {
   final CalendarEvent event;
 
   String _formatDateRange() {
-    final dateFormat = DateFormat('MMM d, yyyy');
-    if (event.startDate == null && event.endDate == null) {
-      return 'TBA';
-    }
-    if (event.startDate != null && event.endDate != null) {
-      return '${dateFormat.format(event.startDate!)} - ${dateFormat.format(event.endDate!)}';
-    }
-    if (event.startDate != null) {
-      return dateFormat.format(event.startDate!);
-    }
-    return dateFormat.format(event.endDate!);
+    final formatted = TimeUtils.formatDateRange(event.startDate, event.endDate);
+    return formatted.isEmpty ? 'TBA' : formatted;
   }
 
   String _extractDomain() {

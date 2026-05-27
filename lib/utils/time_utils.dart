@@ -10,6 +10,14 @@ class TimeUtils {
     final localEnd = toLocal(end);
 
     if (localStart != null && localEnd != null) {
+      final isSameCalendarDay =
+          localStart.year == localEnd.year &&
+          localStart.month == localEnd.month &&
+          localStart.day == localEnd.day;
+      if (isSameCalendarDay) {
+        return DateFormat('MMM d, yyyy').format(localStart);
+      }
+
       if (localStart.month == localEnd.month &&
           localStart.year == localEnd.year) {
         return "${DateFormat('MMM d').format(localStart)} - ${DateFormat('d, yyyy').format(localEnd)}";
