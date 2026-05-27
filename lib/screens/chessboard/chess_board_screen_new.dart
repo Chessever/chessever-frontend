@@ -30,6 +30,7 @@ import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -74,7 +75,6 @@ import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_mod
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
-import 'package:flutter/foundation.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -5651,9 +5651,14 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
-    final showEngineGauge = ref.watch(
+    final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select((s) => s.valueOrNull?.showEngineGauge ?? true),
     );
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(game.tourId).select((state) => state.enabled),
+    );
+    final showEngineGauge =
+        engineGaugeEnabled && !(noSpoilersEnabled && game.gameStatus.isFinished);
 
     final effectiveEvalWidth = showEngineGauge ? evalBarWidth : 0.0;
 
@@ -5727,9 +5732,14 @@ class _BoardWithSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
-    final showEngineGauge = ref.watch(
+    final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select((s) => s.valueOrNull?.showEngineGauge ?? true),
     );
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(game.tourId).select((state) => state.enabled),
+    );
+    final showEngineGauge =
+        engineGaugeEnabled && !(noSpoilersEnabled && game.gameStatus.isFinished);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -5861,6 +5871,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
                        gameStatus != GameStatus.unknown;
     final shouldShowEffect = isGameOver && isAtEnd;
 
+    if (shouldShowEffect && !_wasAtEnd) {
+      ref
+          .read(eventNoSpoilersRevealedGamesProvider.notifier)
+          .reveal(widget.game.gameId);
+    }
+
     // When navigating TO the final position, delay showing the effect for animation
     if (shouldShowEffect && !_wasAtEnd) {
       _showDelayedGameEndingEffect = false;
@@ -5927,8 +5943,23 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final isGameOver = gameStatus != GameStatus.ongoing &&
                        gameStatus != GameStatus.unknown;
 
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(widget.game.tourId).select((state) => state.enabled),
+    );
+    final spoilersRevealedForGame = ref.watch(
+      eventNoSpoilersRevealedGamesProvider.select(
+        (gameIds) => gameIds.contains(widget.game.gameId),
+      ),
+    );
+    final canShowFinishedSpoilers =
+        !noSpoilersEnabled || !isGameOver || spoilersRevealedForGame;
+
     // Use delayed flag to allow move animation to complete first
-    final showGameEndingEffect = isGameOver && isAtEnd && _showDelayedGameEndingEffect;
+    final showGameEndingEffect =
+        isGameOver &&
+        isAtEnd &&
+        _showDelayedGameEndingEffect &&
+        canShowFinishedSpoilers;
 
     // Calculate square highlights and annotations for game ending
     final gameEndingData = showGameEndingEffect

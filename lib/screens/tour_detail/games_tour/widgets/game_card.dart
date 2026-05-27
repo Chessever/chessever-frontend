@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/live_game_subscription_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -282,8 +283,17 @@ class _CenterContent extends ConsumerWidget {
       ),
     );
 
-    // If game is not ongoing, show result text
+    final hideSpoilers = ref.watch(
+      eventNoSpoilersProvider(matchWithComparison.game.tourId).select(
+        (state) => state.enabled,
+      ),
+    );
+
+    // If game is not ongoing, show result text unless this event is spoiler-free.
     if (effectiveStatus != GameStatus.ongoing) {
+      if (hideSpoilers && matchWithComparison.game.gameStatus.isFinished) {
+        return const SizedBox.shrink();
+      }
       return Center(
         child: StatusText(status: _displayTextSupporter(matchWithComparison)),
       );

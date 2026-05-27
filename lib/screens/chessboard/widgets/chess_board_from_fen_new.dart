@@ -6,6 +6,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -242,7 +243,15 @@ class ChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(gamesTourModel.tourId).select(
+        (state) => state.enabled,
+      ),
+    );
+    final hideFinishedSpoilers =
+        noSpoilersEnabled && gamesTourModel.gameStatus.isFinished;
+    final showEvalBar =
+        _shouldShowEvalBar(ref) && gamesTourModel.hasStarted && !hideFinishedSpoilers;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return Padding(
@@ -462,7 +471,15 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(gamesTourModel.tourId).select(
+        (state) => state.enabled,
+      ),
+    );
+    final hideFinishedSpoilers =
+        noSpoilersEnabled && gamesTourModel.gameStatus.isFinished;
+    final showEvalBar =
+        _shouldShowEvalBar(ref) && gamesTourModel.hasStarted && !hideFinishedSpoilers;
     final sideBarWidth = showEvalBar ? 10.w : 0.w;
 
     // On phone, use the original fixed calculation for 2-column grid
@@ -663,7 +680,15 @@ class _ChessBoardContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(gamesTourModel.tourId).select(
+        (state) => state.enabled,
+      ),
+    );
+    final hideFinishedSpoilers =
+        noSpoilersEnabled && gamesTourModel.gameStatus.isFinished;
+    final showEvalBar =
+        _shouldShowEvalBar(ref) && gamesTourModel.hasStarted && !hideFinishedSpoilers;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return SizedBox(
@@ -742,7 +767,7 @@ class _PlayerRow extends StatelessWidget {
   }
 }
 
-class _ChessBoardWithEvaluation extends StatelessWidget {
+class _ChessBoardWithEvaluation extends ConsumerWidget {
   const _ChessBoardWithEvaluation({
     required this.gamesTourModel,
     required this.lastMove,
@@ -762,9 +787,18 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
   final bool showCoordinates;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(gamesTourModel.tourId).select(
+        (state) => state.enabled,
+      ),
+    );
+    final hideFinishedSpoilers =
+        noSpoilersEnabled && gamesTourModel.gameStatus.isFinished;
+
     // Get effective game status for ended games
-    final gameStatus = gamesTourModel.gameStatus;
+    final gameStatus =
+        hideFinishedSpoilers ? GameStatus.ongoing : gamesTourModel.gameStatus;
     final resolvedFen = _resolveFen(gamesTourModel.fen);
 
     if (!showEvalBar || !gamesTourModel.hasStarted) {

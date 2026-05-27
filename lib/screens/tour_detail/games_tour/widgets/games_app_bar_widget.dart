@@ -4,6 +4,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
@@ -31,6 +32,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 enum MenuAction {
   unpinAll,
   showHideFinishedGames,
+  noSpoilers,
   collapseAllRounds,
   expandAllRounds,
 }
@@ -271,6 +273,11 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                 .autoPinDisabled;
 
         final gamesTourScreen = ref.watch(gamesTourScreenProvider.notifier);
+        final noSpoilersEnabled = ref.watch(
+          eventNoSpoilersProvider(tourData.aboutTourModel.id).select(
+            (state) => state.enabled,
+          ),
+        );
 
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -518,6 +525,52 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                           color: kDividerColor,
                                         ),
                                       ],
+
+                                      PopupMenuItem<MenuAction>(
+                                        value: MenuAction.noSpoilers,
+                                        onTap: () {
+                                          unawaited(
+                                            ref
+                                                .read(
+                                                  eventNoSpoilersProvider(
+                                                    tourData.aboutTourModel.id,
+                                                  ).notifier,
+                                                )
+                                                .toggle(),
+                                          );
+                                        },
+                                        child: SizedBox(
+                                          width: 200,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                noSpoilersEnabled
+                                                    ? "Disable No Spoilers"
+                                                    : "No Spoilers",
+                                                style: AppTypography
+                                                    .textXsMedium
+                                                    .copyWith(
+                                                      color: kWhiteColor,
+                                                    ),
+                                              ),
+                                              Icon(
+                                                noSpoilersEnabled
+                                                    ? Icons.visibility_off
+                                                    : Icons.visibility,
+                                                color: kWhiteColor,
+                                                size: 16.sp,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      PopupMenuDivider(
+                                        height: 1.h,
+                                        thickness: 0.5.w,
+                                        color: kDividerColor,
+                                      ),
 
                                       if (roundIds.isNotEmpty) ...[
                                         PopupMenuItem<MenuAction>(

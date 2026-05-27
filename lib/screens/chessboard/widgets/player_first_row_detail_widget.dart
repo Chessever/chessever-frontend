@@ -1,11 +1,11 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
-import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -20,7 +20,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'dart:ui';
 
 enum PlayerView { listView, gridView, boardView }
 
@@ -46,6 +45,21 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final noSpoilersEnabled = ref.watch(
+      eventNoSpoilersProvider(gamesTourModel.tourId).select(
+        (state) => state.enabled,
+      ),
+    );
+    final spoilersRevealedForGame = ref.watch(
+      eventNoSpoilersRevealedGamesProvider.select(
+        (gameIds) => gameIds.contains(gamesTourModel.gameId),
+      ),
+    );
+    final revealSpoilers =
+        !noSpoilersEnabled ||
+        !gamesTourModel.gameStatus.isFinished ||
+        spoilersRevealedForGame;
+
     final playerCard = useMemoized(() {
       return isWhitePlayer
           ? gamesTourModel.whitePlayer
@@ -248,9 +262,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           (settings?.showEngineGauge ?? true);
 
       // We only show the gauge area if:
-      // 1. The game is finished (to show 1, 0, or 1/2)
+      // 1. The finished-game result is allowed to be shown
       // 2. The game is ongoing AND started AND gauge is enabled in settings
-      final isFinished = gamesTourModel.gameStatus.isFinished;
+      final isFinished = gamesTourModel.gameStatus.isFinished && revealSpoilers;
       final effectivelyShowingEvalBar =
           showEvalBarInSettings &&
           gamesTourModel.hasStarted &&
@@ -260,7 +274,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         return playerView == PlayerView.gridView ? 10.w : 20.w;
       }
       return 0.0;
-    }, [ref.watch(engineSettingsProviderNew), gamesTourModel, playerView]);
+    }, [ref.watch(engineSettingsProviderNew), gamesTourModel, playerView, revealSpoilers]);
 
     // Clock padding - add small horizontal padding to prevent flickering and provide stability
     final clockPadding = playerView == PlayerView.gridView ? 4.w : 6.w;
@@ -357,7 +371,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         // This handles cases where:
         // - view might not match expected case
         // - gamesContext filter returned empty (e.g., For You only has few games from event)
-        if ((gamesContext == null || gamesContext!.isEmpty) && gamesTourModel.tourId.isNotEmpty) {
+        if ((gamesContext == null || gamesContext.isEmpty) && gamesTourModel.tourId.isNotEmpty) {
           gamesContext = [gamesTourModel];
           hasEventContext = true;
         }
@@ -378,7 +392,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           // Game result score - centered in eval bar width
           SizedBox(
             width: engineGaugeWidth,
-            child: gamesTourModel.gameStatus.isFinished
+            child: gamesTourModel.gameStatus.isFinished && revealSpoilers
                 ? Center(
                     child: Text(
                       gamesTourModel.gameStatus == GameStatus.whiteWins
