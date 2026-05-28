@@ -106,7 +106,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               children: [
                 _CollapsibleSection(
                   title: 'Board Settings',
-                  subtitle: 'Board theme, pieces, auto-pin, sounds',
                   leading: SvgWidget(
                     SvgAsset.boardSettings,
                     height: 22.h,
@@ -120,7 +119,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SizedBox(height: 14.h),
                 _CollapsibleSection(
                   title: 'Engine Experience',
-                  subtitle: 'Stockfish, depth, lines, arrows, eval bar',
                   leading: Icon(
                     Icons.memory_outlined,
                     color: context.colors.iconPrimary,
@@ -133,7 +131,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SizedBox(height: 14.h),
                 _CollapsibleSection(
                   title: 'Notification Settings',
-                  subtitle: 'Push, alerts, library, updates',
                   leading: Icon(
                     Icons.notifications_active_outlined,
                     color: context.colors.iconPrimary,
@@ -201,28 +198,13 @@ class _DeleteAccountRow extends StatelessWidget {
                 ),
                 SizedBox(width: 14.w),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Delete Account',
-                        style: AppTypography.textMdMedium.copyWith(
-                          color: danger,
-                          fontSize: 14.f,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      SizedBox(height: 2.h),
-                      Text(
-                        'Permanently remove your account and data',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textTertiary,
-                          fontSize: 11.f,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                  child: Text(
+                    'Delete Account',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: danger,
+                      fontSize: 14.f,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 SizedBox(width: 8.w),
@@ -243,7 +225,6 @@ class _DeleteAccountRow extends StatelessWidget {
 class _CollapsibleSection extends StatelessWidget {
   const _CollapsibleSection({
     required this.title,
-    required this.subtitle,
     required this.leading,
     required this.expanded,
     required this.onTap,
@@ -251,7 +232,6 @@ class _CollapsibleSection extends StatelessWidget {
   });
 
   final String title;
-  final String subtitle;
   final Widget leading;
   final bool expanded;
   final VoidCallback onTap;
@@ -335,28 +315,13 @@ class _CollapsibleSection extends StatelessWidget {
                       ),
                       SizedBox(width: 14.w),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: AppTypography.textMdMedium.copyWith(
-                                color: context.colors.textPrimary,
-                                fontSize: 14.f,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            SizedBox(height: 2.h),
-                            Text(
-                              subtitle,
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textTertiary,
-                                fontSize: 11.f,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                        child: Text(
+                          title,
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: context.colors.textPrimary,
+                            fontSize: 14.f,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       SizedBox(width: 8.w),
