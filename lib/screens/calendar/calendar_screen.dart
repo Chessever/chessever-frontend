@@ -7,6 +7,7 @@ import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -49,14 +50,25 @@ class CalendarScreen extends ConsumerStatefulWidget {
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final TextEditingController searchController = TextEditingController();
   final focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   Timer? _searchAnalyticsTimer;
 
   @override
   void dispose() {
     searchController.dispose();
     focusNode.dispose();
+    _scrollController.dispose();
     _searchAnalyticsTimer?.cancel();
     super.dispose();
+  }
+
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -67,6 +79,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final searchQuery = ref.watch(calendarSearchQueryProvider);
     final isListMode =
         filterMode != CalendarFilterMode.all || searchQuery.trim().isNotEmpty;
+
+    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
+      previous,
+      next,
+    ) {
+      if (next.item == BottomNavBarItem.calendar) {
+        _scrollToTop();
+      }
+    });
 
     return Scaffold(
       body: Column(
@@ -326,6 +347,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       displacement: 60.h,
                       strokeWidth: 3.w,
                       child: GridView.builder(
+                        controller: _scrollController,
                         padding: EdgeInsets.symmetric(horizontal: 16.sp),
                         physics: const AlwaysScrollableScrollPhysics(
                           parent: BouncingScrollPhysics(),
@@ -401,6 +423,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
                     return SkeletonWidget(
                       child: GridView.builder(
+                        controller: _scrollController,
                         padding: EdgeInsets.symmetric(horizontal: 16.sp),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
@@ -465,14 +488,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       });
       sortedEvents = flattenedEvents;
     } else {
-      sortedEvents = ref.read(tournamentSortingServiceProvider).sortCalendarEvents(
-        flattenedEvents,
-        prioritizeFavorites: false,
-      );
+      sortedEvents = ref
+          .read(tournamentSortingServiceProvider)
+          .sortCalendarEvents(flattenedEvents, prioritizeFavorites: false);
     }
 
     final isTablet = ResponsiveHelper.isTablet;
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(phoneCount: 1);
+    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
+      phoneCount: 1,
+    );
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
@@ -490,6 +514,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       child:
           sortedEvents.isEmpty
               ? ListView(
+                controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
@@ -510,51 +535,53 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               )
               // Use grid layout for tablets, list for phones
               : isTablet && crossAxisCount > 1
-                  ? GridView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                        vertical: 12.h,
-                      ),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 16.sp,
-                        mainAxisSpacing: 16.sp,
-                        childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
-                      ),
-                      itemCount: sortedEvents.length,
-                      itemBuilder: (context, index) {
-                        final event = sortedEvents[index];
-                        return EventCard(
-                          tourEventCardModel: event,
-                          heroTagSuffix: 'calendar-list-$index',
-                          onTap: () => _onEventTap(event),
-                        );
-                      },
-                    )
-                  : ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                        vertical: 12.h,
-                      ),
-                      itemCount: sortedEvents.length,
-                      itemBuilder: (context, index) {
-                        final event = sortedEvents[index];
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: 12.h),
-                          child: EventCard(
-                            tourEventCardModel: event,
-                            heroTagSuffix: 'calendar-list-$index',
-                            onTap: () => _onEventTap(event),
-                          ),
-                        );
-                      },
+              ? GridView.builder(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 12.h,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 16.sp,
+                  mainAxisSpacing: 16.sp,
+                  childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                ),
+                itemCount: sortedEvents.length,
+                itemBuilder: (context, index) {
+                  final event = sortedEvents[index];
+                  return EventCard(
+                    tourEventCardModel: event,
+                    heroTagSuffix: 'calendar-list-$index',
+                    onTap: () => _onEventTap(event),
+                  );
+                },
+              )
+              : ListView.builder(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 12.h,
+                ),
+                itemCount: sortedEvents.length,
+                itemBuilder: (context, index) {
+                  final event = sortedEvents[index];
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 12.h),
+                    child: EventCard(
+                      tourEventCardModel: event,
+                      heroTagSuffix: 'calendar-list-$index',
+                      onTap: () => _onEventTap(event),
                     ),
+                  );
+                },
+              ),
     );
   }
 
@@ -808,7 +835,8 @@ class _QuickFilterButtons extends ConsumerWidget {
         }
 
         // Otherwise, calculate potential favorite events from current year data
-        final favoriteEventIds = favoriteEventIdsAsync.valueOrNull ?? <String>{};
+        final favoriteEventIds =
+            favoriteEventIdsAsync.valueOrNull ?? <String>{};
 
         // Count unique events in the current data that are in our favorites set
         final matchingEventIds = <String>{};

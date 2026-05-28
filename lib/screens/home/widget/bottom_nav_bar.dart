@@ -10,6 +10,33 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum BottomNavBarItem { tournaments, calendar, library }
 
+class BottomNavBarReTapRequest {
+  const BottomNavBarReTapRequest({required this.item, required this.sequence});
+
+  final BottomNavBarItem item;
+  final int sequence;
+}
+
+class BottomNavBarReTapRequestNotifier
+    extends StateNotifier<BottomNavBarReTapRequest> {
+  BottomNavBarReTapRequestNotifier()
+    : super(
+        const BottomNavBarReTapRequest(
+          item: BottomNavBarItem.tournaments,
+          sequence: 0,
+        ),
+      );
+
+  void request(BottomNavBarItem item) {
+    state = BottomNavBarReTapRequest(item: item, sequence: state.sequence + 1);
+  }
+}
+
+final bottomNavBarReTapRequestProvider = StateNotifierProvider<
+  BottomNavBarReTapRequestNotifier,
+  BottomNavBarReTapRequest
+>((ref) => BottomNavBarReTapRequestNotifier());
+
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
   BottomNavBarItem.calendar: SvgAsset.calendarIcon,
@@ -56,17 +83,19 @@ class BottomNavBar extends ConsumerWidget {
             onTap: () {
               final previous = ref.read(selectedBottomNavBarItemProvider);
               final next = BottomNavBarItem.values[index];
-              if (previous == next) return;
+              if (previous == next) {
+                ref
+                    .read(bottomNavBarReTapRequestProvider.notifier)
+                    .request(next);
+                return;
+              }
 
               ref.read(selectedBottomNavBarItemProvider.notifier).state = next;
 
               unawaited(
                 AnalyticsService.instance.trackEvent(
                   'Bottom Nav Changed',
-                  properties: {
-                    'previous_tab': previous.name,
-                    'tab': next.name,
-                  },
+                  properties: {'previous_tab': previous.name, 'tab': next.name},
                 ),
               );
             },

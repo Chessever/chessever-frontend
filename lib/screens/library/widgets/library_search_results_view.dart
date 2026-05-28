@@ -31,6 +31,7 @@ class LibrarySearchResultsView extends ConsumerStatefulWidget {
   final Function(GamebasePlayer) onPlayerFilter;
   final Function(SavedAnalysis) onAnalysisTap;
   final Function(GamesTourModel) onGameTap;
+  final ScrollController? scrollController;
 
   const LibrarySearchResultsView({
     super.key,
@@ -42,25 +43,33 @@ class LibrarySearchResultsView extends ConsumerStatefulWidget {
     required this.onPlayerFilter,
     required this.onAnalysisTap,
     required this.onGameTap,
+    this.scrollController,
   });
 
   @override
-  ConsumerState<LibrarySearchResultsView> createState() => _LibrarySearchResultsViewState();
+  ConsumerState<LibrarySearchResultsView> createState() =>
+      _LibrarySearchResultsViewState();
 }
 
-class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsView> {
-  final ScrollController _scrollController = ScrollController();
+class _LibrarySearchResultsViewState
+    extends ConsumerState<LibrarySearchResultsView> {
+  late final ScrollController _scrollController;
+  late final bool _ownsScrollController;
 
   @override
   void initState() {
     super.initState();
+    _scrollController = widget.scrollController ?? ScrollController();
+    _ownsScrollController = widget.scrollController == null;
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    if (_ownsScrollController) {
+      _scrollController.dispose();
+    }
     super.dispose();
   }
 
@@ -91,7 +100,9 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     final data = row['data'];
     final mdRaw = data is Map ? (data['md'] ?? data['metadata']) : null;
     final md =
-        mdRaw is Map ? Map<String, dynamic>.from(mdRaw) : const <String, dynamic>{};
+        mdRaw is Map
+            ? Map<String, dynamic>.from(mdRaw)
+            : const <String, dynamic>{};
 
     // Headers fallback
     final whiteName =
@@ -146,7 +157,8 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
         (md['ECO'] as String?)?.trim().isNotEmpty == true
             ? md['ECO'].toString()
             : (row['eco']?.toString() ?? row['ECO']?.toString());
-    final formatCode = (eco != null && eco.isNotEmpty) ? eco : (timeControl ?? '');
+    final formatCode =
+        (eco != null && eco.isNotEmpty) ? eco : (timeControl ?? '');
 
     int parseRating(dynamic value) {
       if (value is int) return value;
@@ -229,7 +241,8 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
 
   @override
   Widget build(BuildContext context) {
-    final fallbackGameModels = widget.results.games.map(_mapToGameModel).toList();
+    final fallbackGameModels =
+        widget.results.games.map(_mapToGameModel).toList();
 
     // Watch the paginated provider for database games
     final paginationState = ref.watch(gamebaseDatabaseGamesPaginatedProvider);
@@ -241,8 +254,7 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
           error: (_, __) => true,
           orElse: () => false,
         ) ??
-        paginationState.games.isNotEmpty ||
-        fallbackGameModels.isNotEmpty;
+        paginationState.games.isNotEmpty || fallbackGameModels.isNotEmpty;
 
     final hasAnyResults =
         widget.results.folders.isNotEmpty ||
@@ -290,9 +302,10 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
         if (widget.results.players.isNotEmpty) ...[
           _SectionHeader(
             title: 'Players',
-            count: widget.results.playerTotalCount > 0
-                ? widget.results.playerTotalCount
-                : widget.results.players.length,
+            count:
+                widget.results.playerTotalCount > 0
+                    ? widget.results.playerTotalCount
+                    : widget.results.players.length,
           ),
           ListView.separated(
             shrinkWrap: true,
@@ -350,18 +363,22 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     required GamesListViewMode viewMode,
   }) {
     // Use paginated games if available, otherwise fall back to legacy
-    final games = paginationState.games.isNotEmpty
-        ? paginationState.games
-        : (databaseGamesAsync?.valueOrNull ?? fallbackGames);
+    final games =
+        paginationState.games.isNotEmpty
+            ? paginationState.games
+            : (databaseGamesAsync?.valueOrNull ?? fallbackGames);
 
-    if (games.isEmpty && !paginationState.isLoading && databaseGamesAsync == null) {
+    if (games.isEmpty &&
+        !paginationState.isLoading &&
+        databaseGamesAsync == null) {
       return const [];
     }
 
     return [
       _SectionHeader(
         title: 'Database Games',
-        count: paginationState.totalCount > 0 ? paginationState.totalCount : null,
+        count:
+            paginationState.totalCount > 0 ? paginationState.totalCount : null,
       ),
       if (games.isEmpty && paginationState.isLoading)
         Padding(
@@ -379,11 +396,7 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
           ),
         )
       else
-        _buildGamesList(
-          context: context,
-          games: games,
-          viewMode: viewMode,
-        ),
+        _buildGamesList(context: context, games: games, viewMode: viewMode),
 
       // Load more indicator
       if (paginationState.hasMore && games.isNotEmpty) ...[
@@ -391,9 +404,10 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
         _LoadMoreButton(
           isLoading: paginationState.isLoading,
           onTap: _loadMoreGames,
-          remainingCount: paginationState.totalCount > 0
-              ? paginationState.totalCount - games.length
-              : null,
+          remainingCount:
+              paginationState.totalCount > 0
+                  ? paginationState.totalCount - games.length
+                  : null,
         ),
       ],
 
@@ -428,7 +442,8 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     if (isGrid) {
       // Grid mode: dynamic columns based on device/orientation
       // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-      final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+      final int gridColumns =
+          ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
       final items = <Widget>[];
 
       for (int i = 0; i < games.length; i += gridColumns) {
@@ -448,13 +463,14 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
                 for (int j = 0; j < gridColumns; j++) ...[
                   if (j > 0) SizedBox(width: 12.sp),
                   Expanded(
-                    child: j < rowGames.length
-                        ? _LibraryGridGame(
-                            game: rowGames[j],
-                            gameIndex: i + j,
-                            allGames: games,
-                          )
-                        : const SizedBox.shrink(),
+                    child:
+                        j < rowGames.length
+                            ? _LibraryGridGame(
+                              game: rowGames[j],
+                              gameIndex: i + j,
+                              allGames: games,
+                            )
+                            : const SizedBox.shrink(),
                   ),
                 ],
               ],
@@ -521,18 +537,19 @@ class _LoadMoreButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: isLoading ? null : () {
-        HapticFeedbackService.light();
-        onTap();
-      },
+      onTap:
+          isLoading
+              ? null
+              : () {
+                HapticFeedbackService.light();
+                onTap();
+              },
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 20.w),
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: const Color(0xFF27272A),
-          ),
+          border: Border.all(color: const Color(0xFF27272A)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -552,8 +569,8 @@ class _LoadMoreButton extends StatelessWidget {
               isLoading
                   ? 'Loading...'
                   : remainingCount != null
-                      ? 'Load more ($remainingCount remaining)'
-                      : 'Load more games',
+                  ? 'Load more ($remainingCount remaining)'
+                  : 'Load more games',
               style: AppTypography.textSmMedium.copyWith(
                 color: kWhiteColor.withValues(alpha: 0.9),
               ),
@@ -592,14 +609,15 @@ class _LibraryGridGame extends ConsumerWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ChessBoardScreenNew(
-              games: allGames,
-              currentIndex: gameIndex,
-              hideEventInfo: true,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              showClock: false,
-            ),
+            builder:
+                (_) => ChessBoardScreenNew(
+                  games: allGames,
+                  currentIndex: gameIndex,
+                  hideEventInfo: true,
+                  showGamebaseButton: false,
+                  disableGamebaseOverlayByDefault: true,
+                  showClock: false,
+                ),
           ),
         );
       },
@@ -636,14 +654,15 @@ class _LibraryBoardGame extends ConsumerWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ChessBoardScreenNew(
-              games: allGames,
-              currentIndex: gameIndex,
-              hideEventInfo: true,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              showClock: false,
-            ),
+            builder:
+                (_) => ChessBoardScreenNew(
+                  games: allGames,
+                  currentIndex: gameIndex,
+                  hideEventInfo: true,
+                  showGamebaseButton: false,
+                  disableGamebaseOverlayByDefault: true,
+                  showClock: false,
+                ),
           ),
         );
       },

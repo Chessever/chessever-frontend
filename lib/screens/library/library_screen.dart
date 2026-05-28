@@ -21,6 +21,7 @@ import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/screens/library/widgets/library_search_results_view.dart';
 import 'package:chessever2/screens/library/library_player_profile_screen.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -44,6 +45,7 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
   bool _isSearchFocused = false;
 
@@ -69,7 +71,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   // Filter method - commented out as filter button is not ready yet
@@ -169,6 +181,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
+      previous,
+      next,
+    ) {
+      if (next.item == BottomNavBarItem.library) {
+        _scrollToTop();
+      }
+    });
+
     return ScreenWrapper(
       child: Center(
         child: ConstrainedBox(
@@ -225,12 +246,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   opacity: opacity,
                   child: SizedBox(
                     width: buttonWidth,
-                    child: buttonWidth > 1
-                        ? _FilterButton(
-                            isActive: filtersActive,
-                            onTap: _openFilters,
-                          )
-                        : const SizedBox.shrink(),
+                    child:
+                        buttonWidth > 1
+                            ? _FilterButton(
+                              isActive: filtersActive,
+                              onTap: _openFilters,
+                            )
+                            : const SizedBox.shrink(),
                   ),
                 ),
 
@@ -241,12 +263,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 opacity: opacity,
                 child: SizedBox(
                   width: buttonWidth,
-                  child: buttonWidth > 1
-                      ? _SquareIconButton(
-                          icon: Icons.grid_on_rounded,
-                          onTap: _navigateToEmptyBoard,
-                        )
-                      : const SizedBox.shrink(),
+                  child:
+                      buttonWidth > 1
+                          ? _SquareIconButton(
+                            icon: Icons.grid_on_rounded,
+                            onTap: _navigateToEmptyBoard,
+                          )
+                          : const SizedBox.shrink(),
                 ),
               ),
               // Add folder button gap
@@ -256,13 +279,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 opacity: opacity,
                 child: SizedBox(
                   width: buttonWidth,
-                  child: buttonWidth > 1
-                      ? _SquareIconButton(
-                          icon: Icons.add,
-                          onTap: _handleCreateFolder,
-                          isPrimary: true,
-                        )
-                      : const SizedBox.shrink(),
+                  child:
+                      buttonWidth > 1
+                          ? _SquareIconButton(
+                            icon: Icons.add,
+                            onTap: _handleCreateFolder,
+                            isPrimary: true,
+                          )
+                          : const SizedBox.shrink(),
                 ),
               ),
             ],
@@ -437,8 +461,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               results: results,
               databaseGamesAsync: databaseGamesAsync,
               viewMode: viewMode,
+              scrollController: _scrollController,
               onFolderTap: (folder) async {
-                final shouldFocusSearch = await Navigator.of(context).push<bool>(
+                final shouldFocusSearch = await Navigator.of(
+                  context,
+                ).push<bool>(
                   MaterialPageRoute(
                     builder: (_) => FolderContentsScreen(folder: folder),
                   ),
@@ -500,9 +527,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       children: [
         // Subtle background decoration - only when folders exist
         if (hasFolders)
-          const Positioned.fill(
-            child: _LibraryBackgroundDecoration(),
-          ),
+          const Positioned.fill(child: _LibraryBackgroundDecoration()),
         // Main content
         RefreshIndicator(
           onRefresh: () async {
@@ -512,6 +537,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           color: kWhiteColor,
           backgroundColor: kBlack2Color,
           child: CustomScrollView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
@@ -550,7 +576,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (ResponsiveHelper.isTablet) {
       final crossAxisCount = ResponsiveHelper.tabletGridColumns.clamp(2, 3);
       return SliverPadding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: 8.h,
+        ),
         sliver: SliverGrid(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
@@ -564,9 +593,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               isExpanded: true,
               onTap: () async {
                 HapticFeedback.mediumImpact();
-                final shouldFocusSearch = await Navigator.of(context).push<bool>(
+                final shouldFocusSearch = await Navigator.of(
+                  context,
+                ).push<bool>(
                   MaterialPageRoute(
-                    builder: (_) => FolderContentsScreen(folder: filteredFolders[index]),
+                    builder:
+                        (_) => FolderContentsScreen(
+                          folder: filteredFolders[index],
+                        ),
                   ),
                 );
                 if (shouldFocusSearch == true && mounted) {
@@ -582,7 +616,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     // Phone layout: single column list
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 8.h,
+      ),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => Padding(
@@ -592,9 +629,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               isExpanded: true,
               onTap: () async {
                 HapticFeedback.mediumImpact();
-                final shouldFocusSearch = await Navigator.of(context).push<bool>(
+                final shouldFocusSearch = await Navigator.of(
+                  context,
+                ).push<bool>(
                   MaterialPageRoute(
-                    builder: (_) => FolderContentsScreen(folder: filteredFolders[index]),
+                    builder:
+                        (_) => FolderContentsScreen(
+                          folder: filteredFolders[index],
+                        ),
                   ),
                 );
                 if (shouldFocusSearch == true && mounted) {
@@ -746,10 +788,7 @@ class _FilterButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  const _FilterButton({
-    required this.isActive,
-    required this.onTap,
-  });
+  const _FilterButton({required this.isActive, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -764,9 +803,10 @@ class _FilterButton extends StatelessWidget {
           color: const Color(0xFF09090B), // Zinc 950
           borderRadius: BorderRadius.circular(10.br),
           border: Border.all(
-            color: isActive
-                ? const Color(0xFF52525B) // Zinc 600 when active
-                : const Color(0xFF27272A), // Zinc 800
+            color:
+                isActive
+                    ? const Color(0xFF52525B) // Zinc 600 when active
+                    : const Color(0xFF27272A), // Zinc 800
           ),
         ),
         child: Center(
@@ -926,8 +966,7 @@ class _LibraryEmptyStateContent extends StatelessWidget {
             isLight
                 ? const Color(0xFF3F3F46).withValues(alpha: opacity * 0.6)
                 : const Color(0xFF27272A).withValues(alpha: opacity * 0.8),
-        borderRadius:
-            _getCornerRadius(row, col, gridSize, 6.br),
+        borderRadius: _getCornerRadius(row, col, gridSize, 6.br),
       ),
     );
   }
