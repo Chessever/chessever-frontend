@@ -9,6 +9,7 @@ class E2eIds {
   static const homeRoot = 'e2e_home_root';
   static const homeDrawer = 'e2e_home_drawer';
   static const settingsRoot = 'e2e_settings_root';
+  static const settingsDeleteAccount = 'e2e_settings_delete_account';
   static const standingsRoot = 'e2e_standings_root';
   static const boardColorDialogRoot = 'e2e_board_color_dialog_root';
 

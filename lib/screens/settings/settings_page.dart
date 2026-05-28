@@ -8,6 +8,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -141,6 +142,94 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   expanded: _expanded == SettingsSection.notification,
                   onTap: () => _toggle(SettingsSection.notification),
                   child: NotificationSettingsBody(trackPersist: _trackPersist),
+                ),
+                SizedBox(height: 24.h),
+                _DeleteAccountRow(
+                  onTap: () {
+                    HapticFeedbackService.navigation();
+                    showDeleteAccountDialog(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteAccountRow extends StatelessWidget {
+  const _DeleteAccountRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final danger = context.colors.danger;
+    return Material(
+      color: context.colors.surface,
+      borderRadius: BorderRadius.circular(20.br),
+      child: InkWell(
+        key: e2eKey(E2eIds.settingsDeleteAccount),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20.br),
+        splashColor: danger.withValues(alpha: 0.08),
+        highlightColor: danger.withValues(alpha: 0.04),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20.br),
+            border: Border.all(color: danger.withValues(alpha: 0.45)),
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
+            child: Row(
+              children: [
+                Container(
+                  width: 40.w,
+                  height: 40.h,
+                  decoration: BoxDecoration(
+                    color: danger.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: danger.withValues(alpha: 0.35)),
+                  ),
+                  child: Icon(
+                    Icons.delete_forever_outlined,
+                    color: danger,
+                    size: 22.ic,
+                  ),
+                ),
+                SizedBox(width: 14.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Delete Account',
+                        style: AppTypography.textMdMedium.copyWith(
+                          color: danger,
+                          fontSize: 14.f,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 2.h),
+                      Text(
+                        'Permanently remove your account and data',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.textTertiary,
+                          fontSize: 11.f,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: danger,
+                  size: 24.ic,
                 ),
               ],
             ),
