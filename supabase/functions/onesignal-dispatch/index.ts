@@ -1041,7 +1041,6 @@ function buildNotification(
     "White";
   const black = (payload.player_black as string) ?? context.game?.player_black ??
     "Black";
-  const status = (payload.status as string) ?? context.game?.status ?? "";
   const androidChannelId = channelForEvent(item.event_type);
 
   if (item.event_type === "game_started") {
@@ -1059,7 +1058,7 @@ function buildNotification(
   if (item.event_type === "game_finished") {
     return {
       title: `Final: ${white} vs ${black}`,
-      body: status ? `Result: ${status}` : "A favorite game just finished.",
+      body: "A favorite game just finished.",
       url: item.game_id ? `https://chessever.com/games/${item.game_id}` : null,
       data: { type: "game_finished", game_id: item.game_id },
       androidChannelId,
@@ -1206,8 +1205,8 @@ async function buildLiveUpdatePayload(args: {
     last_move_time: lastMoveTime,
     white_clock_seconds: whiteClockSeconds,
     black_clock_seconds: blackClockSeconds,
-    eval_cp: args.evalSnapshot?.cp ?? null,
-    eval_mate: args.evalSnapshot?.mate ?? null,
+    eval_cp: isGameOver ? null : (args.evalSnapshot?.cp ?? null),
+    eval_mate: isGameOver ? null : (args.evalSnapshot?.mate ?? null),
     board_theme_index: null,
     piece_style_index: null,
     player_white: white,
@@ -1225,7 +1224,7 @@ async function buildLiveUpdatePayload(args: {
     is_check: checkState.isCheck,
     is_checkmate: checkState.isCheckmate,
     is_game_over: isGameOver,
-    status,
+    status: isGameOver ? null : status,
   };
 }
 
@@ -1960,9 +1959,7 @@ async function sendLiveGameAlert(
     payload.last_move ?? "";
   const body = reason === "check"
     ? `${payload.player_white} vs ${payload.player_black} — ${move}`
-    : `${payload.player_white} vs ${payload.player_black} — ${
-        payload.status ?? "Result"
-      }`;
+    : `${payload.player_white} vs ${payload.player_black} — game finished`;
 
   const notification: NotificationPayload = {
     title,
