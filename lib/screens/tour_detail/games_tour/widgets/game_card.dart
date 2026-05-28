@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/live_game_subscription_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -292,7 +294,11 @@ class _CenterContent extends ConsumerWidget {
     // If game is not ongoing, show result text unless this event is spoiler-free.
     if (effectiveStatus != GameStatus.ongoing) {
       if (hideSpoilers && matchWithComparison.game.gameStatus.isFinished) {
-        return const SizedBox.shrink();
+        return Center(
+          child: _GameListSpoilerBlur(
+            child: StatusText(status: _displayTextSupporter(matchWithComparison)),
+          ),
+        );
       }
       return Center(
         child: StatusText(status: _displayTextSupporter(matchWithComparison)),
@@ -474,6 +480,34 @@ class _GamesRound extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _GameListSpoilerBlur extends StatelessWidget {
+  const _GameListSpoilerBlur({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: child,
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.18),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

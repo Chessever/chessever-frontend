@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -243,15 +245,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final noSpoilersEnabled = ref.watch(
-      eventNoSpoilersProvider(gamesTourModel.tourId).select(
-        (state) => state.enabled,
-      ),
-    );
-    final hideFinishedSpoilers =
-        noSpoilersEnabled && gamesTourModel.gameStatus.isFinished;
-    final showEvalBar =
-        _shouldShowEvalBar(ref) && gamesTourModel.hasStarted && !hideFinishedSpoilers;
+    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return Padding(
@@ -471,15 +465,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final noSpoilersEnabled = ref.watch(
-      eventNoSpoilersProvider(gamesTourModel.tourId).select(
-        (state) => state.enabled,
-      ),
-    );
-    final hideFinishedSpoilers =
-        noSpoilersEnabled && gamesTourModel.gameStatus.isFinished;
-    final showEvalBar =
-        _shouldShowEvalBar(ref) && gamesTourModel.hasStarted && !hideFinishedSpoilers;
+    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 10.w : 0.w;
 
     // On phone, use the original fixed calculation for 2-column grid
@@ -680,15 +666,7 @@ class _ChessBoardContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final noSpoilersEnabled = ref.watch(
-      eventNoSpoilersProvider(gamesTourModel.tourId).select(
-        (state) => state.enabled,
-      ),
-    );
-    final hideFinishedSpoilers =
-        noSpoilersEnabled && gamesTourModel.gameStatus.isFinished;
-    final showEvalBar =
-        _shouldShowEvalBar(ref) && gamesTourModel.hasStarted && !hideFinishedSpoilers;
+    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return SizedBox(
@@ -767,6 +745,33 @@ class _PlayerRow extends StatelessWidget {
   }
 }
 
+class _SpoilerBlur extends StatelessWidget {
+  const _SpoilerBlur({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: Stack(
+        children: [
+          ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+            child: child,
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: kBlackColor.withValues(alpha: 0.18),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChessBoardWithEvaluation extends ConsumerWidget {
   const _ChessBoardWithEvaluation({
     required this.gamesTourModel,
@@ -800,32 +805,35 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     final gameStatus =
         hideFinishedSpoilers ? GameStatus.ongoing : gamesTourModel.gameStatus;
     final resolvedFen = _resolveFen(gamesTourModel.fen);
+    final board = _ChessBoardWidget(
+      fen: resolvedFen,
+      lastMove: lastMove,
+      boardSize: boardSize,
+      showCoordinates: showCoordinates,
+      gameStatus: gameStatus,
+    );
+    final protectedBoard = hideFinishedSpoilers
+        ? _SpoilerBlur(child: board)
+        : board;
 
     if (!showEvalBar || !gamesTourModel.hasStarted) {
-      return _ChessBoardWidget(
-        fen: resolvedFen,
-        lastMove: lastMove,
-        boardSize: boardSize,
-        showCoordinates: showCoordinates,
-        gameStatus: gameStatus,
-      );
+      return protectedBoard;
     }
+
+    final evalBar = EvaluationBarWidgetForGames(
+      width: sideBarWidth,
+      height: boardSize,
+      fen: resolvedFen,
+      playerView: playerView,
+    );
+    final protectedEvalBar = hideFinishedSpoilers
+        ? _SpoilerBlur(child: evalBar)
+        : evalBar;
 
     return Row(
       children: [
-        EvaluationBarWidgetForGames(
-          width: sideBarWidth,
-          height: boardSize,
-          fen: resolvedFen,
-          playerView: playerView,
-        ),
-        _ChessBoardWidget(
-          fen: resolvedFen,
-          lastMove: lastMove,
-          boardSize: boardSize,
-          showCoordinates: showCoordinates,
-          gameStatus: gameStatus,
-        ),
+        protectedEvalBar,
+        protectedBoard,
       ],
     );
   }
