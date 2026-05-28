@@ -12,6 +12,12 @@ class TournamentPlayer {
   final double? score;
   final int? performance;
   final String? team;
+  /// Lichess-supplied 1-based standings position. Present whenever the
+  /// broadcast feed has computed an official ranking (including custom
+  /// scoring + official tiebreaks like DE/SB/KS that we cannot reproduce
+  /// client-side). When every player in a tour has this, downstream code
+  /// MUST trust the input order — see [PlayerTourScreenNotifier].
+  final int? rank;
 
   TournamentPlayer({
     this.federation,
@@ -24,9 +30,19 @@ class TournamentPlayer {
     this.score,
     this.performance,
     this.team,
+    this.rank,
   });
 
-  /// Creates a TournamentPlayer from JSON map
+  /// Creates a TournamentPlayer from JSON map.
+  ///
+  /// Lichess broadcast standings nest per-time-control values:
+  ///   "ratingDiff": absent at top level
+  ///   "ratingDiffs": { "standard": 10 }      (or rapid / blitz)
+  ///   "performances": { "standard": 3041 }
+  /// chess-results / legacy payloads may instead emit flat
+  /// `ratingDiff`/`performance` ints. We accept both, preferring the flat
+  /// field when present and falling back to whichever time-control bucket
+  /// is populated (Lichess only fills the bucket matching the tour TC).
   factory TournamentPlayer.fromJson(Map<String, dynamic> json) {
     return TournamentPlayer(
       federation: json['fed'] as String?,
@@ -35,11 +51,32 @@ class TournamentPlayer {
       fideId: _parseInt(json['fideId']),
       played: _parseInt(json['played']) ?? 0,
       rating: _parseInt(json['rating']),
-      ratingDiff: _parseInt(json['ratingDiff']),
+      ratingDiff:
+          _parseInt(json['ratingDiff']) ?? _firstNumber(json['ratingDiffs']),
       score: _parseScore(json['score']), // Handle both int and double
-      performance: _parseInt(json['performance']),
+      performance:
+          _parseInt(json['performance']) ?? _firstNumber(json['performances']),
       team: json['team'] as String?,
+      rank: _parseInt(json['rank']),
     );
+  }
+
+  /// Picks the first non-null numeric value out of a Lichess nested map keyed
+  /// by time control (`standard`/`rapid`/`blitz`/`classical`). Lichess only
+  /// populates the bucket matching the tour's actual time control, so any
+  /// hit is the right one.
+  static int? _firstNumber(dynamic value) {
+    if (value is! Map) return null;
+    for (final key in const ['standard', 'classical', 'rapid', 'blitz']) {
+      final v = value[key];
+      final parsed = _parseInt(v);
+      if (parsed != null) return parsed;
+    }
+    for (final v in value.values) {
+      final parsed = _parseInt(v);
+      if (parsed != null) return parsed;
+    }
+    return null;
   }
 
   /// Helper method to parse score as double from various number types
@@ -63,6 +100,7 @@ class TournamentPlayer {
     if (score != null) data['score'] = score;
     if (performance != null) data['performance'] = performance;
     if (team != null) data['team'] = team;
+    if (rank != null) data['rank'] = rank;
 
     return data;
   }
@@ -157,7 +195,8 @@ class TournamentPlayer {
         other.rating == rating &&
         other.ratingDiff == ratingDiff &&
         other.score == score &&
-        other.performance == performance;
+        other.performance == performance &&
+        other.rank == rank;
   }
 
   @override
@@ -171,7 +210,8 @@ class TournamentPlayer {
         ratingDiff.hashCode ^
         score.hashCode ^
         performance.hashCode ^
-        team.hashCode;
+        team.hashCode ^
+        rank.hashCode;
   }
 
   /// Creates a copy of this player with updated fields
@@ -186,6 +226,7 @@ class TournamentPlayer {
     double? score,
     int? performance,
     String? team,
+    int? rank,
   }) {
     return TournamentPlayer(
       federation: federation ?? this.federation,
@@ -198,6 +239,7 @@ class TournamentPlayer {
       score: score ?? this.score,
       performance: performance ?? this.performance,
       team: team ?? this.team,
+      rank: rank ?? this.rank,
     );
   }
 }

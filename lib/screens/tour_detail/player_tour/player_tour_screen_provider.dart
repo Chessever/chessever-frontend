@@ -10,7 +10,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -271,6 +270,7 @@ class PlayerTourScreenNotifier
       tournamentPlayers: allPlayers,
       gamesTourModels: allGames,
       useExternalOrder: useExternalOrder,
+      singleTourScope: relatedTours.length == 1,
     );
 
     if (builtStandings.isEmpty) {
@@ -395,6 +395,7 @@ class PlayerTourScreenNotifier
     required List<TournamentPlayer> tournamentPlayers,
     required List<GamesTourModel> gamesTourModels,
     bool useExternalOrder = false,
+    bool singleTourScope = true,
   }) async {
     var players = List<TournamentPlayer>.from(tournamentPlayers);
 
@@ -566,34 +567,26 @@ class PlayerTourScreenNotifier
         }
       }
 
-      // For chess-results tours and broadcasts with custom per-game points,
-      // the source standings payload is canonical. Keep calculated totals as
-      // the fallback for ordinary broadcasts where live game rows are fresher.
-      final hasCustomGamePoints = playerGames.any((gameRef) {
-        final standardValue = standardResultValueForSide(
-          gameRef.game.gameStatus,
-          isWhite: gameRef.isWhite,
-        );
-        final customPoints = gameRef.playerCard.customPoints;
-        return standardValue != null &&
-            customPoints != null &&
-            customPoints != standardValue;
-      });
-      final resolvedScore = resolveBroadcastStandingScore(
-        sourceScore: updatedPlayer.score,
-        sourcePlayed: updatedPlayer.played,
-        calculatedScore: calculatedScore,
-        calculatedPlayed: gamesPlayed,
-        preserveSourceScore: useExternalOrder || hasCustomGamePoints,
-      );
+      // Source-of-truth policy:
+      //   Lichess (and chess-results) ship a per-player `score` + `ratingDiff`
+      //   that already accounts for custom scoring (e.g. Norway Chess 3-1-0 +
+      //   armageddon 1.5), official FIDE per-time-control K-factors, and rated
+      //   vs. unrated rounds. We CANNOT reproduce any of that from `1/0/½`
+      //   game outcomes alone, so whenever the source value is present we
+      //   surface it verbatim. Client-side calculation stays as the fallback
+      //   for legacy/empty payloads only.
+      final double finalScore = updatedPlayer.score ?? calculatedScore;
+      final int finalPlayed = updatedPlayer.played > gamesPlayed
+          ? updatedPlayer.played
+          : gamesPlayed;
+      final int? finalRatingDiff = updatedPlayer.ratingDiff ??
+          (hasCalculatedRatingDiff ? totalRatingDiff.round() : null);
 
       enrichedPlayers.add(
         updatedPlayer.copyWith(
-          score: resolvedScore.score,
-          played: resolvedScore.played,
-          ratingDiff:
-              updatedPlayer.ratingDiff ??
-              (hasCalculatedRatingDiff ? totalRatingDiff.round() : null),
+          score: finalScore,
+          played: finalPlayed,
+          ratingDiff: finalRatingDiff,
         ),
       );
     }
@@ -637,13 +630,28 @@ class PlayerTourScreenNotifier
       buchholzByKey[key] = buchholz;
     }
 
-    // Sort by absolute score, then Buchholz Cut-1, then current rating —
-    // unless the caller has signalled that the server already supplied a
-    // canonical order (e.g. chess-results.com tiebreaks). In that case we
-    // preserve the input order so the displayed ranking matches the official
-    // tournament standings, while keeping all the per-player enrichment
-    // (score, Buchholz for display, rating diff, etc.).
-    if (!useExternalOrder) {
+    // Trust the server-supplied ranking whenever it exists AND scope is a
+    // single tour. Lichess applies the tournament's official tiebreak system
+    // (Direct Encounter, Sonneborn-Berger, Koya, etc.) which we cannot
+    // reproduce client-side. chess-results tours come pre-sorted too
+    // (flagged via `useExternalOrder`). Multi-tour pagination scopes concat
+    // players from independent standings — ranks collide there, so client
+    // sort is the only meaningful order.
+    final hasUniversalRank = singleTourScope &&
+        enrichedPlayers.isNotEmpty &&
+        enrichedPlayers.every((p) => p.rank != null);
+    if (useExternalOrder || hasUniversalRank) {
+      enrichedPlayers.sort((a, b) {
+        final aRank = a.rank ?? 1 << 30;
+        final bRank = b.rank ?? 1 << 30;
+        if (aRank != bRank) return aRank.compareTo(bRank);
+        // Stable tie-break fallback: heavier score wins, then rating.
+        final aScore = a.score ?? 0.0;
+        final bScore = b.score ?? 0.0;
+        if (bScore != aScore) return bScore.compareTo(aScore);
+        return (b.rating ?? 0).compareTo(a.rating ?? 0);
+      });
+    } else {
       enrichedPlayers.sort((a, b) {
         final aScore = a.score ?? 0.0;
         final bScore = b.score ?? 0.0;

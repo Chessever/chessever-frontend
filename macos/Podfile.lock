@@ -212,7 +212,7 @@ SPEC CHECKSUMS:
   firebase_core: 7667f880631ae8ad10e3d6567ab7582fe0682326
   FirebaseCore: efb3893e5b94f32b86e331e3bd6dadf18b66568e
   FirebaseCoreInternal: 9afa45b1159304c963da48addb78275ef701c6b4
-  flutter_soloud: b7285a18f8258184a4836662158c3209567e676e
+  flutter_soloud: 4a7acd4c038bbcd58d290d47294d3b01c8beac7f
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   gal: baecd024ebfd13c441269ca7404792a7152fde89
   google_sign_in_ios: 00dfa94252eb10278b64828c81bcb7158a81a53a

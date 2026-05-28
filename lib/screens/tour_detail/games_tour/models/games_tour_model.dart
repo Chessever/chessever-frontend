@@ -638,7 +638,6 @@ class PlayerCard {
   final int? fideId;
   final String? team;
   final String? gamebasePlayerId;
-  final double? customPoints;
 
   PlayerCard({
     required this.name,
@@ -649,7 +648,6 @@ class PlayerCard {
     required this.team,
     this.fideId,
     this.gamebasePlayerId,
-    this.customPoints,
   });
 
   factory PlayerCard.fromPlayer(Player player) {
@@ -666,7 +664,6 @@ class PlayerCard {
       countryCode: player.fed.trim(),
       fideId: player.fideId > 0 ? player.fideId : null,
       team: player.team,
-      customPoints: player.customPoints,
     );
   }
 
@@ -679,7 +676,6 @@ class PlayerCard {
     int? fideId,
     String? team,
     String? gamebasePlayerId,
-    double? customPoints,
   }) {
     return PlayerCard(
       name: name ?? this.name,
@@ -690,7 +686,6 @@ class PlayerCard {
       fideId: fideId ?? this.fideId,
       team: team ?? this.team,
       gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
-      customPoints: customPoints ?? this.customPoints,
     );
   }
 
@@ -709,8 +704,7 @@ class PlayerCard {
         other.countryCode == countryCode &&
         other.fideId == fideId &&
         other.team == team &&
-        other.gamebasePlayerId == gamebasePlayerId &&
-        other.customPoints == customPoints;
+        other.gamebasePlayerId == gamebasePlayerId;
   }
 
   @override
@@ -724,7 +718,6 @@ class PlayerCard {
       fideId,
       team,
       gamebasePlayerId,
-      customPoints,
     );
   }
 }
