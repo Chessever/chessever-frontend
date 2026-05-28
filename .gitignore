@@ -182,6 +182,10 @@ app.*.symbols
 .claude/*mcp*.json
 .codex/
 .gemini/settings.json
+
+# Transient agent/tool artifacts (machine-local, never commit)
+.claude/scheduled_tasks.lock
+.playwright-mcp/
 .gemini/settings.local.json
 .gemini/settings*.json
 .gemini/settings*.json.bak*
