@@ -1136,13 +1136,19 @@ function isCombinedTour(tour: TourRow | null): boolean {
   return /(^|[^a-z0-9])combined([^a-z0-9]|$)/.test(label);
 }
 
+function normalizeRoundName(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+  return normalized || null;
+}
+
 function groupedRoundStartCollapseKey(
   context: { round: RoundRow | null; groupBroadcastId: string | null },
 ): string | null {
   const startsAt = context.round?.starts_at;
   const groupId = context.groupBroadcastId;
-  if (!startsAt || !groupId) return null;
-  return `round_started:${groupId}:${startsAt}`;
+  const roundName = normalizeRoundName(context.round?.name);
+  if (!startsAt || !groupId || !roundName) return null;
+  return `round_started:${groupId}:${roundName}:${startsAt}`;
 }
 
 function buildRoundStartedNotificationData(
@@ -1152,6 +1158,8 @@ function buildRoundStartedNotificationData(
   return {
     type: "round_started",
     round_id: roundId,
+    round_name: context.round?.name ?? null,
+    starts_at: context.round?.starts_at ?? null,
     group_broadcast_id: context.groupBroadcastId ?? null,
     grouped_round_start_key: groupedRoundStartCollapseKey(context),
   };
@@ -1163,7 +1171,9 @@ async function hasSentGroupedRoundStart(
 ): Promise<boolean> {
   const startsAt = context.round?.starts_at;
   const groupId = context.groupBroadcastId;
-  if (!startsAt || !groupId) return false;
+  const roundName = normalizeRoundName(context.round?.name);
+  const groupedKey = groupedRoundStartCollapseKey(context);
+  if (!startsAt || !groupId || !roundName) return false;
 
   const itemCreatedAt = new Date(item.created_at).getTime();
   const minCreatedAt = new Date(itemCreatedAt - 60 * 60 * 1000).toISOString();
@@ -1181,7 +1191,16 @@ async function hasSentGroupedRoundStart(
   if (error) return false;
 
   return ((data ?? []) as Array<{ payload?: Record<string, unknown> | null }>)
-    .some((row) => sameInstant(row.payload?.starts_at, startsAt));
+    .some((row) => {
+      const payload = row.payload ?? {};
+      if (groupedKey && payload.grouped_round_start_key === groupedKey) {
+        return true;
+      }
+      return sameInstant(payload.starts_at, startsAt) &&
+        normalizeRoundName(
+          typeof payload.round_name === "string" ? payload.round_name : null,
+        ) === roundName;
+    });
 }
 
 function sameInstant(a: unknown, b: string): boolean {
