@@ -1,19 +1,33 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/time_utils.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class CalendarEventDetailScreen extends StatefulWidget {
+@visibleForTesting
+GroupEventCardModel calendarEventFavoriteModel(CalendarEvent event) =>
+    GroupEventCardModel.fromCalendarEvent(event);
+
+@visibleForTesting
+String calendarEventFavoriteId(CalendarEvent event) =>
+    calendarEventFavoriteModel(event).id;
+
+class CalendarEventDetailScreen extends ConsumerStatefulWidget {
   const CalendarEventDetailScreen({
     super.key,
     required this.events,
@@ -26,11 +40,12 @@ class CalendarEventDetailScreen extends StatefulWidget {
   final int initialIndex;
 
   @override
-  State<CalendarEventDetailScreen> createState() =>
+  ConsumerState<CalendarEventDetailScreen> createState() =>
       _CalendarEventDetailScreenState();
 }
 
-class _CalendarEventDetailScreenState extends State<CalendarEventDetailScreen> {
+class _CalendarEventDetailScreenState
+    extends ConsumerState<CalendarEventDetailScreen> {
   static const int _virtualBase = 10000;
 
   late final PageController _controller;
@@ -43,9 +58,10 @@ class _CalendarEventDetailScreenState extends State<CalendarEventDetailScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, widget.events.length - 1);
-    final initialPage = _canSwipe
-        ? (_virtualBase ~/ 2) * widget.events.length + _currentIndex
-        : 0;
+    final initialPage =
+        _canSwipe
+            ? (_virtualBase ~/ 2) * widget.events.length + _currentIndex
+            : 0;
     _controller = PageController(initialPage: initialPage);
   }
 
@@ -65,25 +81,33 @@ class _CalendarEventDetailScreenState extends State<CalendarEventDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final event = widget.events[_currentIndex];
+    final favoriteModel = calendarEventFavoriteModel(event);
     return Scaffold(
       key: e2eKey(E2eIds.calendarEventDetailRoot),
       backgroundColor: context.colors.background,
       appBar: AppBar(
         title: Text(
           event.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: AppTypography.textLgBold.copyWith(
             color: context.colors.textPrimary,
           ),
         ),
         backgroundColor: context.colors.surface,
         iconTheme: IconThemeData(color: context.colors.iconPrimary),
+        actions: [
+          _CalendarEventFavoriteStar(event: favoriteModel),
+          SizedBox(width: 8.w),
+        ],
       ),
       bottomNavigationBar: _EventBottomBar(event: event),
       body: PageView.builder(
         controller: _controller,
-        physics: _canSwipe
-            ? const BouncingScrollPhysics()
-            : const NeverScrollableScrollPhysics(),
+        physics:
+            _canSwipe
+                ? const BouncingScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
         itemCount: _virtualCount,
         onPageChanged: _onPageChanged,
         itemBuilder: (_, virtualIndex) {
@@ -101,17 +125,8 @@ class _EventDetailBody extends StatelessWidget {
   final CalendarEvent event;
 
   String _formatDateRange() {
-    final dateFormat = DateFormat('MMM d, yyyy');
-    if (event.startDate == null && event.endDate == null) {
-      return 'TBA';
-    }
-    if (event.startDate != null && event.endDate != null) {
-      return '${dateFormat.format(event.startDate!)} - ${dateFormat.format(event.endDate!)}';
-    }
-    if (event.startDate != null) {
-      return dateFormat.format(event.startDate!);
-    }
-    return dateFormat.format(event.endDate!);
+    final formatted = TimeUtils.formatDateRange(event.startDate, event.endDate);
+    return formatted.isEmpty ? 'TBA' : formatted;
   }
 
   List<String> _getTopPlayers() {
@@ -144,15 +159,10 @@ class _EventDetailBody extends StatelessWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: Container(
           margin: EdgeInsets.symmetric(
-            horizontal: ResponsiveHelper.adaptive(
-              phone: 20.sp,
-              tablet: 32.sp,
-            ),
+            horizontal: ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp),
           ),
           child: SingleChildScrollView(
             padding: EdgeInsets.zero,
@@ -210,8 +220,7 @@ class _EventDetailBody extends StatelessWidget {
                 _CountryFlag(
                   title: 'Location',
                   flag:
-                      event.countryCode != null &&
-                              event.countryCode!.isNotEmpty
+                      event.countryCode != null && event.countryCode!.isNotEmpty
                           ? CountryFlag.fromCountryCode(
                             event.countryCode!,
                             theme: ImageTheme(width: 16.w, height: 12.h),
@@ -321,9 +330,10 @@ class _EventBottomBar extends StatelessWidget {
               SvgAsset.websiteIcon,
               height: 12.h,
               width: 12.h,
-              colorFilter: context.isLightTheme
-                  ? const ColorFilter.mode(kPrimaryColor, BlendMode.srcIn)
-                  : null,
+              colorFilter:
+                  context.isLightTheme
+                      ? const ColorFilter.mode(kPrimaryColor, BlendMode.srcIn)
+                      : null,
             ),
             SizedBox(width: 4.w),
             Flexible(
@@ -338,6 +348,73 @@ class _EventBottomBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CalendarEventFavoriteStar extends ConsumerWidget {
+  const _CalendarEventFavoriteStar({required this.event});
+
+  final GroupEventCardModel event;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favoritesAsync = ref.watch(favoriteEventsProvider);
+    final isStarred = favoritesAsync.maybeWhen(
+      data: (events) => events.any((favorite) => favorite.eventId == event.id),
+      orElse: () => false,
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+    );
+    final favoritesCount = favoritesAsync.valueOrNull?.length ?? 0;
+
+    return IconButton(
+      tooltip: isStarred ? 'Remove from favorites' : 'Add to favorites',
+      onPressed: () async {
+        final allowed = await requireFullAuthGuard(context);
+        if (!allowed || !context.mounted) return;
+
+        HapticFeedbackService.pin();
+
+        try {
+          final isFavorited = await ref
+              .read(favoriteEventsProvider.notifier)
+              .toggleFavorite(
+                eventId: event.id,
+                eventName: event.title,
+                timeControl: event.timeControl,
+                maxAvgElo: event.maxAvgElo > 0 ? event.maxAvgElo : null,
+                dates: event.dates.isNotEmpty ? event.dates : null,
+              );
+          final nextCount =
+              isFavorited
+                  ? favoritesCount + 1
+                  : (favoritesCount - 1).clamp(0, favoritesCount);
+          AnalyticsService.instance.trackEventDetached(
+            'Event Favorite Toggled',
+            properties: {
+              'event_id': event.id,
+              'event_name': event.title,
+              'time_control': event.timeControl,
+              'event_source': event.eventSource.name,
+              'tour_category': event.tourEventCategory.name,
+              'is_favorited': isFavorited,
+              'new_favorites_total': nextCount,
+              if (event.location != null && event.location!.isNotEmpty)
+                'location': event.location,
+            },
+          );
+        } catch (e) {
+          debugPrint('[CalendarEventDetail] Error toggling favorite: $e');
+        }
+      },
+      icon: SvgWidget(
+        isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+        semanticsLabel: 'Favorite Icon',
+        height: 22.h,
+        width: 22.w,
+        preserveOriginalColors: isStarred,
       ),
     );
   }

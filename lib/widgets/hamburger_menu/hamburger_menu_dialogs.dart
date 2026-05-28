@@ -1,45 +1,17 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/hamburger_menu/settings_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void showSettingsDialog(BuildContext context) {
-  // Close drawer if open
+  // Close hamburger drawer, then push the unified Settings page.
   Navigator.pop(context);
-
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    constraints: ResponsiveHelper.bottomSheetConstraints,
-    // backgroundColor: Colors.transparent,
-    builder: (BuildContext bottomSheetContext) {
-      final bottomPadding = MediaQuery.of(bottomSheetContext).viewInsets.bottom;
-
-      return Padding(
-        padding: EdgeInsets.only(
-          // left: 24.w,
-          // right: 24.w,
-          // bottom: bottomPadding + 24.h,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          child: Container(
-            color: bottomSheetContext.colors.popup,
-            child: IntrinsicHeight(
-              // Prevent it from expanding full height
-              child: SingleChildScrollView(child: const SettingsDialog()),
-            ),
-          ),
-        ),
-      );
-    },
-  );
+  Navigator.of(context).push(SettingsPage.route());
 }
 
 void showDeleteAccountDialog(BuildContext context) {
@@ -54,7 +26,7 @@ void showDeleteAccountDialog(BuildContext context) {
 }
 
 class _DeleteAccountDialog extends ConsumerStatefulWidget {
-  const _DeleteAccountDialog({super.key});
+  const _DeleteAccountDialog();
 
   @override
   ConsumerState<_DeleteAccountDialog> createState() =>

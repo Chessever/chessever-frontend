@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -56,27 +57,28 @@ class GameCard extends ConsumerWidget {
     // settings page _SettingCard: faint divider border + soft shadow. The
     // inner sections already round to 12br, so the outer wrapper matches.
     // Dark theme is unchanged — no wrapper.
-    final wrapped = context.isLightTheme
-        ? DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12.br),
-              border: Border.all(
-                color: context.colors.divider.withValues(alpha: 0.5),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: context.colors.shadow,
-                  blurRadius: 10,
-                  offset: const Offset(0, 1),
+    final wrapped =
+        context.isLightTheme
+            ? DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(
+                  color: context.colors.divider.withValues(alpha: 0.5),
                 ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12.br),
-              child: body,
-            ),
-          )
-        : body;
+                boxShadow: [
+                  BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 10,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.br),
+                child: body,
+              ),
+            )
+            : body;
 
     return TappableScale(
       onTap: () {
@@ -265,19 +267,21 @@ class _TopSection extends ConsumerWidget {
       height: 60.h,
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
-        color: isLight ? context.colors.surface : context.colors.textPrimaryMuted,
+        color:
+            isLight ? context.colors.surface : context.colors.textPrimaryMuted,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(12.br),
           topRight: Radius.circular(12.br),
         ),
-        border: isLight
-            ? Border(
-                bottom: BorderSide(
-                  color: context.colors.divider.withValues(alpha: 0.6),
-                  width: 1,
-                ),
-              )
-            : null,
+        border:
+            isLight
+                ? Border(
+                  bottom: BorderSide(
+                    color: context.colors.divider.withValues(alpha: 0.6),
+                    width: 1,
+                  ),
+                )
+                : null,
       ),
       child: Row(
         children: [
@@ -320,9 +324,16 @@ class _CenterContent extends ConsumerWidget {
     // need a dark ink, dark theme = translucent-light bg so the original
     // kBlackColor / surface tokens read fine.
     final isLight = context.isLightTheme;
+    final spoilerState = ref.watch(
+      eventNoSpoilersProvider(matchWithComparison.game.tourId),
+    );
+    final hideSpoilers = spoilerState.isLoading || spoilerState.enabled;
 
-    // If game is not ongoing, show result text
+    // If game is not ongoing, show result text unless this event is spoiler-free.
     if (effectiveStatus != GameStatus.ongoing) {
+      if (hideSpoilers && matchWithComparison.game.gameStatus.isFinished) {
+        return const SizedBox.shrink();
+      }
       return Center(
         child: StatusText(
           status: _displayTextSupporter(matchWithComparison),
@@ -336,7 +347,8 @@ class _CenterContent extends ConsumerWidget {
       return Center(
         child: StatusText(
           status: 'VS',
-          color: isLight ? context.colors.textSecondary : context.colors.surface,
+          color:
+              isLight ? context.colors.textSecondary : context.colors.surface,
         ),
       );
     }
@@ -470,9 +482,8 @@ class _GamesRound extends ConsumerWidget {
     // a translucent-light bg, original kBlackColor / surface tokens read OK.
     final isLight = context.isLightTheme;
     final nameColor = isLight ? context.colors.textPrimary : kBlackColor;
-    final ratingColor = isLight
-        ? context.colors.textSecondary
-        : context.colors.surface;
+    final ratingColor =
+        isLight ? context.colors.textSecondary : context.colors.surface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -885,7 +896,9 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                           child: Container(
-                            color: context.colors.background.withValues(alpha: 0.72),
+                            color: context.colors.background.withValues(
+                              alpha: 0.72,
+                            ),
                           ),
                         ),
                       ),

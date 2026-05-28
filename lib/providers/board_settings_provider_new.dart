@@ -33,6 +33,8 @@ class BoardSettingsNew {
     this.gamesListViewModeIndex = 1, // chessBoardGrid (Grid)
     this.useFigurine =
         true, // Use chess piece symbols (♔♕♖♗♘) instead of letters
+    this.showCoordinates = true,
+    this.rawPgnMode = false,
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -52,6 +54,13 @@ class BoardSettingsNew {
 
   /// Use figurine notation (chess piece symbols) instead of letters (K, Q, R, B, N)
   final bool useFigurine;
+
+  /// Show A-H and 1-8 labels along the board edges.
+  final bool showCoordinates;
+
+  /// Hide auto symbols (NAGs / Lichess annotations) and PGN comments in the
+  /// move-list notation. Renders the moves as clean PGN.
+  final bool rawPgnMode;
 
   /// Get the current piece set from chessground
   PieceSet get pieceSet => getPieceSetByIndex(pieceStyleIndex);
@@ -120,6 +129,8 @@ class BoardSettingsNew {
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
     bool? useFigurine,
+    bool? showCoordinates,
+    bool? rawPgnMode,
   }) {
     return BoardSettingsNew(
       boardColorIndex: boardColorIndex ?? this.boardColorIndex,
@@ -131,6 +142,8 @@ class BoardSettingsNew {
       gamesListViewModeIndex:
           gamesListViewModeIndex ?? this.gamesListViewModeIndex,
       useFigurine: useFigurine ?? this.useFigurine,
+      showCoordinates: showCoordinates ?? this.showCoordinates,
+      rawPgnMode: rawPgnMode ?? this.rawPgnMode,
     );
   }
 }
@@ -205,6 +218,8 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         pieceStyleIndex: model.pieceStyleIndex,
         gamesListViewModeIndex: model.gamesListViewModeIndex,
         useFigurine: model.useFigurine,
+        showCoordinates: model.showCoordinates,
+        rawPgnMode: model.rawPgnMode,
       );
 
       // Cache locally
@@ -323,6 +338,28 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     await _persist(newSettings);
   }
 
+  /// Toggle board coordinates (A-H, 1-8)
+  Future<void> toggleShowCoordinates(bool value) async {
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(showCoordinates: value);
+    debugPrint(
+      '🔤 BoardSettings: Coordinates ${value ? 'shown' : 'hidden'}',
+    );
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Toggle raw PGN mode (hide auto symbols + comments in notation)
+  Future<void> toggleRawPgnMode(bool value) async {
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(rawPgnMode: value);
+    debugPrint(
+      '📜 BoardSettings: Raw PGN mode ${value ? 'enabled' : 'disabled'}',
+    );
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Refresh settings from Supabase
   Future<void> refresh() async {
     state = const AsyncValue.loading();
@@ -378,6 +415,8 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
           'piece_style_index': settings.pieceStyleIndex,
           'games_list_view_mode_index': settings.gamesListViewModeIndex,
           'use_figurine': settings.useFigurine,
+          'show_coordinates': settings.showCoordinates,
+          'raw_pgn_mode': settings.rawPgnMode,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -401,6 +440,8 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'pieceStyleIndex': settings.pieceStyleIndex,
         'gamesListViewModeIndex': settings.gamesListViewModeIndex,
         'useFigurine': settings.useFigurine,
+        'showCoordinates': settings.showCoordinates,
+        'rawPgnMode': settings.rawPgnMode,
       });
       await db.setString(_cacheKey, json);
       debugPrint('[BoardSettings] Cached settings locally');
@@ -440,6 +481,8 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         pieceStyleIndex: map['pieceStyleIndex'] as int? ?? 0,
         gamesListViewModeIndex: map['gamesListViewModeIndex'] as int? ?? 0,
         useFigurine: map['useFigurine'] as bool? ?? true,
+        showCoordinates: map['showCoordinates'] as bool? ?? true,
+        rawPgnMode: map['rawPgnMode'] as bool? ?? false,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;

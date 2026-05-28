@@ -29,12 +29,13 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
-import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -649,7 +650,9 @@ Future<bool?> _showAnalysisConfirmationDialog({
         ),
         title: Text(
           title,
-          style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textMdBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         content: Text(
           message,
@@ -1783,14 +1786,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         }
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value:
-            (context.isLightTheme
-                    ? SystemUiOverlayStyle.dark
-                    : SystemUiOverlayStyle.light)
-                .copyWith(
-                  statusBarColor: context.colors.background,
-                  systemNavigationBarColor: context.colors.background,
-                ),
+        value: (context.isLightTheme
+                ? SystemUiOverlayStyle.dark
+                : SystemUiOverlayStyle.light)
+            .copyWith(
+              statusBarColor: context.colors.background,
+              systemNavigationBarColor: context.colors.background,
+            ),
         child:
         // ignore: deprecated_member_use
         ShowCaseWidget(
@@ -2521,7 +2523,9 @@ class _LoadingScreen extends StatelessWidget {
                         width: 40.w,
                         height: 40.h,
                         decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(alpha: 0.1),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.1,
+                          ),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -2534,7 +2538,9 @@ class _LoadingScreen extends StatelessWidget {
                               width: 120.w,
                               height: 14.h,
                               decoration: BoxDecoration(
-                                color: context.colors.textPrimary.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2543,7 +2549,9 @@ class _LoadingScreen extends StatelessWidget {
                               width: 60.w,
                               height: 12.h,
                               decoration: BoxDecoration(
-                                color: context.colors.textPrimary.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2564,7 +2572,9 @@ class _LoadingScreen extends StatelessWidget {
                         width: sideBarWidth,
                         height: boardSize,
                         decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(alpha: 0.05),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.05,
+                          ),
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                       ),
@@ -2573,7 +2583,9 @@ class _LoadingScreen extends StatelessWidget {
                         width: boardSize,
                         height: boardSize,
                         decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(alpha: 0.05),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.05,
+                          ),
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                       ),
@@ -2595,7 +2607,9 @@ class _LoadingScreen extends StatelessWidget {
                         width: 40.w,
                         height: 40.h,
                         decoration: BoxDecoration(
-                          color: context.colors.textPrimary.withValues(alpha: 0.1),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.1,
+                          ),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -2608,7 +2622,9 @@ class _LoadingScreen extends StatelessWidget {
                               width: 120.w,
                               height: 14.h,
                               decoration: BoxDecoration(
-                                color: context.colors.textPrimary.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2617,7 +2633,9 @@ class _LoadingScreen extends StatelessWidget {
                               width: 60.w,
                               height: 12.h,
                               decoration: BoxDecoration(
-                                color: context.colors.textPrimary.withValues(alpha: 0.1),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(4.br),
                               ),
                             ),
@@ -2633,7 +2651,9 @@ class _LoadingScreen extends StatelessWidget {
                     width: double.infinity,
                     margin: EdgeInsets.only(top: 8.h),
                     decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed.withValues(alpha: 0.3),
+                      color: context.colors.surfaceRecessed.withValues(
+                        alpha: 0.3,
+                      ),
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(12.sp),
                         topRight: Radius.circular(12.sp),
@@ -2648,7 +2668,9 @@ class _LoadingScreen extends StatelessWidget {
                           width: (35 + (index % 5) * 20).w,
                           height: 14.h,
                           decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(alpha: 0.05),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.05,
+                            ),
                             borderRadius: BorderRadius.circular(3.sp),
                           ),
                         );
@@ -2886,7 +2908,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
           SnackBar(
             content: Text(
               'No PGN available for this game',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             backgroundColor: context.colors.surface.withValues(alpha: 0.95),
             behavior: SnackBarBehavior.floating,
@@ -2902,7 +2926,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
         SnackBar(
           content: Text(
             'PGN copied to clipboard',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -2915,7 +2941,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
         SnackBar(
           content: Text(
             'Failed to copy PGN',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -2948,7 +2976,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
         SnackBar(
           content: Text(
             'Failed to prepare game share',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -3084,7 +3114,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
       leadingWidth: 44.sp,
       titleSpacing: 4.sp,
       leading: IconButton(
-        icon: Icon(Icons.arrow_back_ios_new, color: context.colors.textPrimary, size: 20.sp),
+        icon: Icon(
+          Icons.arrow_back_ios_new,
+          color: context.colors.textPrimary,
+          size: 20.sp,
+        ),
         onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
       ),
       title:
@@ -3127,7 +3161,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // phantom tap dismissals, use standard PopupMenuButton on mobile
         if (ResponsiveHelper.isTablet)
           _TabletSafePopupMenu<String>(
-            icon: Icon(Icons.more_vert, color: context.colors.textPrimary, size: 22.sp),
+            icon: Icon(
+              Icons.more_vert,
+              color: context.colors.textPrimary,
+              size: 22.sp,
+            ),
             enabled: !widget.isLoading,
             onSelected: (value) async {
               if (value == 'share') {
@@ -3136,7 +3174,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
                 final allowed = await requireFullAuthGuard(context);
                 if (!allowed) return;
                 if (!context.mounted) return;
-                Navigator.of(context).push(ChessBoardSettingsPage.route());
+                Navigator.of(context).push(
+                  SettingsPage.route(initiallyExpanded: SettingsSection.board),
+                );
               } else if (value == 'clear_analysis') {
                 final params = ChessBoardProviderParams(
                   game: widget.game,
@@ -3233,7 +3273,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
           )
         else
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: context.colors.textPrimary, size: 22.sp),
+            icon: Icon(
+              Icons.more_vert,
+              color: context.colors.textPrimary,
+              size: 22.sp,
+            ),
             enabled: !widget.isLoading,
             onSelected: (value) async {
               if (value == 'share') {
@@ -3242,7 +3286,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
                 final allowed = await requireFullAuthGuard(context);
                 if (!allowed) return;
                 if (!context.mounted) return;
-                Navigator.of(context).push(ChessBoardSettingsPage.route());
+                Navigator.of(context).push(
+                  SettingsPage.route(initiallyExpanded: SettingsSection.board),
+                );
               } else if (value == 'clear_analysis') {
                 final params = ChessBoardProviderParams(
                   game: widget.game,
@@ -3536,7 +3582,9 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
                               } else if (item is PopupMenuDivider) {
                                 return Divider(
                                   height: 1,
-                                  color: context.colors.textPrimary.withValues(alpha: 0.1),
+                                  color: context.colors.textPrimary.withValues(
+                                    alpha: 0.1,
+                                  ),
                                 );
                               }
                               return const SizedBox.shrink();
@@ -4906,7 +4954,9 @@ class _GameItemSimple extends StatelessWidget {
                     Text(
                       roundLabel!,
                       style: AppTypography.textXxsMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.35),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.35,
+                        ),
                         letterSpacing: 0.5,
                         fontSize: 9.sp,
                       ),
@@ -4915,7 +4965,9 @@ class _GameItemSimple extends StatelessWidget {
                     Expanded(
                       child: Container(
                         height: 0.5,
-                        color: context.colors.textPrimary.withValues(alpha: 0.06),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.06,
+                        ),
                       ),
                     ),
                   ],
@@ -4951,7 +5003,9 @@ class _GameItemSimple extends StatelessWidget {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(alpha: 0.9),
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.9,
+                                ),
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w500,
                       ),
@@ -4968,14 +5022,18 @@ class _GameItemSimple extends StatelessWidget {
                             ? Text(
                               resultText,
                               style: AppTypography.textXxsMedium.copyWith(
-                                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.5,
+                                ),
                                 fontWeight: FontWeight.w500,
                               ),
                             )
                             : Text(
                               'vs',
                               style: AppTypography.textXxsRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(alpha: 0.35),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.35,
+                                ),
                                 fontStyle: FontStyle.italic,
                               ),
                             ),
@@ -4988,7 +5046,9 @@ class _GameItemSimple extends StatelessWidget {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(alpha: 0.9),
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.9,
+                                ),
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w500,
                       ),
@@ -5342,7 +5402,9 @@ class _GameItemState extends State<_GameItem> {
                       ? Text(
                         resultText,
                         style: AppTypography.textXxsMedium.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.5,
+                          ),
                           fontWeight: FontWeight.w500,
                           letterSpacing: -0.2,
                         ),
@@ -5350,7 +5412,9 @@ class _GameItemState extends State<_GameItem> {
                       : Text(
                         'vs',
                         style: AppTypography.textXxsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.35),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.35,
+                          ),
                           fontStyle: FontStyle.italic,
                         ),
                       ),
@@ -5530,7 +5594,9 @@ class _BottomNavBar extends ConsumerWidget {
         requireFullAuthGuard(context).then((allowed) {
           if (!allowed) return;
           if (!context.mounted) return;
-          Navigator.of(context).push(ChessBoardSettingsPage.route());
+          Navigator.of(
+            context,
+          ).push(SettingsPage.route(initiallyExpanded: SettingsSection.engine));
         });
       },
       onRightMove:
@@ -5799,19 +5865,17 @@ class _AnalysisGameBody extends ConsumerWidget {
                   );
 
           // Notation (page 0) and Opening Explorer / Position Search (page 1)
-          // live in a PageView — swipe right on the notation reveals the
-          // second panel. Replaces the previous toggle-driven crossfade so
-          // the second panel is available everywhere the chess board screen
-          // is mounted, not just where `showGamebaseButton: true` was passed.
+          // live in a PageView; a horizontal swipe from notation reveals the
+          // second panel. Replaces the previous toggle-driven crossfade so the
+          // second panel is available everywhere the chess board screen is
+          // mounted, not just where `showGamebaseButton: true` was passed.
+          // Tablet landscape keeps game switching on the board/chrome, while
+          // drags that start inside the notation panel should still reveal
+          // the explorer page.
           return _AnalysisSwipePanels(
             movesDisplay: movesDisplay,
             gamebaseDisplay: gamebaseDisplay,
             syncWithGamebaseToggle: showGamebaseButton,
-            // Tablet landscape relies on the outer PageView for game switching;
-            // letting the inner notation↔gamebase PageView claim horizontal
-            // gestures would steal those swipes. Toggle button + provider sync
-            // still navigate between the two analysis panels.
-            disableHorizontalSwipe: isTabletLandscape,
           );
         }
 
@@ -6164,14 +6228,16 @@ class _TabletPlayerCard extends StatelessWidget {
     // For tablet, wrap in a refined container (no horizontal margin - parent controls spacing)
     return Container(
       decoration: BoxDecoration(
-        color: isCurrentPlayer
-            ? context.colors.surface
-            : context.colors.surfaceRecessed,
+        color:
+            isCurrentPlayer
+                ? context.colors.surface
+                : context.colors.surfaceRecessed,
         borderRadius: BorderRadius.circular(10.sp),
         border: Border.all(
-          color: isCurrentPlayer
-              ? context.colors.divider
-              : context.colors.divider.withValues(alpha: 0.4),
+          color:
+              isCurrentPlayer
+                  ? context.colors.divider
+                  : context.colors.divider.withValues(alpha: 0.4),
           width: 1,
         ),
       ),
@@ -6211,11 +6277,16 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
-    final showEngineGauge = ref.watch(
+    final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select(
         (s) => s.valueOrNull?.showEngineGauge ?? true,
       ),
     );
+    final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
+    final showEngineGauge =
+        engineGaugeEnabled &&
+        !((spoilerState.isLoading || spoilerState.enabled) &&
+            game.gameStatus.isFinished);
 
     final effectiveEvalWidth = showEngineGauge ? evalBarWidth : 0.0;
 
@@ -6289,11 +6360,16 @@ class _BoardWithSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
-    final showEngineGauge = ref.watch(
+    final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select(
         (s) => s.valueOrNull?.showEngineGauge ?? true,
       ),
     );
+    final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
+    final showEngineGauge =
+        engineGaugeEnabled &&
+        !((spoilerState.isLoading || spoilerState.enabled) &&
+            game.gameStatus.isFinished);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -6726,6 +6802,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
     final shouldShowEffect = isGameOver && isAtGameEnd;
 
+    if (shouldShowEffect && !_wasAtEnd) {
+      ref
+          .read(eventNoSpoilersRevealedGamesProvider.notifier)
+          .reveal(widget.game.gameId);
+    }
+
     // When navigating TO the final position, delay showing the effect for animation
     if (shouldShowEffect && !_wasAtEnd) {
       _showDelayedGameEndingEffect = false;
@@ -6800,8 +6882,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   // into one continuous flip with no bump or wobble.
   void _drivePhaseFromController() {
     final t = Curves.easeInOutCubic.transform(_flipCommitCtrl.value);
-    _flipProgress.value =
-        _flipPhaseFrom + (_flipPhaseTo - _flipPhaseFrom) * t;
+    _flipProgress.value = _flipPhaseFrom + (_flipPhaseTo - _flipPhaseFrom) * t;
   }
 
   // Duration scales linearly with how much of the half-rotation this phase
@@ -6825,8 +6906,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     _flipCommitting = false;
     _flipDragActive = true;
     _flipCommitCtrl.stop();
-    _flipProgress.value =
-        _flipProgress.value.clamp(-_flipMaxProgress, _flipMaxProgress);
+    _flipProgress.value = _flipProgress.value.clamp(
+      -_flipMaxProgress,
+      _flipMaxProgress,
+    );
   }
 
   void _onFlipDragUpdate(DragUpdateDetails details) {
@@ -6836,8 +6919,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // Map raw pixels to progress: a full board height of swipe corresponds
     // to the full ±_flipMaxProgress range (i.e., edge-on).
     final progressDelta = (delta / widget.size) * _flipMaxProgress;
-    _flipProgress.value = (_flipProgress.value + progressDelta)
-        .clamp(-_flipMaxProgress, _flipMaxProgress);
+    _flipProgress.value = (_flipProgress.value + progressDelta).clamp(
+      -_flipMaxProgress,
+      _flipMaxProgress,
+    );
   }
 
   void _onFlipDragEnd(DragEndDetails details) {
@@ -6851,9 +6936,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // commit. Otherwise either cancel (small drag, low velocity) or commit
     // if the user already dragged past the visual threshold.
     if (hasFlingVelocity || pastThreshold) {
-      final commitSign = hasFlingVelocity
-          ? (velocity > 0 ? 1.0 : -1.0)
-          : (v >= 0 ? 1.0 : -1.0);
+      final commitSign =
+          hasFlingVelocity
+              ? (velocity > 0 ? 1.0 : -1.0)
+              : (v >= 0 ? 1.0 : -1.0);
       _commitFlip(commitSign);
     } else {
       _animateToFlat();
@@ -6870,8 +6956,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   void _animateToFlat() {
     _flipPhaseFrom = _flipProgress.value;
     _flipPhaseTo = 0.0;
-    _flipCommitCtrl.duration =
-        _scaledPhaseDuration((_flipPhaseTo - _flipPhaseFrom).abs());
+    _flipCommitCtrl.duration = _scaledPhaseDuration(
+      (_flipPhaseTo - _flipPhaseFrom).abs(),
+    );
     _flipCommitCtrl.forward(from: 0.0);
   }
 
@@ -6889,8 +6976,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // Phase 1: drive rotation from current position to edge-on.
       _flipPhaseFrom = _flipProgress.value;
       _flipPhaseTo = sign * _flipMaxProgress;
-      _flipCommitCtrl.duration =
-          _scaledPhaseDuration((_flipPhaseTo - _flipPhaseFrom).abs());
+      _flipCommitCtrl.duration = _scaledPhaseDuration(
+        (_flipPhaseTo - _flipPhaseFrom).abs(),
+      );
       await _flipCommitCtrl.forward(from: 0.0);
       if (!mounted || token != _flipCommitToken) return;
 
@@ -6900,10 +6988,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       ref
           .read(
             chessBoardScreenProviderNew(
-              ChessBoardProviderParams(
-                game: widget.game,
-                index: widget.index,
-              ),
+              ChessBoardProviderParams(game: widget.game, index: widget.index),
             ).notifier,
           )
           .flipBoard();
@@ -6954,10 +7039,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           final scale = 1.0 - 0.06 * math.sin(rotation.abs());
           return Transform(
             alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.0014)
-              ..rotateX(rotation)
-              ..scaleByDouble(scale, scale, scale, 1.0),
+            transform:
+                Matrix4.identity()
+                  ..setEntry(3, 2, 0.0014)
+                  ..rotateX(rotation)
+                  ..scaleByDouble(scale, scale, scale, 1.0),
             child: c,
           );
         },
@@ -6978,6 +7064,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       boardSettingsProviderNew.select(
         (s) =>
             s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
+    final showCoordinates = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.showCoordinates ?? true,
       ),
     );
     final params = ChessBoardProviderParams(
@@ -7017,10 +7108,23 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         activeMovePointer.length == 1;
     final isGameOver =
         gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
+    final spoilerState = ref.watch(eventNoSpoilersProvider(widget.game.tourId));
+    final spoilersRevealedForGame = ref.watch(
+      eventNoSpoilersRevealedGamesProvider.select(
+        (gameIds) => gameIds.contains(widget.game.gameId),
+      ),
+    );
+    final canShowFinishedSpoilers =
+        (!spoilerState.isLoading && !spoilerState.enabled) ||
+        !isGameOver ||
+        spoilersRevealedForGame;
 
     // Use delayed flag to allow move animation to complete first
     final showGameEndingEffect =
-        isGameOver && isAtGameEnd && _showDelayedGameEndingEffect;
+        isGameOver &&
+        isAtGameEnd &&
+        _showDelayedGameEndingEffect &&
+        canShowFinishedSpoilers;
 
     final boardAnnotation =
         (() {
@@ -7161,7 +7265,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final chessboard = Chessboard(
       size: widget.size,
       settings: ChessboardSettings(
-        enableCoordinates: true,
+        enableCoordinates: showCoordinates,
         animationDuration: const Duration(milliseconds: 200),
         dragFeedbackScale: 1,
         dragTargetKind: DragTargetKind.none,
@@ -7584,13 +7688,11 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
     required this.movesDisplay,
     required this.gamebaseDisplay,
     required this.syncWithGamebaseToggle,
-    this.disableHorizontalSwipe = false,
   });
 
   final Widget movesDisplay;
   final Widget gamebaseDisplay;
   final bool syncWithGamebaseToggle;
-  final bool disableHorizontalSwipe;
 
   @override
   ConsumerState<_AnalysisSwipePanels> createState() =>
@@ -7813,10 +7915,8 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
 
     return PageView(
       controller: _pageController,
-      physics:
-          widget.disableHorizontalSwipe
-              ? const NeverScrollableScrollPhysics()
-              : const ClampingScrollPhysics(),
+      dragStartBehavior: DragStartBehavior.down,
+      physics: const ClampingScrollPhysics(),
       onPageChanged: (page) {
         if (_showTutorialOverlay) return;
         _currentPage = page;
@@ -8121,7 +8221,7 @@ class _FenPositionGamesTableState
       context: context,
       barrierDismissible: false,
       builder:
-          (ctx) =>  Center(
+          (ctx) => Center(
             child: CircularProgressIndicator(color: context.colors.textPrimary),
           ),
     );
@@ -8239,12 +8339,16 @@ class _FenPositionGamesTableState
             onShowGames: _showAllGamesSheet,
             onShowFilters: _showFiltersSheet,
           ),
-          Divider(height: 1, color: context.colors.textPrimary.withValues(alpha: 0.08)),
+          Divider(
+            height: 1,
+            color: context.colors.textPrimary.withValues(alpha: 0.08),
+          ),
           _FenPositionGamesColumnHeader(),
           Expanded(
             child:
                 _isInitialLoading && _games.isEmpty
-                    ? Center(child: CircularProgressIndicator(
+                    ? Center(
+                      child: CircularProgressIndicator(
                         color: context.colors.textPrimary,
                         strokeWidth: 2,
                       ),
@@ -8267,7 +8371,9 @@ class _FenPositionGamesTableState
                       separatorBuilder:
                           (_, __) => Divider(
                             height: 1,
-                            color: context.colors.textPrimary.withValues(alpha: 0.06),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.06,
+                            ),
                           ),
                       itemBuilder: (context, index) {
                         if (index == _games.length) {
@@ -8372,7 +8478,10 @@ class _FenPositionGamesHeader extends StatelessWidget {
               children: [
                 Icon(
                   Icons.tune_rounded,
-                  color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimaryMuted,
+                  color:
+                      hasActiveFilters
+                          ? kPrimaryColor
+                          : context.colors.textPrimaryMuted,
                   size: 18.sp,
                 ),
                 if (hasActiveFilters)
@@ -8636,7 +8745,9 @@ class _FenPositionGamesFooter extends StatelessWidget {
         child: OutlinedButton(
           onPressed: onLoadMore,
           style: OutlinedButton.styleFrom(
-            side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.18)),
+            side: BorderSide(
+              color: context.colors.textPrimary.withValues(alpha: 0.18),
+            ),
             foregroundColor: context.colors.textPrimary,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8.br),
@@ -9045,7 +9156,9 @@ class _ExplorerStyleFilterChip extends StatelessWidget {
         fontSize: 12.f,
       ),
       backgroundColor: context.colors.surface,
-      side: BorderSide(color: selected ? kPrimaryColor : context.colors.divider),
+      side: BorderSide(
+        color: selected ? kPrimaryColor : context.colors.divider,
+      ),
     );
   }
 }
@@ -9154,6 +9267,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
+    final rawPgnMode = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.rawPgnMode ?? false,
+      ),
+    );
 
     if (_lastSignature != signature) {
       _moveKeys.clear();
@@ -9211,6 +9329,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       forcedOpenIds,
     );
 
+    final effectiveLichessAnnotations =
+        rawPgnMode ? const <int, LichessMoveAnnotation>{} : lichessAnnotations;
+
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(
       tree.mainline,
@@ -9219,11 +9340,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       pointerMap: pointerMap,
       forcedOpenIds: forcedOpenIds,
       variationComments: widget.state.variationComments,
-      lichessAnnotations: lichessAnnotations,
+      lichessAnnotations: effectiveLichessAnnotations,
       collapsedVariationIds: _collapsedVariationIds,
       expandedVariationIds: _expandedVariationIds,
       autoCollapseDepth: _autoCollapseDepth,
       autoCollapseMoveThreshold: _autoCollapseMoveThreshold,
+      rawPgnMode: rawPgnMode,
     );
 
     final currentNode =
@@ -9238,10 +9360,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       currentPly: currentPly,
       currentPointerId: pointerForHighlightId,
       tailPointerId: tailPointerId,
-      lichessAnnotations: lichessAnnotations,
+      lichessAnnotations: effectiveLichessAnnotations,
       useFigurine: useFigurine,
       pieceAssets: pieceAssets,
       pointerMap: pointerMap,
+      rawPgnMode: rawPgnMode,
     );
 
     // Paste-FEN flow can land here with no moves yet (tokens empty). Don't
@@ -9312,9 +9435,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
 
-    // Tablet landscape: outer game-switching PageView owns horizontal drags
-    // (notation area lets them pass through), and the reset icon is hidden
-    // since tablets navigate position-search flows differently.
+    // Tablet landscape hides the reset icon since tablets navigate
+    // position-search flows differently.
     final isTabletLandscape =
         ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
@@ -9480,7 +9602,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                       style: AppTypography
                                                           .textMdBold
                                                           .copyWith(
-                                                            color: context.colors.textPrimary,
+                                                            color:
+                                                                context
+                                                                    .colors
+                                                                    .textPrimary,
                                                           ),
                                                     ),
                                                     content: Text(
@@ -9488,7 +9613,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                       style: AppTypography
                                                           .textSmRegular
                                                           .copyWith(
-                                                            color: context.colors.textPrimary
+                                                            color: context
+                                                                .colors
+                                                                .textPrimary
                                                                 .withValues(
                                                                   alpha: 0.7,
                                                                 ),
@@ -9505,7 +9632,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                           style: AppTypography
                                                               .textSmMedium
                                                               .copyWith(
-                                                                color: context.colors.textPrimary
+                                                                color: context
+                                                                    .colors
+                                                                    .textPrimary
                                                                     .withValues(
                                                                       alpha:
                                                                           0.7,
@@ -9577,7 +9706,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                               'Promote main variant',
                                               style: AppTypography.textSmMedium
                                                   .copyWith(
-                                                    color: context.colors.textPrimary,
+                                                    color:
+                                                        context
+                                                            .colors
+                                                            .textPrimary,
                                                     letterSpacing: 0.2,
                                                   ),
                                             ),
@@ -9601,10 +9733,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
 
-    // On tablet landscape, the outer game-switching PageView owns horizontal
-    // drags. The inner notation↔explorer PageView already disables its own
-    // horizontal physics in landscape, so we let drags pass through the
-    // notation area to the outer PageView for swiping between games.
     return content;
   }
 
@@ -9617,6 +9745,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     Map<int, LichessMoveAnnotation> lichessAnnotations, {
     bool useFigurine = true,
     PieceAssets? pieceAssets,
+    bool rawPgnMode = false,
   }) {
     final pointerId = token.pointerId;
     final key =
@@ -9631,12 +9760,19 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // Author/user NAGs win — Lichess fetched analysis is only used as a
     // fallback when no NAGs are present on the move.
-    final rawAnnotation = _resolveLichessAnnotation(token, lichessAnnotations);
-    final nags = _mergeUserNags(
-      token.node?.move.nags,
-      token.pointerId,
-      widget.state.moveNags,
-    );
+    // Raw PGN mode hides all auto symbols (NAGs + Lichess annotations).
+    final rawAnnotation =
+        rawPgnMode
+            ? null
+            : _resolveLichessAnnotation(token, lichessAnnotations);
+    final nags =
+        rawPgnMode
+            ? const <int>[]
+            : _mergeUserNags(
+              token.node?.move.nags,
+              token.pointerId,
+              widget.state.moveNags,
+            );
 
     // Resolve NAGs into displays. Quality NAGs are highlighted on the move
     // text itself; evaluation/observation NAGs render in their muted slate
@@ -9824,7 +9960,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                       : Colors.transparent,
               borderRadius: BorderRadius.circular(4.sp),
               border: Border.all(
-                color: isCurrent ? context.colors.textPrimary : Colors.transparent,
+                color:
+                    isCurrent ? context.colors.textPrimary : Colors.transparent,
                 width: 0.7,
               ),
             ),
@@ -9860,6 +9997,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     required bool useFigurine,
     required PieceAssets? pieceAssets,
     required Map<String, NotationMoveNode> pointerMap,
+    bool rawPgnMode = false,
   }) {
     final widgets = <Widget>[];
     var currentRun = <NotationDisplayToken>[];
@@ -9885,6 +10023,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                         lichessAnnotations,
                         useFigurine: useFigurine,
                         pieceAssets: pieceAssets,
+                        rawPgnMode: rawPgnMode,
                       ),
                     )
                     .toList(),
@@ -9936,6 +10075,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             useFigurine: useFigurine,
             pieceAssets: pieceAssets,
             pointerMap: pointerMap,
+            rawPgnMode: rawPgnMode,
           ),
         );
         continue;
@@ -9988,6 +10128,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     required bool useFigurine,
     required PieceAssets? pieceAssets,
     required Map<String, NotationMoveNode> pointerMap,
+    bool rawPgnMode = false,
   }) {
     final variation = openParenToken.variation;
     final depth = openParenToken.depth;
@@ -10017,6 +10158,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       useFigurine: useFigurine,
       pieceAssets: pieceAssets,
       pointerMap: pointerMap,
+      rawPgnMode: rawPgnMode,
     );
 
     return Padding(
@@ -11159,7 +11301,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.sp),
-          side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.1), width: 1),
+          side: BorderSide(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+            width: 1,
+          ),
         ),
         content: Row(
           children: [
@@ -11175,7 +11320,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             Expanded(
               child: Text(
                 message,
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
             TextButton(
@@ -11214,7 +11361,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18.sp),
-          side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.08)),
+          side: BorderSide(
+            color: context.colors.textPrimary.withValues(alpha: 0.08),
+          ),
         ),
         content: Row(
           children: [
@@ -11234,7 +11383,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             Expanded(
               child: Text(
                 message,
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ],
@@ -11276,7 +11427,11 @@ class _DirectCommentSheet extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(context, alpha: 0.97, borderRadius: 28.sp),
+        decoration: ChessSheetDecoration.dark(
+          context,
+          alpha: 0.97,
+          borderRadius: 28.sp,
+        ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -11854,7 +12009,8 @@ class _PrincipalVariationListState
                               child: RichText(
                                 text: TextSpan(
                                   style: AppTypography.textXsMedium.copyWith(
-                                    color: context.colors.textPrimary.withValues(alpha: 0.95),
+                                    color: context.colors.textPrimary
+                                        .withValues(alpha: 0.95),
                                     fontWeight: FontWeight.w600,
                                   ),
                                   children: buildPreviewCardSpans(
@@ -12019,7 +12175,9 @@ class _PrincipalVariationListState
                         child: RichText(
                           text: TextSpan(
                             style: AppTypography.textXsMedium.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.95),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.95,
+                              ),
                               fontWeight: FontWeight.w600,
                             ),
                             children: _buildPvSpans(
@@ -12075,7 +12233,9 @@ class _PrincipalVariationListState
                           child: Center(
                             child: Icon(
                               Icons.add_rounded,
-                              color: context.colors.textPrimary.withValues(alpha: 0.9),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.9,
+                              ),
                               size: 20.sp,
                             ),
                           ),
@@ -12215,10 +12375,11 @@ class _PrincipalVariationListState
                           return Skeletonizer(
                             enabled: true,
                             effect: ShimmerEffect(
-                              baseColor: context.colors.textPrimary.withValues(alpha: 0.05),
-                              highlightColor: context.colors.textPrimary.withValues(
-                                alpha: 0.1,
+                              baseColor: context.colors.textPrimary.withValues(
+                                alpha: 0.05,
                               ),
+                              highlightColor: context.colors.textPrimary
+                                  .withValues(alpha: 0.1),
                               duration: const Duration(milliseconds: 1500),
                             ),
                             child: buildVariantCard(
@@ -12274,7 +12435,9 @@ class _PrincipalVariationListState
                       ? context.colors.textPrimary.withValues(alpha: 0.95)
                       : context.colors.textPrimary.withValues(alpha: 0.35);
               border = Border.all(
-                color: context.colors.textPrimary.withValues(alpha: isActive ? 1.0 : 0.65),
+                color: context.colors.textPrimary.withValues(
+                  alpha: isActive ? 1.0 : 0.65,
+                ),
                 width: isActive ? 1.5 : 1,
               );
             } else if (displayLines.isNotEmpty) {
@@ -12713,7 +12876,7 @@ class _ShareGameScreen extends ConsumerWidget {
     // We use the theme colors but hide all highlights for clean screenshots
     // IMPORTANT: Disable animations for instant static frame capture in GIF generation
     final chessboardSettings = ChessboardSettings(
-      enableCoordinates: true,
+      enableCoordinates: false,
       animationDuration: Duration.zero, // Disable animations for screenshot/GIF
       colorScheme: ChessboardColorScheme(
         lightSquare: baseColorScheme.lightSquare,
@@ -12940,7 +13103,11 @@ class _NotationActionSheet extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(context, alpha: 0.97, borderRadius: 28.sp),
+        decoration: ChessSheetDecoration.dark(
+          context,
+          alpha: 0.97,
+          borderRadius: 28.sp,
+        ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -13164,7 +13331,9 @@ class _NotationActionTileState extends State<_NotationActionTile>
                   vertical: 14.sp,
                 ),
                 decoration: BoxDecoration(
-                  color: context.colors.textPrimary.withValues(alpha: _glowAnimation.value),
+                  color: context.colors.textPrimary.withValues(
+                    alpha: _glowAnimation.value,
+                  ),
                   borderRadius: BorderRadius.circular(14.sp),
                   border: Border.all(
                     color: context.colors.textPrimary.withValues(
@@ -13359,7 +13528,9 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
               maxLines: null,
               minLines: 4,
               maxLength: _variationCommentMaxChars,
-              style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary,
+              ),
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
                 filled: true,
@@ -14108,7 +14279,9 @@ class _EventInfoSheet extends ConsumerWidget {
         // Game header
         Text(
           eventName,
-          style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textLgBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 16.h),
         // Round info
@@ -14245,8 +14418,13 @@ class _EventInfoSheet extends ConsumerWidget {
             width: 8.sp,
             height: 8.sp,
             decoration: BoxDecoration(
-              color: side == 'White' ? context.colors.textPrimary : context.colors.surface,
-              border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.3)),
+              color:
+                  side == 'White'
+                      ? context.colors.textPrimary
+                      : context.colors.surface,
+              border: Border.all(
+                color: context.colors.textPrimary.withValues(alpha: 0.3),
+              ),
               borderRadius: BorderRadius.circular(2.sp),
             ),
           ),
@@ -14281,7 +14459,9 @@ class _EventInfoSheet extends ConsumerWidget {
           Expanded(
             child: Text(
               player.name,
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -14330,7 +14510,9 @@ class _EventInfoSheet extends ConsumerWidget {
                       child: Center(
                         child: Icon(
                           Icons.image,
-                          color: context.colors.textPrimary.withValues(alpha: 0.3),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.3,
+                          ),
                           size: 40.sp,
                         ),
                       ),
@@ -14348,7 +14530,9 @@ class _EventInfoSheet extends ConsumerWidget {
               Expanded(
                 child: Text(
                   aboutModel.name,
-                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+                  style: AppTypography.textLgBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
               ),
               Icon(
@@ -14440,7 +14624,9 @@ class _EventInfoSheet extends ConsumerWidget {
                 .take(4)
                 .map((p) => p.displayName)
                 .join(', '),
-            style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
         ],
         // Website button
@@ -14527,7 +14713,11 @@ class _EventInfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: context.colors.textPrimary.withValues(alpha: 0.5), size: 18.sp),
+        Icon(
+          icon,
+          color: context.colors.textPrimary.withValues(alpha: 0.5),
+          size: 18.sp,
+        ),
         SizedBox(width: 10.w),
         Expanded(
           child: Column(
@@ -14639,7 +14829,9 @@ class _NagPickerSheet extends ConsumerWidget {
                     Text(
                       'Annotate',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.55),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.55,
+                        ),
                         letterSpacing: 1.2,
                         fontSize: 11.sp,
                       ),
@@ -14674,7 +14866,9 @@ class _NagPickerSheet extends ConsumerWidget {
                       icon: Icon(
                         Icons.check_rounded,
                         size: 18.sp,
-                        color: context.colors.textPrimary.withValues(alpha: 0.82),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.82,
+                        ),
                       ),
                     ),
                   ],

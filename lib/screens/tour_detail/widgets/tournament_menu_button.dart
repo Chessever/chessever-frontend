@@ -3,6 +3,7 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/event_mute_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -11,7 +12,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expans
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
@@ -24,6 +24,7 @@ import 'package:share_plus/share_plus.dart';
 enum TournamentMenuAction {
   focusLiveGames,
   showAllGames,
+  noSpoilers,
   unpinAll,
   pinAll,
   collapseAllRounds,
@@ -51,8 +52,15 @@ class TournamentMenuButton extends ConsumerWidget {
                 false
             : false;
     final isGamesTab =
-        ref.watch(selectedTourModeProvider) ==
-            TournamentDetailScreenMode.games;
+        ref.watch(selectedTourModeProvider) == TournamentDetailScreenMode.games;
+    final noSpoilersEnabled =
+        isGamesTab
+            ? ref.watch(
+              eventNoSpoilersProvider(
+                tourData.aboutTourModel.id,
+              ).select((state) => state.enabled),
+            )
+            : false;
 
     return AppBarIcons(
       key: menuKey,
@@ -62,24 +70,28 @@ class TournamentMenuButton extends ConsumerWidget {
         final RenderBox? renderBox =
             menuKey.currentContext?.findRenderObject() as RenderBox?;
         if (renderBox != null) {
-          final visibleRoundIds = isGamesTab
-              ? ref.read(gamesAppBarProvider.notifier).getVisibleRoundIds()
-              : const <String>[];
-          final allRoundIds = isGamesTab
-              ? ref
-                  .read(gamesAppBarProvider.notifier)
-                  .getAllRoundIdsWithGames()
-              : const <String>[];
-          final visibleMatchKeys = isGamesTab
-              ? ref
-                  .read(gamesAppBarProvider.notifier)
-                  .getVisibleMatchKeys(visibleRoundIds)
-              : const <String>[];
-          final allMatchKeys = isGamesTab
-              ? ref
-                  .read(gamesAppBarProvider.notifier)
-                  .getVisibleMatchKeys(allRoundIds)
-              : const <String>[];
+          final visibleRoundIds =
+              isGamesTab
+                  ? ref.read(gamesAppBarProvider.notifier).getVisibleRoundIds()
+                  : const <String>[];
+          final allRoundIds =
+              isGamesTab
+                  ? ref
+                      .read(gamesAppBarProvider.notifier)
+                      .getAllRoundIdsWithGames()
+                  : const <String>[];
+          final visibleMatchKeys =
+              isGamesTab
+                  ? ref
+                      .read(gamesAppBarProvider.notifier)
+                      .getVisibleMatchKeys(visibleRoundIds)
+                  : const <String>[];
+          final allMatchKeys =
+              isGamesTab
+                  ? ref
+                      .read(gamesAppBarProvider.notifier)
+                      .getVisibleMatchKeys(allRoundIds)
+                  : const <String>[];
           final Offset offset = renderBox.localToGlobal(Offset.zero);
 
           showTabletSafeMenu(
@@ -105,6 +117,7 @@ class TournamentMenuButton extends ConsumerWidget {
               tourData,
               isMuted,
               isGamesTab,
+              noSpoilersEnabled,
             ),
           );
         }
@@ -122,6 +135,7 @@ class TournamentMenuButton extends ConsumerWidget {
     TourDetailViewModel tourData,
     bool isMuted,
     bool isGamesTab,
+    bool noSpoilersEnabled,
   ) {
     final List<PopupMenuEntry<TournamentMenuAction>> items = [];
 
@@ -135,6 +149,7 @@ class TournamentMenuButton extends ConsumerWidget {
         allRoundIds,
         allMatchKeys,
         tourData,
+        noSpoilersEnabled,
       );
     }
 
@@ -153,6 +168,7 @@ class TournamentMenuButton extends ConsumerWidget {
     List<String> allRoundIds,
     List<String> allMatchKeys,
     TourDetailViewModel tourData,
+    bool noSpoilersEnabled,
   ) {
     final gamesScreenState = ref.read(gamesTourScreenProvider).valueOrNull;
     final isFocusingLiveGames =
@@ -193,7 +209,35 @@ class TournamentMenuButton extends ConsumerWidget {
       ),
     );
 
-    // 2. Pin/Unpin All
+    // 2. No spoilers
+    items.add(
+      PopupMenuItem<TournamentMenuAction>(
+        value: TournamentMenuAction.noSpoilers,
+        padding: EdgeInsets.zero,
+        height: 36.h,
+        onTap: () {
+          unawaited(
+            ref
+                .read(
+                  eventNoSpoilersProvider(tourData.aboutTourModel.id).notifier,
+                )
+                .toggle(),
+          );
+        },
+        child: _MenuDropDownItem(
+          text: noSpoilersEnabled ? "Disable No Spoilers" : "No Spoilers",
+          icon: Icon(
+            noSpoilersEnabled
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            color: context.colors.textPrimary,
+            size: 16,
+          ),
+        ),
+      ),
+    );
+
+    // 3. Pin/Unpin All
     final isAnyPinned =
         ref
             .read(gamesPinprovider(tourData.aboutTourModel.id))
@@ -230,7 +274,7 @@ class TournamentMenuButton extends ConsumerWidget {
       ),
     );
 
-    // 3. Expand/Collapse All
+    // 4. Expand/Collapse All
     final roundExpansionState = ref.read(roundExpansionProvider);
     final matchExpansionState = ref.read(matchExpansionProvider);
     final isAllCollapsed = areAllVisibleSectionsCollapsed(
@@ -364,7 +408,11 @@ class TournamentMenuButton extends ConsumerWidget {
           },
           child: _MenuDropDownItem(
             text: "Share event",
-            icon: Icon(Icons.ios_share, color: context.colors.textPrimary, size: 16),
+            icon: Icon(
+              Icons.ios_share,
+              color: context.colors.textPrimary,
+              size: 16,
+            ),
           ),
         ),
       );

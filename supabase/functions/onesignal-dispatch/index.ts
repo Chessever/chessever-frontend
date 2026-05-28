@@ -45,6 +45,13 @@ type RoundRow = {
   starts_at: string | null;
 };
 
+type TourRow = {
+  id: string;
+  name: string | null;
+  slug: string | null;
+  group_broadcast_id: string | null;
+};
+
 type LiveSubscriptionRow = {
   user_id: string;
   platform: "ios" | "android";
@@ -203,6 +210,25 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
 
   try {
     const context = await buildContext(item);
+    if (item.event_type === "round_started") {
+      if (await hasSentGroupedRoundStart(item, context)) {
+        await markSkipped(item.id, "duplicate_grouped_round_start");
+        return {
+          id: item.id,
+          status: "skipped",
+          reason: "duplicate_grouped_round_start",
+        };
+      }
+    }
+    if (item.event_type === "round_finished" && isCombinedTour(context.tour)) {
+      await markSkipped(item.id, "combined_round_results_suppressed");
+      return {
+        id: item.id,
+        status: "skipped",
+        reason: "combined_round_results_suppressed",
+      };
+    }
+
     if (item.event_type === "live_game_update") {
       if (!item.game_id) {
         await markSkipped(item.id, "missing_game_id");
@@ -500,7 +526,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             title,
             body,
             url: null,
-            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+            data: buildRoundStartedNotificationData(context, roundId),
             androidChannelId: channelForEvent("round_started"),
           });
         }
@@ -514,7 +540,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             title: filled.title,
             body: filled.body,
             url: null,
-            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+            data: buildRoundStartedNotificationData(context, roundId),
             androidChannelId: channelForEvent("round_started"),
           });
         }
@@ -542,7 +568,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           title: filled.title,
           body: filled.body,
           url: null,
-          data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+          data: buildRoundStartedNotificationData(context, roundId),
           androidChannelId: channelForEvent("round_started"),
         });
       }
@@ -989,6 +1015,7 @@ async function markFailed(id: string, attempts: number, error: string) {
 async function buildContext(item: OutboxItem) {
   let game: GameRow | null = null;
   let round: RoundRow | null = null;
+  let tour: TourRow | null = null;
   let eventName: string | null = null;
   let groupBroadcastId = item.group_broadcast_id ?? null;
 
@@ -1013,13 +1040,14 @@ async function buildContext(item: OutboxItem) {
   }
 
   const tourId = item.tour_id ?? game?.tour_id ?? round?.tour_id ?? null;
-  if (!groupBroadcastId && tourId) {
+  if (tourId) {
     const { data } = await supabase
       .from("tours")
-      .select("group_broadcast_id")
+      .select("id,name,slug,group_broadcast_id")
       .eq("id", tourId)
       .maybeSingle();
-    groupBroadcastId = data?.group_broadcast_id ?? null;
+    tour = (data ?? null) as TourRow | null;
+    groupBroadcastId = groupBroadcastId ?? tour?.group_broadcast_id ?? null;
   }
 
   if (groupBroadcastId) {
@@ -1091,6 +1119,7 @@ async function buildContext(item: OutboxItem) {
   return {
     game,
     round,
+    tour,
     eventName,
     groupBroadcastId,
     tourId,
@@ -1100,6 +1129,69 @@ async function buildContext(item: OutboxItem) {
     playerRatingMap,
     playerOpponentMap,
   };
+}
+
+function isCombinedTour(tour: TourRow | null): boolean {
+  const label = `${tour?.name ?? ""} ${tour?.slug ?? ""}`.toLowerCase();
+  return /(^|[^a-z0-9])combined([^a-z0-9]|$)/.test(label);
+}
+
+function groupedRoundStartCollapseKey(
+  context: { round: RoundRow | null; groupBroadcastId: string | null },
+): string | null {
+  const startsAt = context.round?.starts_at;
+  const groupId = context.groupBroadcastId;
+  if (!startsAt || !groupId) return null;
+  return `round_started:${groupId}:${startsAt}`;
+}
+
+function buildRoundStartedNotificationData(
+  context: { round: RoundRow | null; groupBroadcastId: string | null },
+  roundId: string,
+) {
+  return {
+    type: "round_started",
+    round_id: roundId,
+    group_broadcast_id: context.groupBroadcastId ?? null,
+    grouped_round_start_key: groupedRoundStartCollapseKey(context),
+  };
+}
+
+async function hasSentGroupedRoundStart(
+  item: OutboxItem,
+  context: { round: RoundRow | null; groupBroadcastId: string | null },
+): Promise<boolean> {
+  const startsAt = context.round?.starts_at;
+  const groupId = context.groupBroadcastId;
+  if (!startsAt || !groupId) return false;
+
+  const itemCreatedAt = new Date(item.created_at).getTime();
+  const minCreatedAt = new Date(itemCreatedAt - 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("notification_outbox")
+    .select("id,payload")
+    .eq("event_type", "round_started")
+    .eq("group_broadcast_id", groupId)
+    .eq("status", "sent")
+    .neq("id", item.id)
+    .gte("created_at", minCreatedAt)
+    .limit(25);
+
+  if (error) return false;
+
+  return ((data ?? []) as Array<{ payload?: Record<string, unknown> | null }>)
+    .some((row) => sameInstant(row.payload?.starts_at, startsAt));
+}
+
+function sameInstant(a: unknown, b: string): boolean {
+  if (typeof a !== "string" || !a) return false;
+  const aTime = Date.parse(a);
+  const bTime = Date.parse(b);
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+    return a === b;
+  }
+  return aTime === bTime;
 }
 
 async function fetchRoundPlayers(roundId: string) {
@@ -2860,7 +2952,6 @@ async function sendAndroidLiveNotification(args: {
     },
     collapse_id: `live_game:${args.livePayload.game_id}`,
     isAndroid: true,
-    target_channel: "push",
   };
 
   await sendOneSignalPayload(payload);
@@ -2957,6 +3048,11 @@ function buildOneSignalPayload(notification: NotificationPayload) {
     data: notification.data,
   };
 
+  const collapseId = notificationCollapseId(notification);
+  if (collapseId) {
+    payload.collapse_id = collapseId;
+  }
+
   if (notification.url) {
     payload.url = notification.url;
   }
@@ -2974,10 +3070,49 @@ function buildOneSignalPayload(notification: NotificationPayload) {
   return payload;
 }
 
+function notificationCollapseId(notification: NotificationPayload): string | null {
+  const type = typeof notification.data?.type === "string"
+    ? notification.data.type
+    : null;
+  const gameId = typeof notification.data?.game_id === "string"
+    ? notification.data.game_id
+    : null;
+  const roundId = typeof notification.data?.round_id === "string"
+    ? notification.data.round_id
+    : null;
+
+  if (gameId) return compactCollapseId(`game:${type ?? "update"}:${gameId}`);
+
+  if (type === "round_started") {
+    const groupedRoundStartKey = notification.data?.grouped_round_start_key;
+    if (typeof groupedRoundStartKey === "string" && groupedRoundStartKey) {
+      return compactCollapseId(groupedRoundStartKey);
+    }
+  }
+
+  if (roundId) return compactCollapseId(`round:${type ?? "update"}:${roundId}`);
+  return null;
+}
+
+function compactCollapseId(value: string): string {
+  if (value.length <= 64) return value;
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return `${value.slice(0, 48)}:${Math.abs(hash).toString(36)}`;
+}
+
 async function fetchPushSubscriptionTargets(userIds: string[]) {
-  const uniqueUserIds = [...new Set(userIds)];
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
   const subscriptionIds = new Set<string>();
   const usersWithSubscriptions = new Set<string>();
+  if (uniqueUserIds.length === 0) {
+    return {
+      subscriptionIds: [],
+      externalIdFallbackUserIds: [],
+    };
+  }
 
   try {
     for (const batch of chunk(uniqueUserIds, PUSH_USER_QUERY_CHUNK_SIZE)) {

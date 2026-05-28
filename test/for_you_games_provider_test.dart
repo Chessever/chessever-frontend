@@ -192,6 +192,61 @@ void main() {
     return () => bumpEventPinRefreshSignal(ref, eventId);
   });
 
+  group('mergeMissingFavoriteCurrentBroadcasts', () {
+    test(
+      'prepends favorite current broadcasts missing from the first page',
+      () {
+        final page = [_broadcast('event-page-a'), _broadcast('event-page-b')];
+        final favoriteBroadcasts = [_broadcast('event-favorite')];
+
+        final merged = mergeMissingFavoriteCurrentBroadcasts(
+          pageBroadcasts: page,
+          favoriteBroadcasts: favoriteBroadcasts,
+          favoriteIds: const ['event-favorite'],
+        );
+
+        expect(merged.map((broadcast) => broadcast.id), [
+          'event-favorite',
+          'event-page-a',
+          'event-page-b',
+        ]);
+      },
+    );
+
+    test('does not duplicate favorites already present on the page', () {
+      final page = [_broadcast('event-favorite'), _broadcast('event-page-a')];
+      final favoriteBroadcasts = [_broadcast('event-favorite')];
+
+      final merged = mergeMissingFavoriteCurrentBroadcasts(
+        pageBroadcasts: page,
+        favoriteBroadcasts: favoriteBroadcasts,
+        favoriteIds: const ['event-favorite'],
+      );
+
+      expect(identical(merged, page), isTrue);
+    });
+
+    test('keeps favorite order when multiple favorites are injected', () {
+      final page = [_broadcast('event-page-a')];
+      final favoriteBroadcasts = [
+        _broadcast('event-favorite-a'),
+        _broadcast('event-favorite-b'),
+      ];
+
+      final merged = mergeMissingFavoriteCurrentBroadcasts(
+        pageBroadcasts: page,
+        favoriteBroadcasts: favoriteBroadcasts,
+        favoriteIds: const ['event-favorite-b', 'event-favorite-a'],
+      );
+
+      expect(merged.map((broadcast) => broadcast.id), [
+        'event-favorite-b',
+        'event-favorite-a',
+        'event-page-a',
+      ]);
+    });
+  });
+
   group('currentSelectedTourIdForEventProvider', () {
     test(
       'does not react to selected broadcast changes for unrelated events',

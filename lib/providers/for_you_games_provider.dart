@@ -46,6 +46,37 @@ const int kGamesPerEvent = 4;
 const int _kPageSize = 20;
 const Duration _kForYouStaleThreshold = Duration(minutes: 5);
 
+@visibleForTesting
+List<GroupBroadcast> mergeMissingFavoriteCurrentBroadcasts({
+  required List<GroupBroadcast> pageBroadcasts,
+  required List<GroupBroadcast> favoriteBroadcasts,
+  required List<String> favoriteIds,
+}) {
+  if (favoriteIds.isEmpty || favoriteBroadcasts.isEmpty) {
+    return pageBroadcasts;
+  }
+
+  final existingIds = pageBroadcasts.map((broadcast) => broadcast.id).toSet();
+  final favoriteById = {
+    for (final broadcast in favoriteBroadcasts) broadcast.id: broadcast,
+  };
+
+  final missingFavorites = <GroupBroadcast>[];
+  for (final favoriteId in favoriteIds) {
+    if (existingIds.contains(favoriteId)) continue;
+    final broadcast = favoriteById[favoriteId];
+    if (broadcast == null) continue;
+    missingFavorites.add(broadcast);
+    existingIds.add(favoriteId);
+  }
+
+  if (missingFavorites.isEmpty) {
+    return pageBroadcasts;
+  }
+
+  return [...missingFavorites, ...pageBroadcasts];
+}
+
 // ============================================================================
 // FOR YOU EVENTS - PAGINATED WITH SUPABASE QUERIES
 // ============================================================================
@@ -268,6 +299,33 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         }
       } while (filteredBroadcasts.isEmpty && dbHasMore);
 
+      final hasDefaultFilters =
+          formatFilters.isEmpty && statusFilters.isEmpty && !hasEloFilter;
+      if (isInitial && hasDefaultFilters) {
+        final favoriteEvents =
+            ref.read(favoriteEventsProvider).valueOrNull ?? [];
+        final favoriteIds =
+            favoriteEvents
+                .map((event) => event.eventId)
+                .where((eventId) => eventId.isNotEmpty)
+                .toList();
+        final pageIds =
+            filteredBroadcasts.map((broadcast) => broadcast.id).toSet();
+        final missingFavoriteIds =
+            favoriteIds.where((eventId) => !pageIds.contains(eventId)).toList();
+
+        if (missingFavoriteIds.isNotEmpty) {
+          final favoriteBroadcasts = await repo.getCurrentGroupBroadcastsByIds(
+            missingFavoriteIds,
+          );
+          filteredBroadcasts = mergeMissingFavoriteCurrentBroadcasts(
+            pageBroadcasts: filteredBroadcasts,
+            favoriteBroadcasts: favoriteBroadcasts,
+            favoriteIds: favoriteIds,
+          );
+        }
+      }
+
       // Convert to models
       final models =
           filteredBroadcasts
@@ -292,8 +350,13 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         );
         _lastRefreshAt = DateTime.now();
       } else {
+        final existingIds = state.events.map((event) => event.id).toSet();
+        final newModels =
+            sortedModels
+                .where((event) => !existingIds.contains(event.id))
+                .toList();
         state = state.copyWith(
-          events: [...state.events, ...sortedModels],
+          events: [...state.events, ...newModels],
           hasMore: dbHasMore,
         );
       }

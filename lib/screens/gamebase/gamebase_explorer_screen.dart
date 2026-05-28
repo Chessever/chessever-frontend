@@ -21,7 +21,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
@@ -301,7 +301,9 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             onEngineSettingsLongPress: () {
               requireFullAuthGuard(context).then((allowed) {
                 if (!allowed || !context.mounted) return;
-                Navigator.of(context).push(ChessBoardSettingsPage.route());
+                Navigator.of(context).push(
+                  SettingsPage.route(initiallyExpanded: SettingsSection.board),
+                );
               });
             },
             onRightMove:
@@ -309,9 +311,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                     ? () async {
                       final allowed = await _ensureExplorerForwardAllowed();
                       if (!allowed) return;
-                      ref
-                          .read(gamebaseExplorerProvider.notifier)
-                          .goForward();
+                      ref.read(gamebaseExplorerProvider.notifier).goForward();
                     }
                     : null,
             onLeftMove:
@@ -586,10 +586,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               ),
             )
           else
-            _ExplorerSegmentedTitle(
-              currentPage: currentPage,
-              isLarge: true,
-            ),
+            _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
         ],
       ),
       // Three actions, evenly spaced: Reset, Filters (with active dot when
@@ -792,7 +789,7 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                 ? Chessboard.fixed(
                   size: widget.boardSize,
                   settings: ChessboardSettings(
-                    enableCoordinates: true,
+                    enableCoordinates: boardSettings.showCoordinates,
                     colorScheme: boardSettings.colorScheme,
                     pieceAssets: boardSettings.pieceAssets,
                   ),
@@ -802,7 +799,7 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                 : Chessboard(
                   size: widget.boardSize,
                   settings: ChessboardSettings(
-                    enableCoordinates: true,
+                    enableCoordinates: boardSettings.showCoordinates,
                     animationDuration: const Duration(milliseconds: 200),
                     colorScheme: boardSettings.colorScheme,
                     pieceAssets: boardSettings.pieceAssets,
@@ -831,8 +828,7 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                             ref
                                 .read(gamebaseExplorerProvider)
                                 .currentMoveNumber;
-                        if (currentMoveNumber >=
-                            kFreeExplorerMoveNumberLimit) {
+                        if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
                           if (!context.mounted) return;
                           final unlocked = await requirePremiumGuard(
                             context,
@@ -1305,12 +1301,18 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                           showCheckmark: false,
                           labelStyle: TextStyle(
-                            color: isSelected ? kPrimaryColor : context.colors.textPrimary,
+                            color:
+                                isSelected
+                                    ? kPrimaryColor
+                                    : context.colors.textPrimary,
                             fontSize: 12.f,
                           ),
                           backgroundColor: context.colors.surface,
                           side: BorderSide(
-                            color: isSelected ? kPrimaryColor : context.colors.divider,
+                            color:
+                                isSelected
+                                    ? kPrimaryColor
+                                    : context.colors.divider,
                           ),
                         );
                       }).toList(),
@@ -1339,12 +1341,18 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                           showCheckmark: false,
                           labelStyle: TextStyle(
-                            color: isSelected ? kPrimaryColor : context.colors.textPrimary,
+                            color:
+                                isSelected
+                                    ? kPrimaryColor
+                                    : context.colors.textPrimary,
                             fontSize: 12.f,
                           ),
                           backgroundColor: context.colors.surface,
                           side: BorderSide(
-                            color: isSelected ? kPrimaryColor : context.colors.divider,
+                            color:
+                                isSelected
+                                    ? kPrimaryColor
+                                    : context.colors.divider,
                           ),
                         );
                       }).toList(),
@@ -1681,7 +1689,10 @@ class _PlayerSearchResults extends ConsumerWidget {
               padding: EdgeInsets.all(12.sp),
               child: Text(
                 'No players found',
-                style: TextStyle(color: context.colors.textSecondary, fontSize: 12.f),
+                style: TextStyle(
+                  color: context.colors.textSecondary,
+                  fontSize: 12.f,
+                ),
               ),
             );
           }
@@ -1699,11 +1710,17 @@ class _PlayerSearchResults extends ConsumerWidget {
                   player.titleAndName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: context.colors.textPrimary, fontSize: 13.f),
+                  style: TextStyle(
+                    color: context.colors.textPrimary,
+                    fontSize: 13.f,
+                  ),
                 ),
                 subtitle: Text(
                   '${player.fed}${player.highestRating != null ? ' • ${player.highestRating}' : ''}',
-                  style: TextStyle(color: context.colors.textSecondary, fontSize: 11.f),
+                  style: TextStyle(
+                    color: context.colors.textSecondary,
+                    fontSize: 11.f,
+                  ),
                 ),
                 trailing: Icon(
                   Icons.add_rounded,
@@ -1815,9 +1832,7 @@ class _ExplorerEngineLines extends ConsumerWidget {
                 if (!kDebugMode &&
                     !ref.read(subscriptionProvider).isSubscribed) {
                   final currentMoveNumber =
-                      ref
-                          .read(gamebaseExplorerProvider)
-                          .currentMoveNumber;
+                      ref.read(gamebaseExplorerProvider).currentMoveNumber;
                   if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
                     if (!context.mounted) return;
                     final unlocked = await requirePremiumGuard(context, ref);
@@ -1884,7 +1899,9 @@ class _EngineLinePlaceholder extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: context.colors.textPrimary.withValues(alpha: isPrimary ? 0.65 : 0.18),
+                color: context.colors.textPrimary.withValues(
+                  alpha: isPrimary ? 0.65 : 0.18,
+                ),
                 fontSize: 12.f,
                 fontWeight: FontWeight.w500,
               ),
@@ -1943,7 +1960,9 @@ class _EngineLine extends StatelessWidget {
 
     final moveText = _formatMoveText();
     final moveStyle = TextStyle(
-      color: context.colors.textPrimary.withValues(alpha: lineIndex == 0 ? 0.9 : 0.6),
+      color: context.colors.textPrimary.withValues(
+        alpha: lineIndex == 0 ? 0.9 : 0.6,
+      ),
       fontSize: 12.f,
       fontWeight: lineIndex == 0 ? FontWeight.w500 : FontWeight.w400,
     );
@@ -2457,6 +2476,11 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     final forcedOpenIds = <String>{};
     _collectVariationAncestors(pointerId, tree.mainline, forcedOpenIds);
     final pointerMap = <String, NotationMoveNode>{};
+    final rawPgnMode = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.rawPgnMode ?? false,
+      ),
+    );
     final tokens = buildNotationTokens(
       tree.mainline,
       depth: 0,
@@ -2469,6 +2493,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
       expandedVariationIds: _expandedVariationIds,
       autoCollapseDepth: _autoCollapseDepth,
       autoCollapseMoveThreshold: _autoCollapseMoveThreshold,
+      rawPgnMode: rawPgnMode,
     );
 
     if (tokens.isEmpty) {
@@ -2508,7 +2533,9 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
 
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(color: context.colors.surfaceRecessed.withValues(alpha: 0.22)),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed.withValues(alpha: 0.22),
+      ),
       child: SingleChildScrollView(
         controller: _scrollController,
         padding: EdgeInsets.all(18.sp),
@@ -2524,6 +2551,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                     currentPly,
                     useFigurine,
                     pieceAssets,
+                    rawPgnMode: rawPgnMode,
                   );
                 }
                 if (token.type == NotationTokenType.comment ||
@@ -2536,7 +2564,9 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                     child: Text(
                       token.text,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimaryMuted.withValues(alpha: 0.65),
+                        color: context.colors.textPrimaryMuted.withValues(
+                          alpha: 0.65,
+                        ),
                         fontStyle: FontStyle.italic,
                         height: 1.35,
                       ),
@@ -2574,8 +2604,9 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     String? currentPointerId,
     int currentPly,
     bool useFigurine,
-    PieceAssets? pieceAssets,
-  ) {
+    PieceAssets? pieceAssets, {
+    bool rawPgnMode = false,
+  }) {
     final pointerId = token.pointerId;
     final key =
         pointerId == null
@@ -2583,7 +2614,8 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
             : _moveKeys.putIfAbsent(pointerId, () => GlobalKey());
     final isCurrent = pointerId != null && pointerId == currentPointerId;
 
-    final nags = token.node?.move.nags ?? const <int>[];
+    final nags =
+        rawPgnMode ? const <int>[] : token.node?.move.nags ?? const <int>[];
     // Resolve NAGs into displays. Quality NAGs tint the move text and render
     // hugged to the SAN; evaluation/observation NAGs render in muted slate
     // with a leading hair-space and never recolor the SAN.

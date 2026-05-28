@@ -8,6 +8,7 @@ import 'package:chessever2/screens/standings/providers/player_ratings_provider.d
     show AllRatingsRequest, allRatingsProvider;
 import 'package:chessever2/screens/standings/providers/twic_scorecard_event_games_provider.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -158,30 +159,6 @@ class ScoreCardScreen extends ConsumerWidget {
     return 1500.0;
   }
 
-  // Heuristic K-factor fallback used only when FIDE's per-time-control K is
-  // unavailable. FIDE's authoritative K (sticky 2400 → 10, U18 < 2300 → 40,
-  // default 20) is stored in `chess_players.{k,rapid_k,blitz_k}` and should
-  // be preferred via `fideK` in `_calculateFideRatingChange`.
-  int _heuristicKFactor(double rating, {String? title, String? timeControl}) {
-    final tc = timeControl?.toLowerCase();
-    if (tc == 'rapid' || tc == 'blitz') {
-      return 20;
-    }
-
-    if (rating >= 2400) {
-      return 10;
-    }
-
-    if (title != null) {
-      final t = title.toUpperCase();
-      if (t == 'GM' || t == 'IM') {
-        return 10;
-      }
-    }
-
-    return 20;
-  }
-
   // Calculate FIDE Elo rating change.
   // Pass [fideK] from `chess_players` for the event's time control to use
   // FIDE's authoritative K. Pass [playerRatingOverride] to use the player's
@@ -212,20 +189,20 @@ class ScoreCardScreen extends ConsumerWidget {
     }
 
     final effectivePlayerRating = playerRatingOverride ?? playerRating;
-    double ratingDiff =
-        (opponentRating - effectivePlayerRating).clamp(-400.0, 400.0);
-    double expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
     final playerTitle =
         isWhite ? game.whitePlayer.title : game.blackPlayer.title;
-    final int kFactor = fideK ??
-        _heuristicKFactor(
-          effectivePlayerRating,
-          title: playerTitle,
-          timeControl: game.timeControl,
-        );
-    double ratingChange = kFactor * (actualScore - expectedScore);
+    final fallbackKFactor = scoreCardFallbackKFactorForSelectedRating(
+      effectivePlayerRating,
+      title: playerTitle,
+      timeControl: game.timeControl,
+    );
 
-    return ratingChange;
+    return calculateFideRatingChange(
+      playerRating: effectivePlayerRating,
+      opponentRating: opponentRating,
+      actualScore: actualScore,
+      kFactor: fideK ?? fallbackKFactor,
+    );
   }
 
   List<GamesTourModel> _toGamesTourModels(List<Games> games) {
@@ -520,7 +497,6 @@ class ScoreCardScreen extends ConsumerWidget {
           fideId1: game.whitePlayer.fideId,
           fideId2: player.fideId,
         );
-        final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
         final playerRating = _getPlayerRatingForSide(game, isWhite);
         final opponentRating = _getPlayerRatingForSide(game, !isWhite);
 

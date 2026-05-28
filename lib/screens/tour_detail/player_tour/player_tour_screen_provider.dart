@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -565,22 +566,31 @@ class PlayerTourScreenNotifier
         }
       }
 
-      // For chess-results tours, the players array is the canonical standings
-      // payload. Game rows can lag or be synthetic, so only use game-derived
-      // totals as a fallback.
-      final displayScore =
-          useExternalOrder && updatedPlayer.score != null
-              ? updatedPlayer.score
-              : calculatedScore;
-      final displayPlayed =
-          useExternalOrder && updatedPlayer.played > 0
-              ? updatedPlayer.played
-              : gamesPlayed;
+      // For chess-results tours and broadcasts with custom per-game points,
+      // the source standings payload is canonical. Keep calculated totals as
+      // the fallback for ordinary broadcasts where live game rows are fresher.
+      final hasCustomGamePoints = playerGames.any((gameRef) {
+        final standardValue = standardResultValueForSide(
+          gameRef.game.gameStatus,
+          isWhite: gameRef.isWhite,
+        );
+        final customPoints = gameRef.playerCard.customPoints;
+        return standardValue != null &&
+            customPoints != null &&
+            customPoints != standardValue;
+      });
+      final resolvedScore = resolveBroadcastStandingScore(
+        sourceScore: updatedPlayer.score,
+        sourcePlayed: updatedPlayer.played,
+        calculatedScore: calculatedScore,
+        calculatedPlayed: gamesPlayed,
+        preserveSourceScore: useExternalOrder || hasCustomGamePoints,
+      );
 
       enrichedPlayers.add(
         updatedPlayer.copyWith(
-          score: displayScore,
-          played: displayPlayed,
+          score: resolvedScore.score,
+          played: resolvedScore.played,
           ratingDiff:
               updatedPlayer.ratingDiff ??
               (hasCalculatedRatingDiff ? totalRatingDiff.round() : null),

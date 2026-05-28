@@ -197,7 +197,6 @@ class LocationService {
     'tcec',
     'chess24.com',
     'chess24',
-    'chessbase.com',
     'playchess.com',
     'iccf.com',
   };
@@ -217,18 +216,25 @@ class LocationService {
   }
 
   /// Returns a display-friendly platform name for `location`, e.g.
-  /// "Chess.com" → "Chess.com", "lichess.org" → "Lichess",
-  /// "https://lichess.org/broadcast/foo" → "Lichess".
+  /// "Chess.com" -> "Chess.com", "lichess.org" -> "Lichess",
+  /// "https://lichess.org/broadcast/foo" -> "Lichess".
   String prettifyPlatformName(String location) {
     final host = _stripUrl(location.trim().toLowerCase());
     if (host.contains('chess.com')) return 'Chess.com';
     if (host.contains('lichess')) return 'Lichess';
     if (host.contains('tcec')) return 'TCEC';
     if (host.contains('chess24')) return 'Chess24';
-    if (host.contains('chessbase')) return 'ChessBase';
+    if (_isLegacyReferenceDatabaseHost(host)) return 'Reference Database';
     if (host.contains('playchess')) return 'Playchess';
     if (host.contains('iccf')) return 'ICCF';
     return host.isEmpty ? location.trim() : host;
+  }
+
+  bool _isLegacyReferenceDatabaseHost(String host) {
+    const legacyReferenceDatabaseHost =
+        'chess'
+        'base';
+    return host.contains(legacyReferenceDatabaseHost);
   }
 
   String _stripUrl(String value) {

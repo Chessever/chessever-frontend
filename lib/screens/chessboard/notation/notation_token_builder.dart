@@ -214,6 +214,7 @@ List<NotationDisplayToken> buildNotationTokens(
   required Set<String> expandedVariationIds,
   int autoCollapseDepth = 3,
   int autoCollapseMoveThreshold = 12,
+  bool rawPgnMode = false,
 }) {
   final tokens = <NotationDisplayToken>[];
   for (var i = 0; i < moves.length; i++) {
@@ -249,8 +250,8 @@ List<NotationDisplayToken> buildNotationTokens(
       ),
     );
 
-    // Add PGN comments
-    if (node.move.comments != null) {
+    // Add PGN comments (skipped in raw PGN mode)
+    if (!rawPgnMode && node.move.comments != null) {
       for (final comment in node.move.comments!) {
         // Strip out Lichess extension tags from the comment text
         String cleanText =
@@ -281,7 +282,7 @@ List<NotationDisplayToken> buildNotationTokens(
       }
     }
 
-    final moveComment = variationComments[pointerId];
+    final moveComment = rawPgnMode ? null : variationComments[pointerId];
     if (moveComment != null && moveComment.isNotEmpty) {
       tokens.add(
         NotationDisplayToken(
@@ -375,11 +376,13 @@ List<NotationDisplayToken> buildNotationTokens(
             expandedVariationIds: expandedVariationIds,
             autoCollapseDepth: autoCollapseDepth,
             autoCollapseMoveThreshold: autoCollapseMoveThreshold,
+            rawPgnMode: rawPgnMode,
           ),
         );
       }
 
-      final variationComment = variationComments[variation.id];
+      final variationComment =
+          rawPgnMode ? null : variationComments[variation.id];
       if (variationComment != null && variationComment.isNotEmpty) {
         tokens.add(
           NotationDisplayToken(

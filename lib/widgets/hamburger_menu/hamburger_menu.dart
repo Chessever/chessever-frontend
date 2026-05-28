@@ -355,9 +355,6 @@ class HamburgerMenu extends HookConsumerWidget {
                     // "Get Premium" card — shown only for non-premium users
                     _GetPremiumCard(),
 
-                    // ChessEver Desktop card — shown only for premium users
-                    _ChessEverDesktopCard(),
-
                     // Restore Purchases
                     _RestorePurchasesRow(),
 
@@ -570,123 +567,6 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
               constraints: BoxConstraints(minWidth: 20.w, minHeight: 20.h),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// ChessEver Desktop card — surfaces the desktop beta to premium subscribers.
-/// Opens https://chessever.com where Mac/Windows downloads live in the hero.
-class _ChessEverDesktopCard extends ConsumerWidget {
-  const _ChessEverDesktopCard();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isPremium = ref.watch(subscriptionProvider).isSubscribed;
-    if (!isPremium) return const SizedBox.shrink();
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.sp, 0.sp, 16.sp, 8.sp),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () async {
-          HapticFeedbackService.buttonPress();
-          final uri = Uri.parse('https://chessever.com');
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                kPrimaryColor.withValues(alpha: 0.18),
-                kPrimaryColor.withValues(alpha: 0.06),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(
-              color: kPrimaryColor.withValues(alpha: 0.35),
-              width: 1,
-            ),
-          ),
-          padding: EdgeInsets.fromLTRB(12.sp, 10.sp, 12.sp, 10.sp),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 32.w,
-                height: 32.h,
-                decoration: BoxDecoration(
-                  color: kPrimaryColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.desktop_mac_outlined,
-                  color: kPrimaryColor,
-                  size: 18.ic,
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'ChessEver Desktop',
-                          style: AppTypography.textSmSemiBold.copyWith(
-                            color: context.colors.iconPrimary,
-                            height: 1.0,
-                          ),
-                        ),
-                        SizedBox(width: 6.w),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 5.sp,
-                            vertical: 1.sp,
-                          ),
-                          decoration: BoxDecoration(
-                            color: kPrimaryColor,
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                          child: Text(
-                            'BETA',
-                            style: AppTypography.textXxsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              height: 1.0,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 3.h),
-                    Text(
-                      'Mac & Windows · chessever.com',
-                      style: AppTypography.textXxsRegular.copyWith(
-                        color: context.colors.iconPrimary.withValues(
-                          alpha: 0.65,
-                        ),
-                        height: 1.1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.arrow_outward_rounded,
-                size: 18.ic,
-                color: kPrimaryColor,
-              ),
-            ],
-          ),
         ),
       ),
     );

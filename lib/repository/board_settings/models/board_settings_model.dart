@@ -16,6 +16,8 @@ class BoardSettingsModel with BoardSettingsModelMappable {
   final int
   gamesListViewModeIndex; // 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final bool useFigurine; // Use chess piece symbols (♔♕♖♗♘) instead of letters
+  final bool showCoordinates; // Show A-H / 1-8 labels on the board edges
+  final bool rawPgnMode; // Hide auto NAG glyphs + PGN comments in notation
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -30,6 +32,8 @@ class BoardSettingsModel with BoardSettingsModelMappable {
     required this.pieceStyleIndex,
     required this.gamesListViewModeIndex,
     required this.useFigurine,
+    required this.showCoordinates,
+    required this.rawPgnMode,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -50,6 +54,8 @@ class BoardSettingsModel with BoardSettingsModelMappable {
           json['games_list_view_mode_index'] as int? ??
           1, // Default to chessBoardGrid
       useFigurine: json['use_figurine'] as bool? ?? true,
+      showCoordinates: json['show_coordinates'] as bool? ?? true,
+      rawPgnMode: json['raw_pgn_mode'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -68,6 +74,8 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'piece_style_index': pieceStyleIndex,
       'games_list_view_mode_index': gamesListViewModeIndex,
       'use_figurine': useFigurine,
+      'show_coordinates': showCoordinates,
+      'raw_pgn_mode': rawPgnMode,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -85,6 +93,8 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'piece_style_index': pieceStyleIndex,
       'games_list_view_mode_index': gamesListViewModeIndex,
       'use_figurine': useFigurine,
+      'show_coordinates': showCoordinates,
+      'raw_pgn_mode': rawPgnMode,
     };
   }
 
@@ -101,6 +111,8 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       pieceStyleIndex: 0, // cburnett / Colin M.L. Burnett (default)
       gamesListViewModeIndex: 1, // chessBoardGrid view (default)
       useFigurine: true, // Use figurine notation by default
+      showCoordinates: true,
+      rawPgnMode: false,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );

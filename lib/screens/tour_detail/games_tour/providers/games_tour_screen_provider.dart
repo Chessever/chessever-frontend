@@ -97,13 +97,6 @@ List<GamesTourModel> _processGamesWorker(_GamesProcessingArgs args) {
       final bPinned = args.pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-
-      // If both are pinned, preserve pin order
-      if (aPinned && bPinned) {
-        final aIndex = args.pinnedIds.indexOf(a.id);
-        final bIndex = args.pinnedIds.indexOf(b.id);
-        if (aIndex != bIndex) return aIndex.compareTo(bIndex);
-      }
     }
 
     final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
@@ -649,12 +642,6 @@ class GamesTourScreenProvider
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-
-      if (aPinned && bPinned) {
-        final aIndex = pinnedIds.indexOf(a.id);
-        final bIndex = pinnedIds.indexOf(b.id);
-        if (aIndex != bIndex) return aIndex.compareTo(bIndex);
-      }
 
       final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
       final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);

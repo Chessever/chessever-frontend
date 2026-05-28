@@ -69,6 +69,20 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     'useFigurine',
     _$useFigurine,
   );
+  static bool _$showCoordinates(BoardSettingsModel v) => v.showCoordinates;
+  static const Field<BoardSettingsModel, bool> _f$showCoordinates = Field(
+    'showCoordinates',
+    _$showCoordinates,
+    opt: true,
+    def: true,
+  );
+  static bool _$rawPgnMode(BoardSettingsModel v) => v.rawPgnMode;
+  static const Field<BoardSettingsModel, bool> _f$rawPgnMode = Field(
+    'rawPgnMode',
+    _$rawPgnMode,
+    opt: true,
+    def: false,
+  );
   static DateTime _$createdAt(BoardSettingsModel v) => v.createdAt;
   static const Field<BoardSettingsModel, DateTime> _f$createdAt = Field(
     'createdAt',
@@ -92,6 +106,8 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     #pieceStyleIndex: _f$pieceStyleIndex,
     #gamesListViewModeIndex: _f$gamesListViewModeIndex,
     #useFigurine: _f$useFigurine,
+    #showCoordinates: _f$showCoordinates,
+    #rawPgnMode: _f$rawPgnMode,
     #createdAt: _f$createdAt,
     #updatedAt: _f$updatedAt,
   };
@@ -108,6 +124,8 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
       pieceStyleIndex: data.dec(_f$pieceStyleIndex),
       gamesListViewModeIndex: data.dec(_f$gamesListViewModeIndex),
       useFigurine: data.dec(_f$useFigurine),
+      showCoordinates: data.dec(_f$showCoordinates),
+      rawPgnMode: data.dec(_f$rawPgnMode),
       createdAt: data.dec(_f$createdAt),
       updatedAt: data.dec(_f$updatedAt),
     );
@@ -195,6 +213,8 @@ abstract class BoardSettingsModelCopyWith<
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
     bool? useFigurine,
+    bool? showCoordinates,
+    bool? rawPgnMode,
     DateTime? createdAt,
     DateTime? updatedAt,
   });
@@ -223,6 +243,8 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
     bool? useFigurine,
+    bool? showCoordinates,
+    bool? rawPgnMode,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => $apply(
@@ -238,6 +260,8 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       if (gamesListViewModeIndex != null)
         #gamesListViewModeIndex: gamesListViewModeIndex,
       if (useFigurine != null) #useFigurine: useFigurine,
+      if (showCoordinates != null) #showCoordinates: showCoordinates,
+      if (rawPgnMode != null) #rawPgnMode: rawPgnMode,
       if (createdAt != null) #createdAt: createdAt,
       if (updatedAt != null) #updatedAt: updatedAt,
     }),
@@ -260,6 +284,8 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       or: $value.gamesListViewModeIndex,
     ),
     useFigurine: data.get(#useFigurine, or: $value.useFigurine),
+    showCoordinates: data.get(#showCoordinates, or: $value.showCoordinates),
+    rawPgnMode: data.get(#rawPgnMode, or: $value.rawPgnMode),
     createdAt: data.get(#createdAt, or: $value.createdAt),
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),
   );

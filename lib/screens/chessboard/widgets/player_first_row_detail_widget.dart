@@ -9,12 +9,14 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
@@ -65,6 +67,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? watchLiveGameClock(ref, baseGameModel, batchKey: liveBatchKey)
             : null;
     final effectiveGameModel = scopedClockGame ?? baseGameModel;
+    final spoilerState = ref.watch(
+      eventNoSpoilersProvider(effectiveGameModel.tourId),
+    );
+    final spoilersRevealedForGame = ref.watch(
+      eventNoSpoilersRevealedGamesProvider.select(
+        (gameIds) => gameIds.contains(effectiveGameModel.gameId),
+      ),
+    );
+    final revealSpoilers =
+        (!spoilerState.isLoading && !spoilerState.enabled) ||
+        !effectiveGameModel.gameStatus.isFinished ||
+        spoilersRevealedForGame;
     final playerCard = useMemoized(() {
       return isWhitePlayer
           ? effectiveGameModel.whitePlayer
@@ -305,7 +319,10 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
-              color: isCurrentPlayer ? context.colors.textPrimaryMuted : context.colors.textPrimary,
+              color:
+                  isCurrentPlayer
+                      ? context.colors.textPrimaryMuted
+                      : context.colors.textPrimary,
               height: 1.15,
               letterSpacing: 0,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -314,13 +331,19 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.f,
               fontWeight: FontWeight.w600,
-              color: isCurrentPlayer ? context.colors.textPrimaryMuted : context.colors.textPrimary,
+              color:
+                  isCurrentPlayer
+                      ? context.colors.textPrimaryMuted
+                      : context.colors.textPrimary,
               height: 1.15,
               letterSpacing: -0.2,
               fontFeatures: const [FontFeature.tabularFigures()],
             )
             : AppTypography.textXsMedium.copyWith(
-              color: isCurrentPlayer ? context.colors.textPrimaryMuted : context.colors.textPrimary,
+              color:
+                  isCurrentPlayer
+                      ? context.colors.textPrimaryMuted
+                      : context.colors.textPrimary,
               fontSize: 14.f,
               fontWeight: FontWeight.w500,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -350,17 +373,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
     final endPadding = boardMargin; // Right margin matches left margin
 
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final engineGaugeWidth = useMemoized(() {
       // Check if engine gauge is enabled in settings
-      final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
       final showEvalBarInSettings =
-          (settings?.showEngineAnalysis ?? true) &&
-          (settings?.showEngineGauge ?? true);
+          (engineSettings?.showEngineAnalysis ?? true) &&
+          (engineSettings?.showEngineGauge ?? true);
 
       // We only show the gauge area if:
-      // 1. The game is finished (to show 1, 0, or 1/2)
+      // 1. The finished-game result is allowed to be shown
       // 2. The game is ongoing AND started AND gauge is enabled in settings
-      final isFinished = effectiveGameModel.gameStatus.isFinished;
+      final isFinished =
+          effectiveGameModel.gameStatus.isFinished && revealSpoilers;
       final effectivelyShowingEvalBar =
           showEvalBarInSettings &&
           effectiveGameModel.hasStarted &&
@@ -370,7 +394,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         return playerView == PlayerView.gridView ? 10.w : 20.w;
       }
       return 0.0;
-    }, [ref.watch(engineSettingsProviderNew), effectiveGameModel, playerView]);
+    }, [engineSettings, effectiveGameModel, playerView, revealSpoilers]);
 
     // Clock padding - add small horizontal padding to prevent flickering and provide stability
     final clockPadding = playerView == PlayerView.gridView ? 4.w : 6.w;
@@ -615,7 +639,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             SizedBox(
               width: engineGaugeWidth,
               child:
-                  effectiveGameModel.gameStatus.isFinished
+                  effectiveGameModel.gameStatus.isFinished && revealSpoilers
                       ? Center(
                         child: Builder(
                           builder: (context) {
@@ -627,18 +651,25 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                                 (status == GameStatus.blackWins &&
                                     !isWhitePlayer);
                             final label =
-                                isDraw ? '½' : (isWin ? '1' : '0');
-                            final resultColor = isWin
-                                ? kPrimaryColor
-                                : isDraw
+                                customAwareResultLabelForSide(
+                                  status,
+                                  isWhite: isWhitePlayer,
+                                  customPoints:
+                                      effectivePlayerCard.customPoints,
+                                ) ??
+                                '';
+                            final resultColor =
+                                isWin
+                                    ? kPrimaryColor
+                                    : isDraw
                                     ? context.colors.textPrimaryMuted
                                     : context.colors.danger;
                             final scoreFontSize =
                                 playerView == PlayerView.listView
                                     ? 12.f
                                     : playerView == PlayerView.gridView
-                                        ? 13.f
-                                        : 15.f;
+                                    ? 13.f
+                                    : 15.f;
                             return Text(
                               label,
                               style: TextStyle(
@@ -660,14 +691,14 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                       )
                       : null,
             ),
-            if (effectiveGameModel.gameStatus.isFinished)
+            if (effectiveGameModel.gameStatus.isFinished && revealSpoilers)
               SizedBox(
                 width:
                     playerView == PlayerView.gridView
                         ? 4.w
                         : playerView == PlayerView.listView
-                            ? 5.w
-                            : 6.w,
+                        ? 5.w
+                        : 6.w,
               ),
             FederationFlag(
               federation:

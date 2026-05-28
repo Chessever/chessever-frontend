@@ -253,37 +253,33 @@ List<GamesTourModel> sortGameModelsForGamesTab({
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
 
-    if (aPinned && bPinned) {
-      final aIndex = pinnedIds.indexOf(a.gameId);
-      final bIndex = pinnedIds.indexOf(b.gameId);
-      if (aIndex != bIndex) {
-        return aIndex.compareTo(bIndex);
-      }
-    }
-
-    final roundA = _extractRoundNumber(a.roundSlug);
-    final roundB = _extractRoundNumber(b.roundSlug);
-    if (roundA != roundB) {
-      return roundB.compareTo(roundA);
-    }
-
-    final gameA = _extractGameNumber(a.roundSlug);
-    final gameB = _extractGameNumber(b.roundSlug);
-    if (gameA != gameB) {
-      return gameB.compareTo(gameA);
-    }
-
-    final aBoard = a.boardNr;
-    final bBoard = b.boardNr;
-    if (aBoard != null && bBoard != null) {
-      return aBoard.compareTo(bBoard);
-    }
-    if (aBoard != null) return -1;
-    if (bBoard != null) return 1;
-    return 0;
+    return _compareGameModelsByDisplayOrder(a, b);
   });
 
   return sortedGames;
+}
+
+int _compareGameModelsByDisplayOrder(GamesTourModel a, GamesTourModel b) {
+  final roundA = _extractRoundNumber(a.roundSlug);
+  final roundB = _extractRoundNumber(b.roundSlug);
+  if (roundA != roundB) {
+    return roundB.compareTo(roundA);
+  }
+
+  final gameA = _extractGameNumber(a.roundSlug);
+  final gameB = _extractGameNumber(b.roundSlug);
+  if (gameA != gameB) {
+    return gameB.compareTo(gameA);
+  }
+
+  final aBoard = a.boardNr;
+  final bBoard = b.boardNr;
+  if (aBoard != null && bBoard != null) {
+    return aBoard.compareTo(bBoard);
+  }
+  if (aBoard != null) return -1;
+  if (bBoard != null) return 1;
+  return 0;
 }
 
 List<String> mergePinnedIds({
@@ -806,10 +802,9 @@ List<GamesTourModel> _pinOnlySort(
   sorted.sort((a, b) {
     final aPinned = pinnedIds.contains(a.gameId);
     final bPinned = pinnedIds.contains(b.gameId);
-    if (aPinned == bPinned) {
-      return 0;
-    }
-    return aPinned ? -1 : 1;
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return _compareGameModelsByDisplayOrder(a, b);
   });
   return sorted;
 }

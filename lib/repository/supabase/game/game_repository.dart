@@ -104,6 +104,16 @@ const String _gameListSelectColumnsInnerTc = '''
           )
         ''';
 
+const int _tourGamesFetchPageSize = 1000;
+
+@visibleForTesting
+bool shouldFetchAnotherTourGamesPage(
+  int fetchedCount, {
+  int pageSize = _tourGamesFetchPageSize,
+}) {
+  return fetchedCount == pageSize;
+}
+
 /// Maps a `GameFilter` to the named-parameter map consumed by the Supabase
 /// RPCs (`get_distinct_dates_for_*`, etc). Keeps the mapping in one place so
 /// every server-side query layers in the same filters.
@@ -261,20 +271,45 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      var query = supabase
-          .from('games')
-          .select(_gameListSelectColumns)
-          .eq('tour_id', tourId)
-          .order('id', ascending: true);
+      final jsonList = <String>[];
+      var pageOffset = offset;
+      var remaining = limit;
 
-      if (limit != null) {
-        query = query.range(offset, offset + limit - 1);
+      while (true) {
+        final pageSize =
+            remaining == null || remaining > _tourGamesFetchPageSize
+                ? _tourGamesFetchPageSize
+                : remaining;
+        if (pageSize <= 0) {
+          break;
+        }
+
+        final response = await supabase
+            .from('games')
+            .select(_gameListSelectColumns)
+            .eq('tour_id', tourId)
+            .order('id', ascending: true)
+            .range(pageOffset, pageOffset + pageSize - 1);
+
+        final responseList = response as List;
+        jsonList.addAll(responseList.map((item) => json.encode(item)));
+
+        if (!shouldFetchAnotherTourGamesPage(
+          responseList.length,
+          pageSize: pageSize,
+        )) {
+          break;
+        }
+
+        if (remaining != null) {
+          remaining -= responseList.length;
+          if (remaining <= 0) {
+            break;
+          }
+        }
+
+        pageOffset += responseList.length;
       }
-
-      final response = await query;
-
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 

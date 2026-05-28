@@ -12,6 +12,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -73,6 +74,12 @@ final _gamebaseFinalFenProvider = FutureProvider.autoDispose
 bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
   return settings?.showEngineGauge ?? true;
+}
+
+bool _hideFinishedSpoilers(WidgetRef ref, GamesTourModel game) {
+  final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
+  return (spoilerState.isLoading || spoilerState.enabled) &&
+      game.gameStatus.isFinished;
 }
 
 /// Resolved FEN provider that caches the resolution logic for a game model
@@ -306,7 +313,7 @@ Future<void> _showShareOverlay(
   // We use the theme colors but hide all highlights for clean screenshots
   // IMPORTANT: Disable animations for instant static frame capture in GIF generation
   final chessboardSettings = ChessboardSettings(
-    enableCoordinates: true,
+    enableCoordinates: false,
     animationDuration: Duration.zero, // Disable animations for screenshot/GIF
     colorScheme: ChessboardColorScheme(
       lightSquare: baseColorScheme.lightSquare,
@@ -493,7 +500,11 @@ class ChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
+    final hideFinishedSpoilers = _hideFinishedSpoilers(ref, gamesTourModel);
+    final showEvalBar =
+        _shouldShowEvalBar(ref) &&
+        gamesTourModel.hasStarted &&
+        !hideFinishedSpoilers;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return Padding(
@@ -690,7 +701,11 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
+    final hideFinishedSpoilers = _hideFinishedSpoilers(ref, gamesTourModel);
+    final showEvalBar =
+        _shouldShowEvalBar(ref) &&
+        gamesTourModel.hasStarted &&
+        !hideFinishedSpoilers;
     final sideBarWidth = showEvalBar ? 10.w : 0.w;
     final bottomSide = fixedBottomSide ?? Side.white;
     final topSide = _oppositeSide(bottomSide);
@@ -935,7 +950,11 @@ class _ChessBoardContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
+    final hideFinishedSpoilers = _hideFinishedSpoilers(ref, gamesTourModel);
+    final showEvalBar =
+        _shouldShowEvalBar(ref) &&
+        gamesTourModel.hasStarted &&
+        !hideFinishedSpoilers;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
     final bottomSide = fixedBottomSide ?? Side.white;
     final topSide = _oppositeSide(bottomSide);
@@ -1049,7 +1068,9 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Get effective game status for ended games
-    final gameStatus = gamesTourModel.gameStatus;
+    final hideFinishedSpoilers = _hideFinishedSpoilers(ref, gamesTourModel);
+    final gameStatus =
+        hideFinishedSpoilers ? GameStatus.ongoing : gamesTourModel.gameStatus;
     final resolvedFen = ref.watch(
       _resolvedFenProvider(_ResolvedFenKey.fromGame(gamesTourModel)),
     );
@@ -1154,32 +1175,34 @@ class _ChessBoardWidget extends ConsumerWidget {
           // Light theme: layered drop shadow grounds the board on the
           // light-grey scaffold (Principle 3 — shadows over borders). Dark
           // theme keeps the original soft kBoardLightGrey shadow.
-          boxShadow: context.isLightTheme
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 1,
-                    offset: const Offset(0, 1),
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: kBoardLightGrey.withValues(alpha: 0.5),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+          boxShadow:
+              context.isLightTheme
+                  ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 1,
+                      offset: const Offset(0, 1),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                  : [
+                    BoxShadow(
+                      color: kBoardLightGrey.withValues(alpha: 0.5),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
         ),
         child: AbsorbPointer(
           child: Chessboard.fixed(
             size: boardSize,
             settings: ChessboardSettings(
-              enableCoordinates: showCoordinates,
+              enableCoordinates:
+                  showCoordinates && boardSettings.showCoordinates,
               // Use theme colors from settings with our custom app colors
               colorScheme: boardSettings.colorScheme,
               // Use piece set from settings

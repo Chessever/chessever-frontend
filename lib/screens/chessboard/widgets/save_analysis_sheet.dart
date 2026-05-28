@@ -121,7 +121,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   late TextEditingController _newFolderNameController;
   late FocusNode _newFolderNameFocusNode;
 
-  // ChessBase-style metadata controllers
+  // Reference database-style metadata controllers
   late TextEditingController _whiteSurnameController;
   late TextEditingController _whiteFirstNameController;
   late TextEditingController _blackSurnameController;
@@ -962,8 +962,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               _isSaving
                   ? null
                   : (String? newValue) {
-                    if (newValue != null)
+                    if (newValue != null) {
                       setState(() => _selectedResult = newValue);
+                    }
                   },
           items:
               results.map<DropdownMenuItem<String>>((String value) {
