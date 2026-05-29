@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/screens/player_profile/widgets/performance_stats_row.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -526,9 +527,8 @@ class ScoreCardScreen extends ConsumerWidget {
           if (playerRating > 0) {
             final tc = game.timeControl;
             final fideK = tc != null ? playerRatings?.getK(tc) : null;
-            final fidePlayerRating = tc != null
-                ? playerRatings?.getRating(tc)?.toDouble()
-                : null;
+            final fidePlayerRating =
+                tc != null ? playerRatings?.getRating(tc)?.toDouble() : null;
             final ratingChange = _calculateFideRatingChange(
               playerRating,
               opponentRating,
@@ -724,7 +724,9 @@ class ScoreCardScreen extends ConsumerWidget {
                           Icon(
                             Icons.info_outline,
                             size: 40.ic,
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                           SizedBox(height: 12.h),
                           Text(
@@ -732,7 +734,9 @@ class ScoreCardScreen extends ConsumerWidget {
                                 ? 'No games in this tournament'
                                 : 'No games available',
                             style: AppTypography.textSmMedium.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                           SizedBox(height: 6.h),
@@ -742,7 +746,9 @@ class ScoreCardScreen extends ConsumerWidget {
                                 : 'Games will appear once they are played',
                             textAlign: TextAlign.center,
                             style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.5),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.5,
+                              ),
                             ),
                           ),
                         ],
@@ -779,9 +785,10 @@ class ScoreCardScreen extends ConsumerWidget {
                         final tc = game.timeControl;
                         final fideK =
                             tc != null ? playerRatings?.getK(tc) : null;
-                        final fidePlayerRating = tc != null
-                            ? playerRatings?.getRating(tc)?.toDouble()
-                            : null;
+                        final fidePlayerRating =
+                            tc != null
+                                ? playerRatings?.getRating(tc)?.toDouble()
+                                : null;
                         ratingChange = _calculateFideRatingChange(
                           playerRating,
                           opponentRating,
@@ -863,18 +870,19 @@ class ScoreCardScreen extends ConsumerWidget {
   }
 
   String _getPlayerResult(GamesTourModel game, bool isWhite) {
-    switch (game.gameStatus) {
-      case GameStatus.whiteWins:
-        return isWhite ? '1' : '0';
-      case GameStatus.blackWins:
-        return isWhite ? '0' : '1';
-      case GameStatus.draw:
-        return '½';
-      case GameStatus.ongoing:
-        return '–';
-      case GameStatus.unknown:
-        return '-';
+    if (isArmageddonGame(game)) {
+      return customAwareResultLabelForSide(
+            game.gameStatus,
+            isWhite: isWhite,
+            customPoints:
+                isWhite
+                    ? game.whitePlayer.customPoints
+                    : game.blackPlayer.customPoints,
+          ) ??
+          '-';
     }
+
+    return boardResultLabelForSide(game, isWhite: isWhite) ?? '-';
   }
 
   String? _buildRoundLabel(GamesTourModel game) {
@@ -1081,14 +1089,20 @@ class _PlayerHeaderRow extends StatelessWidget {
                   ),
                 TextSpan(
                   text: name,
-                  style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+                  style: AppTypography.textMdBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
               ],
             ),
           ),
         ),
         if (hasTournamentContext)
-          Icon(Icons.keyboard_arrow_down, color: context.colors.textPrimaryMuted, size: 20.ic),
+          Icon(
+            Icons.keyboard_arrow_down,
+            color: context.colors.textPrimaryMuted,
+            size: 20.ic,
+          ),
       ],
     );
   }
@@ -1437,7 +1451,7 @@ class _RatingDisplay extends ConsumerWidget {
                   () => Skeletonizer(
                     enabled: true,
                     ignoreContainers: true,
-                    effect:  ShimmerEffect(
+                    effect: ShimmerEffect(
                       baseColor: context.colors.surfaceRecessed,
                       highlightColor: context.colors.divider,
                     ),
@@ -1503,12 +1517,18 @@ class _PlayerSelectionSheet extends ConsumerWidget {
             children: [
               Text(
                 'Select Player',
-                style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textMdBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
               const Spacer(),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: Icon(Icons.close, color: context.colors.textPrimaryMuted, size: 20.ic),
+                child: Icon(
+                  Icons.close,
+                  color: context.colors.textPrimaryMuted,
+                  size: 20.ic,
+                ),
               ),
             ],
           ),
@@ -1543,7 +1563,8 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                     horizontal: 16.sp,
                     vertical: 10.h,
                   ),
-                  color: isSelected ? context.colors.surface : Colors.transparent,
+                  color:
+                      isSelected ? context.colors.surface : Colors.transparent,
                   child: Row(
                     children: [
                       // Country flag
@@ -1566,7 +1587,10 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                         child: Text(
                           '${player.title != null && player.title!.isNotEmpty ? '${player.title} ' : ''}${player.name}',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: isSelected ? kGreenColor : context.colors.textPrimary,
+                            color:
+                                isSelected
+                                    ? kGreenColor
+                                    : context.colors.textPrimary,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
