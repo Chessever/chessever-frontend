@@ -1259,7 +1259,18 @@ class _GamesAppBarNotifier
 
   /// Recompute statuses on live-rounds change, update selection only if the user
   /// hasn’t made a sticky pick.
+  ///
+  /// **Transient-empty guard:** `settings` is in the realtime publication, so
+  /// reconnect snapshots and momentary empty re-emits can arrive. Treating
+  /// empty-after-non-empty as "no rounds are live" would flip every live
+  /// round out and back. Drop empty-after-non-empty unless backend
+  /// corroborates emptiness on a subsequent emission.
+  /// See docs/superpowers/specs/2026-05-29-realtime-live-games-implementation-plan.md
+  /// change #3.
   void _onLiveRoundsChanged(List<String> newLive) {
+    if (newLive.isEmpty && _liveRounds.isNotEmpty) {
+      return;
+    }
     _liveRounds = List.unmodifiable(newLive);
 
     final current = state.valueOrNull;

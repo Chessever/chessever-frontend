@@ -1,0 +1,18 @@
+-- Adds public.settings to the supabase_realtime publication so that
+-- updates to live_round_ids / live_tour_ids / live_group_broadcast_ids
+-- push as WAL deltas to subscribed Flutter clients.
+--
+-- Fixes Trello card #654 "Phone event refresh should fetch later live rounds".
+-- The .stream() subscription on `settings` previously delivered exactly one
+-- snapshot at subscribe time (because the table was not in the publication),
+-- which froze client-side round-status computation. After this migration
+-- the stream emits real-time updates.
+--
+-- Companion client guards (mandatory): for_you_games_provider.dart
+-- listEquals guards prevent a refetch storm on no-op WAL writes; the
+-- writer (chessever_data_hub `upsert_live_job_ids`) sends a full payload
+-- per main-loop pass with no dedup, so identical-value re-writes are
+-- routine. See docs/superpowers/specs/2026-05-29-realtime-live-games-implementation-plan.md
+--
+-- Revert: ALTER PUBLICATION supabase_realtime DROP TABLE public.settings;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.settings;

@@ -59,9 +59,17 @@ class GamesAppBarModel extends Equatable {
     }
 
     if (startsAt.isBefore(now) || startsAt.isAtSameMomentAs(now)) {
-      if (startsAt.day == now.day &&
-          startsAt.month == now.month &&
-          startsAt.year == now.year) {
+      // Day-boundary fix: a round that started at 23:50 must not flip to
+      // `completed` at local midnight while still in progress. Use a rolling
+      // 24h window instead of same-calendar-day. Backend `liveRound`
+      // membership (checked above) is the authoritative live signal; this
+      // ongoing/completed classification is a fallback for rounds that the
+      // backend has dropped from `live_round_ids` but that are still within
+      // a plausible play window for any time control.
+      // See docs/superpowers/specs/2026-05-29-realtime-live-games-implementation-plan.md
+      // change #4.
+      final hoursSinceStart = now.difference(startsAt).inHours;
+      if (hoursSinceStart < 24) {
         return RoundStatus.ongoing;
       } else {
         return RoundStatus.completed;

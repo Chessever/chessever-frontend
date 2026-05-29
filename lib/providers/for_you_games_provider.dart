@@ -165,10 +165,24 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     ref.listen(currentUserProvider, (_, __) {
       bumpForYouEventsRefreshSignal(ref);
     });
-    ref.listen(liveTourIdProvider, (_, __) {
+    // Equality-guarded: `settings` is in the realtime publication, so these
+    // streams re-emit on every WAL write (writer has no dedup; no updated_at).
+    // Without the guard, every no-op write fans a full For-You slice refetch
+    // across every visible event card. See
+    // docs/superpowers/specs/2026-05-29-realtime-live-games-implementation-plan.md
+    // change #2.
+    ref.listen<AsyncValue<List<String>>>(liveTourIdProvider, (prev, next) {
+      final prevList = prev?.valueOrNull;
+      final nextList = next.valueOrNull;
+      if (nextList == null) return;
+      if (listEquals(prevList, nextList)) return;
       bumpForYouEventsRefreshSignal(ref);
     });
-    ref.listen(liveRoundsIdProvider, (_, __) {
+    ref.listen<AsyncValue<List<String>>>(liveRoundsIdProvider, (prev, next) {
+      final prevList = prev?.valueOrNull;
+      final nextList = next.valueOrNull;
+      if (nextList == null) return;
+      if (listEquals(prevList, nextList)) return;
       bumpForYouEventsRefreshSignal(ref);
     });
   }
