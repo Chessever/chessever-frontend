@@ -55,6 +55,7 @@ import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -1385,6 +1386,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
+    if (kDebugMode) {
+      return true;
+    }
     return GameFilterHelper.isLiveNow(game);
   }
 
