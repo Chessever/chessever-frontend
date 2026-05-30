@@ -42,6 +42,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -14489,23 +14490,16 @@ class _EventInfoSheet extends ConsumerWidget {
   ) {
     final headers = _parseHeadersFromPgn();
 
-    // Determine event name: PGN [Event] > game.tourSlug > game.tourId (if not UUID)
-    String eventName = 'Game Info';
-    if (headers['Event'] != null &&
-        headers['Event']!.isNotEmpty &&
-        headers['Event'] != '?') {
-      eventName = headers['Event']!;
-    } else if (game.tourSlug != null && game.tourSlug!.isNotEmpty) {
-      eventName = StringUtils.slugToTitle(game.tourSlug!);
-    } else if (game.tourId.isNotEmpty) {
-      final isUuid = RegExp(
-        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-        caseSensitive: false,
-      ).hasMatch(game.tourId);
-      if (!isUuid) {
-        eventName = game.tourId;
-      }
-    }
+    // Determine event name. In TWIC player-profile routes, raw PGN Event can
+    // be a per-round/pairing label; prefer the canonical event from the game
+    // list when that happens.
+    final pgnEvent = headers['Event'];
+    final eventName = preferredTwicEventTitle(
+      pgnEvent: pgnEvent,
+      tourSlug: game.tourSlug,
+      tourId: game.tourId,
+      fallback: 'Game Info',
+    );
 
     return ListView(
       controller: scrollController,
