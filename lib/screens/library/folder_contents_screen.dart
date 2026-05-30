@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
+import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
@@ -45,6 +47,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   late final TextEditingController _searchController;
   late final BookPaginationKey _paginationKey;
   final Set<String> _removingIds = {};
+  GamebaseSortField _sortBy = GamebaseSortField.date;
+  GamebaseSortDirection _sortDirection = GamebaseSortDirection.desc;
   // Overrides widget.folder.name after an in-place rename so the header
   // reflects the new name without needing to pop/reopen.
   String? _overrideFolderName;
@@ -94,6 +98,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   void _clearSearch() {
     HapticFeedbackService.light();
     _searchController.clear();
+  }
+
+  void _showSortOptions() {
+    HapticFeedbackService.buttonPress();
+    showGamebaseSortOptions(
+      context: context,
+      sortBy: _sortBy,
+      sortDirection: _sortDirection,
+      onChanged: (field, direction) {
+        if (!mounted) return;
+        setState(() {
+          _sortBy = field;
+          _sortDirection = direction;
+        });
+      },
+    );
   }
 
   Future<void> _removeAnalysis(SavedAnalysis analysis) async {
@@ -679,56 +699,137 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildSearchBar() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: Container(
-        height: 38.h,
-        decoration: BoxDecoration(
-          color: context.colors.textPrimary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10.br),
-        ),
-        child: Row(
-          children: [
-            SizedBox(width: 12.w),
-            Icon(
-              Icons.search_rounded,
-              size: 18.sp,
-              color: const Color(0xFFA1A1AA),
-            ),
-            SizedBox(width: 8.w),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Search games...',
-                  hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  isDense: true,
-                ),
+    final searchField = Container(
+      height: 38.h,
+      decoration: BoxDecoration(
+        color: context.colors.textPrimary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10.br),
+      ),
+      child: Row(
+        children: [
+          SizedBox(width: 12.w),
+          Icon(
+            Icons.search_rounded,
+            size: 18.sp,
+            color: const Color(0xFFA1A1AA),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary,
               ),
-            ),
-            if (_searchController.text.isNotEmpty) ...[
-              GestureDetector(
-                onTap: _clearSearch,
-                child: Icon(
-                  Icons.close,
-                  size: 20.sp,
+              decoration: InputDecoration(
+                hintText: 'Search games...',
+                hintStyle: AppTypography.textSmRegular.copyWith(
                   color: const Color(0xFFA1A1AA),
                 ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                isDense: true,
               ),
-              SizedBox(width: 8.w),
-            ],
+            ),
+          ),
+          if (_searchController.text.isNotEmpty) ...[
+            GestureDetector(
+              onTap: _clearSearch,
+              child: Icon(
+                Icons.close,
+                size: 20.sp,
+                color: const Color(0xFFA1A1AA),
+              ),
+            ),
             SizedBox(width: 8.w),
           ],
-        ),
+          SizedBox(width: 8.w),
+        ],
       ),
     );
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      child: Row(
+        children: [
+          Expanded(child: searchField),
+          if (_isDatabase) ...[
+            SizedBox(width: 8.w),
+            GestureDetector(
+              onTap: _showSortOptions,
+              child: Container(
+                width: 38.h,
+                height: 38.h,
+                decoration: BoxDecoration(
+                  color: context.colors.textPrimary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10.br),
+                  border: Border.all(
+                    color: context.colors.textPrimary.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Icon(
+                  _sortDirection == GamebaseSortDirection.desc
+                      ? Icons.south_rounded
+                      : Icons.north_rounded,
+                  size: 18.sp,
+                  color: kPrimaryColor,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  int _ratingFromMetadata(SavedAnalysis analysis, String key) {
+    final value = analysis.chessGame.metadata[key];
+    if (value is num) return value.toInt();
+    final text = value?.toString() ?? '';
+    final digits = RegExp(r'\d+').firstMatch(text)?.group(0);
+    return int.tryParse(digits ?? '') ?? 0;
+  }
+
+  DateTime _gameDate(SavedAnalysis analysis) {
+    final raw = analysis.chessGame.metadata['Date']?.toString().trim() ?? '';
+    if (raw.isNotEmpty && raw != '????.??.??') {
+      final normalized = raw.replaceAll('.', '-').replaceAll('?', '01');
+      final parsed = DateTime.tryParse(normalized);
+      if (parsed != null) return parsed;
+    }
+    return analysis.createdAt;
+  }
+
+  int _sortValue(SavedAnalysis analysis, GamebaseSortField field) {
+    switch (field) {
+      case GamebaseSortField.whiteElo:
+        return _ratingFromMetadata(analysis, 'WhiteElo');
+      case GamebaseSortField.blackElo:
+        return _ratingFromMetadata(analysis, 'BlackElo');
+      case GamebaseSortField.avgElo:
+        final white = _ratingFromMetadata(analysis, 'WhiteElo');
+        final black = _ratingFromMetadata(analysis, 'BlackElo');
+        if (white > 0 && black > 0) return ((white + black) / 2).round();
+        return white > 0 ? white : black;
+      case GamebaseSortField.date:
+        return _gameDate(analysis).millisecondsSinceEpoch;
+    }
+  }
+
+  List<SavedAnalysis> _sortAnalyses(List<SavedAnalysis> analyses) {
+    final sorted = List<SavedAnalysis>.from(analyses);
+    sorted.sort((a, b) {
+      final comparison = _sortValue(
+        a,
+        _sortBy,
+      ).compareTo(_sortValue(b, _sortBy));
+      final directed =
+          _sortDirection == GamebaseSortDirection.asc
+              ? comparison
+              : -comparison;
+      if (directed != 0) return directed;
+      return b.createdAt.compareTo(a.createdAt);
+    });
+    return sorted;
   }
 
   Widget _buildSavedGames(
@@ -753,19 +854,20 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         data: (bookState) {
           final analyses =
               _isDatabase ? bookState.games : const <SavedAnalysis>[];
-          final filteredAnalyses =
-              analyses.where((analysis) {
-                if (query.isEmpty) return true;
-                final md = analysis.chessGame.metadata;
-                final title = analysis.title.toLowerCase();
-                final white = (md['White'] ?? '').toString().toLowerCase();
-                final black = (md['Black'] ?? '').toString().toLowerCase();
-                final event = (md['Event'] ?? '').toString().toLowerCase();
-                return title.contains(query) ||
-                    white.contains(query) ||
-                    black.contains(query) ||
-                    event.contains(query);
-              }).toList();
+          final filteredAnalyses = _sortAnalyses(
+            analyses.where((analysis) {
+              if (query.isEmpty) return true;
+              final md = analysis.chessGame.metadata;
+              final title = analysis.title.toLowerCase();
+              final white = (md['White'] ?? '').toString().toLowerCase();
+              final black = (md['Black'] ?? '').toString().toLowerCase();
+              final event = (md['Event'] ?? '').toString().toLowerCase();
+              return title.contains(query) ||
+                  white.contains(query) ||
+                  black.contains(query) ||
+                  event.contains(query);
+            }).toList(),
+          );
 
           // Filter child folders if query is present
           final filteredFolders =

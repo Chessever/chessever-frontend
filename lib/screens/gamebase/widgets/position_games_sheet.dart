@@ -17,6 +17,117 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 
+typedef GamebaseSortChanged =
+    void Function(GamebaseSortField field, GamebaseSortDirection direction);
+
+Future<void> showGamebaseSortOptions({
+  required BuildContext context,
+  required GamebaseSortField sortBy,
+  required GamebaseSortDirection sortDirection,
+  required GamebaseSortChanged onChanged,
+}) {
+  return showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder:
+        (ctx) => StatefulBuilder(
+          builder: (context, setModalState) {
+            final bottomPadding = MediaQuery.of(ctx).padding.bottom;
+            void handleTap(GamebaseSortField field) {
+              final nextDirection =
+                  sortBy == field
+                      ? (sortDirection == GamebaseSortDirection.desc
+                          ? GamebaseSortDirection.asc
+                          : GamebaseSortDirection.desc)
+                      : GamebaseSortDirection.desc;
+              setModalState(() {});
+              Navigator.pop(ctx);
+              onChanged(field, nextDirection);
+            }
+
+            return Container(
+              decoration: BoxDecoration(
+                color: context.colors.surfaceRecessed,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(20.br),
+                ),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                16.w,
+                24.h,
+                16.w,
+                bottomPadding + 16.h,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Sort Games',
+                        style: TextStyle(
+                          color: context.colors.textPrimary,
+                          fontSize: 18.f,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => Navigator.pop(ctx),
+                        borderRadius: BorderRadius.circular(20.br),
+                        child: Container(
+                          padding: EdgeInsets.all(4.w),
+                          decoration: BoxDecoration(
+                            color: context.colors.surface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            color: Colors.grey,
+                            size: 20.sp,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 24.h),
+                  _SortOptionTile(
+                    title: 'Average Rating',
+                    isSelected: sortBy == GamebaseSortField.avgElo,
+                    sortDirection: sortDirection,
+                    onTap: () => handleTap(GamebaseSortField.avgElo),
+                  ),
+                  SizedBox(height: 8.h),
+                  _SortOptionTile(
+                    title: 'White Rating',
+                    isSelected: sortBy == GamebaseSortField.whiteElo,
+                    sortDirection: sortDirection,
+                    onTap: () => handleTap(GamebaseSortField.whiteElo),
+                  ),
+                  SizedBox(height: 8.h),
+                  _SortOptionTile(
+                    title: 'Black Rating',
+                    isSelected: sortBy == GamebaseSortField.blackElo,
+                    sortDirection: sortDirection,
+                    onTap: () => handleTap(GamebaseSortField.blackElo),
+                  ),
+                  SizedBox(height: 8.h),
+                  _SortOptionTile(
+                    title: 'Year / Date',
+                    isSelected: sortBy == GamebaseSortField.date,
+                    sortDirection: sortDirection,
+                    onTap: () => handleTap(GamebaseSortField.date),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+  );
+}
+
 class PositionGamesSheet extends ConsumerStatefulWidget {
   const PositionGamesSheet({
     super.key,
@@ -120,12 +231,14 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   }
 
   Future<GamebaseSearchQueryResponse> _fetchFenPage(int pageNumber) {
-    final timeControlFilter = widget.filters.timeControls.isNotEmpty
-        ? widget.filters.timeControls.first
-        : null;
-    final playerIdFilter = widget.filters.playerIds.isNotEmpty
-        ? widget.filters.playerIds.first
-        : null;
+    final timeControlFilter =
+        widget.filters.timeControls.isNotEmpty
+            ? widget.filters.timeControls.first
+            : null;
+    final playerIdFilter =
+        widget.filters.playerIds.isNotEmpty
+            ? widget.filters.playerIds.first
+            : null;
     return ref
         .read(gamebaseRepositoryProvider)
         .getFenPositionGames(
@@ -169,11 +282,12 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
     final requestToken = ++_requestToken;
     try {
-      final response = widget.useFenEndpoint
-          ? await _fetchFenPage(_nextPageNumber)
-          : await ref.read(
-              positionGamesProvider(_buildQuery(_nextPageNumber)).future,
-            );
+      final response =
+          widget.useFenEndpoint
+              ? await _fetchFenPage(_nextPageNumber)
+              : await ref.read(
+                positionGamesProvider(_buildQuery(_nextPageNumber)).future,
+              );
       if (!mounted || requestToken != _requestToken) return;
 
       final mergedRows = List<Map<String, dynamic>>.from(_rows);
@@ -226,141 +340,18 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   }
 
   void _showSortOptions() {
-    showModalBottomSheet(
+    showGamebaseSortOptions(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder:
-          (ctx) => StatefulBuilder(
-            builder: (context, setModalState) {
-              final bottomPadding = MediaQuery.of(ctx).padding.bottom;
-              return Container(
-                decoration: BoxDecoration(
-                  color: context.colors.surfaceRecessed,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(20.br),
-                  ),
-                ),
-                padding: EdgeInsets.fromLTRB(
-                  16.w,
-                  24.h,
-                  16.w,
-                  bottomPadding + 16.h,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Sort Games',
-                          style: TextStyle(
-                            color: context.colors.textPrimary,
-                            fontSize: 18.f,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        InkWell(
-                          onTap: () => Navigator.pop(ctx),
-                          borderRadius: BorderRadius.circular(20.br),
-                          child: Container(
-                            padding: EdgeInsets.all(4.w),
-                            decoration: BoxDecoration(
-                              color: context.colors.surface,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.close,
-                              color: Colors.grey,
-                              size: 20.sp,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 24.h),
-                    _SortOptionTile(
-                      title: 'Average Rating',
-                      isSelected: _sortBy == GamebaseSortField.avgElo,
-                      sortDirection: _sortDirection,
-                      onTap: () {
-                        _handleSortTap(
-                          GamebaseSortField.avgElo,
-                          setModalState,
-                          ctx,
-                        );
-                      },
-                    ),
-                    SizedBox(height: 8.h),
-                    _SortOptionTile(
-                      title: 'White Rating',
-                      isSelected: _sortBy == GamebaseSortField.whiteElo,
-                      sortDirection: _sortDirection,
-                      onTap: () {
-                        _handleSortTap(
-                          GamebaseSortField.whiteElo,
-                          setModalState,
-                          ctx,
-                        );
-                      },
-                    ),
-                    SizedBox(height: 8.h),
-                    _SortOptionTile(
-                      title: 'Black Rating',
-                      isSelected: _sortBy == GamebaseSortField.blackElo,
-                      sortDirection: _sortDirection,
-                      onTap: () {
-                        _handleSortTap(
-                          GamebaseSortField.blackElo,
-                          setModalState,
-                          ctx,
-                        );
-                      },
-                    ),
-                    SizedBox(height: 8.h),
-                    _SortOptionTile(
-                      title: 'Year / Date',
-                      isSelected: _sortBy == GamebaseSortField.date,
-                      sortDirection: _sortDirection,
-                      onTap: () {
-                        _handleSortTap(
-                          GamebaseSortField.date,
-                          setModalState,
-                          ctx,
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+      sortBy: _sortBy,
+      sortDirection: _sortDirection,
+      onChanged: (field, direction) {
+        setState(() {
+          _sortBy = field;
+          _sortDirection = direction;
+        });
+        _fetchPage(reset: true);
+      },
     );
-  }
-
-  void _handleSortTap(
-    GamebaseSortField field,
-    StateSetter setModalState,
-    BuildContext ctx,
-  ) {
-    setModalState(() {
-      if (_sortBy == field) {
-        // Toggle direction
-        _sortDirection =
-            _sortDirection == GamebaseSortDirection.desc
-                ? GamebaseSortDirection.asc
-                : GamebaseSortDirection.desc;
-      } else {
-        // Switch field, default to desc
-        _sortBy = field;
-        _sortDirection = GamebaseSortDirection.desc;
-      }
-    });
-    setState(() {});
-    Navigator.pop(ctx);
-    _fetchPage(reset: true);
   }
 
   String get _countText {
@@ -606,7 +597,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
       context: context,
       barrierDismissible: false,
       builder:
-          (ctx) =>  Center(
+          (ctx) => Center(
             child: CircularProgressIndicator(color: context.colors.textPrimary),
           ),
     );
@@ -702,7 +693,10 @@ class _PositionGamesFooter extends StatelessWidget {
             SizedBox(width: 10.w),
             Text(
               'Loading more games...',
-              style: TextStyle(color: context.colors.textPrimaryMuted, fontSize: 12.f),
+              style: TextStyle(
+                color: context.colors.textPrimaryMuted,
+                fontSize: 12.f,
+              ),
             ),
           ],
         ),
@@ -736,7 +730,10 @@ class _PositionGamesFooter extends StatelessWidget {
         child: Center(
           child: Text(
             'Loaded all $totalCount games',
-            style: TextStyle(color: context.colors.textSecondary, fontSize: 12.f),
+            style: TextStyle(
+              color: context.colors.textSecondary,
+              fontSize: 12.f,
+            ),
           ),
         ),
       );
@@ -805,7 +802,11 @@ class _Header extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.sort_rounded, color: context.colors.textPrimaryMuted, size: 15.sp),
+                    Icon(
+                      Icons.sort_rounded,
+                      color: context.colors.textPrimaryMuted,
+                      size: 15.sp,
+                    ),
                     SizedBox(width: 5.w),
                     Text(
                       'Sort',
@@ -822,7 +823,11 @@ class _Header extends StatelessWidget {
           ],
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(Icons.close, color: context.colors.textSecondary, size: 22.ic),
+            icon: Icon(
+              Icons.close,
+              color: context.colors.textSecondary,
+              size: 22.ic,
+            ),
             tooltip: 'Close',
           ),
         ],
@@ -889,7 +894,8 @@ class _SortOptionTile extends StatelessWidget {
               child: Text(
                 title,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: isSelected ? kPrimaryColor : context.colors.textPrimary,
+                  color:
+                      isSelected ? kPrimaryColor : context.colors.textPrimary,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
