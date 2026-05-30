@@ -3050,7 +3050,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
     return ValueListenableBuilder<LikeFlightPhase>(
       valueListenable: anchor.phase,
-      builder: (context, phase, _) {
+      builder: (context, _, __) {
         // Idle (disk/save/saving) icon — exactly the original autosave UI,
         // with a small heart badge in the corner if the game is liked.
         Widget diskIcon;
@@ -3110,49 +3110,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
           );
         }
 
-        // Heart icon overlay — SAME Icon widget across bursting/flying/landed,
-        // only its IconData mutates between border ↔ filled. This swap
-        // happens in a single repaint, so no cross-fade flicker between two
-        // stacked hearts as before.
-        //
-        // IMPORTANT: the data is `filled` for BOTH `landed` AND `idle`. If
-        // idle flipped back to border, the heart layer's fade-out (landed →
-        // idle) would briefly show the EMPTY heart before opacity reaches 0
-        // — that was the user-reported flash. With data = filled during
-        // idle too, the fade-out stays filled the entire way.
-        final heartShown = phase != LikeFlightPhase.idle;
-        final isReceivingPhase = phase == LikeFlightPhase.bursting ||
-            phase == LikeFlightPhase.flying;
-        final heartIcon = Icon(
-          isReceivingPhase
-              ? Icons.favorite_border_rounded
-              : Icons.favorite_rounded,
-          color: context.colors.danger,
-          size: 20.sp,
-        );
-
-        // Outer AnimatedOpacity-based cross-fade between disk and heart —
-        // the ONLY fading happens at this layer (heart ↔ disk), never
-        // between two hearts.
-        final morph = Stack(
-          alignment: Alignment.center,
-          children: [
-            AnimatedOpacity(
-              opacity: heartShown ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeInOut,
-              child: diskIcon,
-            ),
-            AnimatedOpacity(
-              opacity: heartShown ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeInOut,
-              child: heartIcon,
-            ),
-          ],
-        );
+        // The header action must remain the save/edit action at all times.
+        // A double-tap like is represented only by the small red badge above;
+        // the flight phase still uses the keyed slot as its target, but it must
+        // not replace the save icon with a full heart in the AppBar.
         return IconButton(
-          icon: KeyedSubtree(key: anchor.saveButtonKey, child: morph),
+          icon: KeyedSubtree(key: anchor.saveButtonKey, child: diskIcon),
           tooltip: isEditableLibraryGame ? 'Edit details' : 'Save analysis',
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         );
@@ -7193,11 +7156,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   ///
   /// On LIKE, the chained sequence is:
   ///   1. Burst spawns on the board.
-  ///   2. Save button slot morphs to an empty-heart outline (`bursting`).
+  ///   2. Save button slot stays as the normal save/edit icon.
   ///   3. When the burst finishes, a small "flying heart" overlay tweens
   ///      from the burst's screen position to the save-button slot.
-  ///   4. On landing, the slot flashes a filled red heart, then reverts to
-  ///      the disk icon with a small red heart badge (game is now liked).
+  ///   4. On landing, the save/edit icon remains visible with a small red heart
+  ///      badge under it (game is now liked).
   void _handleDoubleTapLike() {
     final game = widget.game;
     debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
@@ -7220,7 +7183,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // Stronger initial "thump" — feels tactile under a real double-tap.
       // No haptic for unlike (intentional asymmetry per user feedback).
       HapticFeedback.mediumImpact();
-      anchor.start(); // save button morphs to empty heart
+      anchor.start(); // save button slot receives the incoming heart flight
     }
 
     _burstController.spawn(

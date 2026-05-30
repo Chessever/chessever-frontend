@@ -6,13 +6,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 ///
 /// idle      → no animation in flight. Save button renders its normal disk
 ///             (with a small heart badge if the current game is liked).
-/// bursting  → the big board heart-burst is playing. Save button slot morphs
-///             to an empty-heart outline, ready to receive the inbound heart.
+/// bursting  → the big board heart-burst is playing. Save button slot remains
+///             the normal save/edit action; it is only used as a flight target.
 /// flying    → the burst's main heart has shrunk and is tweening across the
 ///             screen toward the save-button slot via an Overlay.
-/// landed    → the heart just landed in the slot. Slot flashes a filled red
-///             heart (quick scale-bounce) before reverting to the disk-with-
-///             badge state.
+/// landed    → the heart just landed in the slot. The slot stays as the
+///             save/edit icon with a small red badge when the game is liked.
 enum LikeFlightPhase { idle, bursting, flying, landed }
 
 /// Per-board anchor that lets the board's double-tap-to-like handler talk
