@@ -6,18 +6,18 @@ import 'package:flutter/material.dart';
 
 enum AddToLibraryChoice { createDatabase, importPgn, pickPgnFile }
 
-/// Bottom sheet that offers the three "add to library" entry points:
-/// creating a new (sub-)database, importing a PGN from clipboard, and
-/// picking a `.pgn` file from the device.
+/// Bottom sheet that offers library entry points:
+/// creating a new folder/database and, for database targets, importing PGN.
 ///
-/// Pass [showCreateDatabase] = false to hide the create option — e.g. when
-/// shown from inside a sub-database where deeper nesting isn't allowed.
+/// Pass [showImports] = false when the current node is an organizational folder
+/// because folders should not receive games directly.
 Future<AddToLibraryChoice?> showAddToLibrarySheet(
   BuildContext context, {
   String title = 'Add to Library',
   bool showCreateDatabase = true,
-  String createDatabaseTitle = 'Create Database',
-  String createDatabaseSubtitle = 'New empty database or sub-database',
+  String createDatabaseTitle = 'Create Folder or Database',
+  String createDatabaseSubtitle = 'New folder or game database',
+  bool showImports = true,
 }) {
   return showModalBottomSheet<AddToLibraryChoice>(
     context: context,
@@ -65,29 +65,31 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
                     color: context.colors.textPrimary.withValues(alpha: 0.05),
                   ),
                 ],
-                _AddSourceTile(
-                  icon: Icons.content_paste_go_rounded,
-                  title: 'Import PGN',
-                  subtitle: 'Paste one or more games from clipboard',
-                  onTap:
-                      () => Navigator.of(
-                        context,
-                      ).pop(AddToLibraryChoice.importPgn),
-                ),
-                Divider(
-                  height: 1,
-                  thickness: 0.5,
-                  color: context.colors.textPrimary.withValues(alpha: 0.05),
-                ),
-                _AddSourceTile(
-                  icon: Icons.folder_open_rounded,
-                  title: 'Import PGN file',
-                  subtitle: 'Choose a .pgn file from your device',
-                  onTap:
-                      () => Navigator.of(
-                        context,
-                      ).pop(AddToLibraryChoice.pickPgnFile),
-                ),
+                if (showImports) ...[
+                  _AddSourceTile(
+                    icon: Icons.content_paste_go_rounded,
+                    title: 'Import PGN',
+                    subtitle: 'Paste one or more games from clipboard',
+                    onTap:
+                        () => Navigator.of(
+                          context,
+                        ).pop(AddToLibraryChoice.importPgn),
+                  ),
+                  Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: context.colors.textPrimary.withValues(alpha: 0.05),
+                  ),
+                  _AddSourceTile(
+                    icon: Icons.folder_open_rounded,
+                    title: 'Import PGN file',
+                    subtitle: 'Choose a .pgn file from your device',
+                    onTap:
+                        () => Navigator.of(
+                          context,
+                        ).pop(AddToLibraryChoice.pickPgnFile),
+                  ),
+                ],
                 SizedBox(height: 8.h),
               ],
             ),

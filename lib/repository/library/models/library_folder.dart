@@ -4,6 +4,9 @@ part 'library_folder.mapper.dart';
 
 @MappableClass()
 class LibraryFolder with LibraryFolderMappable {
+  static const nodeTypeFolder = 'folder';
+  static const nodeTypeDatabase = 'database';
+
   final String id;
   final String userId;
   final String name;
@@ -15,6 +18,7 @@ class LibraryFolder with LibraryFolderMappable {
   final String? shareToken;
   final String? ownerDisplayName;
   final String? parentId;
+  final String nodeType;
 
   /// Client-side only — true when this folder was fetched via subscription.
   /// Not stored in DB; set by the provider layer.
@@ -32,6 +36,7 @@ class LibraryFolder with LibraryFolderMappable {
     this.shareToken,
     this.ownerDisplayName,
     this.parentId,
+    this.nodeType = nodeTypeDatabase,
     this.isSubscribed = false,
   });
 
@@ -48,6 +53,7 @@ class LibraryFolder with LibraryFolderMappable {
       updatedAt: DateTime.parse(json['updated_at'] as String),
       shareToken: json['share_token'] as String?,
       parentId: json['parent_id'] as String?,
+      nodeType: json['node_type'] as String? ?? nodeTypeDatabase,
     );
   }
 
@@ -60,6 +66,7 @@ class LibraryFolder with LibraryFolderMappable {
       'icon': icon,
       'order_index': orderIndex,
       'parent_id': parentId,
+      'node_type': nodeType,
     };
   }
 
@@ -75,6 +82,10 @@ class LibraryFolder with LibraryFolderMappable {
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'parent_id': parentId,
+      'node_type': nodeType,
     };
   }
+
+  bool get isDatabase => nodeType == nodeTypeDatabase;
+  bool get isFolder => nodeType == nodeTypeFolder;
 }

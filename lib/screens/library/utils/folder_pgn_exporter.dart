@@ -13,7 +13,7 @@ const _kBrandSource = 'Chessever';
 typedef FolderExportProgress = void Function(int processed, int total);
 
 /// A single PGN file produced by [exportFolderTreeAsPgnFiles]. Each entry
-/// maps 1:1 to one folder in the tree — the root plus one per sub-database.
+/// maps 1:1 to one folder in the tree — the root plus one per child node.
 class FolderPgnFile {
   final String filename;
   final String pgn;
@@ -32,7 +32,7 @@ class FolderPgnFile {
 /// * `Source`: "Chessever"
 /// * `SourceURL`: direct link to the shared database (if [shareToken] is set)
 ///
-/// Only the folder's **direct** games are included — sub-database games are
+/// Only the folder's **direct** games are included — child node games are
 /// exported separately via [exportFolderTreeAsPgnFiles]. Games are streamed
 /// in pages and concatenated with blank lines between them. Progress updates
 /// are issued after each page via [onProgress].

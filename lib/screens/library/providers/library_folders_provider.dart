@@ -73,8 +73,8 @@ final recentDatabasesProvider = Provider.autoDispose<List<LibraryFolder>>((
   ref,
 ) {
   final all = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
-  // Exclude TWIC and sort by updatedAt desc
-  final owned = all.where((f) => f.id != kTwicBookId).toList();
+  // Exclude TWIC/folders and sort databases by updatedAt desc
+  final owned = all.where((f) => f.id != kTwicBookId && f.isDatabase).toList();
   owned.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   return owned.take(3).toList();
 });

@@ -97,7 +97,11 @@ class _SaveAnalysisSheet extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(context, alpha: 0.97, borderRadius: 28.sp),
+        decoration: ChessSheetDecoration.dark(
+          context,
+          alpha: 0.97,
+          borderRadius: 28.sp,
+        ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -325,6 +329,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           name: newFolderName,
           color:
               '#${_selectedFolderColor.toARGB32().toRadixString(16).substring(2)}',
+          nodeType: LibraryFolder.nodeTypeDatabase,
         );
         targetFolderId = newFolder.id;
       }
@@ -483,7 +488,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 SizedBox(width: 12.w),
                 Expanded(
                   child: Text(
-                    _isEditMode ? 'Game updated' : 'Analysis saved successfully',
+                    _isEditMode
+                        ? 'Game updated'
+                        : 'Analysis saved successfully',
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
                     ),
@@ -664,9 +671,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   ),
                 ),
                 child: Icon(
-                  _isEditMode
-                      ? Icons.edit_rounded
-                      : Icons.bookmark_add_rounded,
+                  _isEditMode ? Icons.edit_rounded : Icons.bookmark_add_rounded,
                   color: kPrimaryColor,
                   size: 22.sp,
                 ),
@@ -689,7 +694,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                           ? 'Update title, folder & metadata'
                           : 'Keep your variations & comments',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.5),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.5,
+                        ),
                       ),
                     ),
                   ],
@@ -718,7 +725,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               decoration: BoxDecoration(
                 color: context.colors.textPrimary.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
+                border: Border.all(
+                  color: context.colors.textPrimary.withValues(alpha: 0.08),
+                ),
               ),
               child: Row(
                 children: [
@@ -732,7 +741,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     child: Text(
                       'Game Details',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.9),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.9,
+                        ),
                       ),
                     ),
                   ),
@@ -875,12 +886,16 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       decoration: BoxDecoration(
         color: context.colors.textPrimary.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
+        ),
       ),
       child: TextField(
         controller: controller,
         enabled: !_isSaving,
-        style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+        style: AppTypography.textSmRegular.copyWith(
+          color: context.colors.textPrimary,
+        ),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: AppTypography.textXsRegular.copyWith(
@@ -914,7 +929,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           decoration: BoxDecoration(
             color: context.colors.textPrimary.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(10.br),
-            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+            border: Border.all(
+              color: context.colors.textPrimary.withValues(alpha: 0.06),
+            ),
           ),
           child:
               isResult
@@ -957,7 +974,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             Icons.arrow_drop_down,
             color: context.colors.textPrimary.withValues(alpha: 0.4),
           ),
-          style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmRegular.copyWith(
+            color: context.colors.textPrimary,
+          ),
           onChanged:
               _isSaving
                   ? null
@@ -1072,13 +1091,17 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     color:
                         _isCreatingNewFolder
                             ? kPrimaryColor.withValues(alpha: 0.15)
-                            : context.colors.textPrimary.withValues(alpha: 0.05),
+                            : context.colors.textPrimary.withValues(
+                              alpha: 0.05,
+                            ),
                     borderRadius: BorderRadius.circular(20.br),
                     border: Border.all(
                       color:
                           _isCreatingNewFolder
                               ? kPrimaryColor.withValues(alpha: 0.4)
-                              : context.colors.textPrimary.withValues(alpha: 0.1),
+                              : context.colors.textPrimary.withValues(
+                                alpha: 0.1,
+                              ),
                       width: 1,
                     ),
                   ),
@@ -1093,7 +1116,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         color:
                             _isCreatingNewFolder
                                 ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(alpha: 0.6),
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.6,
+                                ),
                       ),
                       SizedBox(width: 6.w),
                       Text(
@@ -1102,7 +1127,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                           color:
                               _isCreatingNewFolder
                                   ? kPrimaryColor
-                                  : context.colors.textPrimary.withValues(alpha: 0.6),
+                                  : context.colors.textPrimary.withValues(
+                                    alpha: 0.6,
+                                  ),
                         ),
                       ),
                     ],
@@ -1160,7 +1187,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             focusNode: _newFolderNameFocusNode,
             enabled: !_isSaving,
             maxLength: 50,
-            style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdRegular.copyWith(
+              color: context.colors.textPrimary,
+            ),
             decoration: InputDecoration(
               hintText: 'Folder name',
               hintStyle: AppTypography.textMdRegular.copyWith(
@@ -1354,7 +1383,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         decoration: BoxDecoration(
           color: context.colors.textPrimary.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.06),
+          ),
         ),
         child: Column(
           children: [
@@ -1424,7 +1455,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       decoration: BoxDecoration(
         color: context.colors.textPrimary.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
+        ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16.br),
@@ -1436,7 +1469,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 final folder = entry.value;
                 final isSelected = _selectedFolder?.id == folder.id;
                 final isLast = index == folders.length - 1;
-                final isSubdatabase = folder.parentId != null;
+                final isChildNode = folder.parentId != null;
 
                 return Column(
                   children: [
@@ -1455,9 +1488,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                       Container(
                         height: 1,
                         margin: EdgeInsets.only(
-                          left: isSubdatabase ? 80.w : 56.w,
+                          left: isChildNode ? 80.w : 56.w,
                         ),
-                        color: context.colors.textPrimary.withValues(alpha: 0.05),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.05,
+                        ),
                       ),
                   ],
                 );
@@ -1474,7 +1509,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       decoration: BoxDecoration(
         color: context.colors.textPrimary.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1606,7 +1643,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 decoration: BoxDecoration(
                   color: context.colors.textPrimary.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(14.br),
-                  border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
+                  border: Border.all(
+                    color: context.colors.textPrimary.withValues(alpha: 0.1),
+                  ),
                 ),
                 child: Center(
                   child: Text(
@@ -1650,7 +1689,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         color:
                             canSave
                                 ? null
-                                : context.colors.textPrimary.withValues(alpha: 0.08),
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.08,
+                                ),
                         borderRadius: BorderRadius.circular(14.br),
                         boxShadow:
                             canSave
@@ -1686,9 +1727,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                       color:
                                           canSave
                                               ? context.colors.textPrimary
-                                              : context.colors.textPrimary.withValues(
-                                                alpha: 0.3,
-                                              ),
+                                              : context.colors.textPrimary
+                                                  .withValues(alpha: 0.3),
                                       size: 18.sp,
                                     ),
                                     SizedBox(width: 8.w),
@@ -1704,9 +1744,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                         color:
                                             canSave
                                                 ? context.colors.textPrimary
-                                                : context.colors.textPrimary.withValues(
-                                                  alpha: 0.3,
-                                                ),
+                                                : context.colors.textPrimary
+                                                    .withValues(alpha: 0.3),
                                         letterSpacing: 0.3,
                                       ),
                                     ),
@@ -1757,7 +1796,7 @@ class _FolderListItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final folderColor = _parseColorString(folder.color);
-    final isSubdatabase = folder.parentId != null;
+    final isChildNode = folder.parentId != null;
     final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
 
     return GestureDetector(
@@ -1769,7 +1808,7 @@ class _FolderListItem extends ConsumerWidget {
           final animValue = value.clamp(0.0, 1.0).toDouble();
           return Container(
             padding: EdgeInsets.only(
-              left: 14.w + (isSubdatabase ? 24.w : 0),
+              left: 14.w + (isChildNode ? 24.w : 0),
               right: 14.w,
               top: 12.h,
               bottom: 12.h,
@@ -1783,7 +1822,7 @@ class _FolderListItem extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                if (isSubdatabase) ...[
+                if (isChildNode) ...[
                   Icon(
                     Icons.subdirectory_arrow_right_rounded,
                     size: 16.sp,
@@ -1823,8 +1862,9 @@ class _FolderListItem extends ConsumerWidget {
                       Text(
                         folder.name,
                         style: AppTypography.textSmMedium.copyWith(
-                          color:
-                              context.colors.textPrimary.withValues(alpha: 0.9),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.9,
+                          ),
                         ),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
@@ -1857,13 +1897,17 @@ class _FolderListItem extends ConsumerWidget {
                     color:
                         isSelected
                             ? kPrimaryColor
-                            : context.colors.textPrimary.withValues(alpha: 0.05),
+                            : context.colors.textPrimary.withValues(
+                              alpha: 0.05,
+                            ),
                     shape: BoxShape.circle,
                     border: Border.all(
                       color:
                           isSelected
                               ? kPrimaryColor
-                              : context.colors.textPrimary.withValues(alpha: 0.15),
+                              : context.colors.textPrimary.withValues(
+                                alpha: 0.15,
+                              ),
                       width: 2,
                     ),
                   ),
@@ -1890,5 +1934,7 @@ final _foldersProvider = FutureProvider.autoDispose<List<LibraryFolder>>((
   ref,
 ) async {
   final repository = ref.watch(libraryRepositoryProvider);
-  return repository.getFolders();
+  return repository.getFolders().then(
+    (folders) => folders.where((folder) => folder.isDatabase).toList(),
+  );
 });

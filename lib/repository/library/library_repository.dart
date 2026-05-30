@@ -47,13 +47,14 @@ class LibraryRepository extends BaseRepository {
     return response != null ? LibraryFolder.fromSupabase(response) : null;
   });
 
-  /// Create a new folder
+  /// Create a new folder or database node.
   Future<LibraryFolder> createFolder({
     required String name,
     String? color,
     String? icon,
     int? orderIndex,
     String? parentId,
+    String nodeType = LibraryFolder.nodeTypeFolder,
   }) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -69,6 +70,7 @@ class LibraryRepository extends BaseRepository {
       icon: icon ?? 'folder',
       orderIndex: nextOrder,
       parentId: parentId,
+      nodeType: nodeType,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -83,8 +85,8 @@ class LibraryRepository extends BaseRepository {
     return LibraryFolder.fromSupabase(response);
   });
 
-  /// Ensure the user has the default "My Database" structure.
-  /// Creates a root "My Database" folder and a child "My Subdatabase" folder.
+  /// Ensure the user has a default organizational folder and database.
+  /// Folders organize databases; only databases contain games.
   Future<void> ensureDefaultFolders() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
@@ -98,10 +100,12 @@ class LibraryRepository extends BaseRepository {
 
     if ((existing as List).isNotEmpty) return;
 
-    // Create root folder
-    final rootFolder = await createFolder(name: 'My Database');
-    // Create child folder inside it
-    await createFolder(name: 'My Subdatabase', parentId: rootFolder.id);
+    final rootFolder = await createFolder(name: 'My Folder');
+    await createFolder(
+      name: 'My Database',
+      parentId: rootFolder.id,
+      nodeType: LibraryFolder.nodeTypeDatabase,
+    );
   }
 
   /// Update a folder
@@ -558,16 +562,15 @@ class LibraryRepository extends BaseRepository {
   /// let the user squeak past the free-tier cap (we hit exactly that bug:
   /// users were adding an 11th game without the paywall firing because the
   /// stream had not yet emitted the freshly-inserted row).
-  Future<int> getTotalAnalysisCountForCurrentUser() =>
-      handleApiCall(() async {
-        final userId = supabase.auth.currentUser?.id;
-        if (userId == null) throw Exception('User not authenticated');
+  Future<int> getTotalAnalysisCountForCurrentUser() => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
 
-        return supabase
-            .from('user_saved_analyses')
-            .count(CountOption.exact)
-            .eq('user_id', userId);
-      });
+    return supabase
+        .from('user_saved_analyses')
+        .count(CountOption.exact)
+        .eq('user_id', userId);
+  });
 
   /// Count of analyses saved **directly** in [folderId], not counting
   /// sub-folders. Used by the tree PGN export so every folder level gets

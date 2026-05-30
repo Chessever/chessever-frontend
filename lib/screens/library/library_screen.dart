@@ -123,7 +123,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           SnackBar(
             content: Text(
               'Could not open file picker: $e2',
-              style:  TextStyle(color: context.colors.textPrimary),
+              style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,
@@ -194,7 +194,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =
-          folders.where((f) => !f.isSubscribed && f.id != kTwicBookId).length;
+          folders
+              .where(
+                (f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase,
+              )
+              .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
@@ -211,6 +215,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       final newFolder = await repository.createFolder(
         name: data.name,
         parentId: data.parentId,
+        nodeType: data.nodeType,
       );
 
       // Force refresh folders provider to ensure immediate UI update
@@ -223,7 +228,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Database "${data.name}" created',
+              '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
               style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: context.colors.surface.withValues(alpha: 0.95),
@@ -349,9 +354,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 // CSS: 36x36, bg #262626, radius 10px
                                 KeyedSubtree(
                                   key: e2eKey(E2eIds.libraryCreateFolderButton),
-                                  child: _PlusButton(
-                                    onTap: _handlePlusButton,
-                                  ),
+                                  child: _PlusButton(onTap: _handlePlusButton),
                                 ),
                               ],
                             )
@@ -735,7 +738,11 @@ class _PlusButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(10.br),
         ),
         child: Center(
-          child: Icon(Icons.add, size: 20.sp, color: context.colors.textPrimary),
+          child: Icon(
+            Icons.add,
+            size: 20.sp,
+            color: context.colors.textPrimary,
+          ),
         ),
       ),
     );
@@ -842,7 +849,8 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isLight ? context.colors.divider : context.colors.surfaceRecessed,
+        color:
+            isLight ? context.colors.divider : context.colors.surfaceRecessed,
         borderRadius: _getCornerRadius(row, col, gridSize, 6.br),
       ),
     );
@@ -936,4 +944,3 @@ class _LibraryFolderLoadingCard extends StatelessWidget {
     );
   }
 }
-
