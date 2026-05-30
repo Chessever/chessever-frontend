@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -77,6 +79,9 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
@@ -3040,48 +3045,118 @@ class _AppBarState extends ConsumerState<_AppBar> {
       ),
     );
 
-    Widget icon;
-    switch (autoSaveStatus) {
-      case AutoSaveStatus.saving:
-        icon = SizedBox(
-          width: 20.sp,
-          height: 20.sp,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation(
-              context.colors.textPrimary.withValues(alpha: 0.7),
-            ),
-          ),
-        );
-        break;
-      case AutoSaveStatus.saved:
-        icon = Icon(
-              Icons.check_circle_outline_rounded,
-              color: kPrimaryColor,
+    final anchor = ref.read(likeFlightAnchorProvider);
+    final isLiked = ref.watch(isGameLikedProvider(widget.game.gameId));
+
+    return ValueListenableBuilder<LikeFlightPhase>(
+      valueListenable: anchor.phase,
+      builder: (context, phase, _) {
+        // Idle (disk/save/saving) icon — exactly the original autosave UI,
+        // with a small heart badge in the corner if the game is liked.
+        Widget diskIcon;
+        switch (autoSaveStatus) {
+          case AutoSaveStatus.saving:
+            diskIcon = SizedBox(
+              width: 20.sp,
+              height: 20.sp,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(
+                  context.colors.textPrimary.withValues(alpha: 0.7),
+                ),
+              ),
+            );
+            break;
+          case AutoSaveStatus.saved:
+            diskIcon = Icon(
+                  Icons.check_circle_outline_rounded,
+                  color: kPrimaryColor,
+                  size: 20.sp,
+                )
+                .animate()
+                .scale(
+                  begin: const Offset(0.6, 0.6),
+                  end: const Offset(1.0, 1.0),
+                  duration: 300.ms,
+                  curve: Curves.easeOutBack,
+                )
+                .fadeIn(duration: 200.ms);
+            break;
+          case AutoSaveStatus.idle:
+            diskIcon = Icon(
+              isEditableLibraryGame
+                  ? Icons.edit_outlined
+                  : Icons.save_outlined,
+              color: context.colors.textPrimary,
               size: 20.sp,
-            )
-            .animate()
-            .scale(
-              begin: const Offset(0.6, 0.6),
-              end: const Offset(1.0, 1.0),
-              duration: 300.ms,
-              curve: Curves.easeOutBack,
-            )
-            .fadeIn(duration: 200.ms);
-        break;
-      case AutoSaveStatus.idle:
-        icon = Icon(
-          isEditableLibraryGame ? Icons.edit_outlined : Icons.save_outlined,
-          color: context.colors.textPrimary,
+            );
+            break;
+        }
+        if (isLiked) {
+          diskIcon = Stack(
+            clipBehavior: Clip.none,
+            children: [
+              diskIcon,
+              Positioned(
+                right: -4.sp,
+                bottom: -4.sp,
+                child: Icon(
+                  Icons.favorite_rounded,
+                  size: 11.sp,
+                  color: context.colors.danger,
+                ),
+              ),
+            ],
+          );
+        }
+
+        // Heart icon overlay — SAME Icon widget across bursting/flying/landed,
+        // only its IconData mutates between border ↔ filled. This swap
+        // happens in a single repaint, so no cross-fade flicker between two
+        // stacked hearts as before.
+        //
+        // IMPORTANT: the data is `filled` for BOTH `landed` AND `idle`. If
+        // idle flipped back to border, the heart layer's fade-out (landed →
+        // idle) would briefly show the EMPTY heart before opacity reaches 0
+        // — that was the user-reported flash. With data = filled during
+        // idle too, the fade-out stays filled the entire way.
+        final heartShown = phase != LikeFlightPhase.idle;
+        final isReceivingPhase = phase == LikeFlightPhase.bursting ||
+            phase == LikeFlightPhase.flying;
+        final heartIcon = Icon(
+          isReceivingPhase
+              ? Icons.favorite_border_rounded
+              : Icons.favorite_rounded,
+          color: context.colors.danger,
           size: 20.sp,
         );
-        break;
-    }
 
-    return IconButton(
-      icon: icon,
-      tooltip: isEditableLibraryGame ? 'Edit details' : 'Save analysis',
-      onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+        // Outer AnimatedOpacity-based cross-fade between disk and heart —
+        // the ONLY fading happens at this layer (heart ↔ disk), never
+        // between two hearts.
+        final morph = Stack(
+          alignment: Alignment.center,
+          children: [
+            AnimatedOpacity(
+              opacity: heartShown ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              child: diskIcon,
+            ),
+            AnimatedOpacity(
+              opacity: heartShown ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              child: heartIcon,
+            ),
+          ],
+        );
+        return IconButton(
+          icon: KeyedSubtree(key: anchor.saveButtonKey, child: morph),
+          tooltip: isEditableLibraryGame ? 'Edit details' : 'Save analysis',
+          onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+        );
+      },
     );
   }
 
@@ -6546,6 +6621,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   // animation cleanly without leaving _flipCommitting stuck true.
   int _flipCommitToken = 0;
 
+  // Double-tap-to-like: transient heart bursts spawned at the tap point.
+  final HeartBurstController _burstController = HeartBurstController();
+  Offset _lastTapPosition = Offset.zero;
+  Offset _lastTapGlobalPosition = Offset.zero;
+  OverlayEntry? _flyingHeartEntry;
+
+  /// Tracks the latest mounted board state for the debug VM service
+  /// extension `likeBoard` so agents (marionette MCP) can trigger the like
+  /// chain without fighting the chessground gesture arena.
+  static _AnalysisBoardState? _debugLatest;
+  static bool _debugExtRegistered = false;
+
   void _scheduleSelectionRestore() {
     if (_selectionRestoreScheduled) return;
     _selectionRestoreScheduled = true;
@@ -6867,12 +6954,26 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       vsync: this,
       duration: _flipPhaseFullDuration,
     )..addListener(_drivePhaseFromController);
+
+    if (kDebugMode) {
+      _debugLatest = this;
+      if (!_debugExtRegistered) {
+        _debugExtRegistered = true;
+        developer.registerExtension('ext.flutter.likeBoard', (method, params) async {
+          _debugLatest?._handleDoubleTapLike();
+          return developer.ServiceExtensionResponse.result('{"ok":true}');
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _flipCommitCtrl.dispose();
     _flipProgress.dispose();
+    _burstController.dispose();
+    _flyingHeartEntry?.remove();
+    _flyingHeartEntry = null;
     super.dispose();
   }
 
@@ -7027,29 +7128,163 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       onVerticalDragUpdate: _onFlipDragUpdate,
       onVerticalDragEnd: _onFlipDragEnd,
       onVerticalDragCancel: _onFlipDragCancel,
-      child: ValueListenableBuilder<double>(
-        valueListenable: _flipProgress,
-        child: child,
-        builder: (context, progress, c) {
-          if (progress == 0.0) return c!;
-          final rotation = progress * math.pi;
-          // Peaks at ~6% shrink when edge-on (|rotation| = π/2), eases back
-          // to 1.0 at flat. Sells the depth without making pieces lose
-          // tap-target presence mid-flip.
-          final scale = 1.0 - 0.06 * math.sin(rotation.abs());
-          return Transform(
-            alignment: Alignment.center,
-            transform:
-                Matrix4.identity()
-                  ..setEntry(3, 2, 0.0014)
-                  ..rotateX(rotation)
-                  ..scaleByDouble(scale, scale, scale, 1.0),
-            child: c,
-          );
-        },
+      // Double-tap anywhere on the board likes/unlikes the current game.
+      // Only vertical drags are otherwise consumed here, so single taps still
+      // resolve to the Chessboard's tap recognizer (tap-to-move stays intact).
+      onDoubleTapDown: (details) {
+        _lastTapPosition = details.localPosition;
+        _lastTapGlobalPosition = details.globalPosition;
+      },
+      onDoubleTap: _handleDoubleTapLike,
+      // Debug-only long-press alias for the same like flow. Lets Marionette
+      // and other agent-driven test harnesses trigger the chain without
+      // having to fight the chessground tap-to-move gesture arena.
+      onLongPressStart: kDebugMode
+          ? (details) {
+              _lastTapPosition = details.localPosition;
+              _lastTapGlobalPosition = details.globalPosition;
+              _handleDoubleTapLike();
+            }
+          : null,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ValueListenableBuilder<double>(
+            valueListenable: _flipProgress,
+            child: child,
+            builder: (context, progress, c) {
+              if (progress == 0.0) return c!;
+              final rotation = progress * math.pi;
+              // Peaks at ~6% shrink when edge-on (|rotation| = π/2), eases back
+              // to 1.0 at flat. Sells the depth without making pieces lose
+              // tap-target presence mid-flip.
+              final scale = 1.0 - 0.06 * math.sin(rotation.abs());
+              return Transform(
+                alignment: Alignment.center,
+                transform:
+                    Matrix4.identity()
+                      ..setEntry(3, 2, 0.0014)
+                      ..rotateX(rotation)
+                      ..scaleByDouble(scale, scale, scale, 1.0),
+                child: c,
+              );
+            },
+          ),
+          // Heart-burst overlay — sits flat over the board (never rotates with
+          // the flip), ignores pointers, and removes itself when each burst ends.
+          Positioned.fill(
+            child: Builder(
+              builder: (context) => HeartBurstLayer(
+                controller: _burstController,
+                color: context.colors.danger,
+                reduceMotion: MediaQuery.disableAnimationsOf(context),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  /// Likes/unlikes the currently-displayed game and spawns the matching burst.
+  /// Source-agnostic: broadcast, gamebase and twic games are all likeable; the
+  /// double-tap saves a real SavedAnalysis into the per-user "Liked Games"
+  /// folder via the canonical "Add to library" flow.
+  ///
+  /// On LIKE, the chained sequence is:
+  ///   1. Burst spawns on the board.
+  ///   2. Save button slot morphs to an empty-heart outline (`bursting`).
+  ///   3. When the burst finishes, a small "flying heart" overlay tweens
+  ///      from the burst's screen position to the save-button slot.
+  ///   4. On landing, the slot flashes a filled red heart, then reverts to
+  ///      the disk icon with a small red heart badge (game is now liked).
+  void _handleDoubleTapLike() {
+    final game = widget.game;
+    debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
+    if (!_isLikeableSource(game.source)) return;
+    final wasLiked =
+        ref.read(likedGamesProvider).valueOrNull?.any(
+              (a) => a.sourceGameId == game.gameId,
+            ) ??
+            false;
+    final tapLocal = _lastTapPosition == Offset.zero
+        ? Offset(widget.size / 2, widget.size / 2)
+        : _lastTapPosition;
+    final tapGlobal = _lastTapGlobalPosition == Offset.zero
+        ? tapLocal
+        : _lastTapGlobalPosition;
+
+    final anchor = ref.read(likeFlightAnchorProvider);
+
+    if (!wasLiked) {
+      // Stronger initial "thump" — feels tactile under a real double-tap.
+      // No haptic for unlike (intentional asymmetry per user feedback).
+      HapticFeedback.mediumImpact();
+      anchor.start(); // save button morphs to empty heart
+    }
+
+    _burstController.spawn(
+      position: tapLocal,
+      isUnlike: wasLiked,
+      onFinished: () {
+        if (!mounted) return;
+        if (wasLiked) return; // unlike: no flight, no slot fill
+        _runFlight(from: tapGlobal, anchor: anchor);
+      },
+    );
+
+    // Fire-and-forget — the notifier handles optimistic state + rollback.
+    unawaited(ref.read(likedGamesProvider.notifier).toggle(game));
+  }
+
+  void _runFlight({required Offset from, required LikeFlightAnchor anchor}) {
+    final target = anchor.saveButtonGlobalRect();
+    debugPrint('[HeartFlight] _runFlight from=$from target=${target?.center}');
+    if (target == null) {
+      // No slot to fly to — just complete the chain.
+      anchor.land();
+      Future.delayed(const Duration(milliseconds: 600), anchor.reset);
+      return;
+    }
+    anchor.beginFlight();
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final flightColor = context.colors.danger;
+    // Visual continuity: start at the same size the in-board burst just ended
+    // at (≈55% of board.shortestSide — matches HeartBurstLayer's default),
+    // shrink to fit the disk-icon slot (so it looks like the flying heart
+    // becomes the slot fill).
+    final startSize = widget.size * 0.55;
+    final endSize = math.min(target.width, target.height);
+    final entry = OverlayEntry(
+      builder: (_) => FlyingHeart(
+        from: from,
+        to: target.center,
+        color: flightColor,
+        startSize: startSize,
+        endSize: endSize,
+        duration: const Duration(milliseconds: 470),
+        onArrived: () {
+          _flyingHeartEntry?.remove();
+          _flyingHeartEntry = null;
+          if (!mounted) return;
+          anchor.land();
+          // Tiny "click into place" haptic at the moment the heart docks.
+          HapticFeedback.selectionClick();
+          Future.delayed(const Duration(milliseconds: 540), () {
+            if (!mounted) return;
+            anchor.reset();
+          });
+        },
+      ),
+    );
+    _flyingHeartEntry = entry;
+    overlay.insert(entry);
+  }
+
+  bool _isLikeableSource(GameSource source) =>
+      source == GameSource.supabase ||
+      source == GameSource.gamebase ||
+      source == GameSource.twic;
 
   @override
   Widget build(BuildContext context) {

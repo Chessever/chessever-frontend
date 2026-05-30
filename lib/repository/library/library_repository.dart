@@ -89,11 +89,16 @@ class LibraryRepository extends BaseRepository {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    // Check if user already has any folders
+    // Always make sure the special Liked Games folder exists, independent of
+    // whether the user already has user-created folders.
+    await ensureLikedGamesFolder();
+
+    // Check if user already has any non-special folders
     final existing = await supabase
         .from('user_folders')
         .select('id')
         .eq('user_id', userId)
+        .eq('is_liked_games', false)
         .limit(1);
 
     if ((existing as List).isNotEmpty) return;
@@ -103,6 +108,43 @@ class LibraryRepository extends BaseRepository {
     // Create child folder inside it
     await createFolder(name: 'My Subdatabase', parentId: rootFolder.id);
   }
+
+  /// Returns the user's special "Liked Games" folder, creating it on first
+  /// access. Identical to any other folder mechanically — same UI, same
+  /// `user_saved_analyses` rows. The `is_liked_games` flag (partial unique
+  /// index per user) marks it as the destination for board double-tap likes.
+  Future<LibraryFolder> ensureLikedGamesFolder() => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final existing =
+        await supabase
+            .from('user_folders')
+            .select()
+            .eq('user_id', userId)
+            .eq('is_liked_games', true)
+            .maybeSingle();
+
+    if (existing != null) {
+      return LibraryFolder.fromSupabase(existing);
+    }
+
+    final nextOrder = await _getNextFolderOrder();
+    final response =
+        await supabase
+            .from('user_folders')
+            .insert({
+              'user_id': userId,
+              'name': 'Liked Games',
+              'color': '#F5453A',
+              'icon': 'liked',
+              'order_index': nextOrder,
+              'is_liked_games': true,
+            })
+            .select()
+            .single();
+    return LibraryFolder.fromSupabase(response);
+  });
 
   /// Update a folder
   Future<LibraryFolder> updateFolder(LibraryFolder folder) =>

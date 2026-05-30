@@ -734,10 +734,15 @@ class _FolderSelectionTile extends StatelessWidget {
               SizedBox(width: 8.w),
             ],
             Icon(
-              folder.parentId == null
-                  ? Icons.folder_rounded
-                  : Icons.folder_open_rounded,
-              color: context.colors.textPrimary.withValues(alpha: isSmall ? 0.6 : 1.0),
+              folder.isLikedGames
+                  ? Icons.favorite_rounded
+                  : (folder.parentId == null
+                      ? Icons.folder_rounded
+                      : Icons.folder_open_rounded),
+              color: folder.isLikedGames
+                  ? context.colors.danger
+                  : context.colors.textPrimary
+                      .withValues(alpha: isSmall ? 0.6 : 1.0),
               size: isSmall ? 20.sp : 24.sp,
             ),
             SizedBox(width: 12.w),

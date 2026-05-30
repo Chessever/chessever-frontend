@@ -1807,9 +1807,13 @@ class _FolderListItem extends ConsumerWidget {
                     ),
                   ),
                   child: Icon(
-                    Icons.folder_rounded,
+                    folder.isLikedGames
+                        ? Icons.favorite_rounded
+                        : Icons.folder_rounded,
                     size: 18.sp,
-                    color: folderColor,
+                    color: folder.isLikedGames
+                        ? context.colors.danger
+                        : folderColor,
                   ),
                 ),
                 SizedBox(width: 14.w),

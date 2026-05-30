@@ -8,6 +8,26 @@ import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 
+/// Debug-only kill switch for the local Stockfish engine.
+///
+/// `package:stockfish` runs the engine's UCI loop (`nativeMain`) and its stdout
+/// pump (`nativeStdoutRead`) in isolates that block inside native FFI calls. A
+/// Dart isolate parked in a blocking native call cannot be killed by the VM, so
+/// a **hot restart while the engine is alive hangs forever** ("Performing hot
+/// restart…" never completes). There is no app-side hook that runs before a hot
+/// restart to dispose the engine first, and `onAppExit` does not fire on hot
+/// restart — so the only reliable fix is to never start the engine in debug.
+///
+/// With this `false`, debug builds do NOT start the engine: evaluations resolve
+/// to an empty result and on-board analysis is inert, but hot restart works on
+/// every screen. Release/profile builds are completely unaffected — the guards
+/// are `kDebugMode`-gated, so they are tree-shaken out of release.
+///
+/// Flip to `true` only when you specifically need to debug local engine
+/// evaluation, and accept that hot restart will hang until you fully stop and
+/// relaunch the app.
+const bool kEnableStockfishInDebug = false;
+
 // Cache for native FFI pointers to avoid expensive lookups during teardown/hot-restart
 DynamicLibrary? _nativeStockfishLib;
 int Function(Pointer<Utf8>)? _nativeWriteFn;
@@ -167,6 +187,21 @@ class StockfishSingleton {
     // Validate FEN string
     if (fen.isEmpty || fen.split(' ').length < 4) {
       throw ArgumentError('Invalid FEN string: $fen');
+    }
+
+    // Debug-only: the local engine is disabled in debug builds (see
+    // [kEnableStockfishInDebug]) because its native FFI isolates hang hot
+    // restart. Resolve to an empty/cancelled eval so callers degrade gracefully
+    // without ever spawning the engine. Release builds are unaffected.
+    if (kDebugMode && !kEnableStockfishInDebug) {
+      return EnhancedCloudEval(
+        fen: fen,
+        knodes: 0,
+        depth: 0,
+        pvs: [Pv(moves: '', cp: 0, mate: 0)],
+        isCancelled: true,
+        requestedMultiPv: multiPV,
+      );
     }
 
     // Create cache key including side to move for perspective-aware caching
@@ -397,6 +432,10 @@ class StockfishSingleton {
   /// before the user first enables analysis. Call this on screen load.
   /// Safe to call multiple times — no-ops if already initializing or ready.
   Future<void> warmUp() async {
+    // Debug-only: never start the engine in debug (see [kEnableStockfishInDebug])
+    // — its blocking native FFI isolates make hot restart hang. Release builds
+    // are unaffected (guard is tree-shaken out).
+    if (kDebugMode && !kEnableStockfishInDebug) return;
     if (_engine != null) return;
     if (_isInitializing) return;
 
