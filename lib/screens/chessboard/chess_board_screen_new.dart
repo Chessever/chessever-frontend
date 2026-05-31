@@ -1373,7 +1373,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       return;
     }
     final payload = _buildPipPayload(state.game, state: state);
-    await PipService.instance.setActiveGame(payload);
+    if (PipService.instance.isInPip) {
+      await PipService.instance.updatePosition(payload);
+    } else {
+      await PipService.instance.setActiveGame(payload);
+    }
   }
 
   Future<void> _syncPipGameSnapshot(GamesTourModel game) async {
@@ -1398,10 +1402,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }) {
     final analysisState = state?.analysisState;
     final fen =
-        analysisState?.position.fen ??
-        state?.position?.fen ??
-        game.fen ??
-        '';
+        analysisState?.position.fen ?? state?.position?.fen ?? game.fen ?? '';
     final lastMoveUci =
         analysisState?.lastMove?.uci ??
         state?.lastMove?.uci ??
@@ -1451,12 +1452,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     };
   }
 
-  String _formatPipClock(
-    int? seconds,
-    int centiseconds,
-    String fallback,
-  ) {
-    final totalSeconds = seconds ?? (centiseconds > 0 ? centiseconds ~/ 100 : null);
+  String _formatPipClock(int? seconds, int centiseconds, String fallback) {
+    final totalSeconds =
+        seconds ?? (centiseconds > 0 ? centiseconds ~/ 100 : null);
     if (totalSeconds == null) return fallback;
     final clamped = math.max(0, totalSeconds);
     final hours = clamped ~/ 3600;
@@ -1565,7 +1563,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Stop Live Activity when user returns to the app
     _stopLiveActivityIfActive(currentGame);
-    unawaited(_syncPipState(ref.read(chessBoardScreenProviderNew(params)).valueOrNull ?? ChessBoardStateNew(game: currentGame)));
+    unawaited(
+      _syncPipState(
+        ref.read(chessBoardScreenProviderNew(params)).valueOrNull ??
+            ChessBoardStateNew(game: currentGame),
+      ),
+    );
   }
 
   void _stopLiveActivityIfActive(GamesTourModel game) {

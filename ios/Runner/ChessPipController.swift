@@ -12,6 +12,9 @@ final class ChessPipController: NSObject {
   private var pipController: AVPictureInPictureController?
   private var timebase: CMTimebase?
   private var frameIndex: Int64 = 0
+  private var renderTimer: DispatchSourceTimer?
+  private var pollTimer: DispatchSourceTimer?
+  private let pollQueue = DispatchQueue(label: "com.chessever.pip.poll")
 
   private override init() {
     super.init()
@@ -29,7 +32,7 @@ final class ChessPipController: NSObject {
         return
       }
       switch call.method {
-      case "setActiveGame", "updatePosition":
+      case "setActiveGame":
         guard
           let args = call.arguments as? [String: Any],
           args["eligible"] as? Bool == true
@@ -41,6 +44,25 @@ final class ChessPipController: NSObject {
         self.payload = args
         self.prepareIfNeeded()
         self.enqueueFrame()
+        if self.pipController?.isPictureInPictureActive == true {
+          self.startNativePollingIfPossible()
+        }
+        result(nil)
+      case "updatePosition":
+        guard
+          let args = call.arguments as? [String: Any],
+          args["eligible"] as? Bool == true
+        else {
+          self.clear()
+          result(nil)
+          return
+        }
+        self.mergePayload(args)
+        self.prepareIfNeeded()
+        self.enqueueFrame()
+        if self.pipController?.isPictureInPictureActive == true {
+          self.startNativePollingIfPossible()
+        }
         result(nil)
       case "enterIfEligible":
         result(self.enterIfEligible())
@@ -120,12 +142,16 @@ final class ChessPipController: NSObject {
     guard let pipController else { return false }
     if pipController.isPictureInPictureActive { return true }
     guard pipController.isPictureInPicturePossible else { return false }
+    startRenderLoop()
+    startNativePollingIfPossible()
     pipController.startPictureInPicture()
     return true
   }
 
   private func clear() {
     payload = nil
+    stopNativePolling()
+    stopRenderLoop()
     if pipController?.isPictureInPictureActive == true {
       pipController?.stopPictureInPicture()
     }
@@ -143,6 +169,10 @@ final class ChessPipController: NSObject {
 
   private func enqueueFrame() {
     guard let displayLayer, let payload else { return }
+    if !Thread.isMainThread {
+      DispatchQueue.main.async { [weak self] in self?.enqueueFrame() }
+      return
+    }
     if displayLayer.status == .failed {
       displayLayer.flush()
     }
@@ -160,6 +190,7 @@ final class ChessPipController: NSObject {
     let attrs: [String: Any] = [
       kCVPixelBufferCGImageCompatibilityKey as String: true,
       kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+      kCVPixelBufferIOSurfacePropertiesKey as String: [:],
     ]
     let status = CVPixelBufferCreate(
       kCFAllocatorDefault,
@@ -211,7 +242,165 @@ final class ChessPipController: NSObject {
       sampleTiming: &timing,
       sampleBufferOut: &sampleBuffer
     )
+    if let sampleBuffer {
+      markSampleBufferDisplayImmediately(sampleBuffer)
+    }
     return sampleBuffer
+  }
+
+  private func markSampleBufferDisplayImmediately(_ sampleBuffer: CMSampleBuffer) {
+    guard
+      let attachments = CMSampleBufferGetSampleAttachmentsArray(
+        sampleBuffer,
+        createIfNecessary: true
+      ),
+      CFArrayGetCount(attachments) > 0
+    else { return }
+
+    let rawAttachment = CFArrayGetValueAtIndex(attachments, 0)
+    let attachment = unsafeBitCast(rawAttachment, to: CFMutableDictionary.self)
+    CFDictionarySetValue(
+      attachment,
+      Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+      Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+    )
+  }
+
+  private func mergePayload(_ update: [String: Any]) {
+    var merged = payload ?? [:]
+    for (key, value) in update {
+      merged[key] = value
+    }
+    payload = merged
+  }
+
+  private func startRenderLoop() {
+    guard renderTimer == nil else { return }
+    let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+    timer.schedule(deadline: .now(), repeating: 1.0)
+    timer.setEventHandler { [weak self] in
+      guard self?.payload != nil else { return }
+      self?.enqueueFrame()
+    }
+    timer.resume()
+    renderTimer = timer
+  }
+
+  private func stopRenderLoop() {
+    renderTimer?.cancel()
+    renderTimer = nil
+  }
+
+  private func startNativePollingIfPossible() {
+    guard pollTimer == nil else { return }
+    guard pollingConfig() != nil else {
+      print("[PiP] Native polling unavailable: missing Supabase config")
+      return
+    }
+
+    let timer = DispatchSource.makeTimerSource(queue: pollQueue)
+    timer.schedule(deadline: .now(), repeating: 4.0)
+    timer.setEventHandler { [weak self] in
+      self?.pollLatestGame()
+    }
+    timer.resume()
+    pollTimer = timer
+  }
+
+  private func stopNativePolling() {
+    pollTimer?.cancel()
+    pollTimer = nil
+  }
+
+  private func pollingConfig() -> (gameId: String, url: String, anonKey: String, bearer: String)? {
+    guard
+      let payload,
+      let gameId = payload["gameId"] as? String,
+      !gameId.isEmpty,
+      let url = payload["supabaseUrl"] as? String,
+      !url.isEmpty,
+      let anonKey = payload["supabaseAnonKey"] as? String,
+      !anonKey.isEmpty
+    else { return nil }
+
+    let accessToken = payload["supabaseAccessToken"] as? String
+    return (gameId, url, anonKey, accessToken?.isEmpty == false ? accessToken! : anonKey)
+  }
+
+  private func pollLatestGame() {
+    guard let config = pollingConfig() else { return }
+
+    var components = URLComponents(string: "\(config.url)/rest/v1/games")
+    components?.queryItems = [
+      URLQueryItem(
+        name: "select",
+        value: "fen,last_move,last_move_time,last_clock_white,last_clock_black,status"
+      ),
+      URLQueryItem(name: "id", value: "eq.\(config.gameId)"),
+      URLQueryItem(name: "limit", value: "1"),
+    ]
+    guard let url = components?.url else { return }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+    request.setValue("Bearer \(config.bearer)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+    URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+      if let error {
+        print("[PiP] Native poll failed: \(error)")
+        return
+      }
+      if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+        print("[PiP] Native poll HTTP \(http.statusCode)")
+        return
+      }
+      guard
+        let data,
+        let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+        let row = rows.first
+      else { return }
+
+      DispatchQueue.main.async {
+        self?.mergeLiveRow(row)
+      }
+    }.resume()
+  }
+
+  private func mergeLiveRow(_ row: [String: Any]) {
+    guard var payload else { return }
+
+    if let fen = row["fen"] as? String, !fen.isEmpty {
+      payload["fen"] = fen
+    }
+    if let lastMove = row["last_move"] as? String, !lastMove.isEmpty {
+      payload["lastMoveUci"] = lastMove
+      payload["lastMove"] = lastMove
+    }
+    if let whiteClock = row["last_clock_white"] as? NSNumber {
+      payload["whiteClock"] = Self.formatClock(seconds: whiteClock.intValue)
+    }
+    if let blackClock = row["last_clock_black"] as? NSNumber {
+      payload["blackClock"] = Self.formatClock(seconds: blackClock.intValue)
+    }
+    if let status = row["status"] as? String {
+      payload["status"] = status
+    }
+
+    self.payload = payload
+    enqueueFrame()
+  }
+
+  private static func formatClock(seconds: Int) -> String {
+    let clamped = max(0, seconds)
+    let hours = clamped / 3600
+    let minutes = (clamped % 3600) / 60
+    let secs = clamped % 60
+    if hours > 0 {
+      return String(format: "%d:%02d:%02d", hours, minutes, secs)
+    }
+    return String(format: "%d:%02d", minutes, secs)
   }
 }
 
@@ -219,12 +408,16 @@ extension ChessPipController: AVPictureInPictureControllerDelegate {
   func pictureInPictureControllerDidStartPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {
+    startRenderLoop()
+    startNativePollingIfPossible()
     channel?.invokeMethod("onPipModeChanged", arguments: ["isInPip": true])
   }
 
   func pictureInPictureControllerDidStopPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {
+    stopNativePolling()
+    stopRenderLoop()
     channel?.invokeMethod("onPipModeChanged", arguments: ["isInPip": false])
   }
 }
@@ -354,10 +547,25 @@ private enum ChessPipRenderer {
         }
         let piece = board[rank][file]
         if piece != "\0" {
-          drawText(piece.uppercased(), in: squareRect.insetBy(dx: square * 0.08, dy: square * 0.08), size: square * 0.56, color: piece == piece.uppercased() ? .white : .black, alignment: .center)
+          drawPiece(piece, payload: payload, in: squareRect.insetBy(dx: square * 0.03, dy: square * 0.03))
         }
       }
     }
+  }
+
+  private static func drawPiece(_ piece: String, payload: [String: Any], in rect: CGRect) {
+    if let image = PieceImageCache.shared.image(for: piece, payload: payload) {
+      image.draw(in: rect)
+      return
+    }
+
+    drawText(
+      piece.uppercased(),
+      in: rect.insetBy(dx: rect.width * 0.05, dy: rect.height * 0.05),
+      size: rect.height * 0.56,
+      color: piece == piece.uppercased() ? .white : .black,
+      alignment: .center
+    )
   }
 
   private static func drawEvalBar(payload: [String: Any], rect: CGRect) {
@@ -449,5 +657,118 @@ private enum ChessPipRenderer {
     let file = Int(fileScalar.value) - Int(aValue)
     guard (0...7).contains(file), (1...8).contains(rank) else { return nil }
     return (file, 8 - rank)
+  }
+}
+
+private final class PieceImageCache {
+  static let shared = PieceImageCache()
+
+  private let cache = NSCache<NSString, UIImage>()
+  private let pieceSetNames = [
+    "cburnett",
+    "merida",
+    "pirouetti",
+    "chessnut",
+    "chess7",
+    "alpha",
+    "reillycraig",
+    "companion",
+    "riohacha",
+    "kosal",
+    "leipzig",
+    "fantasy",
+    "spatial",
+    "celtic",
+    "california",
+    "caliente",
+    "pixel",
+    "firi",
+    "rhosgfx",
+    "maestro",
+    "fresca",
+    "cardinal",
+    "gioco",
+    "tatiana",
+    "staunty",
+    "governor",
+    "dubrovny",
+    "icpieces",
+    "mpchess",
+    "monarchy",
+    "cooke",
+    "shapes",
+    "kiwen-suwi",
+    "horsey",
+    "anarcandy",
+    "xkcd",
+    "letter",
+    "disguised",
+    "symmetric",
+  ]
+
+  private init() {}
+
+  func image(for piece: String, payload: [String: Any]) -> UIImage? {
+    guard let pieceCode = pieceCode(for: piece) else { return nil }
+    let pieceSet = pieceSetName(for: payload["pieceStyleIndex"] as? Int)
+    let cacheKey = "\(pieceSet)/\(pieceCode)" as NSString
+    if let cached = cache.object(forKey: cacheKey) {
+      return cached
+    }
+
+    guard let image = loadImage(pieceSet: pieceSet, pieceCode: pieceCode) else {
+      return nil
+    }
+    cache.setObject(image, forKey: cacheKey)
+    return image
+  }
+
+  private func pieceSetName(for index: Int?) -> String {
+    let value = index ?? 0
+    guard value >= 0 && value < pieceSetNames.count else {
+      return "cburnett"
+    }
+    return pieceSetNames[value]
+  }
+
+  private func pieceCode(for piece: String) -> String? {
+    guard let scalar = piece.unicodeScalars.first else { return nil }
+    let prefix = CharacterSet.uppercaseLetters.contains(scalar) ? "w" : "b"
+    switch Character(scalar).uppercased() {
+    case "K": return "\(prefix)K"
+    case "Q": return "\(prefix)Q"
+    case "R": return "\(prefix)R"
+    case "B": return "\(prefix)B"
+    case "N": return "\(prefix)N"
+    case "P": return "\(prefix)P"
+    default: return nil
+    }
+  }
+
+  private func loadImage(pieceSet: String, pieceCode: String) -> UIImage? {
+    let assetPath = "packages/chessground/assets/piece_sets/\(pieceSet)/\(pieceCode).png"
+    let candidates = [
+      "flutter_assets/\(assetPath)",
+      "Frameworks/App.framework/flutter_assets/\(assetPath)",
+    ]
+
+    for candidate in candidates {
+      if
+        let path = Bundle.main.path(forResource: candidate, ofType: nil),
+        let image = UIImage(contentsOfFile: path)
+      {
+        return image
+      }
+    }
+
+    guard let resourcePath = Bundle.main.resourcePath else { return nil }
+    for candidate in candidates {
+      let path = (resourcePath as NSString).appendingPathComponent(candidate)
+      if let image = UIImage(contentsOfFile: path) {
+        return image
+      }
+    }
+
+    return nil
   }
 }
