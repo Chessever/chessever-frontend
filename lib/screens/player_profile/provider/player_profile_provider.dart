@@ -631,7 +631,9 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
         final canonicalEvent = preferredTwicEventTitle(
           pgnEvent: event,
           tourSlug: row['tourSlug']?.toString(),
-          tourId: row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
+          tourId:
+              row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
+          site: row['site']?.toString(),
           fallback: event.isNotEmpty ? event : 'Gamebase',
         );
 
@@ -824,13 +826,15 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
                 .trim();
 
         final event = (row['event']?.toString() ?? 'Gamebase').trim();
+        final site = row['site']?.toString();
         final canonicalEvent = preferredTwicEventTitle(
           pgnEvent: event,
           tourSlug: row['tourSlug']?.toString(),
-          tourId: row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
+          tourId:
+              row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
+          site: site,
           fallback: event.isNotEmpty ? event : 'Gamebase',
         );
-        final site = row['site']?.toString();
         final eco = row['eco']?.toString();
         final opening = row['opening']?.toString();
         final variation = row['variation']?.toString();
@@ -1349,12 +1353,12 @@ List<PlayerEventData> _buildTwicPlayerEventsFromGames(
       if (game.whitePlayer.rating > 0) ratings.add(game.whitePlayer.rating);
       if (game.blackPlayer.rating > 0) ratings.add(game.blackPlayer.rating);
     }
-    final avgElo = ratings.isEmpty
-        ? null
-        : ratings.reduce((a, b) => a + b) ~/ ratings.length;
-    final maxElo = ratings.isEmpty
-        ? null
-        : ratings.reduce((a, b) => a > b ? a : b);
+    final avgElo =
+        ratings.isEmpty
+            ? null
+            : ratings.reduce((a, b) => a + b) ~/ ratings.length;
+    final maxElo =
+        ratings.isEmpty ? null : ratings.reduce((a, b) => a > b ? a : b);
 
     events.add(
       PlayerEventData(

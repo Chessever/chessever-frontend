@@ -3085,9 +3085,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             break;
           case AutoSaveStatus.idle:
             diskIcon = Icon(
-              isEditableLibraryGame
-                  ? Icons.edit_outlined
-                  : Icons.save_outlined,
+              isEditableLibraryGame ? Icons.edit_outlined : Icons.save_outlined,
               color: context.colors.textPrimary,
               size: 20.sp,
             );
@@ -6851,7 +6849,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _debugLatest = this;
       if (!_debugExtRegistered) {
         _debugExtRegistered = true;
-        developer.registerExtension('ext.flutter.likeBoard', (method, params) async {
+        developer.registerExtension('ext.flutter.likeBoard', (
+          method,
+          params,
+        ) async {
           _debugLatest?._handleDoubleTapLike();
           return developer.ServiceExtensionResponse.result('{"ok":true}');
         });
@@ -7031,13 +7032,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // Debug-only long-press alias for the same like flow. Lets Marionette
       // and other agent-driven test harnesses trigger the chain without
       // having to fight the chessground tap-to-move gesture arena.
-      onLongPressStart: kDebugMode
-          ? (details) {
-              _lastTapPosition = details.localPosition;
-              _lastTapGlobalPosition = details.globalPosition;
-              _handleDoubleTapLike();
-            }
-          : null,
+      onLongPressStart:
+          kDebugMode
+              ? (details) {
+                _lastTapPosition = details.localPosition;
+                _lastTapGlobalPosition = details.globalPosition;
+                _handleDoubleTapLike();
+              }
+              : null,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -7066,11 +7068,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           // the flip), ignores pointers, and removes itself when each burst ends.
           Positioned.fill(
             child: Builder(
-              builder: (context) => HeartBurstLayer(
-                controller: _burstController,
-                color: context.colors.danger,
-                reduceMotion: MediaQuery.disableAnimationsOf(context),
-              ),
+              builder:
+                  (context) => HeartBurstLayer(
+                    controller: _burstController,
+                    color: context.colors.danger,
+                    reduceMotion: MediaQuery.disableAnimationsOf(context),
+                  ),
             ),
           ),
         ],
@@ -7095,16 +7098,19 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
     if (!_isLikeableSource(game.source)) return;
     final wasLiked =
-        ref.read(likedGamesProvider).valueOrNull?.any(
-              (a) => a.sourceGameId == game.gameId,
-            ) ??
-            false;
-    final tapLocal = _lastTapPosition == Offset.zero
-        ? Offset(widget.size / 2, widget.size / 2)
-        : _lastTapPosition;
-    final tapGlobal = _lastTapGlobalPosition == Offset.zero
-        ? tapLocal
-        : _lastTapGlobalPosition;
+        ref
+            .read(likedGamesProvider)
+            .valueOrNull
+            ?.any((a) => a.sourceGameId == game.gameId) ??
+        false;
+    final tapLocal =
+        _lastTapPosition == Offset.zero
+            ? Offset(widget.size / 2, widget.size / 2)
+            : _lastTapPosition;
+    final tapGlobal =
+        _lastTapGlobalPosition == Offset.zero
+            ? tapLocal
+            : _lastTapGlobalPosition;
 
     final anchor = ref.read(likeFlightAnchorProvider);
 
@@ -7148,26 +7154,27 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final startSize = widget.size * 0.55;
     final endSize = math.min(target.width, target.height);
     final entry = OverlayEntry(
-      builder: (_) => FlyingHeart(
-        from: from,
-        to: target.center,
-        color: flightColor,
-        startSize: startSize,
-        endSize: endSize,
-        duration: const Duration(milliseconds: 470),
-        onArrived: () {
-          _flyingHeartEntry?.remove();
-          _flyingHeartEntry = null;
-          if (!mounted) return;
-          anchor.land();
-          // Tiny "click into place" haptic at the moment the heart docks.
-          HapticFeedback.selectionClick();
-          Future.delayed(const Duration(milliseconds: 540), () {
-            if (!mounted) return;
-            anchor.reset();
-          });
-        },
-      ),
+      builder:
+          (_) => FlyingHeart(
+            from: from,
+            to: target.center,
+            color: flightColor,
+            startSize: startSize,
+            endSize: endSize,
+            duration: const Duration(milliseconds: 470),
+            onArrived: () {
+              _flyingHeartEntry?.remove();
+              _flyingHeartEntry = null;
+              if (!mounted) return;
+              anchor.land();
+              // Tiny "click into place" haptic at the moment the heart docks.
+              HapticFeedback.selectionClick();
+              Future.delayed(const Duration(milliseconds: 540), () {
+                if (!mounted) return;
+                anchor.reset();
+              });
+            },
+          ),
     );
     _flyingHeartEntry = entry;
     overlay.insert(entry);
@@ -14389,6 +14396,7 @@ class _EventInfoSheet extends ConsumerWidget {
       pgnEvent: pgnEvent,
       tourSlug: game.tourSlug,
       tourId: game.tourId,
+      site: headers['Site'],
       fallback: 'Game Info',
     );
 
