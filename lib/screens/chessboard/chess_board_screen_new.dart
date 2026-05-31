@@ -5590,66 +5590,6 @@ class _BottomNavBar extends ConsumerWidget {
     final effectiveCanMoveBackward =
         isPreviewActive ? previewCanMoveBackward : canMoveBackward;
 
-    String fen4(String fen) =>
-        fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
-
-    // Paste-FEN / board-editor flow: at the tail of any notation line, the
-    // forward arrow appends the current engine PV instead of falling through
-    // to game navigation. Use the navigator game metadata/FEN as the durable
-    // signal because analysisState.startingPosition can be absent after syncs.
-    final startingFen =
-        state.analysisState.startingPosition?.fen ??
-        navigatorState?.game.startingFen ??
-        state.analysisState.game?.startingFen ??
-        state.startingPosition?.fen ??
-        game.fen;
-    final startsFromCustomFen =
-        startingFen != null && fen4(startingFen) != fen4(Chess.initial.fen);
-    final allowsLineExtension =
-        navigatorState?.game.allowMainlineExtension == true ||
-        state.analysisState.game?.allowMainlineExtension == true;
-    final isBoardEditorFlow =
-        game.source == GameSource.boardEditor || game.roundId == 'board_editor';
-    final isPositionSearchFlow =
-        allowsLineExtension || isBoardEditorFlow || startsFromCustomFen;
-    final currentPositionFen = state.analysisState.position.fen;
-    final pvBaseFen = state.principalVariationsBaseFen;
-    final pvMatchesCurrentPosition =
-        pvBaseFen != null && fen4(pvBaseFen) == fen4(currentPositionFen);
-    final hasUsablePv =
-        pvMatchesCurrentPosition &&
-        state.principalVariations.isNotEmpty &&
-        state.principalVariations.first.moves.isNotEmpty;
-    final navigatorLine = navigatorState?.currentLine;
-    final navigatorPointer = navigatorState?.movePointer ?? const <Number>[];
-    final currentLineIndex =
-        navigatorPointer.isEmpty ? -1 : navigatorPointer.last.toInt();
-    final isAtCurrentLineEnd =
-        navigatorState == null
-            ? !effectiveCanMoveForward
-            : (navigatorLine == null ||
-                navigatorLine.isEmpty ||
-                currentLineIndex >= navigatorLine.length - 1);
-    final shouldPlayPvOnRight =
-        isPositionSearchFlow &&
-        !effectiveCanMoveForward &&
-        !isPreviewActive &&
-        hasUsablePv;
-    final shouldInsertPvAtLineEnd =
-        isPositionSearchFlow &&
-        isAtCurrentLineEnd &&
-        !isPreviewActive &&
-        hasUsablePv;
-    final shouldRequestPvAtLineEnd =
-        isPositionSearchFlow &&
-        isAtCurrentLineEnd &&
-        !isPreviewActive &&
-        !hasUsablePv;
-    final shouldOwnLineEndForward =
-        isPositionSearchFlow && isAtCurrentLineEnd && !isPreviewActive;
-    final shouldUsePositionSearchForward =
-        isPositionSearchFlow && !isPreviewActive;
-
     final selectionClearKey = _boardSelectionClearKey(game, index);
 
     void clearBoardSelection() {
@@ -5675,12 +5615,10 @@ class _BottomNavBar extends ConsumerWidget {
         });
       },
       onRightMove:
-          shouldUsePositionSearchForward
-              ? () {
-                clearBoardSelection();
-                notifier.moveForwardOrAppendBestLineMove();
-              }
-              : effectiveCanMoveForward
+          // Normal board arrows only navigate saved notation/PV-preview moves.
+          // Do not fall through to engine/PV insertion at the end of notation;
+          // engine moves must come from explicit PV/engine UI actions.
+          effectiveCanMoveForward
               ? () {
                 clearBoardSelection();
                 notifier.moveForward().then((_) {
@@ -5699,11 +5637,6 @@ class _BottomNavBar extends ConsumerWidget {
                   }
                 });
               }
-              : shouldPlayPvOnRight
-              ? () {
-                clearBoardSelection();
-                notifier.playVariantMoveForward();
-              }
               : null,
       onLeftMove:
           effectiveCanMoveBackward
@@ -5718,19 +5651,14 @@ class _BottomNavBar extends ConsumerWidget {
       },
       onLongPressBackwardEnd: () => notifier.stopLongPress(),
       onLongPressForwardStart:
-          shouldOwnLineEndForward
-              ? null
-              : () {
+          effectiveCanMoveForward
+              ? () {
                 clearBoardSelection();
                 notifier.startLongPressForward();
-              },
+              }
+              : null,
       onLongPressForwardEnd: () => notifier.stopLongPress(),
-      canMoveForward:
-          shouldUsePositionSearchForward ||
-          (effectiveCanMoveForward && !shouldOwnLineEndForward) ||
-          shouldPlayPvOnRight ||
-          shouldInsertPvAtLineEnd ||
-          shouldRequestPvAtLineEnd,
+      canMoveForward: effectiveCanMoveForward,
       canMoveBackward: effectiveCanMoveBackward,
       showEngineAnalysis: state.showEngineAnalysis,
       showUnseenMoveBadge: state.hasUnseenMoves,
