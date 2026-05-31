@@ -673,9 +673,19 @@ class _GamesAppBarNotifier
           ),
         );
 
+      final games = ref.read(gamesTourProvider(tourId!)).valueOrNull;
+      final latestMoveByRound = _latestMoveTimeByRound(games);
+      final timeControlByRound = _timeControlByRound(games);
       final models =
           rounds
-              .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
+              .map(
+                (r) => GamesAppBarModel.fromRound(
+                  r,
+                  _liveRounds,
+                  latestMoveTime: latestMoveByRound[r.id],
+                  timeControl: timeControlByRound[r.id],
+                ),
+              )
               .toList();
 
       // Check if this is a knockout tournament and group sub-rounds
@@ -758,9 +768,19 @@ class _GamesAppBarNotifier
           // Get rounds for this specific tour first
           final repo = ref.read(roundRepositoryProvider);
           final stageRounds = await repo.getRoundsByTourId(tour.id);
+          final stageGames = ref.read(gamesTourProvider(tour.id)).valueOrNull;
+          final latestMoveByRound = _latestMoveTimeByRound(stageGames);
+          final timeControlByRound = _timeControlByRound(stageGames);
           final stageRoundModels =
               stageRounds
-                  .map((r) => GamesAppBarModel.fromRound(r, _liveRounds))
+                  .map(
+                    (r) => GamesAppBarModel.fromRound(
+                      r,
+                      _liveRounds,
+                      latestMoveTime: latestMoveByRound[r.id],
+                      timeControl: timeControlByRound[r.id],
+                    ),
+                  )
                   .toList();
 
           if (stageRoundModels.isEmpty) {
@@ -1229,6 +1249,31 @@ class _GamesAppBarNotifier
       ..addAll(sorted);
   }
 
+  List<GamesAppBarModel> _refreshRoundStatuses(
+    List<GamesAppBarModel> models,
+    List<Games>? games,
+  ) {
+    final latestMoveByRound = _latestMoveTimeByRound(games);
+    final timeControlByRound = _timeControlByRound(games);
+
+    return models
+        .map(
+          (m) => GamesAppBarModel(
+            id: m.id,
+            name: m.name,
+            startsAt: m.startsAt,
+            roundStatus: GamesAppBarModel.status(
+              currentId: m.id,
+              startsAt: m.startsAt,
+              liveRound: _liveRounds,
+              latestMoveTime: latestMoveByRound[m.id],
+              timeControl: timeControlByRound[m.id],
+            ),
+          ),
+        )
+        .toList();
+  }
+
   void _refreshSelectionAfterGamesChange(List<Games> games) {
     if (_selectionRefreshScheduled) return;
     _selectionRefreshScheduled = true;
@@ -1250,10 +1295,13 @@ class _GamesAppBarNotifier
         return;
       }
 
-      await _applySelectionFrom(
-        List<GamesAppBarModel>.from(current.gamesAppBarModels),
-        tourId!,
+      final updated = _refreshRoundStatuses(
+        current.gamesAppBarModels,
+        games,
       );
+      _sortRounds(updated);
+
+      await _applySelectionFrom(updated, tourId!);
     });
   }
 
@@ -1276,21 +1324,10 @@ class _GamesAppBarNotifier
     final current = state.valueOrNull;
     if (current == null) return;
 
-    final updated =
-        current.gamesAppBarModels
-            .map(
-              (m) => GamesAppBarModel(
-                id: m.id,
-                name: m.name,
-                startsAt: m.startsAt,
-                roundStatus: GamesAppBarModel.status(
-                  currentId: m.id,
-                  startsAt: m.startsAt,
-                  liveRound: _liveRounds,
-                ),
-              ),
-            )
-            .toList();
+    final games = tourId == null
+        ? null
+        : ref.read(gamesTourProvider(tourId!)).valueOrNull;
+    final updated = _refreshRoundStatuses(current.gamesAppBarModels, games);
 
     _sortRounds(updated);
 
@@ -1314,24 +1351,6 @@ class _GamesAppBarNotifier
       _scrollToRound(stickyId);
       return;
     }
-    final currentSelected = current.selectedId;
-    final currentStillValid =
-        currentSelected.isNotEmpty &&
-        updated.any((m) => m.id == currentSelected) &&
-        _hasGames(currentSelected, counts);
-
-    if (currentStillValid) {
-      state = AsyncValue.data(
-        GamesAppBarViewModel(
-          gamesAppBarModels: updated,
-          selectedId: currentSelected,
-          userSelectedId: false,
-        ),
-      );
-      _scrollToRound(currentSelected);
-      return;
-    }
-
     final autoModel = _selectAutoRound(updated, counts);
     final nextSelected = autoModel?.id ?? '';
 
@@ -1567,15 +1586,52 @@ int? _parseGameNumber(String? value) {
   return match != null ? int.tryParse(match.group(1)!) : null;
 }
 
+Map<String, DateTime> _latestMoveTimeByRound(List<Games>? games) {
+  final latestByRound = <String, DateTime>{};
+  for (final game in games ?? const <Games>[]) {
+    final lastMoveTime = game.lastMoveTime;
+    if (lastMoveTime == null) continue;
+
+    final current = latestByRound[game.roundId];
+    if (current == null || lastMoveTime.isAfter(current)) {
+      latestByRound[game.roundId] = lastMoveTime;
+    }
+  }
+  return latestByRound;
+}
+
+Map<String, String> _timeControlByRound(List<Games>? games) {
+  final controls = <String, String>{};
+  for (final game in games ?? const <Games>[]) {
+    final timeControl = game.timeControl?.trim();
+    if (timeControl == null || timeControl.isEmpty) continue;
+    controls.putIfAbsent(game.roundId, () => timeControl);
+  }
+  return controls;
+}
+
 String _roundCountSignature(List<Games> games) {
   if (games.isEmpty) return '';
 
   final counts = <String, int>{};
+  final latestMoveByRound = <String, DateTime>{};
   for (final game in games) {
     counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+
+    final lastMoveTime = game.lastMoveTime;
+    if (lastMoveTime == null) continue;
+    final current = latestMoveByRound[game.roundId];
+    if (current == null || lastMoveTime.isAfter(current)) {
+      latestMoveByRound[game.roundId] = lastMoveTime;
+    }
   }
 
   final entries =
       counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
-  return entries.map((entry) => '${entry.key}:${entry.value}').join('|');
+  return entries
+      .map(
+        (entry) =>
+            '${entry.key}:${entry.value}:${latestMoveByRound[entry.key]?.toIso8601String() ?? ''}',
+      )
+      .join('|');
 }

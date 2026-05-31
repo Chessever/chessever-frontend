@@ -20,6 +20,68 @@ List<String> _ids(List<GamesAppBarModel> rounds) =>
     rounds.map((round) => round.id).toList(growable: false);
 
 void main() {
+  group('GamesAppBarModel.status live freshness', () {
+    test('does not keep a stale blitz live-round signal pinned live', () {
+      final now = DateTime(2026, 5, 30, 19, 39);
+      final status = GamesAppBarModel.status(
+        currentId: 'round-2',
+        startsAt: now.subtract(const Duration(hours: 1, minutes: 30)),
+        liveRound: const ['round-2'],
+        latestMoveTime: now.subtract(const Duration(minutes: 11)),
+        timeControl: 'blitz',
+        now: now,
+      );
+
+      expect(status, RoundStatus.ongoing);
+    });
+
+    test(
+      'treats recent move activity as live even if backend live ids lag',
+      () {
+        final now = DateTime(2026, 5, 30, 19, 39);
+        final status = GamesAppBarModel.status(
+          currentId: 'round-9',
+          startsAt: now.subtract(const Duration(minutes: 3)),
+          liveRound: const ['round-2'],
+          latestMoveTime: now.subtract(const Duration(minutes: 2)),
+          timeControl: 'blitz',
+          now: now,
+        );
+
+        expect(status, RoundStatus.live);
+      },
+    );
+
+    test('uses longer freshness windows for rapid and standard events', () {
+      final now = DateTime(2026, 5, 30, 19, 39);
+
+      expect(
+        liveRoundFreshnessWindowForTimeControl('rapid'),
+        const Duration(minutes: 20),
+      );
+      expect(
+        liveRoundFreshnessWindowForTimeControl('standard'),
+        const Duration(minutes: 120),
+      );
+      expect(
+        isFreshLiveRoundActivity(
+          activityAt: now.subtract(const Duration(minutes: 19)),
+          now: now,
+          timeControl: 'rapid',
+        ),
+        isTrue,
+      );
+      expect(
+        isFreshLiveRoundActivity(
+          activityAt: now.subtract(const Duration(minutes: 21)),
+          now: now,
+          timeControl: 'rapid',
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('sortRoundsForDisplay', () {
     test('keeps all-upcoming preconfigured rounds in ascending order', () {
       final now = DateTime(2026, 3, 29, 10);

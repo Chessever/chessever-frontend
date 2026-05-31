@@ -4,6 +4,30 @@ import 'package:chessever2/utils/time_utils.dart';
 
 enum RoundStatus { completed, ongoing, live, upcoming }
 
+Duration liveRoundFreshnessWindowForTimeControl(String? timeControl) {
+  final normalized = (timeControl ?? '').trim().toLowerCase();
+  if (normalized.contains('blitz')) {
+    return const Duration(minutes: 10);
+  }
+  if (normalized.contains('rapid')) {
+    return const Duration(minutes: 20);
+  }
+  return const Duration(minutes: 120);
+}
+
+bool isFreshLiveRoundActivity({
+  required DateTime? activityAt,
+  required DateTime now,
+  required String? timeControl,
+}) {
+  if (activityAt == null) {
+    return false;
+  }
+  return !now.isAfter(
+    activityAt.add(liveRoundFreshnessWindowForTimeControl(timeControl)),
+  );
+}
+
 class GamesAppBarViewModel {
   const GamesAppBarViewModel({
     required this.gamesAppBarModels,
@@ -29,7 +53,13 @@ class GamesAppBarModel extends Equatable {
   final DateTime? startsAt;
   final RoundStatus roundStatus;
 
-  factory GamesAppBarModel.fromRound(Round round, List<String> liveRound) {
+  factory GamesAppBarModel.fromRound(
+    Round round,
+    List<String> liveRound, {
+    DateTime? latestMoveTime,
+    String? timeControl,
+    DateTime? now,
+  }) {
     final utcStart = round.startsAt;
     final startsAt = TimeUtils.toLocal(utcStart);
 
@@ -41,6 +71,9 @@ class GamesAppBarModel extends Equatable {
         currentId: round.id,
         startsAt: startsAt,
         liveRound: liveRound,
+        latestMoveTime: latestMoveTime,
+        timeControl: timeControl,
+        now: now,
       ),
     );
   }
@@ -49,16 +82,35 @@ class GamesAppBarModel extends Equatable {
     required DateTime? startsAt,
     required String currentId,
     required List<String> liveRound,
+    DateTime? latestMoveTime,
+    String? timeControl,
+    DateTime? now,
   }) {
-    final now = DateTime.now();
+    final effectiveNow = now ?? DateTime.now();
 
     if (startsAt == null) return RoundStatus.upcoming;
 
-    if (liveRound.isNotEmpty && liveRound.contains(currentId)) {
+    final freshMoveActivity =
+        latestMoveTime != null &&
+        isFreshLiveRoundActivity(
+          activityAt: latestMoveTime,
+          now: effectiveNow,
+          timeControl: timeControl,
+        );
+    final freshBackendLiveSignal =
+        liveRound.isNotEmpty &&
+        liveRound.contains(currentId) &&
+        isFreshLiveRoundActivity(
+          activityAt: latestMoveTime ?? startsAt,
+          now: effectiveNow,
+          timeControl: timeControl,
+        );
+    if (freshMoveActivity || freshBackendLiveSignal) {
       return RoundStatus.live;
     }
 
-    if (startsAt.isBefore(now) || startsAt.isAtSameMomentAs(now)) {
+    if (startsAt.isBefore(effectiveNow) ||
+        startsAt.isAtSameMomentAs(effectiveNow)) {
       // Day-boundary fix: a round that started at 23:50 must not flip to
       // `completed` at local midnight while still in progress. Use a rolling
       // 24h window instead of same-calendar-day. Backend `liveRound`
@@ -68,7 +120,7 @@ class GamesAppBarModel extends Equatable {
       // a plausible play window for any time control.
       // See docs/superpowers/specs/2026-05-29-realtime-live-games-implementation-plan.md
       // change #4.
-      final hoursSinceStart = now.difference(startsAt).inHours;
+      final hoursSinceStart = effectiveNow.difference(startsAt).inHours;
       if (hoursSinceStart < 24) {
         return RoundStatus.ongoing;
       } else {
