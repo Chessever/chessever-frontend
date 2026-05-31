@@ -11,6 +11,7 @@ import 'package:dio/dio.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/time_utils.dart';
@@ -627,6 +628,12 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
         final opening = row['opening']?.toString();
         final variation = row['variation']?.toString();
         final event = (row['event']?.toString() ?? 'Gamebase').trim();
+        final canonicalEvent = preferredTwicEventTitle(
+          pgnEvent: event,
+          tourSlug: row['tourSlug']?.toString(),
+          tourId: row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
+          fallback: event.isNotEmpty ? event : 'Gamebase',
+        );
 
         final whiteName = (row['white']?.toString() ?? 'White').trim();
         final blackName = (row['black']?.toString() ?? 'Black').trim();
@@ -635,7 +642,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
           whiteName: whiteName,
           blackName: blackName,
           result: result,
-          event: event.isNotEmpty ? event : 'Gamebase',
+          event: canonicalEvent,
           date: date,
           eco: eco,
           opening: opening,
@@ -667,7 +674,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
         final tourId =
             (row['tour_id']?.toString() ??
                     row['tournament_id']?.toString() ??
-                    event)
+                    canonicalEvent)
                 .trim();
 
         return GamesTourModel(
@@ -685,8 +692,8 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
               (eco != null && eco.trim().isNotEmpty)
                   ? eco.trim()
                   : (timeControl ?? ''),
-          tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
-          tourSlug: event.isNotEmpty ? event : 'Gamebase',
+          tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
+          tourSlug: canonicalEvent,
           pgn: pgn,
           lastMoveTime: date,
           eco: (eco != null && eco.trim().isNotEmpty) ? eco.trim() : null,
@@ -817,6 +824,12 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
                 .trim();
 
         final event = (row['event']?.toString() ?? 'Gamebase').trim();
+        final canonicalEvent = preferredTwicEventTitle(
+          pgnEvent: event,
+          tourSlug: row['tourSlug']?.toString(),
+          tourId: row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
+          fallback: event.isNotEmpty ? event : 'Gamebase',
+        );
         final site = row['site']?.toString();
         final eco = row['eco']?.toString();
         final opening = row['opening']?.toString();
@@ -826,7 +839,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
           whiteName: whiteName,
           blackName: blackName,
           result: result,
-          event: event.isNotEmpty ? event : 'Gamebase',
+          event: canonicalEvent,
           site: site,
           date: date,
           eco: eco,
@@ -859,7 +872,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
         final tourId =
             (row['tour_id']?.toString() ??
                     row['tournament_id']?.toString() ??
-                    event)
+                    canonicalEvent)
                 .trim();
 
         return GamesTourModel(
@@ -877,8 +890,8 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
               (eco != null && eco.trim().isNotEmpty)
                   ? eco.trim()
                   : (timeControl ?? ''),
-          tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
-          tourSlug: event.isNotEmpty ? event : 'Gamebase',
+          tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
+          tourSlug: canonicalEvent,
           pgn: pgn,
           lastMoveTime: date,
           eco: (eco != null && eco.trim().isNotEmpty) ? eco.trim() : null,
@@ -1268,6 +1281,11 @@ Future<List<PlayerEventData>> _getTwicPlayerEvents(
   Ref ref,
   PlayerProfileKey playerKey,
 ) async {
+  final games = await ref.watch(playerGamesDataKeyProvider(playerKey).future);
+  if (games.isNotEmpty) {
+    return _buildTwicPlayerEventsFromGames(games);
+  }
+
   final repo = ref.read(gamebaseRepositoryProvider);
   final playerId = await _resolveTwicPlayerId(ref, playerKey);
   if (playerId == null || playerId.isEmpty) return const [];
@@ -1299,6 +1317,74 @@ PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
     avgElo: item.avgElo,
     maxElo: item.maxElo,
   );
+}
+
+List<PlayerEventData> _buildTwicPlayerEventsFromGames(
+  List<GamesTourModel> games,
+) {
+  final byKey = <String, List<GamesTourModel>>{};
+  for (final game in games) {
+    final key = twicCanonicalEventKeyForGame(game);
+    if (key.isEmpty) continue;
+    byKey.putIfAbsent(key, () => <GamesTourModel>[]).add(game);
+  }
+
+  final events = <PlayerEventData>[];
+  for (final entry in byKey.entries) {
+    final eventGames = entry.value;
+    eventGames.sort((a, b) {
+      final aDate = a.lastMoveTime ?? DateTime(1900);
+      final bDate = b.lastMoveTime ?? DateTime(1900);
+      return aDate.compareTo(bDate);
+    });
+
+    final first = eventGames.first;
+    final title = preferredTwicEventTitle(
+      tourSlug: first.tourSlug,
+      tourId: first.tourId,
+      fallback: 'Gamebase',
+    );
+    final ratings = <int>[];
+    for (final game in eventGames) {
+      if (game.whitePlayer.rating > 0) ratings.add(game.whitePlayer.rating);
+      if (game.blackPlayer.rating > 0) ratings.add(game.blackPlayer.rating);
+    }
+    final avgElo = ratings.isEmpty
+        ? null
+        : ratings.reduce((a, b) => a + b) ~/ ratings.length;
+    final maxElo = ratings.isEmpty
+        ? null
+        : ratings.reduce((a, b) => a > b ? a : b);
+
+    events.add(
+      PlayerEventData(
+        tourId: title,
+        tourName: title,
+        tourSlug: title,
+        gamesPlayed: eventGames.length,
+        startDate: eventGames.first.lastMoveTime,
+        endDate: eventGames.last.lastMoveTime,
+        site: _siteFromPgn(first.pgn),
+        dominantTimeControl: first.timeControl,
+        avgElo: avgElo,
+        maxElo: maxElo,
+      ),
+    );
+  }
+
+  events.sort((a, b) {
+    final aDate = a.endDate ?? a.startDate ?? DateTime(1900);
+    final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
+    return bDate.compareTo(aDate);
+  });
+  return events;
+}
+
+String? _siteFromPgn(String? pgn) {
+  if (pgn == null) return null;
+  final match = RegExp(r'^\[Site\s+"(.*)"\]$', multiLine: true).firstMatch(pgn);
+  final site = match?.group(1)?.trim();
+  return site == null || site.isEmpty || site == '?' ? null : site;
 }
 
 String _formatEventTimeControl(String? raw) {
