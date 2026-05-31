@@ -58,9 +58,18 @@ final class ChessPipController: NSObject {
     guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
     if pipController != nil { return }
 
+    // Audio session must be active and use a category that supports PiP
+    // BEFORE the controller is created and while we are still foreground.
+    configureAudioSession()
+
     let layer = AVSampleBufferDisplayLayer()
     layer.videoGravity = .resizeAspect
     layer.backgroundColor = UIColor.black.cgColor
+
+    // For `canStartPictureInPictureAutomaticallyFromInline` to fire when the
+    // app is backgrounded, the source layer must be attached to the visible
+    // view hierarchy. We add it as a tiny, effectively invisible inline layer.
+    attachLayerToRootView(layer)
 
     var tb: CMTimebase?
     CMTimebaseCreateWithSourceClock(
@@ -86,6 +95,23 @@ final class ChessPipController: NSObject {
     pipController = controller
   }
 
+  private func attachLayerToRootView(_ layer: AVSampleBufferDisplayLayer) {
+    let rootView = Self.keyWindow?.rootViewController?.view
+    guard let rootView else { return }
+    // Small, near-invisible inline frame: present in the hierarchy (so the
+    // system treats PiP as "inline") but visually unobtrusive.
+    layer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+    layer.opacity = 0.01
+    rootView.layer.addSublayer(layer)
+  }
+
+  private static var keyWindow: UIWindow? {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap { $0.windows }
+      .first { $0.isKeyWindow }
+  }
+
   private func enterIfEligible() -> Bool {
     guard payload?["eligible"] as? Bool == true else { return false }
     configureAudioSession()
@@ -108,7 +134,7 @@ final class ChessPipController: NSObject {
   private func configureAudioSession() {
     do {
       let session = AVAudioSession.sharedInstance()
-      try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+      try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
       try session.setActive(true)
     } catch {
       print("[PiP] Failed to configure audio session: \(error)")
