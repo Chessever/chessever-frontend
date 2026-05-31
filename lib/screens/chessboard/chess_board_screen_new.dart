@@ -42,6 +42,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -3084,9 +3085,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             break;
           case AutoSaveStatus.idle:
             diskIcon = Icon(
-              isEditableLibraryGame
-                  ? Icons.edit_outlined
-                  : Icons.save_outlined,
+              isEditableLibraryGame ? Icons.edit_outlined : Icons.save_outlined,
               color: context.colors.textPrimary,
               size: 20.sp,
             );
@@ -6850,7 +6849,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _debugLatest = this;
       if (!_debugExtRegistered) {
         _debugExtRegistered = true;
-        developer.registerExtension('ext.flutter.likeBoard', (method, params) async {
+        developer.registerExtension('ext.flutter.likeBoard', (
+          method,
+          params,
+        ) async {
           _debugLatest?._handleDoubleTapLike();
           return developer.ServiceExtensionResponse.result('{"ok":true}');
         });
@@ -7030,13 +7032,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // Debug-only long-press alias for the same like flow. Lets Marionette
       // and other agent-driven test harnesses trigger the chain without
       // having to fight the chessground tap-to-move gesture arena.
-      onLongPressStart: kDebugMode
-          ? (details) {
-              _lastTapPosition = details.localPosition;
-              _lastTapGlobalPosition = details.globalPosition;
-              _handleDoubleTapLike();
-            }
-          : null,
+      onLongPressStart:
+          kDebugMode
+              ? (details) {
+                _lastTapPosition = details.localPosition;
+                _lastTapGlobalPosition = details.globalPosition;
+                _handleDoubleTapLike();
+              }
+              : null,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -7065,11 +7068,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           // the flip), ignores pointers, and removes itself when each burst ends.
           Positioned.fill(
             child: Builder(
-              builder: (context) => HeartBurstLayer(
-                controller: _burstController,
-                color: context.colors.danger,
-                reduceMotion: MediaQuery.disableAnimationsOf(context),
-              ),
+              builder:
+                  (context) => HeartBurstLayer(
+                    controller: _burstController,
+                    color: context.colors.danger,
+                    reduceMotion: MediaQuery.disableAnimationsOf(context),
+                  ),
             ),
           ),
         ],
@@ -7094,16 +7098,19 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
     if (!_isLikeableSource(game.source)) return;
     final wasLiked =
-        ref.read(likedGamesProvider).valueOrNull?.any(
-              (a) => a.sourceGameId == game.gameId,
-            ) ??
-            false;
-    final tapLocal = _lastTapPosition == Offset.zero
-        ? Offset(widget.size / 2, widget.size / 2)
-        : _lastTapPosition;
-    final tapGlobal = _lastTapGlobalPosition == Offset.zero
-        ? tapLocal
-        : _lastTapGlobalPosition;
+        ref
+            .read(likedGamesProvider)
+            .valueOrNull
+            ?.any((a) => a.sourceGameId == game.gameId) ??
+        false;
+    final tapLocal =
+        _lastTapPosition == Offset.zero
+            ? Offset(widget.size / 2, widget.size / 2)
+            : _lastTapPosition;
+    final tapGlobal =
+        _lastTapGlobalPosition == Offset.zero
+            ? tapLocal
+            : _lastTapGlobalPosition;
 
     final anchor = ref.read(likeFlightAnchorProvider);
 
@@ -7147,26 +7154,27 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final startSize = widget.size * 0.55;
     final endSize = math.min(target.width, target.height);
     final entry = OverlayEntry(
-      builder: (_) => FlyingHeart(
-        from: from,
-        to: target.center,
-        color: flightColor,
-        startSize: startSize,
-        endSize: endSize,
-        duration: const Duration(milliseconds: 470),
-        onArrived: () {
-          _flyingHeartEntry?.remove();
-          _flyingHeartEntry = null;
-          if (!mounted) return;
-          anchor.land();
-          // Tiny "click into place" haptic at the moment the heart docks.
-          HapticFeedback.selectionClick();
-          Future.delayed(const Duration(milliseconds: 540), () {
-            if (!mounted) return;
-            anchor.reset();
-          });
-        },
-      ),
+      builder:
+          (_) => FlyingHeart(
+            from: from,
+            to: target.center,
+            color: flightColor,
+            startSize: startSize,
+            endSize: endSize,
+            duration: const Duration(milliseconds: 470),
+            onArrived: () {
+              _flyingHeartEntry?.remove();
+              _flyingHeartEntry = null;
+              if (!mounted) return;
+              anchor.land();
+              // Tiny "click into place" haptic at the moment the heart docks.
+              HapticFeedback.selectionClick();
+              Future.delayed(const Duration(milliseconds: 540), () {
+                if (!mounted) return;
+                anchor.reset();
+              });
+            },
+          ),
     );
     _flyingHeartEntry = entry;
     overlay.insert(entry);
@@ -14380,23 +14388,17 @@ class _EventInfoSheet extends ConsumerWidget {
   ) {
     final headers = _parseHeadersFromPgn();
 
-    // Determine event name: PGN [Event] > game.tourSlug > game.tourId (if not UUID)
-    String eventName = 'Game Info';
-    if (headers['Event'] != null &&
-        headers['Event']!.isNotEmpty &&
-        headers['Event'] != '?') {
-      eventName = headers['Event']!;
-    } else if (game.tourSlug != null && game.tourSlug!.isNotEmpty) {
-      eventName = StringUtils.slugToTitle(game.tourSlug!);
-    } else if (game.tourId.isNotEmpty) {
-      final isUuid = RegExp(
-        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-        caseSensitive: false,
-      ).hasMatch(game.tourId);
-      if (!isUuid) {
-        eventName = game.tourId;
-      }
-    }
+    // Determine event name. In TWIC player-profile routes, raw PGN Event can
+    // be a per-round/pairing label; prefer the canonical event from the game
+    // list when that happens.
+    final pgnEvent = headers['Event'];
+    final eventName = preferredTwicEventTitle(
+      pgnEvent: pgnEvent,
+      tourSlug: game.tourSlug,
+      tourId: game.tourId,
+      site: headers['Site'],
+      fallback: 'Game Info',
+    );
 
     return ListView(
       controller: scrollController,
