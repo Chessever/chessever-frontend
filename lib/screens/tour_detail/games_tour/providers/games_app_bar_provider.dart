@@ -1295,10 +1295,7 @@ class _GamesAppBarNotifier
         return;
       }
 
-      final updated = _refreshRoundStatuses(
-        current.gamesAppBarModels,
-        games,
-      );
+      final updated = _refreshRoundStatuses(current.gamesAppBarModels, games);
       _sortRounds(updated);
 
       await _applySelectionFrom(updated, tourId!);
@@ -1324,9 +1321,10 @@ class _GamesAppBarNotifier
     final current = state.valueOrNull;
     if (current == null) return;
 
-    final games = tourId == null
-        ? null
-        : ref.read(gamesTourProvider(tourId!)).valueOrNull;
+    final games =
+        tourId == null
+            ? null
+            : ref.read(gamesTourProvider(tourId!)).valueOrNull;
     final updated = _refreshRoundStatuses(current.gamesAppBarModels, games);
 
     _sortRounds(updated);
