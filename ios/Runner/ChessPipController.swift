@@ -111,10 +111,23 @@ final class ChessPipController: NSObject {
     )
     let controller = AVPictureInPictureController(contentSource: source)
     controller.delegate = self
+    applyPipControlPreferences(to: controller)
     controller.canStartPictureInPictureAutomaticallyFromInline = true
 
     displayLayer = layer
     pipController = controller
+  }
+
+  private func applyPipControlPreferences(to controller: AVPictureInPictureController) {
+    controller.requiresLinearPlayback = true
+
+    let controlsStyleSelector = NSSelectorFromString("setControlsStyle:")
+    guard controller.responds(to: controlsStyleSelector) else { return }
+
+    // AVPictureInPictureController does not expose a public API to hide the
+    // playback overlay. This private style hides play/stop, skip buttons, and
+    // the scrubber while keeping the system close/restore window controls.
+    controller.setValue(1, forKey: "controlsStyle")
   }
 
   private func attachLayerToRootView(_ layer: AVSampleBufferDisplayLayer) {
