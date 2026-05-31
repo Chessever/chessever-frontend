@@ -120,6 +120,20 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     }
 
     final token = _loadToken;
+    if (reset) {
+      final derivedEvents = await ref.read(playerEventsKeyProvider(_playerKey).future);
+      if (!mounted || token != _loadToken) return;
+      if (derivedEvents.isNotEmpty) {
+        _twicEvents = derivedEvents;
+        _twicTotalEvents = derivedEvents.length;
+        _twicHasMore = false;
+        _twicIsLoading = false;
+        _twicIsLoadingMore = false;
+        setState(() {});
+        return;
+      }
+    }
+
     final repo = ref.read(gamebaseRepositoryProvider);
     final playerId = await ref.read(twicPlayerIdProvider(_playerKey).future);
     if (!mounted || token != _loadToken) return;

@@ -483,8 +483,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildFoldersSliver(List<LibraryFolder> folders) {
-    // Prepend TWIC to the list — always on top
-    final allFolders = [kTwicFolder, ...folders];
+    // Pin the permanent collections at the top: real per-user Liked Games
+    // folder first (auto-created via ensureDefaultFolders), then TWIC, then
+    // the rest in normal order.
+    final likedIdx = folders.indexWhere((f) => f.isLikedGames);
+    final rest =
+        likedIdx == -1
+            ? folders
+            : (List<LibraryFolder>.from(folders)..removeAt(likedIdx));
+    final allFolders = <LibraryFolder>[
+      if (likedIdx != -1) folders[likedIdx],
+      kTwicFolder,
+      ...rest,
+    ];
     final filteredFolders = _filterFolders(allFolders);
 
     if (filteredFolders.isEmpty) {
@@ -515,7 +526,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             (context, index) => FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId,
+              isFeatured: filteredFolders[index].id == kTwicBookId ||
+                  filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),
             childCount: filteredFolders.length,
@@ -534,7 +546,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             child: FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId,
+              isFeatured: filteredFolders[index].id == kTwicBookId ||
+                  filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),
           ),

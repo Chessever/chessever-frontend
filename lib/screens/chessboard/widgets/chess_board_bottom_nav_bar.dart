@@ -231,3 +231,4 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     );
   }
 }
+

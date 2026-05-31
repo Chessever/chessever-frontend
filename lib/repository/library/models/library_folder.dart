@@ -24,6 +24,10 @@ class LibraryFolder with LibraryFolderMappable {
   /// Not stored in DB; set by the provider layer.
   final bool isSubscribed;
 
+  /// True for the special per-user "Liked Games" folder (auto-created for
+  /// everyone, undeletable, unrenamable). Persisted as `is_liked_games`.
+  final bool isLikedGames;
+
   const LibraryFolder({
     required this.id,
     required this.userId,
@@ -38,6 +42,7 @@ class LibraryFolder with LibraryFolderMappable {
     this.parentId,
     this.nodeType = nodeTypeDatabase,
     this.isSubscribed = false,
+    this.isLikedGames = false,
   });
 
   /// Convert Supabase JSON to LibraryFolder
@@ -54,6 +59,7 @@ class LibraryFolder with LibraryFolderMappable {
       shareToken: json['share_token'] as String?,
       parentId: json['parent_id'] as String?,
       nodeType: json['node_type'] as String? ?? nodeTypeDatabase,
+      isLikedGames: (json['is_liked_games'] as bool?) ?? false,
     );
   }
 

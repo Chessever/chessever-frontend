@@ -116,6 +116,9 @@ class FolderCard extends ConsumerWidget {
 
   Widget _buildExpandedCard(BuildContext context, WidgetRef ref) {
     final isTwic = folder.id == kTwicBookId;
+    final isLiked = folder.isLikedGames;
+    // Synthetic / special, permanent collections — no rename/delete/share menu.
+    final isProtected = isTwic || isLiked;
 
     // CSS specs: featured = 64x64 icon, ~18px radius; regular = 36x36 icon, 10px radius
     final iconSize = isFeatured ? 64.0.h : 36.0.h;
@@ -188,7 +191,7 @@ class FolderCard extends ConsumerWidget {
 
     return _PressableMotionCard(
       onTap: onTap ?? () => _navigateToFolder(context),
-      onLongPress: isTwic ? null : () => _showOverlayMenu(context, ref),
+      onLongPress: isProtected ? null : () => _showOverlayMenu(context, ref),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
         decoration: BoxDecoration(
@@ -210,18 +213,23 @@ class FolderCard extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(iconRadius),
                   ),
                   child: Center(
-                    child: SvgWidget(
-                      SvgAsset.folderOutline,
-                      width: svgSize,
-                      height: svgSize,
-                      colorFilter:
-                          context.isLightTheme
-                              ? ColorFilter.mode(
-                                context.colors.iconPrimary,
-                                BlendMode.srcIn,
-                              )
-                              : null,
-                    ),
+                    child: isLiked
+                        ? Icon(
+                            Icons.favorite,
+                            size: svgSize,
+                            color: context.colors.danger,
+                          )
+                        : SvgWidget(
+                            SvgAsset.folderOutline,
+                            width: svgSize,
+                            height: svgSize,
+                            colorFilter: context.isLightTheme
+                                ? ColorFilter.mode(
+                                    context.colors.iconPrimary,
+                                    BlendMode.srcIn,
+                                  )
+                                : null,
+                          ),
                   ),
                 ),
                 // Shared link badge for subscribed books
@@ -274,8 +282,9 @@ class FolderCard extends ConsumerWidget {
               ),
             ),
 
-            // Right arrow for TWIC, 3-dot menu for other books
-            if (isTwic)
+            // Right arrow for protected collections (TWIC, Liked Games),
+            // 3-dot menu for user-owned books.
+            if (isProtected)
               Padding(
                 padding: EdgeInsets.only(left: 8.w),
                 child: Icon(

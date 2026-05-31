@@ -1,0 +1,76 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// Lifecycle of the chained "like" → save-button-fill animation.
+///
+/// idle      → no animation in flight. Save button renders its normal disk
+///             (with a small heart badge if the current game is liked).
+/// bursting  → the big board heart-burst is playing. Save button slot remains
+///             the normal save/edit action; it is only used as a flight target.
+/// flying    → the burst's main heart has shrunk and is tweening across the
+///             screen toward the save-button slot via an Overlay.
+/// landed    → the heart just landed in the slot. The slot stays as the
+///             save/edit icon with a small red badge when the game is liked.
+enum LikeFlightPhase { idle, bursting, flying, landed }
+
+/// Per-board anchor that lets the board's double-tap-to-like handler talk
+/// to the AppBar save button widget without prop-drilling. The save button
+/// widget attaches [saveButtonKey] to its icon container so the flight
+/// animation can compute the on-screen target rect.
+class LikeFlightAnchor {
+  LikeFlightAnchor();
+
+  /// Attached to the save button's icon container. The flight overlay reads
+  /// `renderBox.localToGlobal(Offset.zero)` off this to find its target.
+  final GlobalKey saveButtonKey = GlobalKey();
+
+  /// Drives the save button's own state machine — see [LikeFlightPhase].
+  final ValueNotifier<LikeFlightPhase> phase =
+      ValueNotifier<LikeFlightPhase>(LikeFlightPhase.idle);
+
+  Rect? saveButtonGlobalRect() {
+    final ctx = saveButtonKey.currentContext;
+    if (ctx == null) return null;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return null;
+    final topLeft = box.localToGlobal(Offset.zero);
+    return topLeft & box.size;
+  }
+
+  void _logPhase(LikeFlightPhase p) {
+    if (kDebugMode) debugPrint('[HeartFlight] phase=${p.name}');
+  }
+
+  void start() {
+    phase.value = LikeFlightPhase.bursting;
+    _logPhase(phase.value);
+  }
+
+  void beginFlight() {
+    phase.value = LikeFlightPhase.flying;
+    _logPhase(phase.value);
+  }
+
+  void land() {
+    phase.value = LikeFlightPhase.landed;
+    _logPhase(phase.value);
+  }
+
+  void reset() {
+    phase.value = LikeFlightPhase.idle;
+    _logPhase(phase.value);
+  }
+
+  void dispose() => phase.dispose();
+}
+
+/// Shared anchor instance. Not autoDispose: the save button and the board's
+/// double-tap handler both `ref.read` it and they MUST resolve to the same
+/// instance, otherwise the GlobalKey on the save button doesn't match the
+/// rect lookup at flight time and the flight is silently skipped.
+final likeFlightAnchorProvider = Provider<LikeFlightAnchor>((ref) {
+  final anchor = LikeFlightAnchor();
+  ref.onDispose(anchor.dispose);
+  return anchor;
+});

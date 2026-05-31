@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
@@ -649,11 +650,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                                     isWhitePlayer) ||
                                 (status == GameStatus.blackWins &&
                                     !isWhitePlayer);
-                            final label = isDraw
-                                ? '½'
-                                : isWin
-                                    ? '1'
-                                    : '0';
+                            final label =
+                                boardResultLabelForSide(
+                                  effectiveGameModel,
+                                  isWhite: isWhitePlayer,
+                                ) ??
+                                '';
                             final resultColor =
                                 isWin
                                     ? kPrimaryColor
