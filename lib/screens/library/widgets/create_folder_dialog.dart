@@ -13,10 +13,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class LibraryFolderCreationData {
   final String name;
   final String? parentId;
-  LibraryFolderCreationData(this.name, this.parentId);
+  final String nodeType;
+  LibraryFolderCreationData(this.name, this.parentId, this.nodeType);
 }
 
-/// Shows a refined dialog to create a new database or sub-database.
+/// Shows a refined dialog to create a new folder or database.
 Future<LibraryFolderCreationData?> showCreateFolderDialog(
   BuildContext context, {
   String? initialParentId,
@@ -27,7 +28,7 @@ Future<LibraryFolderCreationData?> showCreateFolderDialog(
     barrierColor: Colors.black.withValues(alpha: 0.8),
     builder:
         (context) => _FolderNameDialog(
-          title: initialParentId != null ? 'New Sub-database' : 'New Database',
+          title: initialParentId != null ? 'Add to Folder' : 'New Library Item',
           confirmLabel: 'Create',
           initialParentId: initialParentId,
           isLocked: lockToParent,
@@ -45,7 +46,7 @@ Future<String?> showRenameFolderDialog(
     barrierColor: Colors.black.withValues(alpha: 0.8),
     builder:
         (context) => _FolderNameDialog(
-          title: 'Rename Database',
+          title: 'Rename',
           confirmLabel: 'Save',
           initialValue: currentName,
           isRename: true,
@@ -78,7 +79,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   late TextEditingController _controller;
   late FocusNode _focusNode;
   String? _selectedParentId;
-  bool _isSubdatabase = false;
+  bool _isDatabase = true;
 
   @override
   void initState() {
@@ -86,7 +87,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     _controller = TextEditingController(text: widget.initialValue ?? '');
     _focusNode = FocusNode();
     _selectedParentId = widget.initialParentId;
-    _isSubdatabase = widget.initialParentId != null;
+    _isDatabase = true;
 
     // Auto-focus the text field
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -114,7 +115,10 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         Navigator.of(context).pop(
           LibraryFolderCreationData(
             name,
-            _isSubdatabase ? _selectedParentId : null,
+            _selectedParentId,
+            _isDatabase
+                ? LibraryFolder.nodeTypeDatabase
+                : LibraryFolder.nodeTypeFolder,
           ),
         );
       }
@@ -125,9 +129,10 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final rootFolders = ref.watch(rootLibraryFoldersProvider);
+    final allFolders =
+        ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
     final availableParents =
-        rootFolders.where((f) => f.id != kTwicBookId).toList();
+        allFolders.where((f) => f.id != kTwicBookId && f.isFolder).toList();
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -167,8 +172,8 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                       child: Icon(
                         widget.isRename
                             ? Icons.edit_rounded
-                            : (_isSubdatabase
-                                ? Icons.folder_open_rounded
+                            : (_isDatabase
+                                ? Icons.storage_rounded
                                 : Icons.folder_rounded),
                         color: kPrimaryColor,
                         size: 22.sp,
@@ -195,13 +200,15 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                   SizedBox(height: 20.h),
                 ],
 
-                // Parent selection (if sub-database selected and not locked)
-                if (_isSubdatabase && !widget.isLocked && !widget.isRename) ...[
+                // Parent selection (if a parent folder is being selected)
+                if (_selectedParentId != null &&
+                    !widget.isLocked &&
+                    !widget.isRename) ...[
                   _buildParentSelector(availableParents),
                   SizedBox(height: 20.h),
                 ],
 
-                // Context message for locked sub-database
+                // Context message for a locked parent folder
                 if (widget.isLocked && _selectedParentId != null) ...[
                   _buildLockedContext(availableParents),
                   SizedBox(height: 20.h),
@@ -233,27 +240,21 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         children: [
           Expanded(
             child: _TypeButton(
-              label: 'Database',
-              isSelected: !_isSubdatabase,
+              label: 'Folder',
+              isSelected: !_isDatabase,
               onTap: () {
-                setState(() => _isSubdatabase = false);
+                setState(() => _isDatabase = false);
                 HapticFeedbackService.light();
               },
             ),
           ),
           Expanded(
             child: _TypeButton(
-              label: 'Subdatabase',
-              isSelected: _isSubdatabase,
+              label: 'Database',
+              isSelected: _isDatabase,
               onTap: () {
                 setState(() {
-                  _isSubdatabase = true;
-                  // Default to first parent if none selected
-                  final roots = ref.read(rootLibraryFoldersProvider);
-                  if (_selectedParentId == null && roots.isNotEmpty) {
-                    _selectedParentId =
-                        roots.firstWhere((f) => f.id != kTwicBookId).id;
-                  }
+                  _isDatabase = true;
                 });
                 HapticFeedbackService.light();
               },
@@ -267,7 +268,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   Widget _buildParentSelector(List<LibraryFolder> parents) {
     if (parents.isEmpty) {
       return Text(
-        'Create a database first to create a sub-database inside.',
+        'Create a folder first to organize databases inside it.',
         style: AppTypography.textXsRegular.copyWith(color: kRedColor),
       ).animate().fadeIn();
     }
@@ -276,7 +277,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'PARENT DATABASE',
+          'PARENT FOLDER',
           style: AppTypography.textXsBold.copyWith(
             color: context.colors.textPrimary.withValues(alpha: 0.4),
             letterSpacing: 1.0,
@@ -288,7 +289,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           decoration: BoxDecoration(
             color: context.colors.textPrimary.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
+            border: Border.all(
+              color: context.colors.textPrimary.withValues(alpha: 0.08),
+            ),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
@@ -341,7 +344,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Inside database "${parent.name}"',
+              'Inside folder "${parent.name}"',
               style: AppTypography.textXsMedium.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
@@ -368,7 +371,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           controller: _controller,
           focusNode: _focusNode,
           maxLength: 40,
-          style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textMdMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
           cursorColor: kPrimaryColor,
           decoration: InputDecoration(
             hintText: 'e.g. My Openings',
@@ -475,7 +480,9 @@ class _TypeButton extends StatelessWidget {
             label,
             style: AppTypography.textXsBold.copyWith(
               color:
-                  isSelected ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.4),
+                  isSelected
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimary.withValues(alpha: 0.4),
             ),
           ),
         ),

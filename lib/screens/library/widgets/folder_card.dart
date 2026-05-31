@@ -19,9 +19,15 @@ import 'package:motor/motor.dart';
 import 'package:share_plus/share_plus.dart';
 
 String _formatGameCount(int count) {
-  if (count == 0) return 'Empty';
+  if (count == 0) return 'Empty database';
   if (count == 1) return '1 game';
   return '${formatCompactCount(count)} games';
+}
+
+String _formatChildCount(int count) {
+  if (count == 0) return 'Empty folder';
+  if (count == 1) return '1 item';
+  return '$count items';
 }
 
 class FolderCard extends ConsumerWidget {
@@ -83,12 +89,13 @@ class FolderCard extends ConsumerWidget {
                     SvgAsset.folderOutline,
                     width: 18.sp,
                     height: 18.sp,
-                    colorFilter: context.isLightTheme
-                        ? ColorFilter.mode(
-                            context.colors.iconPrimary,
-                            BlendMode.srcIn,
-                          )
-                        : null,
+                    colorFilter:
+                        context.isLightTheme
+                            ? ColorFilter.mode(
+                              context.colors.iconPrimary,
+                              BlendMode.srcIn,
+                            )
+                            : null,
                   ),
                 ),
               ),
@@ -126,14 +133,25 @@ class FolderCard extends ConsumerWidget {
         height: 16 / 12,
       );
       countWidget = twicTotalAsync.when(
-        data: (count) => Text(
-          count > 0
-              ? '${formatCompactCount(count)} master games'
-              : 'Master games',
-          style: twicLabelStyle,
-        ),
+        data:
+            (count) => Text(
+              count > 0
+                  ? '${formatCompactCount(count)} master games'
+                  : 'Master games',
+              style: twicLabelStyle,
+            ),
         loading: () => Text('Master games', style: twicLabelStyle),
         error: (_, __) => Text('Master games', style: twicLabelStyle),
+      );
+    } else if (folder.isFolder) {
+      final childCount =
+          ref.watch(childLibraryFoldersProvider(folder.id)).length;
+      countWidget = Text(
+        _formatChildCount(childCount),
+        style: AppTypography.textXsRegular.copyWith(
+          color: const Color(0xFFA1A1A1),
+          height: 16 / 12,
+        ),
       );
     } else {
       final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
@@ -287,7 +305,7 @@ class FolderCard extends ConsumerWidget {
   void _showOverlayMenu(BuildContext context, WidgetRef ref) {
     HapticFeedbackService.light();
 
-    final isSubFolder = folder.parentId != null;
+    final isNonShareable = folder.parentId != null || folder.isFolder;
 
     if (folder.isSubscribed) {
       // Subscribed books: only show Unsubscribe
@@ -303,7 +321,7 @@ class FolderCard extends ConsumerWidget {
         onStopSharing: () => _stopSharing(context, ref),
         onRename: () => _renameFolder(context, ref),
         onDelete: () => _deleteFolder(context, ref),
-        isSubFolder: isSubFolder,
+        isSubFolder: isNonShareable,
       );
     } else {
       // Not shared: show Share, Rename, Delete
@@ -312,7 +330,7 @@ class FolderCard extends ConsumerWidget {
         onShare: () => _shareFolder(context, ref),
         onRename: () => _renameFolder(context, ref),
         onDelete: () => _deleteFolder(context, ref),
-        isSubFolder: isSubFolder,
+        isSubFolder: isNonShareable,
       );
     }
   }
@@ -338,7 +356,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to share: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -355,7 +375,9 @@ class FolderCard extends ConsumerWidget {
       SnackBar(
         content: Text(
           'Link copied',
-          style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
@@ -375,7 +397,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Sharing stopped',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -388,7 +412,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to stop sharing: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -410,7 +436,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Unsubscribed from "${folder.name}"',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -423,7 +451,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to unsubscribe: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -443,16 +473,7 @@ class FolderCard extends ConsumerWidget {
     try {
       final repo = ref.read(libraryRepositoryProvider);
       await repo.updateFolder(
-        LibraryFolder(
-          id: folder.id,
-          userId: folder.userId,
-          name: name,
-          color: folder.color,
-          icon: folder.icon,
-          orderIndex: folder.orderIndex,
-          createdAt: folder.createdAt,
-          updatedAt: DateTime.now(),
-        ),
+        folder.copyWith(name: name, updatedAt: DateTime.now()),
       );
       ref.invalidate(libraryFoldersStreamProvider);
       if (!context.mounted) return;
@@ -461,7 +482,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Renamed to "$name"',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -474,7 +497,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to rename: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -498,11 +523,15 @@ class FolderCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(16.br),
                 ),
                 title: Text(
-                  'Delete database?',
-                  style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+                  'Delete ${folder.isFolder ? 'folder' : 'database'}?',
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
                 content: Text(
-                  'This permanently deletes the database and every game inside it. This cannot be undone.',
+                  folder.isFolder
+                      ? 'This permanently deletes the folder and everything inside it. This cannot be undone.'
+                      : 'This permanently deletes the database and every game inside it. This cannot be undone.',
                   style: AppTypography.textXsRegular.copyWith(
                     color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
@@ -513,7 +542,9 @@ class FolderCard extends ConsumerWidget {
                     child: Text(
                       'Cancel',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.7),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
                   ),
@@ -546,8 +577,10 @@ class FolderCard extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Database deleted',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            '${folder.isFolder ? 'Folder' : 'Database'} deleted',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -560,7 +593,9 @@ class FolderCard extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Failed to delete: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -673,13 +708,13 @@ void showFolderOverlayMenu({
       ),
       _OverlayMenuItemData(
         Icons.edit_rounded,
-        'Rename Database',
+        'Rename',
         onRename,
         _MenuItemPosition.middle,
       ),
       _OverlayMenuItemData(
         Icons.delete_outline_rounded,
-        'Delete Folder',
+        'Delete',
         onDelete,
         _MenuItemPosition.bottom,
       ),
@@ -727,13 +762,13 @@ void showSharedFolderOverlayMenu({
       ),
       _OverlayMenuItemData(
         Icons.edit_rounded,
-        'Rename Database',
+        'Rename',
         onRename,
         _MenuItemPosition.middle,
       ),
       _OverlayMenuItemData(
         Icons.delete_outline_rounded,
-        'Delete Folder',
+        'Delete',
         onDelete,
         _MenuItemPosition.bottom,
       ),
@@ -968,8 +1003,10 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
-    final iconColor = widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
+    final textColor =
+        widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
+    final iconColor =
+        widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

@@ -111,7 +111,11 @@ class _ImportPgnToFolderSheetShell extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(context, alpha: 0.97, borderRadius: 28.sp),
+        decoration: ChessSheetDecoration.dark(
+          context,
+          alpha: 0.97,
+          borderRadius: 28.sp,
+        ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -170,7 +174,11 @@ class _ImportPgnToFolderPageState
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =
-          folders.where((f) => !f.isSubscribed && f.id != kTwicBookId).length;
+          folders
+              .where(
+                (f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase,
+              )
+              .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
@@ -185,16 +193,24 @@ class _ImportPgnToFolderPageState
     try {
       final created = await ref
           .read(libraryRepositoryProvider)
-          .createFolder(name: data.name, parentId: data.parentId);
+          .createFolder(
+            name: data.name,
+            parentId: data.parentId,
+            nodeType: data.nodeType,
+          );
       ref.invalidate(libraryFoldersStreamProvider);
 
       if (!mounted) return;
-      setState(() => _selectedFolderIds.add(created.id));
+      if (created.isDatabase) {
+        setState(() => _selectedFolderIds.add(created.id));
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Database "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -205,8 +221,10 @@ class _ImportPgnToFolderPageState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to create database: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            'Failed to create item: $e',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -230,7 +248,9 @@ class _ImportPgnToFolderPageState
         SnackBar(
           content: Text(
             'Select at least one database',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -303,7 +323,9 @@ class _ImportPgnToFolderPageState
             _savedEntries > 0
                 ? 'Imported $_savedEntries entries into your databases'
                 : 'No games were imported',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -316,7 +338,9 @@ class _ImportPgnToFolderPageState
         SnackBar(
           content: Text(
             'Import failed: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -368,7 +392,7 @@ class _ImportPgnToFolderPageState
               (folders) =>
                   folders
                       .where((f) => _selectedFolderIds.contains(f.id))
-                      .where((f) => !f.isSubscribed)
+                      .where((f) => !f.isSubscribed && f.isDatabase)
                       .toList(),
         ) ??
         [];
@@ -412,21 +436,24 @@ class _ImportPgnToFolderPageState
                   data: (folders) {
                     // Only owned (not subscribed) folders can receive writes.
                     final writable =
-                        folders.where((f) => !f.isSubscribed).toList();
+                        folders
+                            .where((f) => !f.isSubscribed && f.isDatabase)
+                            .toList();
                     if (writable.isEmpty) {
                       return Padding(
                         padding: EdgeInsets.all(20.sp),
                         child: Text(
                           'No databases yet. Create one below.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                           textAlign: TextAlign.center,
                         ),
                       );
                     }
-                    final sortedFolders =
-                        _sortFoldersHierarchically(writable);
+                    final sortedFolders = _sortFoldersHierarchically(writable);
                     return ListView.separated(
                       shrinkWrap: true,
                       padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -443,8 +470,10 @@ class _ImportPgnToFolderPageState
                     );
                   },
                   loading:
-                      () =>  Center(
-                        child: CircularProgressIndicator(color: context.colors.textPrimary),
+                      () => Center(
+                        child: CircularProgressIndicator(
+                          color: context.colors.textPrimary,
+                        ),
                       ),
                   error:
                       (e, _) => Center(
@@ -469,7 +498,9 @@ class _ImportPgnToFolderPageState
                       child: LinearProgressIndicator(
                         minHeight: 8.h,
                         color: kPrimaryColor,
-                        backgroundColor: context.colors.textPrimary.withValues(alpha: 0.08),
+                        backgroundColor: context.colors.textPrimary.withValues(
+                          alpha: 0.08,
+                        ),
                         value:
                             totalRows == 0
                                 ? null
@@ -480,7 +511,9 @@ class _ImportPgnToFolderPageState
                     Text(
                       'Saved $_savedEntries / $totalRows',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.72),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.72,
+                        ),
                       ),
                     ),
                   ],
@@ -499,10 +532,14 @@ class _ImportPgnToFolderPageState
                         child: Container(
                           padding: EdgeInsets.symmetric(vertical: 14.h),
                           decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(alpha: 0.10),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.10,
+                            ),
                             borderRadius: BorderRadius.circular(12.br),
                             border: Border.all(
-                              color: context.colors.textPrimary.withValues(alpha: 0.14),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.14,
+                              ),
                             ),
                           ),
                           child: Row(
@@ -601,13 +638,13 @@ class _ImportFolderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isSubdatabase = folder.parentId != null;
+    final isChildNode = folder.parentId != null;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: EdgeInsets.only(
-          left: 16.w + (isSubdatabase ? 24.w : 0),
+          left: 16.w + (isChildNode ? 24.w : 0),
           right: 16.w,
           top: 14.h,
           bottom: 14.h,
@@ -627,7 +664,7 @@ class _ImportFolderTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            if (isSubdatabase) ...[
+            if (isChildNode) ...[
               Icon(
                 Icons.subdirectory_arrow_right_rounded,
                 size: 16.sp,
@@ -635,12 +672,18 @@ class _ImportFolderTile extends StatelessWidget {
               ),
               SizedBox(width: 8.w),
             ],
-            Icon(Icons.folder_rounded, color: context.colors.textPrimary, size: 24.sp),
+            Icon(
+              Icons.folder_rounded,
+              color: context.colors.textPrimary,
+              size: 24.sp,
+            ),
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
                 folder.name,
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
             Icon(

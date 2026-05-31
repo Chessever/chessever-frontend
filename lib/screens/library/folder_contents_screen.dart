@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
+import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
@@ -45,11 +47,15 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   late final TextEditingController _searchController;
   late final BookPaginationKey _paginationKey;
   final Set<String> _removingIds = {};
+  GamebaseSortField _sortBy = GamebaseSortField.date;
+  GamebaseSortDirection _sortDirection = GamebaseSortDirection.desc;
   // Overrides widget.folder.name after an in-place rename so the header
   // reflects the new name without needing to pop/reopen.
   String? _overrideFolderName;
 
   bool get _isSubscribed => widget.folder.isSubscribed;
+  bool get _isFolder => widget.folder.isFolder;
+  bool get _isDatabase => widget.folder.isDatabase;
 
   String get _currentFolderName => _overrideFolderName ?? widget.folder.name;
 
@@ -94,6 +100,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     _searchController.clear();
   }
 
+  void _showSortOptions() {
+    HapticFeedbackService.buttonPress();
+    showGamebaseSortOptions(
+      context: context,
+      sortBy: _sortBy,
+      sortDirection: _sortDirection,
+      onChanged: (field, direction) {
+        if (!mounted) return;
+        setState(() {
+          _sortBy = field;
+          _sortDirection = direction;
+        });
+      },
+    );
+  }
+
   Future<void> _removeAnalysis(SavedAnalysis analysis) async {
     if (_removingIds.contains(analysis.id)) return;
 
@@ -126,7 +148,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Removed from "${widget.folder.name}"',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -175,7 +199,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Failed to remove: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -186,21 +212,19 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   Future<void> _handlePlusButton() async {
     HapticFeedbackService.light();
-    // Sub-databases can't nest further (2-layer hierarchy), so only offer
-    // "Create Sub-Database" on root folders.
-    final isRootFolder = widget.folder.parentId == null;
     final choice = await showAddToLibrarySheet(
       context,
       title: 'Add to "$_currentFolderName"',
-      showCreateDatabase: isRootFolder,
-      createDatabaseTitle: 'Create Sub-Database',
-      createDatabaseSubtitle: 'New empty sub-database under this one',
+      showCreateDatabase: _isFolder,
+      createDatabaseTitle: 'Create Folder or Database',
+      createDatabaseSubtitle: 'Organize another folder or game database here',
+      showImports: _isDatabase,
     );
     if (choice == null || !mounted) return;
 
     switch (choice) {
       case AddToLibraryChoice.createDatabase:
-        await _handleCreateSubfolder();
+        await _handleCreateChildNode();
       case AddToLibraryChoice.importPgn:
         await _handleImportPgnFromClipboard();
       case AddToLibraryChoice.pickPgnFile:
@@ -225,7 +249,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           SnackBar(
             content: Text(
               'Could not open file picker: $e',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,
@@ -259,7 +285,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Clipboard is empty. Copy a PGN first.',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -275,7 +303,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Clipboard does not contain a valid PGN',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor.withValues(alpha: 0.9),
           behavior: SnackBarBehavior.floating,
@@ -302,7 +332,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     ref.invalidate(libraryFoldersStreamProvider);
   }
 
-  Future<void> _handleCreateSubfolder() async {
+  Future<void> _handleCreateChildNode() async {
     final data = await showCreateFolderDialog(
       context,
       initialParentId: widget.folder.id,
@@ -313,15 +343,21 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     try {
       await ref
           .read(libraryRepositoryProvider)
-          .createFolder(name: data.name, parentId: data.parentId);
+          .createFolder(
+            name: data.name,
+            parentId: data.parentId,
+            nodeType: data.nodeType,
+          );
       ref.invalidate(libraryFoldersStreamProvider);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Sub-database "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -332,8 +368,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to create sub-database: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            'Failed to create item: $e',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -366,7 +404,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Renamed to "$name"',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -379,7 +419,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Failed to rename: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -392,7 +434,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     HapticFeedbackService.medium();
 
     final repo = ref.read(libraryRepositoryProvider);
-    // Children are sub-databases directly under this folder. Empty for
+    // Children are child nodes directly under this folder. Empty for
     // leaf / sub-level folders, which cleanly degrades to a single-file
     // export via the tree helper.
     final childFolders = ref.read(
@@ -436,7 +478,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             error != null
                 ? 'Export failed: $error'
                 : 'Nothing to export in this database',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -451,9 +495,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       for (final entry in files) {
         final file = File('${tempDir.path}/${entry.filename}');
         await file.writeAsString(entry.pgn);
-        xFiles.add(
-          XFile(file.path, mimeType: 'application/x-chess-pgn'),
-        );
+        xFiles.add(XFile(file.path, mimeType: 'application/x-chess-pgn'));
       }
 
       if (!mounted) return;
@@ -480,7 +522,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             'Share failed: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -526,7 +570,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     return Container(
       padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration:  BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -550,9 +594,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       phone: 8.w,
       tablet: 16.w,
     );
-    final totalCount = bookAsync.valueOrNull?.totalCount;
+    final totalCount = _isDatabase ? bookAsync.valueOrNull?.totalCount : null;
 
-    final bool showExport = (bookAsync.valueOrNull?.totalCount ?? 0) > 0;
+    final bool showExport =
+        _isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0;
     final bool showRename = !_isSubscribed;
     final bool showAdd = !_isSubscribed;
 
@@ -626,7 +671,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           if (showRename)
             IconButton(
               onPressed: _handleRename,
-              tooltip: 'Rename Database',
+              tooltip: 'Rename',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.symmetric(horizontal: 6.w),
               constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
@@ -654,61 +699,144 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildSearchBar() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: Container(
-        height: 38.h,
-        decoration: BoxDecoration(
-          color: context.colors.textPrimary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10.br),
-        ),
-        child: Row(
-          children: [
-            SizedBox(width: 12.w),
-            Icon(
-              Icons.search_rounded,
-              size: 18.sp,
-              color: const Color(0xFFA1A1AA),
-            ),
-            SizedBox(width: 8.w),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
-                decoration: InputDecoration(
-                  hintText: 'Search games...',
-                  hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  isDense: true,
-                ),
+    final searchField = Container(
+      height: 38.h,
+      decoration: BoxDecoration(
+        color: context.colors.textPrimary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10.br),
+      ),
+      child: Row(
+        children: [
+          SizedBox(width: 12.w),
+          Icon(
+            Icons.search_rounded,
+            size: 18.sp,
+            color: const Color(0xFFA1A1AA),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary,
               ),
-            ),
-            if (_searchController.text.isNotEmpty) ...[
-              GestureDetector(
-                onTap: _clearSearch,
-                child: Icon(
-                  Icons.close,
-                  size: 20.sp,
+              decoration: InputDecoration(
+                hintText: 'Search games...',
+                hintStyle: AppTypography.textSmRegular.copyWith(
                   color: const Color(0xFFA1A1AA),
                 ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                isDense: true,
               ),
-              SizedBox(width: 8.w),
-            ],
+            ),
+          ),
+          if (_searchController.text.isNotEmpty) ...[
+            GestureDetector(
+              onTap: _clearSearch,
+              child: Icon(
+                Icons.close,
+                size: 20.sp,
+                color: const Color(0xFFA1A1AA),
+              ),
+            ),
             SizedBox(width: 8.w),
           ],
-        ),
+          SizedBox(width: 8.w),
+        ],
       ),
     );
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      child: Row(
+        children: [
+          Expanded(child: searchField),
+          if (_isDatabase) ...[
+            SizedBox(width: 8.w),
+            GestureDetector(
+              onTap: _showSortOptions,
+              child: Container(
+                width: 38.h,
+                height: 38.h,
+                decoration: BoxDecoration(
+                  color: context.colors.textPrimary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10.br),
+                  border: Border.all(
+                    color: context.colors.textPrimary.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Icon(
+                  _sortDirection == GamebaseSortDirection.desc
+                      ? Icons.south_rounded
+                      : Icons.north_rounded,
+                  size: 18.sp,
+                  color: kPrimaryColor,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  int _ratingFromMetadata(SavedAnalysis analysis, String key) {
+    final value = analysis.chessGame.metadata[key];
+    if (value is num) return value.toInt();
+    final text = value?.toString() ?? '';
+    final digits = RegExp(r'\d+').firstMatch(text)?.group(0);
+    return int.tryParse(digits ?? '') ?? 0;
+  }
+
+  DateTime _gameDate(SavedAnalysis analysis) {
+    final raw = analysis.chessGame.metadata['Date']?.toString().trim() ?? '';
+    if (raw.isNotEmpty && raw != '????.??.??') {
+      final normalized = raw.replaceAll('.', '-').replaceAll('?', '01');
+      final parsed = DateTime.tryParse(normalized);
+      if (parsed != null) return parsed;
+    }
+    return analysis.createdAt;
+  }
+
+  int _sortValue(SavedAnalysis analysis, GamebaseSortField field) {
+    switch (field) {
+      case GamebaseSortField.whiteElo:
+        return _ratingFromMetadata(analysis, 'WhiteElo');
+      case GamebaseSortField.blackElo:
+        return _ratingFromMetadata(analysis, 'BlackElo');
+      case GamebaseSortField.avgElo:
+        final white = _ratingFromMetadata(analysis, 'WhiteElo');
+        final black = _ratingFromMetadata(analysis, 'BlackElo');
+        if (white > 0 && black > 0) return ((white + black) / 2).round();
+        return white > 0 ? white : black;
+      case GamebaseSortField.date:
+        return _gameDate(analysis).millisecondsSinceEpoch;
+    }
+  }
+
+  List<SavedAnalysis> _sortAnalyses(List<SavedAnalysis> analyses) {
+    final sorted = List<SavedAnalysis>.from(analyses);
+    sorted.sort((a, b) {
+      final comparison = _sortValue(
+        a,
+        _sortBy,
+      ).compareTo(_sortValue(b, _sortBy));
+      final directed =
+          _sortDirection == GamebaseSortDirection.asc
+              ? comparison
+              : -comparison;
+      if (directed != 0) return directed;
+      return b.createdAt.compareTo(a.createdAt);
+    });
+    return sorted;
   }
 
   Widget _buildSavedGames(
     AsyncValue<PaginatedBookState> bookAsync,
     String query,
   ) {
-    // Watch child folders (sub-databases)
+    // Watch child folders (child nodes)
     final childFolders = ref.watch(
       childLibraryFoldersProvider(widget.folder.id),
     );
@@ -724,20 +852,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       backgroundColor: context.colors.surface,
       child: bookAsync.when(
         data: (bookState) {
-          final analyses = bookState.games;
-          final filteredAnalyses =
-              analyses.where((analysis) {
-                if (query.isEmpty) return true;
-                final md = analysis.chessGame.metadata;
-                final title = analysis.title.toLowerCase();
-                final white = (md['White'] ?? '').toString().toLowerCase();
-                final black = (md['Black'] ?? '').toString().toLowerCase();
-                final event = (md['Event'] ?? '').toString().toLowerCase();
-                return title.contains(query) ||
-                    white.contains(query) ||
-                    black.contains(query) ||
-                    event.contains(query);
-              }).toList();
+          final analyses =
+              _isDatabase ? bookState.games : const <SavedAnalysis>[];
+          final filteredAnalyses = _sortAnalyses(
+            analyses.where((analysis) {
+              if (query.isEmpty) return true;
+              final md = analysis.chessGame.metadata;
+              final title = analysis.title.toLowerCase();
+              final white = (md['White'] ?? '').toString().toLowerCase();
+              final black = (md['Black'] ?? '').toString().toLowerCase();
+              final event = (md['Event'] ?? '').toString().toLowerCase();
+              return title.contains(query) ||
+                  white.contains(query) ||
+                  black.contains(query) ||
+                  event.contains(query);
+            }).toList(),
+          );
 
           // Filter child folders if query is present
           final filteredFolders =
@@ -755,7 +885,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             return _buildEmptySearchState();
           }
 
-          // Total items = Subfolders + Games + Loading Tail
+          // Total items = child nodes + Games + Loading Tail
           final showLoadingTail = bookState.hasMore && query.isEmpty;
           final itemCount =
               filteredFolders.length +
@@ -767,7 +897,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
             itemCount: itemCount,
             itemBuilder: (context, index) {
-              // 1. Show Subfolders first
+              // 1. Show child nodes first
               if (index < filteredFolders.length) {
                 final folder = filteredFolders[index];
                 return Padding(
@@ -839,9 +969,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             },
           );
         },
-        loading: () => Center(
-          child: CircularProgressIndicator(color: context.colors.textPrimary),
-        ),
+        loading:
+            () => Center(
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimary,
+              ),
+            ),
         error:
             (e, _) => Center(
               child: Text(
@@ -854,6 +987,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildEmptySavedState() {
+    final isFolder = _isFolder;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -865,13 +999,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           ),
           SizedBox(height: 16.h),
           Text(
-            'This database is empty',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            isFolder ? 'This folder is empty' : 'This database is empty',
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           if (!_isSubscribed) ...[
             SizedBox(height: 8.h),
             Text(
-              'Save your first game here!',
+              isFolder
+                  ? 'Create a folder or database here.'
+                  : 'Save your first game here!',
               style: AppTypography.textSmRegular.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.5),
               ),
@@ -895,7 +1033,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           SizedBox(height: 16.h),
           Text(
             'No matches found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Text(
@@ -1027,9 +1167,10 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               borderRadius: BorderRadius.circular(4.br),
               child: LinearProgressIndicator(
                 value: progress.total > 0 ? progress.fraction : null,
-                backgroundColor: context.colors.textPrimary.withValues(alpha: 0.08),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(kPrimaryColor),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.08,
+                ),
+                valueColor: const AlwaysStoppedAnimation<Color>(kPrimaryColor),
                 minHeight: 6.h,
               ),
             ),

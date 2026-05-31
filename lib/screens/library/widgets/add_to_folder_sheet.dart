@@ -70,7 +70,11 @@ class _AddToFolderSheetShell extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(context, alpha: 0.97, borderRadius: 28.sp),
+        decoration: ChessSheetDecoration.dark(
+          context,
+          alpha: 0.97,
+          borderRadius: 28.sp,
+        ),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -201,7 +205,11 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =
-          folders.where((f) => !f.isSubscribed && f.id != kTwicBookId).length;
+          folders
+              .where(
+                (f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase,
+              )
+              .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
@@ -217,17 +225,25 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     try {
       final created = await ref
           .read(libraryRepositoryProvider)
-          .createFolder(name: data.name, parentId: data.parentId);
+          .createFolder(
+            name: data.name,
+            parentId: data.parentId,
+            nodeType: data.nodeType,
+          );
       ref.invalidate(libraryFoldersStreamProvider);
 
       if (!mounted) return;
-      setState(() => _selectedFolderIds.add(created.id));
+      if (created.isDatabase) {
+        setState(() => _selectedFolderIds.add(created.id));
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Database "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -238,8 +254,10 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to create database: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            'Failed to create item: $e',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -289,7 +307,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             'Select at least one database',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -299,7 +319,10 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     }
 
     // Pre-flight only counted 1 row; one game × N folders = N rows.
-    final allowed = await canSaveMoreGames(context, gamesToAdd: selected.length);
+    final allowed = await canSaveMoreGames(
+      context,
+      gamesToAdd: selected.length,
+    );
     if (!allowed || !mounted) return;
 
     setState(() => _isSaving = true);
@@ -349,7 +372,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
             successCount == 1
                 ? 'Added to 1 database'
                 : 'Added to $successCount databases',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -362,7 +387,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             'Failed to add game: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -380,7 +407,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     final allFolders =
         ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
     final selectedFolders =
-        allFolders.where((f) => _selectedFolderIds.contains(f.id)).toList();
+        allFolders
+            .where((f) => _selectedFolderIds.contains(f.id) && f.isDatabase)
+            .toList();
 
     return Material(
       type: MaterialType.transparency,
@@ -394,7 +423,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
               padding: EdgeInsets.symmetric(horizontal: 20.w),
               child: Text(
                 'Add to Databases',
-                style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textLgBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
 
@@ -416,7 +447,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                           child: Text(
                             'No databases yet.',
                             style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.5),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.5,
+                              ),
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -489,13 +522,17 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                     color:
                         isSelected
                             ? kPrimaryColor.withValues(alpha: 0.2)
-                            : context.colors.textPrimary.withValues(alpha: 0.05),
+                            : context.colors.textPrimary.withValues(
+                              alpha: 0.05,
+                            ),
                     borderRadius: BorderRadius.circular(20.br),
                     border: Border.all(
                       color:
                           isSelected
                               ? kPrimaryColor.withValues(alpha: 0.6)
-                              : context.colors.textPrimary.withValues(alpha: 0.1),
+                              : context.colors.textPrimary.withValues(
+                                alpha: 0.1,
+                              ),
                     ),
                   ),
                   child: Row(
@@ -506,7 +543,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(alpha: 0.6),
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.6,
+                                ),
                       ),
                       SizedBox(width: 6.w),
                       Text(
@@ -515,7 +554,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                           color:
                               isSelected
                                   ? context.colors.textPrimary
-                                  : context.colors.textPrimary.withValues(alpha: 0.8),
+                                  : context.colors.textPrimary.withValues(
+                                    alpha: 0.8,
+                                  ),
                         ),
                       ),
                     ],
@@ -649,8 +690,8 @@ class _ExpandableFolderTile extends ConsumerWidget {
       children: [
         _FolderSelectionTile(
           folder: folder,
-          selected: isSelected,
-          onTap: onToggleSelect,
+          selected: folder.isDatabase && isSelected,
+          onTap: folder.isDatabase ? onToggleSelect : onToggleExpand,
           trailing:
               hasChildren
                   ? IconButton(
@@ -671,8 +712,10 @@ class _ExpandableFolderTile extends ConsumerWidget {
               padding: EdgeInsets.only(left: 24.w, bottom: 4.h),
               child: _FolderSelectionTile(
                 folder: child,
-                selected: selectedIds.contains(child.id),
-                onTap: () => onToggleChildSelect(child),
+                selected: child.isDatabase && selectedIds.contains(child.id),
+                onTap: () {
+                  if (child.isDatabase) onToggleChildSelect(child);
+                },
                 isSmall: true,
               ),
             ),
@@ -701,7 +744,7 @@ class _FolderSelectionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isSubdatabase = folder.parentId != null;
+    final isChildNode = folder.parentId != null;
 
     return GestureDetector(
       onTap: onTap,
@@ -725,7 +768,7 @@ class _FolderSelectionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            if (isSubdatabase) ...[
+            if (isChildNode) ...[
               Icon(
                 Icons.subdirectory_arrow_right_rounded,
                 size: 16.sp,
@@ -753,22 +796,25 @@ class _FolderSelectionTile extends StatelessWidget {
                         ? AppTypography.textSmMedium
                         : AppTypography.textSmMedium)
                     .copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: isSmall ? 0.8 : 1.0),
+                      color: context.colors.textPrimary.withValues(
+                        alpha: isSmall ? 0.8 : 1.0,
+                      ),
                     ),
               ),
             ),
             if (trailing != null) trailing!,
             SizedBox(width: 8.w),
-            Icon(
-              selected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              color:
-                  selected
-                      ? kPrimaryColor
-                      : context.colors.textPrimary.withValues(alpha: 0.35),
-              size: isSmall ? 18.sp : 20.sp,
-            ),
+            if (folder.isDatabase)
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color:
+                    selected
+                        ? kPrimaryColor
+                        : context.colors.textPrimary.withValues(alpha: 0.35),
+                size: isSmall ? 18.sp : 20.sp,
+              ),
           ],
         ),
       ),
