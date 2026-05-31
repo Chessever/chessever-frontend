@@ -266,6 +266,7 @@ class Player {
   final String fed;
   final int clock;
   final String team;
+  final double? customPoints;
 
   Player({
     required this.name,
@@ -275,6 +276,7 @@ class Player {
     required this.fed,
     required this.clock,
     required this.team,
+    this.customPoints,
   });
 
   factory Player.fromJsonString(String jsonString) {
@@ -297,6 +299,7 @@ class Player {
       fed: json['fed'] as String? ?? '',
       clock: (json['clock'] as num?)?.toInt() ?? 0,
       team: json['team'] as String? ?? '',
+      customPoints: (json['customPoints'] as num?)?.toDouble(),
     );
   }
 
@@ -309,6 +312,7 @@ class Player {
       'fed': fed,
       'clock': clock,
       'team': team,
+      if (customPoints != null) 'customPoints': customPoints,
     };
   }
 }
