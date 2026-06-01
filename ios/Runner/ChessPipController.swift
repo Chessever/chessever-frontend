@@ -391,10 +391,15 @@ final class ChessPipController: NSObject {
       payload["lastMoveUci"] = lastMove
       payload["lastMove"] = lastMove
     }
+    if let lastMoveTime = row["last_move_time"] as? String, !lastMoveTime.isEmpty {
+      payload["lastMoveTime"] = lastMoveTime
+    }
     if let whiteClock = row["last_clock_white"] as? NSNumber {
+      payload["whiteClockSeconds"] = whiteClock.intValue
       payload["whiteClock"] = Self.formatClock(seconds: whiteClock.intValue)
     }
     if let blackClock = row["last_clock_black"] as? NSNumber {
+      payload["blackClockSeconds"] = blackClock.intValue
       payload["blackClock"] = Self.formatClock(seconds: blackClock.intValue)
     }
     if let status = row["status"] as? String {
@@ -469,6 +474,18 @@ extension ChessPipController: AVPictureInPictureSampleBufferPlaybackDelegate {
 }
 
 private enum ChessPipRenderer {
+  private static let isoDateFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+  }()
+
+  private static let isoDateFormatterNoFraction: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter
+  }()
+
   private static let fideToIso2: [String: String] = [
     "USA": "US", "ENG": "GB", "SCO": "GB", "WLS": "GB", "RUS": "RU",
     "CHN": "CN", "IND": "IN", "GER": "DE", "FRA": "FR", "ESP": "ES",
@@ -543,7 +560,7 @@ private enum ChessPipRenderer {
     let ratingValue = payload["\(prefix)Rating"] as? Int ?? 0
     let rating = ratingValue > 0 ? "\(ratingValue)" : ""
     let fed = (payload["\(prefix)Fed"] as? String ?? "").uppercased()
-    let clock = payload["\(prefix)Clock"] as? String ?? ""
+    let clock = displayClock(payload: payload, isWhite: isWhite)
     let label = [title, name, rating].filter { !$0.isEmpty }.joined(separator: " ")
 
     let flag = flagDisplay(for: fed)
@@ -572,6 +589,57 @@ private enum ChessPipRenderer {
       height: rect.height
     )
     drawText(label, in: textRect, size: rect.height * 0.48, color: .white, alignment: .left)
+  }
+
+  private static func displayClock(payload: [String: Any], isWhite: Bool) -> String {
+    let prefix = isWhite ? "white" : "black"
+    let fallback = payload["\(prefix)Clock"] as? String ?? ""
+    guard
+      isOngoing(payload: payload),
+      isWhiteToMove(payload: payload) == isWhite,
+      let baseSeconds = intValue(payload["\(prefix)ClockSeconds"]),
+      let lastMoveTime = dateValue(payload["lastMoveTime"] as? String)
+    else {
+      return fallback
+    }
+
+    let elapsed = max(0, Int(Date().timeIntervalSince(lastMoveTime)))
+    return formatClock(seconds: max(0, baseSeconds - elapsed))
+  }
+
+  private static func isOngoing(payload: [String: Any]) -> Bool {
+    let status = (payload["status"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return status.isEmpty || status == "ongoing" || status == "*"
+  }
+
+  private static func isWhiteToMove(payload: [String: Any]) -> Bool {
+    let fen = payload["fen"] as? String ?? ""
+    let parts = fen.split(separator: " ")
+    guard parts.count > 1 else { return true }
+    return parts[1] == "w"
+  }
+
+  private static func intValue(_ value: Any?) -> Int? {
+    if let int = value as? Int { return int }
+    if let number = value as? NSNumber { return number.intValue }
+    if let string = value as? String { return Int(string) }
+    return nil
+  }
+
+  private static func dateValue(_ value: String?) -> Date? {
+    guard let value, !value.isEmpty else { return nil }
+    return isoDateFormatter.date(from: value) ?? isoDateFormatterNoFraction.date(from: value)
+  }
+
+  private static func formatClock(seconds: Int) -> String {
+    let clamped = max(0, seconds)
+    let hours = clamped / 3600
+    let minutes = (clamped % 3600) / 60
+    let secs = clamped % 60
+    if hours > 0 {
+      return String(format: "%d:%02d:%02d", hours, minutes, secs)
+    }
+    return String(format: "%d:%02d", minutes, secs)
   }
 
   private static func drawBoard(payload: [String: Any], rect: CGRect) {

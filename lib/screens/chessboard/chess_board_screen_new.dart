@@ -1426,6 +1426,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       'lastMoveUci': lastMoveUci,
       'lastMove': game.lastMove ?? '',
       'status': game.gameStatus.name,
+      if (game.lastMoveTime != null)
+        'lastMoveTime': game.lastMoveTime!.toUtc().toIso8601String(),
       if (evaluation != null) 'evalCp': (evaluation * 100).round(),
       if (state?.mate != null) 'mate': state!.mate,
       'whiteName': game.whitePlayer.name,
@@ -1442,6 +1444,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           game.blackPlayer.countryCode.isNotEmpty
               ? game.blackPlayer.countryCode
               : game.blackPlayer.federation,
+      if (game.whiteClockSeconds != null)
+        'whiteClockSeconds': game.whiteClockSeconds,
+      if (game.blackClockSeconds != null)
+        'blackClockSeconds': game.blackClockSeconds,
       'whiteClock': _formatPipClock(
         game.whiteClockSeconds,
         game.whiteClockCentiseconds,
