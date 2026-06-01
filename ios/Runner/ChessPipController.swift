@@ -538,15 +538,22 @@ private enum ChessPipRenderer {
 
       let side = min(size.width, size.height)
       let left = (size.width - side) / 2
-      let top = (size.height - side) / 2
       let headerH = side * 0.07
       let footerH = side * 0.07
-      let evalW = side * 0.05
-      let boardSize = side - headerH - footerH - side * 0.04
-      let boardRect = CGRect(x: left + evalW, y: top + headerH, width: boardSize, height: boardSize)
+      let evalW = side * 0.028
+      let evalGap = side * 0.018
+      let horizontalMargin = side * 0.06
+      let maxBoardWidth = side - horizontalMargin * 2 - evalW - evalGap
+      let maxBoardHeight = side - headerH - footerH - side * 0.025
+      let boardSize = min(maxBoardWidth, maxBoardHeight)
+      let groupWidth = evalW + evalGap + boardSize
+      let groupLeft = left + (side - groupWidth) / 2
+      let totalHeight = headerH + boardSize + footerH
+      let top = (size.height - totalHeight) / 2
+      let boardRect = CGRect(x: groupLeft + evalW + evalGap, y: top + headerH, width: boardSize, height: boardSize)
 
       drawPlayerRow(payload: payload, isWhite: false, rect: CGRect(x: boardRect.minX, y: top, width: boardRect.width, height: headerH))
-      drawEvalBar(payload: payload, rect: CGRect(x: left + side * 0.01, y: boardRect.minY, width: evalW * 0.55, height: boardRect.height))
+      drawEvalBar(payload: payload, rect: CGRect(x: groupLeft, y: boardRect.minY, width: evalW, height: boardRect.height))
       drawBoard(payload: payload, rect: boardRect)
       drawPlayerRow(payload: payload, isWhite: true, rect: CGRect(x: boardRect.minX, y: boardRect.maxY, width: boardRect.width, height: footerH))
     }
