@@ -3085,7 +3085,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
             break;
           case AutoSaveStatus.idle:
             diskIcon = Icon(
-              isEditableLibraryGame ? Icons.edit_outlined : Icons.save_outlined,
+              isEditableLibraryGame
+                  ? Icons.edit_outlined
+                  : Icons.bookmark_add_outlined,
               color: context.colors.textPrimary,
               size: 20.sp,
             );

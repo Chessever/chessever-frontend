@@ -141,6 +141,7 @@ SavedAnalysisData createSavedAnalysisData(SavedAnalysis analysis) {
     lastViewedPosition: analysis.lastViewedPosition,
     title: analysis.title,
     folderId: analysis.folderId,
+    tags: analysis.tags,
   );
 }
 

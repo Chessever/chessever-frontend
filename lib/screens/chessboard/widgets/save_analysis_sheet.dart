@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
@@ -11,6 +12,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -145,8 +147,23 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   String? _errorMessage;
   bool _isCreatingNewFolder = false;
   bool _showGameDetails = false;
+  bool _showTags = false;
   String _selectedResult = '*';
   Color _selectedFolderColor = _folderColorPresets.first;
+  final Set<String> _selectedTags = <String>{};
+
+  static const List<String> _officialTags = <String>[
+    'Wild Game',
+    'Beautiful Mate',
+    'Trap',
+    'Good Defense',
+    'Comeback',
+    'High Technique',
+    'Positional Masterpiece',
+    'Sacrifice',
+    'Combination',
+    'Blunder',
+  ];
 
   // Edit-existing mode: tracked once at construction so the sheet behaves
   // consistently even if the underlying SavedAnalysisData mutates mid-flow.
@@ -222,6 +239,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     );
 
     _selectedResult = metadata['Result']?.toString() ?? '*';
+    _selectedTags
+      ..clear()
+      ..addAll(notifier.savedAnalysisData?.tags ?? const <String>[]);
 
     // Parse date YYYY.MM.DD
     final dateStr = metadata['Date']?.toString() ?? '';
@@ -300,6 +320,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         _errorMessage = 'Pick a database to save into';
       });
       HapticFeedback.lightImpact();
+      return;
+    }
+
+    if (_isEditMode && !ref.read(subscriptionProvider).isSubscribed) {
+      await showPremiumPaywallSheet(context: context);
       return;
     }
 
@@ -404,7 +429,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           variationComments: state.variationComments,
           moveNags: state.moveNags,
           lastViewedPosition: state.analysisState.currentMoveIndex,
-          tags: const [],
+          tags: _selectedTags.toList(growable: false),
           notes: null,
           isFavorite: false,
           createdAt: DateTime.now(),
@@ -424,7 +449,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           analysisState: analysisStateJson,
           variationComments: state.variationComments,
           lastViewedPosition: state.analysisState.currentMoveIndex,
-          tags: const [],
+          tags: _selectedTags.toList(growable: false),
           notes: null,
           isFavorite: false,
           createdAt: DateTime.now(),
@@ -447,6 +472,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             analysisId: resolvedAnalysisId,
             title: title,
             folderId: targetFolderId,
+            tags: _selectedTags.toList(growable: false),
           );
 
       if (mounted && context.mounted) {
@@ -579,6 +605,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 _buildGameDetailsSection()
                     .animate()
                     .fadeIn(duration: 300.ms, delay: 100.ms)
+                    .slideY(
+                      begin: 0.1,
+                      end: 0,
+                      duration: 350.ms,
+                      curve: Curves.easeOutCubic,
+                    ),
+
+                SizedBox(height: 12.h),
+
+                _buildTagsSection()
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 125.ms)
                     .slideY(
                       begin: 0.1,
                       end: 0,
@@ -846,6 +884,140 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   ),
                 ),
               ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagsSection() {
+    final locked = !ref.watch(subscriptionProvider).isSubscribed;
+    final summary =
+        _selectedTags.isEmpty
+            ? 'Add'
+            : _selectedTags.length == 1
+            ? _selectedTags.first
+            : '${_selectedTags.length} tags';
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () async {
+              if (locked) {
+                HapticFeedback.lightImpact();
+                await showPremiumPaywallSheet(context: context);
+                return;
+              }
+              setState(() => _showTags = !_showTags);
+              HapticFeedback.selectionClick();
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
+              decoration: BoxDecoration(
+                color: context.colors.textPrimary.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(
+                  color: context.colors.textPrimary.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    locked ? Icons.lock_outline_rounded : Icons.sell_outlined,
+                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    size: 20.sp,
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      'Tags',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.9,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Flexible(
+                    child: Text(
+                      locked ? 'Premium' : (_showTags ? 'Hide' : summary),
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kPrimaryColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SizedBox(width: 4.w),
+                  Icon(
+                    _showTags
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: kPrimaryColor,
+                    size: 18.sp,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_showTags) ...[
+            SizedBox(height: 12.h),
+            Wrap(
+              spacing: 8.w,
+              runSpacing: 8.h,
+              children:
+                  _officialTags.map((tag) {
+                    final selected = _selectedTags.contains(tag);
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          if (selected) {
+                            _selectedTags.remove(tag);
+                          } else {
+                            _selectedTags.add(tag);
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              selected
+                                  ? kPrimaryColor.withValues(alpha: 0.18)
+                                  : context.colors.textPrimary.withValues(
+                                    alpha: 0.05,
+                                  ),
+                          borderRadius: BorderRadius.circular(18.br),
+                          border: Border.all(
+                            color:
+                                selected
+                                    ? kPrimaryColor.withValues(alpha: 0.55)
+                                    : context.colors.textPrimary.withValues(
+                                      alpha: 0.08,
+                                    ),
+                          ),
+                        ),
+                        child: Text(
+                          tag,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color:
+                                selected
+                                    ? kPrimaryColor
+                                    : context.colors.textPrimary.withValues(
+                                      alpha: 0.75,
+                                    ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
             ),
           ],
         ],
@@ -1850,9 +2022,10 @@ class _FolderListItem extends ConsumerWidget {
                         ? Icons.favorite_rounded
                         : Icons.folder_rounded,
                     size: 18.sp,
-                    color: folder.isLikedGames
-                        ? context.colors.danger
-                        : folderColor,
+                    color:
+                        folder.isLikedGames
+                            ? context.colors.danger
+                            : folderColor,
                   ),
                 ),
                 SizedBox(width: 14.w),

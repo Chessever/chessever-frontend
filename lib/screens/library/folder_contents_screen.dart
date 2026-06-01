@@ -5,6 +5,7 @@ import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dar
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
@@ -31,6 +32,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 class FolderContentsScreen extends ConsumerStatefulWidget {
   final LibraryFolder folder;
@@ -52,12 +54,36 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   // Overrides widget.folder.name after an in-place rename so the header
   // reflects the new name without needing to pop/reopen.
   String? _overrideFolderName;
+  final Set<String> _selectedTags = <String>{};
 
   bool get _isSubscribed => widget.folder.isSubscribed;
   bool get _isFolder => widget.folder.isFolder;
   bool get _isDatabase => widget.folder.isDatabase;
+  bool get _isMyLikes => widget.folder.isLikedGames;
 
-  String get _currentFolderName => _overrideFolderName ?? widget.folder.name;
+  static const List<String> _officialTags = <String>[
+    'Wild Game',
+    'Beautiful Mate',
+    'Trap',
+    'Good Defense',
+    'Comeback',
+    'High Technique',
+    'Positional Masterpiece',
+    'Sacrifice',
+    'Combination',
+    'Blunder',
+  ];
+
+  String get _currentFolderName =>
+      _isMyLikes ? 'My Likes' : (_overrideFolderName ?? widget.folder.name);
+
+  bool _canUseMyLikesTools() =>
+      !_isMyLikes || ref.read(subscriptionProvider).isSubscribed;
+
+  Future<void> _showMyLikesPremiumPaywall() async {
+    HapticFeedbackService.light();
+    await showPremiumPaywallSheet(context: context);
+  }
 
   @override
   void initState() {
@@ -101,6 +127,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   void _showSortOptions() {
+    if (!_canUseMyLikesTools()) {
+      _showMyLikesPremiumPaywall();
+      return;
+    }
     HapticFeedbackService.buttonPress();
     showGamebaseSortOptions(
       context: context,
@@ -431,6 +461,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Future<void> _handleExportPgn() async {
+    if (!_canUseMyLikesTools()) {
+      await _showMyLikesPremiumPaywall();
+      return;
+    }
     HapticFeedbackService.medium();
 
     final repo = ref.read(libraryRepositoryProvider);
@@ -536,7 +570,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   @override
   Widget build(BuildContext context) {
     final bookAsync = ref.watch(bookGamesPaginatedProvider(_paginationKey));
-    final query = _searchController.text.trim().toLowerCase();
+    final toolsAllowed =
+        !_isMyLikes || ref.watch(subscriptionProvider).isSubscribed;
+    final query =
+        toolsAllowed ? _searchController.text.trim().toLowerCase() : '';
 
     return Scaffold(
       key: e2eKey(E2eIds.folderContentsRoot),
@@ -581,7 +618,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         ),
       ),
       child: Column(
-        children: [_buildHeader(context, bookAsync), _buildSearchBar()],
+        children: [
+          _buildHeader(context, bookAsync),
+          _buildSearchBar(),
+          if (_isMyLikes) _buildTagChips(),
+        ],
       ),
     );
   }
@@ -598,8 +639,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     final bool showExport =
         _isDatabase && (bookAsync.valueOrNull?.totalCount ?? 0) > 0;
-    final bool showRename = !_isSubscribed;
-    final bool showAdd = !_isSubscribed;
+    final bool showRename = !_isSubscribed && !_isMyLikes;
+    final bool showAdd = !_isSubscribed && !_isMyLikes;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -630,16 +671,32 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  _currentFolderName,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
-                    height: 1.15,
-                    letterSpacing: -0.2,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isMyLikes) ...[
+                      Icon(
+                        Icons.favorite_rounded,
+                        color: context.colors.danger,
+                        size: 18.ic,
+                      ),
+                      SizedBox(width: 6.w),
+                    ],
+                    Flexible(
+                      child: Text(
+                        _currentFolderName,
+                        style: AppTypography.textMdBold.copyWith(
+                          color: context.colors.textPrimary,
+                          height: 1.15,
+                          letterSpacing: -0.2,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
                 if (totalCount != null) ...[
                   SizedBox(height: 2.h),
@@ -655,7 +712,37 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
           ),
           SizedBox(width: 4.w),
-          if (showExport)
+          if (_isMyLikes && showExport)
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              color: context.colors.surface,
+              icon: Icon(
+                Icons.more_vert_rounded,
+                color: context.colors.textPrimary,
+                size: 22.ic,
+              ),
+              onSelected: (value) {
+                if (value == 'export') _handleExportPgn();
+              },
+              itemBuilder:
+                  (context) => [
+                    PopupMenuItem<String>(
+                      value: 'export',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.file_download_outlined,
+                            color: context.colors.textPrimary,
+                            size: 18.ic,
+                          ),
+                          SizedBox(width: 10.w),
+                          const Text('Export database'),
+                        ],
+                      ),
+                    ),
+                  ],
+            )
+          else if (showExport)
             IconButton(
               onPressed: _handleExportPgn,
               tooltip: 'Export as PGN',
@@ -699,6 +786,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildSearchBar() {
+    final toolsLocked =
+        _isMyLikes && !ref.watch(subscriptionProvider).isSubscribed;
     final searchField = Container(
       height: 38.h,
       decoration: BoxDecoration(
@@ -717,6 +806,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           Expanded(
             child: TextField(
               controller: _searchController,
+              readOnly: toolsLocked,
+              onTap: toolsLocked ? _showMyLikesPremiumPaywall : null,
               style: AppTypography.textSmRegular.copyWith(
                 color: context.colors.textPrimary,
               ),
@@ -767,9 +858,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   ),
                 ),
                 child: Icon(
-                  _sortDirection == GamebaseSortDirection.desc
-                      ? Icons.south_rounded
-                      : Icons.north_rounded,
+                  _isMyLikes
+                      ? Icons.tune_rounded
+                      : (_sortDirection == GamebaseSortDirection.desc
+                          ? Icons.south_rounded
+                          : Icons.north_rounded),
                   size: 18.sp,
                   color: kPrimaryColor,
                 ),
@@ -777,6 +870,81 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildTagChips() {
+    final locked = !ref.watch(subscriptionProvider).isSubscribed;
+    return SizedBox(
+      height: 36.h,
+      child: ListView.separated(
+        padding: EdgeInsets.symmetric(horizontal: 16.w),
+        scrollDirection: Axis.horizontal,
+        itemCount: _officialTags.length,
+        separatorBuilder: (_, __) => SizedBox(width: 8.w),
+        itemBuilder: (context, index) {
+          final tag = _officialTags[index];
+          final selected = _selectedTags.contains(tag);
+          return GestureDetector(
+            onTap: () {
+              if (locked) {
+                _showMyLikesPremiumPaywall();
+                return;
+              }
+              setState(() {
+                if (selected) {
+                  _selectedTags.remove(tag);
+                } else {
+                  _selectedTags.add(tag);
+                }
+              });
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
+              decoration: BoxDecoration(
+                color:
+                    selected
+                        ? kPrimaryColor.withValues(alpha: 0.18)
+                        : context.colors.textPrimary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(18.br),
+                border: Border.all(
+                  color:
+                      selected
+                          ? kPrimaryColor.withValues(alpha: 0.55)
+                          : context.colors.textPrimary.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    locked ? Icons.lock_outline_rounded : Icons.sell_outlined,
+                    size: 13.ic,
+                    color:
+                        selected
+                            ? kPrimaryColor
+                            : context.colors.textPrimary.withValues(
+                              alpha: 0.65,
+                            ),
+                  ),
+                  SizedBox(width: 5.w),
+                  Text(
+                    tag,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color:
+                          selected
+                              ? kPrimaryColor
+                              : context.colors.textPrimary.withValues(
+                                alpha: 0.75,
+                              ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -856,6 +1024,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               _isDatabase ? bookState.games : const <SavedAnalysis>[];
           final filteredAnalyses = _sortAnalyses(
             analyses.where((analysis) {
+              if (_selectedTags.isNotEmpty &&
+                  !_selectedTags.any(analysis.tags.contains)) {
+                return false;
+              }
               if (query.isEmpty) return true;
               final md = analysis.chessGame.metadata;
               final title = analysis.title.toLowerCase();
@@ -923,6 +1095,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                           filteredAnalyses,
                           analysisIndex,
                           readOnly: true,
+                        );
+                      },
+                    ),
+                  ).animate().fadeIn();
+                }
+
+                if (_isMyLikes) {
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 12.h),
+                    child: BookSavedGameCard(
+                      analysis: analysis,
+                      onTap: () {
+                        loadSavedAnalysisWithSwiping(
+                          context,
+                          filteredAnalyses,
+                          analysisIndex,
                         );
                       },
                     ),

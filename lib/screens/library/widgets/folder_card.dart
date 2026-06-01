@@ -63,6 +63,9 @@ class FolderCard extends ConsumerWidget {
   }
 
   Widget _buildCompactCard(BuildContext context) {
+    final isLiked = folder.isLikedGames;
+    final displayName = isLiked ? 'My Likes' : folder.name;
+
     return GestureDetector(
       onTap: onTap ?? () => _navigateToFolder(context),
       child: Container(
@@ -85,22 +88,29 @@ class FolderCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(10.br),
                 ),
                 child: Center(
-                  child: SvgWidget(
-                    SvgAsset.folderOutline,
-                    width: 18.sp,
-                    height: 18.sp,
-                    colorFilter:
-                        context.isLightTheme
-                            ? ColorFilter.mode(
-                              context.colors.iconPrimary,
-                              BlendMode.srcIn,
-                            )
-                            : null,
-                  ),
+                  child:
+                      isLiked
+                          ? Icon(
+                            Icons.favorite_rounded,
+                            size: 18.sp,
+                            color: context.colors.danger,
+                          )
+                          : SvgWidget(
+                            SvgAsset.folderOutline,
+                            width: 18.sp,
+                            height: 18.sp,
+                            colorFilter:
+                                context.isLightTheme
+                                    ? ColorFilter.mode(
+                                      context.colors.iconPrimary,
+                                      BlendMode.srcIn,
+                                    )
+                                    : null,
+                          ),
                 ),
               ),
               Text(
-                folder.name,
+                displayName,
                 style: AppTypography.textSmMedium.copyWith(
                   color: context.colors.textPrimary,
                 ),
@@ -119,6 +129,7 @@ class FolderCard extends ConsumerWidget {
     final isLiked = folder.isLikedGames;
     // Synthetic / special, permanent collections — no rename/delete/share menu.
     final isProtected = isTwic || isLiked;
+    final displayName = isLiked ? 'My Likes' : folder.name;
 
     // CSS specs: featured = 64x64 icon, ~18px radius; regular = 36x36 icon, 10px radius
     final iconSize = isFeatured ? 64.0.h : 36.0.h;
@@ -213,23 +224,25 @@ class FolderCard extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(iconRadius),
                   ),
                   child: Center(
-                    child: isLiked
-                        ? Icon(
-                            Icons.favorite,
-                            size: svgSize,
-                            color: context.colors.danger,
-                          )
-                        : SvgWidget(
-                            SvgAsset.folderOutline,
-                            width: svgSize,
-                            height: svgSize,
-                            colorFilter: context.isLightTheme
-                                ? ColorFilter.mode(
-                                    context.colors.iconPrimary,
-                                    BlendMode.srcIn,
-                                  )
-                                : null,
-                          ),
+                    child:
+                        isLiked
+                            ? Icon(
+                              Icons.favorite,
+                              size: svgSize,
+                              color: context.colors.danger,
+                            )
+                            : SvgWidget(
+                              SvgAsset.folderOutline,
+                              width: svgSize,
+                              height: svgSize,
+                              colorFilter:
+                                  context.isLightTheme
+                                      ? ColorFilter.mode(
+                                        context.colors.iconPrimary,
+                                        BlendMode.srcIn,
+                                      )
+                                      : null,
+                            ),
                   ),
                 ),
                 // Shared link badge for subscribed books
@@ -269,7 +282,7 @@ class FolderCard extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    folder.name,
+                    displayName,
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
                     ),

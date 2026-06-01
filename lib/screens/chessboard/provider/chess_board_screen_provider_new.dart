@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -21,7 +22,6 @@ import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
@@ -3471,6 +3471,7 @@ class ChessBoardScreenNotifierNew
     required String analysisId,
     required String title,
     String? folderId,
+    List<String> tags = const <String>[],
   }) {
     final currentState = state.valueOrNull;
     savedAnalysisData = SavedAnalysisData(
@@ -3488,6 +3489,7 @@ class ChessBoardScreenNotifierNew
       lastViewedPosition: currentState?.analysisState.currentMoveIndex ?? 0,
       title: title,
       folderId: folderId,
+      tags: tags,
     );
     // Snapshot current game tree so auto-save doesn't immediately re-save
     final analysisGame = currentState?.analysisState.game;
@@ -3518,6 +3520,7 @@ class ChessBoardScreenNotifierNew
     _autoSaveTimer?.cancel();
     final analysisId = savedAnalysisData?.analysisId;
     if (analysisId == null) return false;
+    if (!ref.read(subscriptionProvider).isSubscribed) return false;
 
     final currentState = state.valueOrNull;
     if (currentState == null) return false;
@@ -3547,7 +3550,7 @@ class ChessBoardScreenNotifierNew
         variationComments: currentState.variationComments,
         moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
-        tags: const [],
+        tags: savedAnalysisData?.tags ?? const <String>[],
         isFavorite: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -3600,6 +3603,7 @@ class ChessBoardScreenNotifierNew
   Future<void> _performAutoSave() async {
     final analysisId = savedAnalysisData?.analysisId;
     if (analysisId == null || !mounted) return;
+    if (!ref.read(subscriptionProvider).isSubscribed) return;
 
     final currentState = state.valueOrNull;
     if (currentState == null) return;
@@ -3639,7 +3643,7 @@ class ChessBoardScreenNotifierNew
         variationComments: currentState.variationComments,
         moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
-        tags: const [],
+        tags: savedAnalysisData?.tags ?? const <String>[],
         isFavorite: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -4614,7 +4618,6 @@ class ChessBoardScreenNotifierNew
     _clearActiveEvalState();
     _updateEvaluation(force: force);
   }
-
 
   String _getSamplePgnData() {
     return '''
@@ -7325,6 +7328,9 @@ class SavedAnalysisData {
   /// Folder ID the analysis belongs to (for auto-save updates)
   final String? folderId;
 
+  /// Personal organization tags attached to this saved game.
+  final List<String> tags;
+
   const SavedAnalysisData({
     this.analysisId,
     this.sourceGameId,
@@ -7336,6 +7342,7 @@ class SavedAnalysisData {
     required this.lastViewedPosition,
     this.title,
     this.folderId,
+    this.tags = const <String>[],
   });
 }
 

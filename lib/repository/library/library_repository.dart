@@ -139,7 +139,7 @@ class LibraryRepository extends BaseRepository {
             .from('user_folders')
             .insert({
               'user_id': userId,
-              'name': 'Liked Games',
+              'name': 'My Likes',
               'color': '#F5453A',
               'icon': 'liked',
               'order_index': nextOrder,
