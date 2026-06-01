@@ -142,6 +142,7 @@ class AudioPlayerService with WidgetsBindingObserver {
 
   Future<void> _playWithRecovery(SfxType type) async {
     try {
+      await _refreshAndroidAudioIfNeeded('before playback');
       await initializeAndLoadAllAssets();
       // soloud 4.x: play() is sync — no await.
       player.play(_resolve(type));
@@ -242,6 +243,18 @@ class AudioPlayerService with WidgetsBindingObserver {
     return source;
   }
 
+  Future<void> _refreshAndroidAudioIfNeeded(String reason) async {
+    if (!Platform.isAndroid || !_needsAndroidResumeRefresh) return;
+
+    _needsAndroidResumeRefresh = false;
+    // Android can return from background with SoLoud still reporting initialized
+    // while the native output session/asset handles no longer produce sound.
+    // Refresh from both lifecycle resume and the next play as a safety net for
+    // devices that miss/delay lifecycle callbacks around event/board switches.
+    debugPrint('🎧 AudioPlayerService: Android audio refresh needed ($reason)');
+    await initializeAndLoadAllAssets(force: true);
+  }
+
   /// Tear down the native engine only during explicit recovery.
   // SoLoud.instance is per-isolate state, so deinit MUST run on the main
   // isolate. A previous version off-loaded this to Isolate.run, which both
@@ -270,16 +283,10 @@ class AudioPlayerService with WidgetsBindingObserver {
     debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
     if (state == AppLifecycleState.resumed) {
       if (Platform.isAndroid && _needsAndroidResumeRefresh) {
-        _needsAndroidResumeRefresh = false;
-        // Android can return from background with SoLoud still reporting
-        // initialized while its native output session/asset handles are no
-        // longer producing sound. Force a fresh engine + asset load on resume
-        // after a real background pause; transient inactive states are ignored.
-        debugPrint(
-          '🎧 AudioPlayerService: Android resumed after background, refreshing audio engine',
-        );
         unawaited(
-          _enqueueAudioOperation(() => initializeAndLoadAllAssets(force: true)),
+          _enqueueAudioOperation(
+            () => _refreshAndroidAudioIfNeeded('app resumed'),
+          ),
         );
         return;
       }
