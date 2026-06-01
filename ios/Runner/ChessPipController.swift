@@ -574,7 +574,7 @@ private enum ChessPipRenderer {
     let clockW = clock.isEmpty ? 0 : rect.height * 1.9
     if !clock.isEmpty {
       let clockRect = CGRect(x: rect.maxX - clockW, y: rect.minY, width: clockW, height: rect.height)
-      if !isWhite {
+      if isOngoing(payload: payload) && isWhiteToMove(payload: payload) == isWhite {
         UIColor(red: 0.13, green: 0.66, blue: 0.82, alpha: 1).setFill()
         UIRectFill(clockRect)
       }
