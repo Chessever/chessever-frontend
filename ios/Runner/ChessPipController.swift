@@ -469,6 +469,50 @@ extension ChessPipController: AVPictureInPictureSampleBufferPlaybackDelegate {
 }
 
 private enum ChessPipRenderer {
+  private static let fideToIso2: [String: String] = [
+    "USA": "US", "ENG": "GB", "SCO": "GB", "WLS": "GB", "RUS": "RU",
+    "CHN": "CN", "IND": "IN", "GER": "DE", "FRA": "FR", "ESP": "ES",
+    "ITA": "IT", "NED": "NL", "POL": "PL", "CZE": "CZ", "HUN": "HU",
+    "ROU": "RO", "UKR": "UA", "AZE": "AZ", "ARM": "AM", "GEO": "GE",
+    "TUR": "TR", "ISR": "IL", "ARG": "AR", "BRA": "BR", "PER": "PE",
+    "CUB": "CU", "CAN": "CA", "MEX": "MX", "COL": "CO", "CHI": "CL",
+    "VEN": "VE", "ECU": "EC", "URU": "UY", "PAR": "PY", "BOL": "BO",
+    "CRC": "CR", "PAN": "PA", "GUA": "GT", "ESA": "SV", "HON": "HN",
+    "NOR": "NO", "SWE": "SE", "DEN": "DK", "FIN": "FI", "ISL": "IS",
+    "AUT": "AT", "SUI": "CH", "BEL": "BE", "POR": "PT", "GRE": "GR",
+    "BUL": "BG", "CRO": "HR", "SRB": "RS", "SLO": "SI", "SVK": "SK",
+    "BIH": "BA", "MKD": "MK", "MNE": "ME", "ALB": "AL", "MDA": "MD",
+    "BLR": "BY", "LTU": "LT", "LAT": "LV", "EST": "EE", "IRL": "IE",
+    "LUX": "LU", "MLT": "MT", "CYP": "CY", "AND": "AD", "MON": "MC",
+    "SMR": "SM", "KAZ": "KZ", "UZB": "UZ", "KGZ": "KG", "TJK": "TJ",
+    "TKM": "TM", "IRI": "IR", "IRQ": "IQ", "JOR": "JO", "LBN": "LB",
+    "SYR": "SY", "UAE": "AE", "QAT": "QA", "KUW": "KW", "BRN": "BH",
+    "OMA": "OM", "KSA": "SA", "YEM": "YE", "EGY": "EG", "MAR": "MA",
+    "ALG": "DZ", "TUN": "TN", "LBA": "LY", "RSA": "ZA", "NGR": "NG",
+    "KEN": "KE", "ETH": "ET", "GHA": "GH", "UGA": "UG", "ZAM": "ZM",
+    "ZIM": "ZW", "BOT": "BW", "ANG": "AO", "MOZ": "MZ", "MAD": "MG",
+    "AUS": "AU", "NZL": "NZ", "JPN": "JP", "KOR": "KR", "PRK": "KP",
+    "MGL": "MN", "VIE": "VN", "THA": "TH", "MAS": "MY", "SIN": "SG",
+    "INA": "ID", "PHI": "PH", "HKG": "HK", "TPE": "TW", "PAK": "PK",
+    "BAN": "BD", "SRI": "LK", "NEP": "NP", "AFG": "AF",
+  ]
+
+  private static let countryNameToIso2: [String: String] = [
+    "united states": "US", "usa": "US", "america": "US",
+    "england": "GB", "scotland": "GB", "wales": "GB",
+    "united kingdom": "GB", "great britain": "GB",
+    "germany": "DE", "france": "FR", "spain": "ES", "italy": "IT",
+    "netherlands": "NL", "norway": "NO", "sweden": "SE", "denmark": "DK",
+    "finland": "FI", "india": "IN", "china": "CN", "russia": "RU",
+    "ukraine": "UA", "poland": "PL", "czech republic": "CZ",
+    "hungary": "HU", "romania": "RO", "turkey": "TR", "israel": "IL",
+    "armenia": "AM", "azerbaijan": "AZ", "georgia": "GE",
+    "canada": "CA", "mexico": "MX", "brazil": "BR", "argentina": "AR",
+    "peru": "PE", "cuba": "CU", "australia": "AU", "new zealand": "NZ",
+    "japan": "JP", "south korea": "KR", "iran": "IR", "egypt": "EG",
+    "south africa": "ZA",
+  ]
+
   static func render(payload: [String: Any], size: CGSize) -> CGImage? {
     let renderer = UIGraphicsImageRenderer(size: size)
     let image = renderer.image { context in
@@ -502,11 +546,12 @@ private enum ChessPipRenderer {
     let clock = payload["\(prefix)Clock"] as? String ?? ""
     let label = [title, name, rating].filter { !$0.isEmpty }.joined(separator: " ")
 
-    if !fed.isEmpty {
-      let flagRect = CGRect(x: rect.minX, y: rect.minY + rect.height * 0.22, width: rect.height * 0.7, height: rect.height * 0.56)
-      UIColor(red: 0.13, green: 0.66, blue: 0.82, alpha: 1).setFill()
-      UIBezierPath(roundedRect: flagRect, cornerRadius: 4).fill()
-      drawText(fed.prefix(3).description, in: flagRect, size: rect.height * 0.22, color: .white, alignment: .center)
+    let flag = flagDisplay(for: fed)
+    if flag != nil {
+      let flagRect = CGRect(x: rect.minX, y: rect.minY + rect.height * 0.2, width: rect.height * 0.92, height: rect.height * 0.6)
+      UIColor(red: 0.12, green: 0.13, blue: 0.15, alpha: 1).setFill()
+      UIBezierPath(roundedRect: flagRect, cornerRadius: 3).fill()
+      drawText(flag!, in: flagRect, size: rect.height * 0.42, color: .white, alignment: .center)
     }
 
     let clockW = clock.isEmpty ? 0 : rect.height * 1.9
@@ -519,7 +564,7 @@ private enum ChessPipRenderer {
       drawText(clock, in: clockRect, size: rect.height * 0.5, color: .white, alignment: .center)
     }
 
-    let nameX = rect.minX + (fed.isEmpty ? 0 : rect.height * 0.86)
+    let nameX = rect.minX + (flag == nil ? 0 : rect.height * 1.08)
     let textRect = CGRect(
       x: nameX,
       y: rect.minY,
@@ -535,6 +580,8 @@ private enum ChessPipRenderer {
     let square = rect.width / 8
     let lastMove = payload["lastMoveUci"] as? String
     let highlights = parseUci(lastMove)
+    let loserKing = loserKingPiece(payload: payload)
+    let loserSquare = loserKing.flatMap { findPiece($0, in: board) }
 
     for rank in 0..<8 {
       for file in 0..<8 {
@@ -551,22 +598,47 @@ private enum ChessPipRenderer {
         UIRectFill(squareRect)
         let from = highlights.first
         let to = highlights.dropFirst().first
-        if from?.0 == file && from?.1 == rank {
-          UIColor(red: 1, green: 0.78, blue: 0.1, alpha: 0.45).setFill()
-          UIRectFill(squareRect)
-        } else if to?.0 == file && to?.1 == rank {
-          UIColor(red: 0.28, green: 0.5, blue: 0.95, alpha: 0.42).setFill()
+        if (from?.0 == file && from?.1 == rank) || (to?.0 == file && to?.1 == rank) {
+          UIColor(red: 0.678, green: 0.725, blue: 0.812, alpha: 1).setFill()
           UIRectFill(squareRect)
         }
+
+        let isLoserKingSquare = loserSquare?.0 == file && loserSquare?.1 == rank
+        if isLoserKingSquare {
+          UIColor(red: 0.961, green: 0.196, blue: 0.212, alpha: 0.8).setFill()
+          UIRectFill(squareRect)
+        }
+
         let piece = board[rank][file]
         if piece != "\0" {
-          drawPiece(piece, payload: payload, in: squareRect.insetBy(dx: square * 0.03, dy: square * 0.03))
+          drawPiece(
+            piece,
+            payload: payload,
+            in: squareRect.insetBy(dx: square * 0.03, dy: square * 0.03),
+            rotation: isLoserKingSquare ? -CGFloat.pi / 4 : nil
+          )
         }
       }
     }
   }
 
-  private static func drawPiece(_ piece: String, payload: [String: Any], in rect: CGRect) {
+  private static func drawPiece(
+    _ piece: String,
+    payload: [String: Any],
+    in rect: CGRect,
+    rotation: CGFloat? = nil
+  ) {
+    if let rotation {
+      guard let context = UIGraphicsGetCurrentContext() else { return }
+      context.saveGState()
+      context.translateBy(x: rect.midX, y: rect.midY)
+      context.rotate(by: rotation)
+      context.translateBy(x: -rect.midX, y: -rect.midY)
+      drawPiece(piece, payload: payload, in: rect, rotation: nil)
+      context.restoreGState()
+      return
+    }
+
     if let image = PieceImageCache.shared.image(for: piece, payload: payload) {
       image.draw(in: rect)
       return
@@ -579,6 +651,58 @@ private enum ChessPipRenderer {
       color: piece == piece.uppercased() ? .white : .black,
       alignment: .center
     )
+  }
+
+  private static func loserKingPiece(payload: [String: Any]) -> String? {
+    let status = (payload["status"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    switch status {
+    case "whitewins", "white_wins", "1-0", "w":
+      return "k"
+    case "blackwins", "black_wins", "0-1", "b":
+      return "K"
+    default:
+      return nil
+    }
+  }
+
+  private static func findPiece(_ piece: String, in board: [[String]]) -> (Int, Int)? {
+    for rank in 0..<8 {
+      for file in 0..<8 where board[rank][file] == piece {
+        return (file, rank)
+      }
+    }
+    return nil
+  }
+
+  private static func flagDisplay(for federation: String) -> String? {
+    let raw = federation.trimmingCharacters(in: .whitespacesAndNewlines)
+    if raw.isEmpty { return nil }
+    let upper = raw.uppercased()
+    let lower = raw.lowercased()
+    if ["UNKNOWN", "NONE", "UNRATED", "N/A", "NA", "?", "-"].contains(upper) {
+      return "🌐"
+    }
+    if upper == "FID" || upper == "FIDE" {
+      return "FIDE"
+    }
+
+    let iso2: String?
+    if upper.count == 2 {
+      iso2 = upper
+    } else if upper.count == 3 {
+      iso2 = fideToIso2[upper]
+    } else {
+      iso2 = countryNameToIso2[lower]
+    }
+    guard let iso2, iso2.count == 2 else { return nil }
+    return flagEmoji(iso2: iso2)
+  }
+
+  private static func flagEmoji(iso2: String) -> String {
+    let base: UInt32 = 127397
+    return String(String.UnicodeScalarView(iso2.uppercased().unicodeScalars.compactMap {
+      UnicodeScalar(base + $0.value)
+    }))
   }
 
   private static func drawEvalBar(payload: [String: Any], rect: CGRect) {

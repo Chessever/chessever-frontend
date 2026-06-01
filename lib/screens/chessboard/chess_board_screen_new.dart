@@ -1425,6 +1425,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       'fen': fen,
       'lastMoveUci': lastMoveUci,
       'lastMove': game.lastMove ?? '',
+      'status': game.gameStatus.name,
       if (evaluation != null) 'evalCp': (evaluation * 100).round(),
       if (state?.mate != null) 'mate': state!.mate,
       'whiteName': game.whitePlayer.name,
@@ -1433,8 +1434,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       'blackTitle': game.blackPlayer.title,
       'whiteRating': game.whitePlayer.rating,
       'blackRating': game.blackPlayer.rating,
-      'whiteFed': game.whitePlayer.federation,
-      'blackFed': game.blackPlayer.federation,
+      'whiteFed':
+          game.whitePlayer.countryCode.isNotEmpty
+              ? game.whitePlayer.countryCode
+              : game.whitePlayer.federation,
+      'blackFed':
+          game.blackPlayer.countryCode.isNotEmpty
+              ? game.blackPlayer.countryCode
+              : game.blackPlayer.federation,
       'whiteClock': _formatPipClock(
         game.whiteClockSeconds,
         game.whiteClockCentiseconds,
