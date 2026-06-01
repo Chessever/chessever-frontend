@@ -342,15 +342,20 @@ private class ChessPipOverlayView(context: Context) : View(context) {
 
     val side = min(width, height).toFloat()
     val left = (width - side) / 2f
-    val top = (height - side) / 2f
     val headerH = side * 0.07f
     val footerH = side * 0.07f
-    val evalW = side * 0.05f
-    val boardSize = side - headerH - footerH - side * 0.04f
-    val boardLeft = left + evalW
+    val evalW = side * 0.028f
+    val evalGap = side * 0.018f
+    val horizontalMargin = side * 0.06f
+    val maxBoardWidth = side - horizontalMargin * 2f - evalW - evalGap
+    val maxBoardHeight = side - headerH - footerH - side * 0.025f
+    val actualBoardSize = min(maxBoardWidth, maxBoardHeight)
+    val groupWidth = evalW + evalGap + actualBoardSize
+    val groupLeft = left + (side - groupWidth) / 2f
+    val totalHeight = headerH + actualBoardSize + footerH
+    val top = (height - totalHeight) / 2f
+    val boardLeft = groupLeft + evalW + evalGap
     val boardTop = top + headerH
-    val boardRight = min(left + side, boardLeft + boardSize)
-    val actualBoardSize = boardRight - boardLeft
 
     drawPlayerRow(
       canvas,
@@ -363,9 +368,9 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     )
     drawEvalBar(
       canvas,
-      x = left + side * 0.01f,
+      x = groupLeft,
       y = boardTop,
-      width = evalW * 0.55f,
+      width = evalW,
       height = actualBoardSize,
       evalCp = (data["evalCp"] as? Number)?.toDouble(),
       mate = (data["mate"] as? Number)?.toInt()
