@@ -655,6 +655,9 @@ private enum ChessPipRenderer {
     let highlights = parseUci(lastMove)
     let loserKing = loserKingPiece(payload: payload)
     let loserSquare = loserKing.flatMap { findPiece($0, in: board) }
+    let drawKingSquares = isDrawStatus(payload: payload)
+      ? [findPiece("K", in: board), findPiece("k", in: board)].compactMap { $0 }
+      : []
 
     for rank in 0..<8 {
       for file in 0..<8 {
@@ -682,6 +685,12 @@ private enum ChessPipRenderer {
           UIRectFill(squareRect)
         }
 
+        let isDrawKingSquare = drawKingSquares.contains { $0.0 == file && $0.1 == rank }
+        if isDrawKingSquare {
+          UIColor(red: 0.678, green: 0.882, blue: 0.804, alpha: 0.8).setFill()
+          UIRectFill(squareRect)
+        }
+
         let piece = board[rank][file]
         if piece != "\0" {
           drawPiece(
@@ -690,6 +699,9 @@ private enum ChessPipRenderer {
             in: squareRect.insetBy(dx: square * 0.03, dy: square * 0.03),
             rotation: isLoserKingSquare ? -CGFloat.pi / 4 : nil
           )
+        }
+        if isDrawKingSquare {
+          drawPeaceIcon(in: squareRect)
         }
       }
     }
@@ -736,6 +748,22 @@ private enum ChessPipRenderer {
     default:
       return nil
     }
+  }
+
+  private static func isDrawStatus(payload: [String: Any]) -> Bool {
+    let status = (payload["status"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return status == "draw" || status == "1/2-1/2" || status == "½-½" || status == "0.5-0.5" || status == "d"
+  }
+
+  private static func drawPeaceIcon(in squareRect: CGRect) {
+    let iconSize = squareRect.width * 0.24
+    let iconRect = CGRect(
+      x: squareRect.maxX - iconSize * 1.06,
+      y: squareRect.minY + iconSize * 0.08,
+      width: iconSize,
+      height: iconSize
+    )
+    drawText("🕊️", in: iconRect, size: iconSize * 0.78, color: .white, alignment: .center)
   }
 
   private static func findPiece(_ piece: String, in board: [[String]]) -> (Int, Int)? {
