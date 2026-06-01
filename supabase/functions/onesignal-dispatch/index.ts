@@ -211,6 +211,14 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
   try {
     const context = await buildContext(item);
     if (item.event_type === "round_started") {
+      if (!item.round_id || !(await hasRoundWithMoves(item.round_id))) {
+        await markSkipped(item.id, "round_not_live_yet");
+        return {
+          id: item.id,
+          status: "skipped",
+          reason: "round_not_live_yet",
+        };
+      }
       if (await hasSentGroupedRoundStart(item, context)) {
         await markSkipped(item.id, "duplicate_grouped_round_start");
         return {
@@ -466,7 +474,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       }
 
       const roundId = item.round_id ?? context.round?.id ?? "";
-      const eventName = context.eventName ?? "Live chess";
+      const eventName = context.displayEventName ?? context.eventName ??
+        "Live chess";
       const roundName = context.round?.name ?? "";
       const title = buildEventHeader(eventName, roundName) ?? eventName;
 
@@ -1018,6 +1027,7 @@ async function buildContext(item: OutboxItem) {
   let tour: TourRow | null = null;
   let eventName: string | null = null;
   let groupBroadcastId = item.group_broadcast_id ?? null;
+  let groupSectionCount = 0;
 
   if (item.game_id) {
     const { data } = await supabase
@@ -1057,7 +1067,20 @@ async function buildContext(item: OutboxItem) {
       .eq("id", groupBroadcastId)
       .maybeSingle();
     eventName = data?.name ?? null;
+
+    const { data: groupedTours } = await supabase
+      .from("tours")
+      .select("id,name,slug")
+      .eq("group_broadcast_id", groupBroadcastId);
+    groupSectionCount = ((groupedTours ?? []) as TourRow[])
+      .filter((row) => !isCombinedTour(row)).length;
   }
+
+  const displayEventName = buildRoundEventDisplayName(
+    eventName,
+    tour?.name ?? null,
+    groupSectionCount,
+  );
 
   const playerNames = new Set<string>();
   const fideIdSet = new Set<string>();
@@ -1121,6 +1144,7 @@ async function buildContext(item: OutboxItem) {
     round,
     tour,
     eventName,
+    displayEventName,
     groupBroadcastId,
     tourId,
     eventUserIds,
@@ -1182,6 +1206,18 @@ async function hasSentGroupedRoundStart(
 
   return ((data ?? []) as Array<{ payload?: Record<string, unknown> | null }>)
     .some((row) => sameInstant(row.payload?.starts_at, startsAt));
+}
+
+async function hasRoundWithMoves(roundId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("games")
+    .select("id")
+    .eq("round_id", roundId)
+    .not("last_move_time", "is", null)
+    .limit(1);
+
+  if (error) return false;
+  return (data ?? []).length > 0;
 }
 
 function sameInstant(a: unknown, b: string): boolean {
@@ -2104,6 +2140,49 @@ function buildEventHeader(
   if (eventName && roundName) return `${eventName} — ${roundName}`;
   if (eventName) return eventName;
   return null;
+}
+
+function buildRoundEventDisplayName(
+  eventName: string | null,
+  tourName: string | null,
+  groupSectionCount: number,
+): string | null {
+  if (!eventName) return tourName;
+  if (!tourName || groupSectionCount <= 1) return eventName;
+
+  if (normalizeEventLabel(tourName).startsWith(normalizeEventLabel(eventName))) {
+    return tourName;
+  }
+
+  if (isRedundantOpenSection(eventName, tourName)) {
+    return eventName;
+  }
+
+  const sectionName = extractTourSection(eventName, tourName);
+  if (!sectionName || isRedundantOpenSection(eventName, sectionName)) {
+    return eventName;
+  }
+
+  return `${eventName} — ${sectionName}`;
+}
+
+function extractTourSection(eventName: string, tourName: string): string | null {
+  const pipeSection = tourName.split("|").pop()?.trim();
+  if (pipeSection && pipeSection !== tourName.trim()) return pipeSection;
+
+  const normalizedEvent = normalizeEventLabel(eventName);
+  const normalizedTour = normalizeEventLabel(tourName);
+  if (!normalizedTour.startsWith(normalizedEvent)) return null;
+
+  return tourName.slice(eventName.length).replace(/^\s*[-–—:|]\s*/, "").trim() || null;
+}
+
+function isRedundantOpenSection(eventName: string, sectionName: string): boolean {
+  return /\bopen\b/i.test(sectionName) && /\bopen\b/i.test(eventName);
+}
+
+function normalizeEventLabel(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function channelForEvent(eventType: string) {

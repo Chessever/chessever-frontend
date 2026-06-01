@@ -1,7 +1,7 @@
--- Grouped events can contain separate raw tours, such as Open, Women, and
--- Combined boards, whose rounds share the same visible start time. Queue one
--- visible round-start notification for a grouped event/start instant instead
--- of one notification per raw tour round.
+-- Round-start pushes must mean the games are actually live.
+-- The previous scheduler queued round_started rows from the scheduled start time;
+-- Armageddon/tiebreak rounds can exist at the scheduled time before any game row
+-- has moved, which produced false "first moves have been played" notifications.
 
 CREATE OR REPLACE FUNCTION public.queue_round_start_notifications()
 RETURNS void AS $$

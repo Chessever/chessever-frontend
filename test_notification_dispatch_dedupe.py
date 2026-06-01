@@ -62,6 +62,24 @@ def test_dispatcher_skips_duplicate_grouped_round_starts() -> None:
     assert "sameInstant(row.payload?.starts_at, startsAt)" in source
 
 
+def test_round_started_requires_actual_move_before_dispatch() -> None:
+    source = _source()
+
+    assert "hasRoundWithMoves(item.round_id)" in source
+    assert "round_not_live_yet" in source
+    assert '.select("id")' in source
+    assert '.not("last_move_time", "is", null)' in source
+
+
+def test_round_event_display_name_omits_redundant_single_open_section() -> None:
+    source = _source()
+
+    assert "displayEventName" in source
+    assert "buildRoundEventDisplayName" in source
+    assert "normalizeEventLabel(tourName).startsWith(normalizeEventLabel(eventName))" in source
+    assert "isRedundantOpenSection(eventName, tourName)" in source
+
+
 def test_combined_tours_do_not_send_round_result_notifications() -> None:
     source = _source()
 
@@ -78,3 +96,12 @@ def test_round_start_queue_dedupe_is_exact_group_start_time_not_two_hour_bucket(
     assert "EXTRACT(EPOCH FROM r.starts_at)::bigint::text" in migration
     assert "'round_started:' || r.id::text" in migration
     assert "/ 7200" not in migration
+
+
+def test_round_start_queue_requires_a_real_move_before_enqueue() -> None:
+    migration = ROUND_START_DEDUPE_MIGRATION.read_text(encoding="utf-8")
+
+    assert "EXISTS (" in migration
+    assert "FROM public.games g" in migration
+    assert "g.round_id = r.id" in migration
+    assert "g.last_move_time IS NOT NULL" in migration
