@@ -565,10 +565,8 @@ private enum ChessPipRenderer {
 
     let flag = flagDisplay(for: fed)
     if flag != nil {
-      let flagRect = CGRect(x: rect.minX, y: rect.minY + rect.height * 0.2, width: rect.height * 0.92, height: rect.height * 0.6)
-      UIColor(red: 0.12, green: 0.13, blue: 0.15, alpha: 1).setFill()
-      UIBezierPath(roundedRect: flagRect, cornerRadius: 3).fill()
-      drawText(flag!, in: flagRect, size: rect.height * 0.42, color: .white, alignment: .center)
+      let flagRect = CGRect(x: rect.minX, y: rect.minY + rect.height * 0.16, width: rect.height * 0.9, height: rect.height * 0.68)
+      drawText(flag!, in: flagRect, size: rect.height * 0.58, color: .white, alignment: .center)
     }
 
     let clockW = clock.isEmpty ? 0 : rect.height * 1.9
