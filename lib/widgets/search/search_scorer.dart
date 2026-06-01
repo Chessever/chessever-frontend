@@ -37,13 +37,67 @@ class SearchScorer {
       score = _calculateFuzzyScore(queryLower, textLower);
     }
 
-    // Boost score for tournament name matches vs player matches
     if (type == SearchResultType.tournament) {
-      score *= 1.1; // Slight boost for tournament name matches
+      if (!_hasSpecificTournamentTokenMatch(queryLower, textLower)) {
+        return 0.0;
+      }
+
+      // Boost score for tournament name matches vs player matches.
+      score *= 1.1;
     }
 
     return score.clamp(0.0, 100.0);
   }
+
+  static bool _hasSpecificTournamentTokenMatch(String query, String text) {
+    final specificQueryTokens =
+        _normalizedTokens(
+          query,
+        ).where((token) => !_genericTournamentTokens.contains(token)).toList();
+
+    if (specificQueryTokens.length < 2) return true;
+
+    final textTokens = _normalizedTokens(text);
+    if (textTokens.isEmpty) return false;
+
+    for (final queryToken in specificQueryTokens) {
+      for (final textToken in textTokens) {
+        if (textToken == queryToken ||
+            textToken.startsWith(queryToken) ||
+            queryToken.startsWith(textToken)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  static List<String> _normalizedTokens(String value) {
+    final normalized = value.replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+    if (normalized.isEmpty) return const [];
+    return normalized.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+  }
+
+  static const Set<String> _genericTournamentTokens = {
+    'chess',
+    'championship',
+    'championships',
+    'tournament',
+    'festival',
+    'open',
+    'classic',
+    'cup',
+    'final',
+    'finals',
+    'men',
+    'women',
+    'girls',
+    'boys',
+    'team',
+    'teams',
+    'event',
+  };
 
   static double _calculateFuzzyScore(String query, String text) {
     final queryWords = query.split(' ').where((w) => w.isNotEmpty).toList();
@@ -77,7 +131,7 @@ class SearchScorer {
     final longer = s1.length > s2.length ? s1 : s2;
     final shorter = s1.length > s2.length ? s2 : s1;
 
-    if (longer.length == 0) return 1.0;
+    if (longer.isEmpty) return 1.0;
 
     final editDistance = _levenshteinDistance(longer, shorter);
     return (longer.length - editDistance) / longer.length;
