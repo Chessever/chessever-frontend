@@ -12,7 +12,10 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Rational
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -21,18 +24,31 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import kotlin.math.max
 import kotlin.math.min
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
 
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
   private var pipPayload: MutableMap<String, Any?>? = null
   private var pipOverlay: ChessPipOverlayView? = null
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private val httpClient = OkHttpClient()
+  private var pollRunnable: Runnable? = null
+  private var activePollCall: Call? = null
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
     pipChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.chessever/pip")
     pipChannel?.setMethodCallHandler { call, result ->
       when (call.method) {
-        "setActiveGame", "updatePosition" -> {
+        "setActiveGame" -> {
           @Suppress("UNCHECKED_CAST")
           val args = call.arguments as? Map<String, Any?>
           if (args == null || args["eligible"] != true) {
@@ -41,6 +57,20 @@ class MainActivity : FlutterActivity() {
             pipPayload = args.toMutableMap()
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
+            if (isCurrentlyInPip()) startNativePollingIfPossible()
+          }
+          result.success(null)
+        }
+        "updatePosition" -> {
+          @Suppress("UNCHECKED_CAST")
+          val args = call.arguments as? Map<String, Any?>
+          if (args == null || args["eligible"] != true) {
+            clearPipState()
+          } else {
+            mergePayload(args)
+            pipOverlay?.payload = pipPayload
+            pipOverlay?.invalidate()
+            if (isCurrentlyInPip()) startNativePollingIfPossible()
           }
           result.success(null)
         }
@@ -69,13 +99,25 @@ class MainActivity : FlutterActivity() {
   ) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     pipOverlay?.visibility = if (isInPictureInPictureMode) View.VISIBLE else View.GONE
-    if (!isInPictureInPictureMode) {
+    if (isInPictureInPictureMode) {
+      startNativePollingIfPossible()
+    } else {
+      stopNativePolling()
       removePipOverlay()
     }
     pipChannel?.invokeMethod(
       "onPipModeChanged",
       mapOf("isInPip" to isInPictureInPictureMode)
     )
+  }
+
+  override fun onDestroy() {
+    stopNativePolling()
+    super.onDestroy()
+  }
+
+  private fun isCurrentlyInPip(): Boolean {
+    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
   }
 
   private fun enterPipIfEligible(): Boolean {
@@ -93,6 +135,7 @@ class MainActivity : FlutterActivity() {
     return try {
       enterPictureInPictureMode(paramsBuilder.build())
     } catch (e: Exception) {
+      Log.w("ChessPiP", "Failed to enter picture-in-picture", e)
       removePipOverlay()
       false
     }
@@ -122,6 +165,7 @@ class MainActivity : FlutterActivity() {
 
   private fun clearPipState() {
     pipPayload = null
+    stopNativePolling()
     removePipOverlay()
   }
 
@@ -129,6 +173,151 @@ class MainActivity : FlutterActivity() {
     val overlay = pipOverlay ?: return
     (overlay.parent as? ViewGroup)?.removeView(overlay)
     pipOverlay = null
+  }
+
+  private fun mergePayload(update: Map<String, Any?>) {
+    val merged = pipPayload ?: mutableMapOf()
+    for ((key, value) in update) {
+      merged[key] = value
+    }
+    pipPayload = merged
+  }
+
+  private fun startNativePollingIfPossible() {
+    if (pollRunnable != null) return
+    if (pollingConfig() == null) {
+      Log.d("ChessPiP", "Native polling unavailable: missing Supabase config")
+      return
+    }
+
+    val runnable = object : Runnable {
+      override fun run() {
+        pollLatestGame()
+        mainHandler.postDelayed(this, 4_000L)
+      }
+    }
+    pollRunnable = runnable
+    mainHandler.post(runnable)
+  }
+
+  private fun stopNativePolling() {
+    pollRunnable?.let { mainHandler.removeCallbacks(it) }
+    pollRunnable = null
+    activePollCall?.cancel()
+    activePollCall = null
+  }
+
+  private data class PollingConfig(
+    val gameId: String,
+    val url: String,
+    val anonKey: String,
+    val bearer: String,
+  )
+
+  private fun pollingConfig(): PollingConfig? {
+    val payload = pipPayload ?: return null
+    val gameId = payload["gameId"] as? String ?: return null
+    val supabaseUrl = payload["supabaseUrl"] as? String ?: return null
+    val anonKey = payload["supabaseAnonKey"] as? String ?: return null
+    if (gameId.isBlank() || supabaseUrl.isBlank() || anonKey.isBlank()) return null
+
+    val accessToken = payload["supabaseAccessToken"] as? String
+    return PollingConfig(
+      gameId = gameId,
+      url = supabaseUrl.trimEnd('/'),
+      anonKey = anonKey,
+      bearer = accessToken?.takeIf { it.isNotBlank() } ?: anonKey,
+    )
+  }
+
+  private fun pollLatestGame() {
+    val config = pollingConfig() ?: return
+    val url = "${config.url}/rest/v1/games".toHttpUrlOrNull()
+      ?.newBuilder()
+      ?.addQueryParameter(
+        "select",
+        "fen,last_move,last_move_time,last_clock_white,last_clock_black,status",
+      )
+      ?.addQueryParameter("id", "eq.${config.gameId}")
+      ?.addQueryParameter("limit", "1")
+      ?.build()
+      ?: return
+
+    val request = Request.Builder()
+      .url(url)
+      .get()
+      .header("apikey", config.anonKey)
+      .header("Authorization", "Bearer ${config.bearer}")
+      .header("Accept", "application/json")
+      .build()
+
+    activePollCall?.cancel()
+    activePollCall = httpClient.newCall(request).also { call ->
+      call.enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+          if (!call.isCanceled()) Log.w("ChessPiP", "Native poll failed", e)
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+          response.use {
+            if (!it.isSuccessful) {
+              Log.w("ChessPiP", "Native poll HTTP ${it.code}")
+              return
+            }
+            val body = it.body?.string() ?: return
+            val row = JSONArray(body).optJSONObject(0) ?: return
+            mainHandler.post { mergeLiveRow(row) }
+          }
+        }
+      })
+    }
+  }
+
+  private fun mergeLiveRow(row: JSONObject) {
+    val payload = pipPayload ?: return
+
+    if (row.has("fen") && !row.isNull("fen")) {
+      row.optString("fen").takeIf { it.isNotBlank() }?.let { payload["fen"] = it }
+    }
+    if (row.has("last_move") && !row.isNull("last_move")) {
+      row.optString("last_move").takeIf { it.isNotBlank() }?.let {
+        payload["lastMoveUci"] = it
+        payload["lastMove"] = it
+      }
+    }
+    if (row.has("last_move_time") && !row.isNull("last_move_time")) {
+      row.optString("last_move_time").takeIf { it.isNotBlank() }?.let {
+        payload["lastMoveTime"] = it
+      }
+    }
+    if (row.has("last_clock_white") && !row.isNull("last_clock_white")) {
+      val seconds = row.optInt("last_clock_white")
+      payload["whiteClockSeconds"] = seconds
+      payload["whiteClock"] = formatClock(seconds)
+    }
+    if (row.has("last_clock_black") && !row.isNull("last_clock_black")) {
+      val seconds = row.optInt("last_clock_black")
+      payload["blackClockSeconds"] = seconds
+      payload["blackClock"] = formatClock(seconds)
+    }
+    if (row.has("status") && !row.isNull("status")) {
+      payload["status"] = row.optString("status")
+    }
+
+    pipOverlay?.payload = payload
+    pipOverlay?.invalidate()
+  }
+
+  private fun formatClock(seconds: Int): String {
+    val clamped = max(0, seconds)
+    val hours = clamped / 3600
+    val minutes = (clamped % 3600) / 60
+    val secs = clamped % 60
+    return if (hours > 0) {
+      "%d:%02d:%02d".format(hours, minutes, secs)
+    } else {
+      "%d:%02d".format(minutes, secs)
+    }
   }
 }
 
