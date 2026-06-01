@@ -409,6 +409,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
       canvas,
       fen = data["fen"] as? String ?: "",
       lastMove = data["lastMoveUci"] as? String,
+      status = data["status"] as? String,
       x = boardLeft,
       y = boardTop,
       size = actualBoardSize,
@@ -533,6 +534,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     canvas: Canvas,
     fen: String,
     lastMove: String?,
+    status: String?,
     x: Float,
     y: Float,
     size: Float,
@@ -548,6 +550,14 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     val to = fromTo.getOrNull(1)
     val fromPaint = Paint().apply { color = Color.argb(115, 255, 211, 52) }
     val toPaint = Paint().apply { color = Color.argb(115, 89, 139, 232) }
+    val drawSquares = if (isDrawStatus(status)) {
+      listOfNotNull(findPiece(board, 'K'), findPiece(board, 'k'))
+    } else {
+      emptyList()
+    }
+    val drawPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.argb(205, 173, 225, 205)
+    }
 
     for (rank in 0 until 8) {
       for (file in 0 until 8) {
@@ -557,6 +567,8 @@ private class ChessPipOverlayView(context: Context) : View(context) {
         val sq = BoardSquare(file, rank)
         if (sq == from) canvas.drawRect(left, top, left + square, top + square, fromPaint)
         if (sq == to) canvas.drawRect(left, top, left + square, top + square, toPaint)
+        val isDrawKingSquare = drawSquares.any { it.file == file && it.rank == rank }
+        if (isDrawKingSquare) canvas.drawRect(left, top, left + square, top + square, drawPaint)
         val piece = board[rank][file]
         if (piece != '\u0000') {
           val bitmap = loadPieceBitmap(piece)
@@ -574,8 +586,50 @@ private class ChessPipOverlayView(context: Context) : View(context) {
             canvas.drawText(piece.uppercaseChar().toString(), rect.centerX(), rect.centerY() - (fp.descent() + fp.ascent()) / 2, fp)
           }
         }
+        if (isDrawKingSquare) {
+          drawDrawIcon(canvas, RectF(left, top, left + square, top + square))
+        }
       }
     }
+  }
+
+  private fun isDrawStatus(status: String?): Boolean {
+    val normalized = status?.trim()?.lowercase() ?: return false
+    return normalized == "draw" ||
+      normalized == "1/2-1/2" ||
+      normalized == "½-½" ||
+      normalized == "0.5-0.5" ||
+      normalized == "d"
+  }
+
+  private fun findPiece(board: Array<CharArray>, piece: Char): BoardSquare? {
+    for (rank in 0 until 8) {
+      for (file in 0 until 8) {
+        if (board[rank][file] == piece) return BoardSquare(file, rank)
+      }
+    }
+    return null
+  }
+
+  private fun drawDrawIcon(canvas: Canvas, squareRect: RectF) {
+    val iconSize = squareRect.width() * 0.24f
+    val iconRect = RectF(
+      squareRect.right - iconSize * 1.06f,
+      squareRect.top + iconSize * 0.08f,
+      squareRect.right - iconSize * 0.06f,
+      squareRect.top + iconSize * 1.08f
+    )
+    val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.argb(220, 32, 169, 210)
+    }
+    canvas.drawOval(iconRect, bg)
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.WHITE
+      textAlign = Paint.Align.CENTER
+      typeface = Typeface.DEFAULT_BOLD
+      textSize = iconSize * 0.48f
+    }
+    canvas.drawText("1/2", iconRect.centerX(), iconRect.centerY() - (text.descent() + text.ascent()) / 2f, text)
   }
 
   private fun drawEvalBar(canvas: Canvas, x: Float, y: Float, width: Float, height: Float, evalCp: Double?, mate: Int?) {
