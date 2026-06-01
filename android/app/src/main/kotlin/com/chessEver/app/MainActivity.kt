@@ -354,6 +354,48 @@ class MainActivity : FlutterActivity() {
 private class ChessPipOverlayView(context: Context) : View(context) {
   var payload: Map<String, Any?>? = null
 
+  private val fideToIso2 = mapOf(
+    "USA" to "US", "ENG" to "GB", "SCO" to "GB", "WLS" to "GB", "RUS" to "RU",
+    "CHN" to "CN", "IND" to "IN", "GER" to "DE", "FRA" to "FR", "ESP" to "ES",
+    "ITA" to "IT", "NED" to "NL", "POL" to "PL", "CZE" to "CZ", "HUN" to "HU",
+    "ROU" to "RO", "UKR" to "UA", "AZE" to "AZ", "ARM" to "AM", "GEO" to "GE",
+    "TUR" to "TR", "ISR" to "IL", "ARG" to "AR", "BRA" to "BR", "PER" to "PE",
+    "CUB" to "CU", "CAN" to "CA", "MEX" to "MX", "COL" to "CO", "CHI" to "CL",
+    "VEN" to "VE", "ECU" to "EC", "URU" to "UY", "PAR" to "PY", "BOL" to "BO",
+    "CRC" to "CR", "PAN" to "PA", "GUA" to "GT", "ESA" to "SV", "HON" to "HN",
+    "NOR" to "NO", "SWE" to "SE", "DEN" to "DK", "FIN" to "FI", "ISL" to "IS",
+    "AUT" to "AT", "SUI" to "CH", "BEL" to "BE", "POR" to "PT", "GRE" to "GR",
+    "BUL" to "BG", "CRO" to "HR", "SRB" to "RS", "SLO" to "SI", "SVK" to "SK",
+    "BIH" to "BA", "MKD" to "MK", "MNE" to "ME", "ALB" to "AL", "MDA" to "MD",
+    "BLR" to "BY", "LTU" to "LT", "LAT" to "LV", "EST" to "EE", "IRL" to "IE",
+    "LUX" to "LU", "MLT" to "MT", "CYP" to "CY", "AND" to "AD", "MON" to "MC",
+    "SMR" to "SM", "KAZ" to "KZ", "UZB" to "UZ", "KGZ" to "KG", "TJK" to "TJ",
+    "TKM" to "TM", "IRI" to "IR", "IRQ" to "IQ", "JOR" to "JO", "LBN" to "LB",
+    "SYR" to "SY", "UAE" to "AE", "QAT" to "QA", "KUW" to "KW", "BRN" to "BH",
+    "OMA" to "OM", "KSA" to "SA", "YEM" to "YE", "EGY" to "EG", "MAR" to "MA",
+    "ALG" to "DZ", "TUN" to "TN", "LBA" to "LY", "RSA" to "ZA", "NGR" to "NG",
+    "KEN" to "KE", "ETH" to "ET", "GHA" to "GH", "UGA" to "UG", "ZAM" to "ZM",
+    "ZIM" to "ZW", "BOT" to "BW", "ANG" to "AO", "MOZ" to "MZ", "MAD" to "MG",
+    "AUS" to "AU", "NZL" to "NZ", "JPN" to "JP", "KOR" to "KR", "PRK" to "KP",
+    "MGL" to "MN", "VIE" to "VN", "THA" to "TH", "MAS" to "MY", "SIN" to "SG",
+    "INA" to "ID", "PHI" to "PH", "HKG" to "HK", "TPE" to "TW", "PAK" to "PK",
+    "BAN" to "BD", "SRI" to "LK", "NEP" to "NP", "AFG" to "AF",
+  )
+  private val countryNameToIso2 = mapOf(
+    "united states" to "US", "usa" to "US", "america" to "US",
+    "england" to "GB", "scotland" to "GB", "wales" to "GB",
+    "united kingdom" to "GB", "great britain" to "GB",
+    "germany" to "DE", "france" to "FR", "spain" to "ES", "italy" to "IT",
+    "netherlands" to "NL", "norway" to "NO", "sweden" to "SE", "denmark" to "DK",
+    "finland" to "FI", "india" to "IN", "china" to "CN", "russia" to "RU",
+    "ukraine" to "UA", "poland" to "PL", "czech republic" to "CZ",
+    "hungary" to "HU", "romania" to "RO", "turkey" to "TR", "israel" to "IL",
+    "armenia" to "AM", "azerbaijan" to "AZ", "georgia" to "GE",
+    "canada" to "CA", "mexico" to "MX", "brazil" to "BR", "argentina" to "AR",
+    "peru" to "PE", "cuba" to "CU", "australia" to "AU", "new zealand" to "NZ",
+    "japan" to "JP", "south korea" to "KR", "iran" to "IR", "egypt" to "EG",
+    "south africa" to "ZA",
+  )
   private val pieceCache = mutableMapOf<String, Bitmap?>()
   private val bgPaint = Paint().apply { color = Color.rgb(10, 10, 12) }
   private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -445,19 +487,9 @@ private class ChessPipOverlayView(context: Context) : View(context) {
 
     textPaint.textSize = height * 0.48f
     secondaryPaint.textSize = height * 0.42f
-    val flagW = if (fed.isNotBlank()) height * 0.7f else 0f
-    if (fed.isNotBlank()) {
-      val flagRect = RectF(x, y + height * 0.22f, x + flagW, y + height * 0.78f)
-      Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(28, 174, 212) }.also {
-        canvas.drawRoundRect(flagRect, 4f, 4f, it)
-      }
-      val fp = Paint(secondaryPaint).apply {
-        color = Color.WHITE
-        textAlign = Paint.Align.CENTER
-        textSize = height * 0.22f
-      }
-      canvas.drawText(fed.take(3), flagRect.centerX(), flagRect.centerY() - (fp.descent() + fp.ascent()) / 2, fp)
-    }
+    val flag = flagDisplay(fed)
+    val flagW = if (flag != null) height * 0.9f else 0f
+    if (flag != null) drawFlag(canvas, flag, RectF(x, y + height * 0.16f, x + flagW, y + height * 0.84f), height)
 
     val clockW = if (clock.isNotBlank()) textPaint.measureText(clock) + height * 0.5f else 0f
     if (clock.isNotBlank()) {
@@ -476,6 +508,48 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     val nameX = x + flagW + if (flagW > 0f) height * 0.18f else 0f
     val maxNameW = width - (nameX - x) - clockW - height * 0.15f
     drawFittedText(canvas, nameText, nameX, y + height * 0.68f, maxNameW, textPaint)
+  }
+
+  private fun drawFlag(canvas: Canvas, flag: String, rect: RectF, rowHeight: Float) {
+    val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = if (flag == "🌐") Color.rgb(55, 65, 81) else Color.TRANSPARENT
+    }
+    if (flag == "🌐" || flag == "FIDE") {
+      canvas.drawRoundRect(rect, 4f, 4f, bg.apply {
+        color = if (flag == "FIDE") Color.rgb(32, 169, 210) else Color.rgb(55, 65, 81)
+      })
+    }
+    val fp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.WHITE
+      textAlign = Paint.Align.CENTER
+      typeface = Typeface.DEFAULT_BOLD
+      textSize = if (flag == "FIDE") rowHeight * 0.22f else rowHeight * 0.56f
+    }
+    canvas.drawText(flag, rect.centerX(), rect.centerY() - (fp.descent() + fp.ascent()) / 2f, fp)
+  }
+
+  private fun flagDisplay(rawFed: String): String? {
+    val raw = rawFed.trim()
+    if (raw.isEmpty()) return null
+    val upper = raw.uppercase()
+    val lower = raw.lowercase()
+    if (setOf("UNKNOWN", "NONE", "UNRATED", "N/A", "NA", "?", "-").contains(upper)) return "🌐"
+    if (upper == "FID" || upper == "FIDE") return "FIDE"
+
+    val iso2 = when {
+      upper.length == 2 -> upper
+      upper.length == 3 -> fideToIso2[upper]
+      else -> countryNameToIso2[lower]
+    } ?: return null
+    if (iso2.length != 2) return null
+    return flagEmoji(iso2)
+  }
+
+  private fun flagEmoji(iso2: String): String {
+    val base = 0x1F1E6 - 'A'.code
+    return iso2.uppercase().mapNotNull { ch ->
+      if (ch in 'A'..'Z') String(Character.toChars(base + ch.code)) else null
+    }.joinToString("")
   }
 
   private fun displayClock(data: Map<String, Any?>, isWhite: Boolean): String {
@@ -548,12 +622,17 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     val fromTo = parseUciSquares(lastMove)
     val from = fromTo.getOrNull(0)
     val to = fromTo.getOrNull(1)
-    val fromPaint = Paint().apply { color = Color.argb(115, 255, 211, 52) }
-    val toPaint = Paint().apply { color = Color.argb(115, 89, 139, 232) }
+    val lastMoveLightPaint = Paint().apply { color = Color.rgb(173, 185, 207) }
+    val lastMoveDarkPaint = Paint().apply { color = Color.rgb(157, 170, 194) }
+    val loserKing = loserKingPiece(status)
+    val loserSquare = loserKing?.let { findPiece(board, it) }
     val drawSquares = if (isDrawStatus(status)) {
       listOfNotNull(findPiece(board, 'K'), findPiece(board, 'k'))
     } else {
       emptyList()
+    }
+    val loserPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.argb(204, 245, 50, 54)
     }
     val drawPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = Color.argb(205, 173, 225, 205)
@@ -565,32 +644,62 @@ private class ChessPipOverlayView(context: Context) : View(context) {
         val top = y + rank * square
         canvas.drawRect(left, top, left + square, top + square, if ((rank + file) % 2 == 0) lightPaint else darkPaint)
         val sq = BoardSquare(file, rank)
-        if (sq == from) canvas.drawRect(left, top, left + square, top + square, fromPaint)
-        if (sq == to) canvas.drawRect(left, top, left + square, top + square, toPaint)
+        if (sq == from || sq == to) {
+          canvas.drawRect(
+            left,
+            top,
+            left + square,
+            top + square,
+            if (isLightChessSquare(file, rank)) lastMoveLightPaint else lastMoveDarkPaint
+          )
+        }
+        val isLoserKingSquare = loserSquare == sq
+        if (isLoserKingSquare) canvas.drawRect(left, top, left + square, top + square, loserPaint)
         val isDrawKingSquare = drawSquares.any { it.file == file && it.rank == rank }
         if (isDrawKingSquare) canvas.drawRect(left, top, left + square, top + square, drawPaint)
         val piece = board[rank][file]
         if (piece != '\u0000') {
-          val bitmap = loadPieceBitmap(piece)
           val inset = square * 0.07f
           val rect = RectF(left + inset, top + inset, left + square - inset, top + square - inset)
-          if (bitmap != null) {
-            canvas.drawBitmap(bitmap, null, rect, null)
-          } else {
-            val fp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-              color = if (piece.isUpperCase()) Color.WHITE else Color.BLACK
-              textAlign = Paint.Align.CENTER
-              typeface = Typeface.DEFAULT_BOLD
-              textSize = square * 0.58f
-            }
-            canvas.drawText(piece.uppercaseChar().toString(), rect.centerX(), rect.centerY() - (fp.descent() + fp.ascent()) / 2, fp)
-          }
+          drawPiece(canvas, piece, rect, if (isLoserKingSquare) -45f else 0f)
         }
         if (isDrawKingSquare) {
           drawDrawIcon(canvas, RectF(left, top, left + square, top + square))
         }
       }
     }
+  }
+
+  private fun isLightChessSquare(file: Int, displayRank: Int): Boolean {
+    return (file + (7 - displayRank)) % 2 == 1
+  }
+
+  private fun loserKingPiece(status: String?): Char? {
+    return when (status?.trim()?.lowercase()) {
+      "whitewins", "white_wins", "1-0", "w" -> 'k'
+      "blackwins", "black_wins", "0-1", "b" -> 'K'
+      else -> null
+    }
+  }
+
+  private fun drawPiece(canvas: Canvas, piece: Char, rect: RectF, rotationDegrees: Float) {
+    canvas.save()
+    if (rotationDegrees != 0f) {
+      canvas.rotate(rotationDegrees, rect.centerX(), rect.centerY())
+    }
+    val bitmap = loadPieceBitmap(piece)
+    if (bitmap != null) {
+      canvas.drawBitmap(bitmap, null, rect, null)
+    } else {
+      val fp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (piece.isUpperCase()) Color.WHITE else Color.BLACK
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        textSize = rect.height() * 0.62f
+      }
+      canvas.drawText(piece.uppercaseChar().toString(), rect.centerX(), rect.centerY() - (fp.descent() + fp.ascent()) / 2, fp)
+    }
+    canvas.restore()
   }
 
   private fun isDrawStatus(status: String?): Boolean {
