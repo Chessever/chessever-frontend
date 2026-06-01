@@ -33,6 +33,7 @@ import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.time.Instant
 
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
@@ -41,6 +42,7 @@ class MainActivity : FlutterActivity() {
   private val mainHandler = Handler(Looper.getMainLooper())
   private val httpClient = OkHttpClient()
   private var pollRunnable: Runnable? = null
+  private var clockRunnable: Runnable? = null
   private var activePollCall: Call? = null
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -57,7 +59,10 @@ class MainActivity : FlutterActivity() {
             pipPayload = args.toMutableMap()
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
-            if (isCurrentlyInPip()) startNativePollingIfPossible()
+            if (isCurrentlyInPip()) {
+              startClockTicker()
+              startNativePollingIfPossible()
+            }
           }
           result.success(null)
         }
@@ -70,7 +75,10 @@ class MainActivity : FlutterActivity() {
             mergePayload(args)
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
-            if (isCurrentlyInPip()) startNativePollingIfPossible()
+            if (isCurrentlyInPip()) {
+              startClockTicker()
+              startNativePollingIfPossible()
+            }
           }
           result.success(null)
         }
@@ -100,8 +108,10 @@ class MainActivity : FlutterActivity() {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     pipOverlay?.visibility = if (isInPictureInPictureMode) View.VISIBLE else View.GONE
     if (isInPictureInPictureMode) {
+      startClockTicker()
       startNativePollingIfPossible()
     } else {
+      stopClockTicker()
       stopNativePolling()
       removePipOverlay()
     }
@@ -112,6 +122,7 @@ class MainActivity : FlutterActivity() {
   }
 
   override fun onDestroy() {
+    stopClockTicker()
     stopNativePolling()
     super.onDestroy()
   }
@@ -165,6 +176,7 @@ class MainActivity : FlutterActivity() {
 
   private fun clearPipState() {
     pipPayload = null
+    stopClockTicker()
     stopNativePolling()
     removePipOverlay()
   }
@@ -205,6 +217,24 @@ class MainActivity : FlutterActivity() {
     pollRunnable = null
     activePollCall?.cancel()
     activePollCall = null
+  }
+
+  private fun startClockTicker() {
+    if (clockRunnable != null) return
+
+    val runnable = object : Runnable {
+      override fun run() {
+        pipOverlay?.invalidate()
+        mainHandler.postDelayed(this, 1_000L)
+      }
+    }
+    clockRunnable = runnable
+    mainHandler.post(runnable)
+  }
+
+  private fun stopClockTicker() {
+    clockRunnable?.let { mainHandler.removeCallbacks(it) }
+    clockRunnable = null
   }
 
   private data class PollingConfig(
@@ -409,7 +439,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     val title = data["${prefix}Title"] as? String ?: ""
     val rating = (data["${prefix}Rating"] as? Number)?.toInt()?.takeIf { it > 0 }?.toString() ?: ""
     val fed = (data["${prefix}Fed"] as? String ?: "").uppercase()
-    val clock = data["${prefix}Clock"] as? String ?: ""
+    val clock = displayClock(data, isWhite)
     val nameText = listOf(title, name, rating).filter { it.isNotBlank() }.joinToString(" ")
 
     textPaint.textSize = height * 0.48f
@@ -432,7 +462,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     if (clock.isNotBlank()) {
       val clockRect = RectF(x + width - clockW, y, x + width, y + height)
       Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(32, 169, 210) }.also {
-        if (!isWhite) canvas.drawRect(clockRect, it)
+        if (isOngoing(data) && isWhiteToMove(data) == isWhite) canvas.drawRect(clockRect, it)
       }
       val cp = Paint(textPaint).apply {
         color = Color.WHITE
@@ -445,6 +475,58 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     val nameX = x + flagW + if (flagW > 0f) height * 0.18f else 0f
     val maxNameW = width - (nameX - x) - clockW - height * 0.15f
     drawFittedText(canvas, nameText, nameX, y + height * 0.68f, maxNameW, textPaint)
+  }
+
+  private fun displayClock(data: Map<String, Any?>, isWhite: Boolean): String {
+    val prefix = if (isWhite) "white" else "black"
+    val fallback = data["${prefix}Clock"] as? String ?: ""
+    if (!isOngoing(data) || isWhiteToMove(data) != isWhite) return fallback
+
+    val baseSeconds = intValue(data["${prefix}ClockSeconds"]) ?: return fallback
+    val lastMoveMillis = instantMillis(data["lastMoveTime"] as? String) ?: return fallback
+    val elapsedSeconds = max(0L, (System.currentTimeMillis() - lastMoveMillis) / 1000L).toInt()
+    return formatClock(max(0, baseSeconds - elapsedSeconds))
+  }
+
+  private fun isOngoing(data: Map<String, Any?>): Boolean {
+    val status = (data["status"] as? String ?: "").trim().lowercase()
+    return status.isEmpty() || status == "ongoing" || status == "*"
+  }
+
+  private fun isWhiteToMove(data: Map<String, Any?>): Boolean {
+    val fen = data["fen"] as? String ?: ""
+    val parts = fen.split(" ")
+    return parts.getOrNull(1) != "b"
+  }
+
+  private fun intValue(value: Any?): Int? {
+    return when (value) {
+      is Int -> value
+      is Number -> value.toInt()
+      is String -> value.toIntOrNull()
+      else -> null
+    }
+  }
+
+  private fun instantMillis(value: String?): Long? {
+    if (value.isNullOrBlank()) return null
+    return try {
+      Instant.parse(value).toEpochMilli()
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun formatClock(seconds: Int): String {
+    val clamped = max(0, seconds)
+    val hours = clamped / 3600
+    val minutes = (clamped % 3600) / 60
+    val secs = clamped % 60
+    return if (hours > 0) {
+      "%d:%02d:%02d".format(hours, minutes, secs)
+    } else {
+      "%d:%02d".format(minutes, secs)
+    }
   }
 
   private fun drawBoard(
