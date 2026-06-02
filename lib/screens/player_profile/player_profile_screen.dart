@@ -104,6 +104,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   late PlayerProfileDataSource _currentDataSource;
   String? _currentGamebasePlayerId;
   bool _didPrefetchExplorerRoot = false;
+  int? _gamesTabCueCount;
 
   bool _showHeaderExtras = true;
   double _scrollAccumulator = 0.0;
@@ -182,13 +183,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         _currentGamebasePlayerId = normalizedId;
       }
       _currentDataSource = source;
+      _gamesTabCueCount = null;
     });
   }
 
   void _handleTabSelection(int index) {
     HapticFeedbackService.buttonPress();
-    ref.read(selectedPlayerProfileTabProvider.notifier).state =
-        PlayerProfileTab.values[index];
+    final nextTab = PlayerProfileTab.values[index];
+    ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
+    if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
+      setState(() => _gamesTabCueCount = null);
+    }
     _pageController.animateToPage(
       index,
       duration: const Duration(milliseconds: 300),
@@ -197,10 +202,13 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   void _handlePageChanged(int index) {
+    final nextTab = PlayerProfileTab.values[index];
     final currentTab = ref.read(selectedPlayerProfileTabProvider);
     if (PlayerProfileTab.values.indexOf(currentTab) != index) {
-      ref.read(selectedPlayerProfileTabProvider.notifier).state =
-          PlayerProfileTab.values[index];
+      ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
+    }
+    if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
+      setState(() => _gamesTabCueCount = null);
     }
   }
 
@@ -218,6 +226,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     GameOnlineFilter? online,
     PlayerResultFilter? playerResultFilter,
     String? searchQuery,
+    int? gamesTabCueCount,
   }) async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
@@ -253,9 +262,19 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (newActiveCount > 1) {
       final isPremium = ref.read(subscriptionProvider).isSubscribed;
       if (!isPremium) {
+        if (!mounted) return;
         final subscribed = await requirePremiumGuard(context, ref);
         if (!subscribed || !mounted) return;
       }
+    }
+
+    if (gamesTabCueCount != null || eco == GameEcoFilter.all) {
+      if (!mounted) return;
+      setState(() {
+        _gamesTabCueCount = gamesTabCueCount != null && gamesTabCueCount > 0
+            ? gamesTabCueCount
+            : null;
+      });
     }
 
     // Apply the filter
@@ -803,12 +822,22 @@ countryCode,
       tablet: 32.sp,
     );
 
+    final tabOptions = PlayerProfileTab.values.map((tab) {
+      if (tab == PlayerProfileTab.games &&
+          selectedTab != PlayerProfileTab.games &&
+          _gamesTabCueCount != null &&
+          _gamesTabCueCount! > 0) {
+        return 'Games ${formatCompactCount(_gamesTabCueCount!)}';
+      }
+      return playerProfileTabNames[tab]!;
+    }).toList(growable: false);
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: context.colors.popup,
         selectedBackgroundColor: context.colors.popup,
-        options: playerProfileTabNames.values.toList(),
+        options: tabOptions,
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
         currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
         onSelectionChanged: _handleTabSelection,
