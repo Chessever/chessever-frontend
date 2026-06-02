@@ -970,7 +970,13 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                                     GameTimeControlFilter.classical
                                 ? GameTimeControlFilter.all
                                 : GameTimeControlFilter.classical;
-                        widget.onOpenGames?.call(timeControl: newTimeControl);
+                        widget.onOpenGames?.call(
+                          timeControl: newTimeControl,
+                          gamesTabCueCount:
+                              newTimeControl == GameTimeControlFilter.classical
+                                  ? (widget.profileData?.classicalGames ?? 0)
+                                  : 0,
+                        );
                       },
                     ),
                   ),
@@ -988,7 +994,13 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                             currentTimeControl == GameTimeControlFilter.rapid
                                 ? GameTimeControlFilter.all
                                 : GameTimeControlFilter.rapid;
-                        widget.onOpenGames?.call(timeControl: newTimeControl);
+                        widget.onOpenGames?.call(
+                          timeControl: newTimeControl,
+                          gamesTabCueCount:
+                              newTimeControl == GameTimeControlFilter.rapid
+                                  ? (widget.profileData?.rapidGames ?? 0)
+                                  : 0,
+                        );
                       },
                     ),
                   ),
@@ -1006,7 +1018,13 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                             currentTimeControl == GameTimeControlFilter.blitz
                                 ? GameTimeControlFilter.all
                                 : GameTimeControlFilter.blitz;
-                        widget.onOpenGames?.call(timeControl: newTimeControl);
+                        widget.onOpenGames?.call(
+                          timeControl: newTimeControl,
+                          gamesTabCueCount:
+                              newTimeControl == GameTimeControlFilter.blitz
+                                  ? (widget.profileData?.blitzGames ?? 0)
+                                  : 0,
+                        );
                       },
                     ),
                   ),
@@ -1333,7 +1351,12 @@ class _OverallStatsSection extends StatelessWidget {
                           currentResultFilter == PlayerResultFilter.win
                               ? PlayerResultFilter.all
                               : PlayerResultFilter.win;
-                      onOpenGames?.call(playerResultFilter: newFilter);
+                      onOpenGames?.call(
+                        playerResultFilter: newFilter,
+                        gamesTabCueCount: newFilter == PlayerResultFilter.win
+                            ? resultStats.wins
+                            : 0,
+                      );
                     },
                   ),
                   SizedBox(width: 12.w),
@@ -1349,7 +1372,12 @@ class _OverallStatsSection extends StatelessWidget {
                           currentResultFilter == PlayerResultFilter.draw
                               ? PlayerResultFilter.all
                               : PlayerResultFilter.draw;
-                      onOpenGames?.call(playerResultFilter: newFilter);
+                      onOpenGames?.call(
+                        playerResultFilter: newFilter,
+                        gamesTabCueCount: newFilter == PlayerResultFilter.draw
+                            ? resultStats.draws
+                            : 0,
+                      );
                     },
                   ),
                   SizedBox(width: 12.w),
@@ -1365,7 +1393,12 @@ class _OverallStatsSection extends StatelessWidget {
                           currentResultFilter == PlayerResultFilter.loss
                               ? PlayerResultFilter.all
                               : PlayerResultFilter.loss;
-                      onOpenGames?.call(playerResultFilter: newFilter);
+                      onOpenGames?.call(
+                        playerResultFilter: newFilter,
+                        gamesTabCueCount: newFilter == PlayerResultFilter.loss
+                            ? resultStats.losses
+                            : 0,
+                      );
                     },
                   ),
                 ],
@@ -1652,6 +1685,9 @@ class _ColorPerformanceSection extends StatelessWidget {
                   onOpenGames?.call(
                     color: newFilter,
                     eco: shouldClearOpening ? GameEcoFilter.all : null,
+                    gamesTabCueCount: newFilter == GameColorFilter.white
+                        ? colorStats.whiteGames
+                        : 0,
                   );
                 },
               ),
@@ -1679,6 +1715,9 @@ class _ColorPerformanceSection extends StatelessWidget {
                   onOpenGames?.call(
                     color: newFilter,
                     eco: shouldClearOpening ? GameEcoFilter.all : null,
+                    gamesTabCueCount: newFilter == GameColorFilter.black
+                        ? colorStats.blackGames
+                        : 0,
                   );
                 },
               ),
@@ -2327,6 +2366,15 @@ class _OpeningRepertoireSectionState
     return _filteredOpenings.map((o) => o.eco.toUpperCase()).toSet();
   }
 
+  int _openingCountForFilter(_OpeningRepertoireFilter filter) {
+    final openings = switch (filter) {
+      _OpeningRepertoireFilter.white => widget.baseOpeningStatsWhite,
+      _OpeningRepertoireFilter.black => widget.baseOpeningStatsBlack,
+      _OpeningRepertoireFilter.all => widget.baseOpeningStats,
+    };
+    return openings.fold<int>(0, (sum, opening) => sum + opening.count);
+  }
+
   /// Check if an opening is active (has games matching current filters)
   bool _isOpeningActive(OpeningStatistic opening) {
     if (!widget.hasNonEcoFilters) return true;
@@ -2418,6 +2466,10 @@ class _OpeningRepertoireSectionState
     widget.onOpenGames?.call(
       color: newColorFilter,
       eco: shouldClearOpening ? GameEcoFilter.all : null,
+      gamesTabCueCount:
+          newFilter == _OpeningRepertoireFilter.all
+              ? 0
+              : _openingCountForFilter(newFilter),
     );
   }
 
