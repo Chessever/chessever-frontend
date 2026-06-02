@@ -21,7 +21,6 @@ import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
@@ -6779,6 +6778,37 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  static const List<double> _engineArrowRankScales = [
+    1.0,
+    0.88,
+    0.76,
+    0.64,
+    0.52,
+  ];
+
+  static const List<double> _engineArrowRankAlphas = [
+    0.95,
+    0.78,
+    0.62,
+    0.48,
+    0.34,
+  ];
+
+  double _engineArrowScaleForRank(int index) {
+    if (index >= 0 && index < _engineArrowRankScales.length) {
+      return _engineArrowRankScales[index];
+    }
+    return _engineArrowRankScales.last;
+  }
+
+  Color _engineArrowColorForRank(Color baseColor, int index) {
+    final alpha =
+        index >= 0 && index < _engineArrowRankAlphas.length
+            ? _engineArrowRankAlphas[index]
+            : _engineArrowRankAlphas.last;
+    return baseColor.withValues(alpha: alpha);
+  }
+
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
     if (cloudEval?.pvs.isNotEmpty ?? false) {
       final arrowShapes = <Shape>[];
@@ -6808,18 +6838,15 @@ class ChessBoardScreenNotifierNew
         }
 
         try {
-          // Use different colors/opacity for primary, secondary, tertiary moves
+          // Keep the existing arrow color order while making the rank obvious
+          // through progressive opacity and arrow/head scale.
           final isThreatsMode = state.value?.isThreatsMode ?? false;
-          final arrowColor =
+          final baseArrowColor =
               isThreatsMode
-                  ? const Color(
-                    0xFFFF0000,
-                  ).withValues(alpha: i == 0 ? 1.0 : 0.7)
-                  : switch (i) {
-                    0 => const Color.fromARGB(255, 152, 179, 154),
-                    1 => const Color.fromARGB(200, 152, 179, 154),
-                    _ => const Color.fromARGB(150, 152, 179, 154),
-                  };
+                  ? const Color(0xFFFF0000)
+                  : const Color(0xFF98B39A);
+          final arrowColor = _engineArrowColorForRank(baseArrowColor, i);
+          final arrowScale = _engineArrowScaleForRank(i);
 
           if (bestMove.contains('@')) {
             // Drop move (e.g., "p@e4")
@@ -6831,6 +6858,7 @@ class ChessBoardScreenNotifierNew
                 color: arrowColor,
                 orig: to, // Same square as destination
                 dest: to,
+                scale: arrowScale,
               ),
             );
           } else {
@@ -6877,7 +6905,14 @@ class ChessBoardScreenNotifierNew
               continue; // Skip illegal moves
             }
 
-            arrowShapes.add(Arrow(color: arrowColor, orig: from, dest: to));
+            arrowShapes.add(
+              Arrow(
+                color: arrowColor,
+                orig: from,
+                dest: to,
+                scale: arrowScale,
+              ),
+            );
           }
         } catch (e) {
           // Parsing failed for this PV, continue with next
@@ -6947,6 +6982,18 @@ class ChessBoardScreenNotifierNew
     );
   }
 
+  /// Get color for a variant board arrow.
+  /// Keeps the existing Green/Blue/Orange/Pink/Purple order and uses rank
+  /// opacity, not labels or hue changes, to separate engine recommendation
+  /// priority on the board.
+  Color getVariantArrowColor(int variantIndex) {
+    if (variantIndex >= 0 && variantIndex < _variantColors.length) {
+      return _engineArrowColorForRank(_variantColors[variantIndex], variantIndex);
+    }
+    final colorIndex = variantIndex % _variantColors.length;
+    return _engineArrowColorForRank(_variantColors[colorIndex], variantIndex);
+  }
+
   ISet<Shape> _getAllVariantArrowShapes(
     List<AnalysisLine> variants,
     int selectedIndex, {
@@ -6968,10 +7015,18 @@ class ChessBoardScreenNotifierNew
       try {
         final arrowColor =
             isThreatsMode
-                ? const Color(0xFFFF0000).withValues(alpha: i == 0 ? 0.95 : 0.7)
-                : getVariantColor(i, i == selectedIndex);
+                ? _engineArrowColorForRank(const Color(0xFFFF0000), i)
+                : getVariantArrowColor(i);
+        final arrowScale = _engineArrowScaleForRank(i);
 
-        arrows.add(Arrow(color: arrowColor, orig: move.from, dest: move.to));
+        arrows.add(
+          Arrow(
+            color: arrowColor,
+            orig: move.from,
+            dest: move.to,
+            scale: arrowScale,
+          ),
+        );
       } catch (_) {
         continue;
       }
