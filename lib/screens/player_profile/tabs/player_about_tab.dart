@@ -36,6 +36,7 @@ typedef PlayerGamesOpenCallback =
       GameOnlineFilter? online,
       PlayerResultFilter? playerResultFilter,
       String? searchQuery,
+      int? gamesTabCueCount,
     });
 
 /// About tab showing comprehensive player information and analytics
@@ -2352,8 +2353,8 @@ class _OpeningRepertoireSectionState
     final isCurrentlySelected = _isOpeningSelected(opening);
 
     if (isCurrentlySelected) {
-      // Deselect: clear just the eco filter
-      widget.onOpenGames?.call(eco: GameEcoFilter.all);
+      // Deselect: clear just the eco filter and remove the Games-tab cue.
+      widget.onOpenGames?.call(eco: GameEcoFilter.all, gamesTabCueCount: 0);
     } else {
       // Select: apply the ECO filter only (no searchQuery — ECO is the unique key)
       final eco = opening.eco.trim();
@@ -2370,6 +2371,7 @@ class _OpeningRepertoireSectionState
       widget.onOpenGames?.call(
         eco: hasEco ? GameEcoFilter.forCode(eco) : null,
         color: colorToSet,
+        gamesTabCueCount: opening.count,
       );
     }
   }
