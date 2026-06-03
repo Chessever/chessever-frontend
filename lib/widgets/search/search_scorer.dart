@@ -2,7 +2,41 @@ import 'dart:math' as math;
 
 import 'package:chessever2/widgets/search/search_result_model.dart';
 
+class SearchScoreMatch {
+  const SearchScoreMatch({required this.score, required this.matchedText});
+
+  final double score;
+  final String matchedText;
+}
+
 class SearchScorer {
+  static const SearchScoreMatch noMatch = SearchScoreMatch(
+    score: 0,
+    matchedText: '',
+  );
+
+  static SearchScoreMatch bestTournamentMatch({
+    required String query,
+    required String name,
+    Iterable<String> aliases = const [],
+  }) {
+    var bestScore = calculateScore(query, name, SearchResultType.tournament);
+    var bestMatch = name;
+
+    for (final alias in aliases) {
+      if (!_isTournamentIdentityAlias(name, alias)) continue;
+
+      final score = calculateScore(query, alias, SearchResultType.tournament);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = alias;
+      }
+    }
+
+    if (bestScore <= 0) return noMatch;
+    return SearchScoreMatch(score: bestScore, matchedText: bestMatch);
+  }
+
   static double calculateScore(
     String query,
     String text,
@@ -38,7 +72,7 @@ class SearchScorer {
     }
 
     if (type == SearchResultType.tournament) {
-      if (!_hasSpecificTournamentTokenMatch(queryLower, textLower)) {
+      if (!_hasTournamentQueryIdentityMatch(queryLower, textLower)) {
         return 0.0;
       }
 
@@ -49,55 +83,60 @@ class SearchScorer {
     return score.clamp(0.0, 100.0);
   }
 
-  static bool _hasSpecificTournamentTokenMatch(String query, String text) {
-    final specificQueryTokens =
+  static bool _hasTournamentQueryIdentityMatch(String query, String text) {
+    final queryTokens =
         _normalizedTokens(
           query,
-        ).where((token) => !_genericTournamentTokens.contains(token)).toList();
-
-    if (specificQueryTokens.length < 2) return true;
-
+        ).where((token) => !_isYearToken(token)).toList();
     final textTokens = _normalizedTokens(text);
-    if (textTokens.isEmpty) return false;
+    if (queryTokens.isEmpty || textTokens.isEmpty) return false;
 
-    for (final queryToken in specificQueryTokens) {
-      for (final textToken in textTokens) {
-        if (textToken == queryToken ||
-            textToken.startsWith(queryToken) ||
-            queryToken.startsWith(textToken)) {
-          return true;
-        }
-      }
+    if (queryTokens.length == 1) {
+      return textTokens.any((textToken) {
+        return _tokensMatch(queryTokens.first, textToken);
+      });
     }
 
-    return false;
+    return queryTokens.every((queryToken) {
+      return textTokens.any((textToken) {
+        return _tokensMatch(queryToken, textToken);
+      });
+    });
+  }
+
+  static bool _isTournamentIdentityAlias(String name, String alias) {
+    final nameTokens = _normalizedTokens(name);
+    final aliasTokens = _normalizedTokens(alias);
+    if (nameTokens.isEmpty || aliasTokens.isEmpty) return false;
+
+    final normalizedName = nameTokens.join(' ');
+    final normalizedAlias = aliasTokens.join(' ');
+    if (normalizedAlias == normalizedName) return true;
+    if (normalizedAlias.startsWith('$normalizedName ')) return true;
+
+    final requiredNameTokens =
+        nameTokens.where((token) => !_isYearToken(token)).toSet();
+    if (requiredNameTokens.isEmpty) return false;
+
+    final aliasTokenSet = aliasTokens.toSet();
+    return requiredNameTokens.every(aliasTokenSet.contains);
+  }
+
+  static bool _tokensMatch(String queryToken, String textToken) {
+    return textToken == queryToken || textToken.startsWith(queryToken);
+  }
+
+  static bool _isYearToken(String token) {
+    final year = int.tryParse(token);
+    return token.length == 4 && year != null && year >= 1800 && year <= 2200;
   }
 
   static List<String> _normalizedTokens(String value) {
-    final normalized = value.replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+    final normalized =
+        value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
     if (normalized.isEmpty) return const [];
     return normalized.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
   }
-
-  static const Set<String> _genericTournamentTokens = {
-    'chess',
-    'championship',
-    'championships',
-    'tournament',
-    'festival',
-    'open',
-    'classic',
-    'cup',
-    'final',
-    'finals',
-    'men',
-    'women',
-    'girls',
-    'boys',
-    'team',
-    'teams',
-    'event',
-  };
 
   static double _calculateFuzzyScore(String query, String text) {
     final queryWords = query.split(' ').where((w) => w.isNotEmpty).toList();

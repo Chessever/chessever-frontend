@@ -4,8 +4,6 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/search_scorer.dart';
 
-import '../../screens/group_event/group_event_screen.dart';
-
 class EnhancedSearchResult {
   final List<SearchResult> tournamentResults;
   final List<SearchResult> playerResults;
@@ -67,33 +65,18 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
           liveBroadcastId ?? [],
         );
 
-        final tournamentScore = SearchScorer.calculateScore(
-          queryLower,
-          gb.name,
-          SearchResultType.tournament,
+        final tournamentMatch = SearchScorer.bestTournamentMatch(
+          query: queryLower,
+          name: gb.name,
+          aliases: gb.search,
         );
 
-        var bestTournamentScore = tournamentScore;
-        var bestTournamentMatch = gb.name;
-
-        for (final searchTerm in gb.search) {
-          final score = SearchScorer.calculateScore(
-            queryLower,
-            searchTerm,
-            SearchResultType.tournament,
-          );
-          if (score > bestTournamentScore) {
-            bestTournamentScore = score;
-            bestTournamentMatch = searchTerm;
-          }
-        }
-
-        if (bestTournamentScore > 10.0) {
+        if (tournamentMatch.score > 10.0) {
           tournamentResults.add(
             SearchResult(
               tournament: tourEventModel,
-              score: bestTournamentScore,
-              matchedText: bestTournamentMatch,
+              score: tournamentMatch.score,
+              matchedText: tournamentMatch.matchedText,
               type: SearchResultType.tournament,
             ),
           );

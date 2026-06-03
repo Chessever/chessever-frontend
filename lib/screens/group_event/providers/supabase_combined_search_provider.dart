@@ -151,31 +151,18 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
 
   for (final gb in broadcasts) {
     final tourEventModel = GroupEventCardModel.fromGroupBroadcast(gb, liveIds);
-    var bestTournamentScore = SearchScorer.calculateScore(
-      trimmedQuery,
-      gb.name,
-      SearchResultType.tournament,
+    final tournamentMatch = SearchScorer.bestTournamentMatch(
+      query: trimmedQuery,
+      name: gb.name,
+      aliases: gb.search,
     );
-    var bestTournamentMatch = gb.name;
 
-    for (final searchTerm in gb.search) {
-      final score = SearchScorer.calculateScore(
-        trimmedQuery,
-        searchTerm,
-        SearchResultType.tournament,
-      );
-      if (score > bestTournamentScore) {
-        bestTournamentScore = score;
-        bestTournamentMatch = searchTerm;
-      }
-    }
-
-    if (bestTournamentScore > 10.0) {
+    if (tournamentMatch.score > 10.0) {
       tournamentResults.add(
         SearchResult(
           tournament: tourEventModel,
-          score: bestTournamentScore,
-          matchedText: bestTournamentMatch,
+          score: tournamentMatch.score,
+          matchedText: tournamentMatch.matchedText,
           type: SearchResultType.tournament,
         ),
       );
