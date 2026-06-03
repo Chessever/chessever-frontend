@@ -374,16 +374,12 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     );
   }
 
-  void _resetFilters() {
-    HapticFeedbackService.buttonPress();
-    // Return the default filter immediately (clears all filters)
-    Navigator.of(context).pop(GameFilter.defaultFilter());
-  }
-
-  void _applyFilters() {
-    FocusScope.of(context).unfocus();
-    HapticFeedbackService.buttonPress();
-    final newFilter = GameFilter(
+  /// Builds a [GameFilter] from the dialog's current local field state.
+  /// Single source of truth for both Apply (what we return) and the
+  /// "is anything active?" check that gates the Clear affordance — so adding
+  /// a new field can't leave the two out of sync.
+  GameFilter _currentLocalFilter() {
+    return GameFilter(
       result: _result,
       // Color hidden → never carry a stale color filter (no UI to clear it).
       color: widget.showColorFilter ? _color : GameColorFilter.all,
@@ -396,7 +392,49 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       maxRating: GameFilter.absoluteMaxRating,
       sorts: widget.showSortSection ? _sorts : const [],
     );
-    Navigator.of(context).pop(newFilter);
+  }
+
+  /// True when any filter or sort differs from the default — i.e. there is
+  /// something for Clear to clear.
+  bool get _hasAnythingToClear {
+    final f = _currentLocalFilter();
+    return f.hasActiveFilters || f.hasActiveSorts;
+  }
+
+  void _resetFilters() {
+    HapticFeedbackService.buttonPress();
+    // Return the default filter immediately (clears all filters) and close.
+    Navigator.of(context).pop(GameFilter.defaultFilter());
+  }
+
+  /// Clear ALL filters and sorts in place, without closing the dialog — the
+  /// in-dialog twin of Reset. Mirrors [GameFilter.defaultFilter] field-for-field
+  /// so nothing is left behind (Reset previously cleared everything but Clear
+  /// only cleared sorts).
+  void _clearFilters() {
+    FocusScope.of(context).unfocus();
+    HapticFeedbackService.selection();
+    setState(() {
+      _result = GameResultFilter.all;
+      _color = GameColorFilter.all;
+      _timeControl = GameTimeControlFilter.all;
+      _online = GameOnlineFilter.all;
+      _live = GameLiveFilter.all;
+      _yearRange = RangeValues(
+        GameFilter.defaultMinYear.toDouble(),
+        DateTime.now().year.toDouble(),
+      );
+      _selectedMinRating = RatingTierFilter.normalizeMinRating(
+        GameFilter.defaultMinRating,
+      );
+      _sorts = const [];
+    });
+  }
+
+  void _applyFilters() {
+    FocusScope.of(context).unfocus();
+    HapticFeedbackService.buttonPress();
+    Navigator.of(context).pop(_currentLocalFilter());
   }
 
   String _sortFieldLabel(GamebaseSortField f) {
@@ -412,29 +450,27 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     }
   }
 
-  /// Multi-key sort picker. Tapping a field appends it to the ordered sort
-  /// list (primary first). Tapping a selected field cycles its direction
-  /// (descending → ascending → removed) when direction is enabled, otherwise
-  /// just toggles it off. Each selected chip shows its 1-based priority and,
-  /// when enabled, an arrow for its direction.
+  /// Single-key sort picker. Only ONE field can be active at a time — tapping
+  /// a different field replaces the current sort. Tapping the active field
+  /// cycles its direction (descending → ascending → removed) when direction is
+  /// enabled, otherwise just toggles it off. (Kept as a 0/1-length list so the
+  /// filter model and its consumers stay unchanged.)
   void _cycleSort(GamebaseSortField field) {
     HapticFeedbackService.selection();
     setState(() {
       final index = _sorts.indexWhere((s) => s.field == field);
       if (index < 0) {
-        _sorts = [..._sorts, GameSortCriterion(field: field)];
+        // A new field replaces any existing sort — single-select.
+        _sorts = [GameSortCriterion(field: field)];
         return;
       }
       final current = _sorts[index];
       if (widget.showSortDirection &&
           current.direction == GamebaseSortDirection.desc) {
-        final updated = [..._sorts];
-        updated[index] =
-            current.copyWith(direction: GamebaseSortDirection.asc);
-        _sorts = updated;
+        _sorts = [current.copyWith(direction: GamebaseSortDirection.asc)];
         return;
       }
-      _sorts = [..._sorts]..removeAt(index);
+      _sorts = const [];
     });
   }
 
@@ -446,12 +482,13 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
           children: [
             _sectionLabel('Sort'),
             const Spacer(),
-            if (_sorts.isNotEmpty)
+            // Dialog-level Clear (Sort is the top section in sort-enabled
+            // dialogs, so this reads as a global clear). Wipes every filter
+            // AND sort in place — the no-close twin of Reset — and shows
+            // whenever anything is non-default, not only when a sort is set.
+            if (_hasAnythingToClear)
               GestureDetector(
-                onTap: () {
-                  HapticFeedbackService.selection();
-                  setState(() => _sorts = const []);
-                },
+                onTap: _clearFilters,
                 child: Text(
                   'Clear',
                   style: AppTypography.textXsBold.copyWith(
@@ -485,43 +522,33 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
           color: isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
         ),
+        // The direction-arrow slot keeps a FIXED footprint whether or not the
+        // chip is selected, so toggling only swaps slot CONTENT (and color),
+        // never the chip's size — no Wrap reflow / sibling jump.
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isSelected) ...[
-              Container(
-                width: 16.w,
-                height: 16.w,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: kBlackColor.withValues(alpha: 0.28),
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '${index + 1}',
-                  style: AppTypography.textXsBold.copyWith(
-                    color: kBlackColor,
-                    fontSize: 9.sp,
-                    height: 1,
-                  ),
-                ),
-              ),
-              SizedBox(width: 6.w),
-            ],
             Text(
               _sortFieldLabel(field),
               style: AppTypography.textXsMedium.copyWith(
                 color: isSelected ? kBlackColor : context.colors.textPrimary,
               ),
             ),
-            if (isSelected && widget.showSortDirection) ...[
+            if (widget.showSortDirection) ...[
               SizedBox(width: 4.w),
-              Icon(
-                criterion!.direction == GamebaseSortDirection.asc
-                    ? Icons.arrow_upward_rounded
-                    : Icons.arrow_downward_rounded,
-                size: 12.ic,
-                color: kBlackColor,
+              // Direction arrow slot (reserved even when unselected).
+              SizedBox(
+                width: 12.ic,
+                height: 12.ic,
+                child: isSelected
+                    ? Icon(
+                        criterion!.direction == GamebaseSortDirection.asc
+                            ? Icons.arrow_upward_rounded
+                            : Icons.arrow_downward_rounded,
+                        size: 12.ic,
+                        color: kBlackColor,
+                      )
+                    : null,
               ),
             ],
           ],
