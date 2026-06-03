@@ -1394,8 +1394,10 @@ async function applyPreferences(
     .in("user_id", ids);
 
   const prefsMap = new Map<string, Record<string, unknown>>();
-  for (const row of data ?? []) {
-    prefsMap.set(row.user_id as string, row);
+  const preferenceRows =
+    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
+  for (const row of preferenceRows) {
+    prefsMap.set(row.user_id, row);
   }
 
   const filtered = new Set<string>();
@@ -1476,8 +1478,10 @@ async function filterRoundRecipients(
     .in("user_id", ids);
 
   const prefsMap = new Map<string, Record<string, unknown>>();
-  for (const row of data ?? []) {
-    prefsMap.set(row.user_id as string, row);
+  const preferenceRows =
+    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
+  for (const row of preferenceRows) {
+    prefsMap.set(row.user_id, row);
   }
 
   const playerRecipients = new Set<string>();
@@ -1577,8 +1581,10 @@ async function filterLiveUpdateEnabled(userIds: string[]) {
 
   const filtered = new Set<string>();
   const prefsMap = new Map<string, Record<string, unknown>>();
-  for (const row of data ?? []) {
-    prefsMap.set(row.user_id as string, row);
+  const preferenceRows =
+    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
+  for (const row of preferenceRows) {
+    prefsMap.set(row.user_id, row);
   }
   for (const id of userIds) {
     const prefs = prefsMap.get(id);
@@ -1745,8 +1751,10 @@ async function filterBookUpdateRecipients(
     .in("user_id", userIds);
 
   const prefsMap = new Map<string, Record<string, unknown>>();
-  for (const row of data ?? []) {
-    prefsMap.set(row.user_id as string, row);
+  const preferenceRows =
+    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
+  for (const row of preferenceRows) {
+    prefsMap.set(row.user_id, row);
   }
 
   const filtered: string[] = [];
@@ -1784,8 +1792,10 @@ async function filterHeadsUpRecipients(
     .in("user_id", ids);
 
   const prefsMap = new Map<string, Record<string, unknown>>();
-  for (const row of data ?? []) {
-    prefsMap.set(row.user_id as string, row);
+  const preferenceRows =
+    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
+  for (const row of preferenceRows) {
+    prefsMap.set(row.user_id, row);
   }
 
   const playerRecipients = new Set<string>();
@@ -2253,7 +2263,7 @@ async function buildLiveUpdatePayload(args: {
     eventName: string | null;
   };
   evalSnapshot: EvalSnapshot | null;
-}): LiveUpdatePayload {
+}): Promise<LiveUpdatePayload> {
   const payload = args.item.payload ?? {};
   const white = (payload.player_white as string) ??
     args.context.game?.player_white ?? "White";
