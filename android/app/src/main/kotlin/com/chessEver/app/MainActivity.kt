@@ -34,6 +34,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
@@ -224,7 +227,7 @@ class MainActivity : FlutterActivity() {
 
     val runnable = object : Runnable {
       override fun run() {
-        pipOverlay?.invalidate()
+        pipOverlay?.postInvalidateOnAnimation()
         mainHandler.postDelayed(this, 1_000L)
       }
     }
@@ -559,7 +562,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
 
     val baseSeconds = intValue(data["${prefix}ClockSeconds"]) ?: return fallback
     val lastMoveMillis = instantMillis(data["lastMoveTime"] as? String) ?: return fallback
-    val elapsedSeconds = max(0L, (System.currentTimeMillis() - lastMoveMillis) / 1000L).toInt()
+    val elapsedSeconds = kotlin.math.abs((System.currentTimeMillis() - lastMoveMillis) / 1000L).toInt()
     return formatClock(max(0, baseSeconds - elapsedSeconds))
   }
 
@@ -585,8 +588,31 @@ private class ChessPipOverlayView(context: Context) : View(context) {
 
   private fun instantMillis(value: String?): Long? {
     if (value.isNullOrBlank()) return null
+    val normalized = value.trim()
+    return parseInstantMillis(normalized)
+      ?: parseOffsetDateTimeMillis(normalized)
+      ?: parseLocalDateTimeMillis(normalized)
+  }
+
+  private fun parseInstantMillis(value: String): Long? {
     return try {
       Instant.parse(value).toEpochMilli()
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun parseOffsetDateTimeMillis(value: String): Long? {
+    return try {
+      OffsetDateTime.parse(value).toInstant().toEpochMilli()
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun parseLocalDateTimeMillis(value: String): Long? {
+    return try {
+      LocalDateTime.parse(value).toInstant(ZoneOffset.UTC).toEpochMilli()
     } catch (_: Exception) {
       null
     }
