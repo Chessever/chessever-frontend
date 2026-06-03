@@ -766,14 +766,18 @@ class LibraryRepository extends BaseRepository {
     PostgrestFilterBuilder<PostgrestList> query,
     GameFilter filter,
   ) {
-    final column = _bookSortColumn(filter.sortBy ?? GamebaseSortField.date);
-    final ascending =
-        (filter.sortDirection ?? GamebaseSortDirection.desc) ==
-        GamebaseSortDirection.asc;
-    return query
-        .order(column, ascending: ascending, nullsFirst: false)
-        // Stable tie-break (and the default order when sorting by date).
-        .order('created_at', ascending: false);
+    // Apply each sort criterion in order — index 0 is the primary key, later
+    // entries break ties. PostgREST honours chained .order() calls in sequence.
+    PostgrestTransformBuilder<PostgrestList> ordered = query;
+    for (final sort in filter.sorts) {
+      ordered = ordered.order(
+        _bookSortColumn(sort.field),
+        ascending: sort.direction == GamebaseSortDirection.asc,
+        nullsFirst: false,
+      );
+    }
+    // Stable tie-break (and the default order when no sort is chosen).
+    return ordered.order('created_at', ascending: false);
   }
 
   /// Paginated query for folder contents (owned folders).

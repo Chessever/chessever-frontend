@@ -70,8 +70,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameLiveFilter _live;
   late RangeValues _yearRange;
   late int? _selectedMinRating;
-  GamebaseSortField? _sortBy;
-  GamebaseSortDirection? _sortDirection;
+  late List<GameSortCriterion> _sorts;
 
   final ScrollController _scrollController = ScrollController();
   double _targetValue = 0.0;
@@ -91,8 +90,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     _selectedMinRating = RatingTierFilter.normalizeMinRating(
       widget.initialFilter.minRating,
     );
-    _sortBy = widget.initialFilter.sortBy;
-    _sortDirection = widget.initialFilter.sortDirection;
+    _sorts = List<GameSortCriterion>.of(widget.initialFilter.sorts);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -193,36 +191,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         ),
                         SizedBox(height: 20.h),
                       ] else if (widget.showSortSection) ...[
-                        _sectionLabel('Sort'),
-                        SizedBox(height: 8.h),
-                        _chipGrid<GamebaseSortField>(
-                          values: GamebaseSortField.values,
-                          selected: _sortBy ?? GamebaseSortField.date,
-                          label: _sortFieldLabel,
-                          onTap: (v) {
-                            HapticFeedbackService.selection();
-                            setState(() {
-                              _sortBy = v;
-                              _sortDirection ??= GamebaseSortDirection.desc;
-                            });
-                          },
-                        ),
-                        if (widget.showSortDirection) ...[
-                          SizedBox(height: 10.h),
-                          _chipGrid<GamebaseSortDirection>(
-                            values: GamebaseSortDirection.values,
-                            selected:
-                                _sortDirection ?? GamebaseSortDirection.desc,
-                            label: _sortDirectionLabel,
-                            onTap: (v) {
-                              HapticFeedbackService.selection();
-                              setState(() {
-                                _sortDirection = v;
-                                _sortBy ??= GamebaseSortField.date;
-                              });
-                            },
-                          ),
-                        ],
+                        _buildSortSection(),
                         SizedBox(height: 20.h),
                       ],
 
@@ -425,13 +394,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       maxYear: _yearRange.end.round(),
       minRating: _selectedMinRating ?? GameFilter.defaultMinRating,
       maxRating: GameFilter.absoluteMaxRating,
-      sortBy: widget.showSortSection ? _sortBy : null,
-      // Direction toggle hidden → sort is always descending.
-      sortDirection: widget.showSortSection
-          ? (widget.showSortDirection
-              ? _sortDirection
-              : GamebaseSortDirection.desc)
-          : null,
+      sorts: widget.showSortSection ? _sorts : const [],
     );
     Navigator.of(context).pop(newFilter);
   }
@@ -449,13 +412,122 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     }
   }
 
-  String _sortDirectionLabel(GamebaseSortDirection d) {
-    switch (d) {
-      case GamebaseSortDirection.desc:
-        return 'Descending';
-      case GamebaseSortDirection.asc:
-        return 'Ascending';
-    }
+  /// Multi-key sort picker. Tapping a field appends it to the ordered sort
+  /// list (primary first). Tapping a selected field cycles its direction
+  /// (descending → ascending → removed) when direction is enabled, otherwise
+  /// just toggles it off. Each selected chip shows its 1-based priority and,
+  /// when enabled, an arrow for its direction.
+  void _cycleSort(GamebaseSortField field) {
+    HapticFeedbackService.selection();
+    setState(() {
+      final index = _sorts.indexWhere((s) => s.field == field);
+      if (index < 0) {
+        _sorts = [..._sorts, GameSortCriterion(field: field)];
+        return;
+      }
+      final current = _sorts[index];
+      if (widget.showSortDirection &&
+          current.direction == GamebaseSortDirection.desc) {
+        final updated = [..._sorts];
+        updated[index] =
+            current.copyWith(direction: GamebaseSortDirection.asc);
+        _sorts = updated;
+        return;
+      }
+      _sorts = [..._sorts]..removeAt(index);
+    });
+  }
+
+  Widget _buildSortSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _sectionLabel('Sort'),
+            const Spacer(),
+            if (_sorts.isNotEmpty)
+              GestureDetector(
+                onTap: () {
+                  HapticFeedbackService.selection();
+                  setState(() => _sorts = const []);
+                },
+                child: Text(
+                  'Clear',
+                  style: AppTypography.textXsBold.copyWith(
+                    color: kPrimaryColor,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: 8.h),
+        Wrap(
+          spacing: 8.w,
+          runSpacing: 8.h,
+          children: GamebaseSortField.values.map(_buildSortChip).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSortChip(GamebaseSortField field) {
+    final index = _sorts.indexWhere((s) => s.field == field);
+    final isSelected = index >= 0;
+    final criterion = isSelected ? _sorts[index] : null;
+
+    return GestureDetector(
+      onTap: () => _cycleSort(field),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          color: isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(8.br),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isSelected) ...[
+              Container(
+                width: 16.w,
+                height: 16.w,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: kBlackColor.withValues(alpha: 0.28),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '${index + 1}',
+                  style: AppTypography.textXsBold.copyWith(
+                    color: kBlackColor,
+                    fontSize: 9.sp,
+                    height: 1,
+                  ),
+                ),
+              ),
+              SizedBox(width: 6.w),
+            ],
+            Text(
+              _sortFieldLabel(field),
+              style: AppTypography.textXsMedium.copyWith(
+                color: isSelected ? kBlackColor : context.colors.textPrimary,
+              ),
+            ),
+            if (isSelected && widget.showSortDirection) ...[
+              SizedBox(width: 4.w),
+              Icon(
+                criterion!.direction == GamebaseSortDirection.asc
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                size: 12.ic,
+                color: kBlackColor,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _sectionLabel(String text) {

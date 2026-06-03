@@ -34,8 +34,13 @@ class GameSearchFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasActiveFilters = currentFilter.hasActiveFilters;
-    final activeFilterCount = currentFilter.activeFilterCount;
+    // Sorts count toward the badge alongside filters so a sort-only state
+    // (no filters) still surfaces the red indicator — the user can always tell
+    // that filtering/sorting is applied.
+    final hasActiveFilters =
+        currentFilter.hasActiveFilters || currentFilter.hasActiveSorts;
+    final activeFilterCount =
+        currentFilter.activeFilterCount + currentFilter.activeSortCount;
     final height = 48.h;
 
     return SizedBox(

@@ -99,14 +99,15 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       showFormatFilter: false,
       showLiveFilter: false,
       showSortSection: true,
-      // Color filter + asc/desc sort direction removed for the likes database.
+      // Color filter removed for the likes database; multi-key sort with
+      // per-key direction stays enabled.
       showColorFilter: false,
-      showSortDirection: false,
+      showSortDirection: true,
     );
     if (result == null || !mounted) return;
 
     final isPremiumChange =
-        result.hasActiveFilters || result.sortBy != null;
+        result.hasActiveFilters || result.hasActiveSorts;
     if (isPremiumChange) {
       final unlocked = await requirePremiumGuard(context, ref);
       if (!unlocked || !mounted) return;

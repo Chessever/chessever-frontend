@@ -222,22 +222,24 @@ final myLikesViewProvider = Provider.autoDispose<AsyncValue<MyLikesData>>((ref) 
       entries = entries.where((e) => keptIds.contains(e.game.gameId)).toList();
     }
 
-    // Sort override (premium only). When a sort is set, flatten the date
-    // sections into a single bucket so the chosen order is visible at a
-    // glance instead of being shuffled inside per-day groups.
-    final sortBy = canFilterAndSort ? filterState.filter.sortBy : null;
-    final sortDirection = canFilterAndSort
-        ? (filterState.filter.sortDirection ?? GamebaseSortDirection.desc)
-        : GamebaseSortDirection.desc;
+    // Sort override (premium only). When a multi-key sort is set, flatten the
+    // date sections into a single bucket so the chosen order is visible at a
+    // glance instead of being shuffled inside per-day groups. Criteria apply
+    // in order (index 0 primary, later entries break ties).
+    final sorts = canFilterAndSort
+        ? filterState.filter.sorts
+        : const <GameSortCriterion>[];
     final List<MapEntry<String, List<MyLikesEntry>>> sections;
-    if (sortBy != null) {
+    if (sorts.isNotEmpty) {
       final sorted = List<MyLikesEntry>.from(entries)..sort((a, b) {
-        final comparison =
-            _sortValue(a, sortBy).compareTo(_sortValue(b, sortBy));
-        final directed = sortDirection == GamebaseSortDirection.asc
-            ? comparison
-            : -comparison;
-        if (directed != 0) return directed;
+        for (final sort in sorts) {
+          final comparison =
+              _sortValue(a, sort.field).compareTo(_sortValue(b, sort.field));
+          final directed = sort.direction == GamebaseSortDirection.asc
+              ? comparison
+              : -comparison;
+          if (directed != 0) return directed;
+        }
         return b.likedAt.compareTo(a.likedAt);
       });
       sections = sorted.isEmpty

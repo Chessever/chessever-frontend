@@ -147,16 +147,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       showFormatFilter: false,
       showLiveFilter: false,
       showSortSection: true,
-      // Color filter + asc/desc sort direction removed for databases.
+      // Color filter removed for databases; multi-key sort with per-key
+      // direction stays enabled.
       showColorFilter: false,
-      showSortDirection: false,
+      showSortDirection: true,
     );
     if (result == null || !mounted) return;
 
     // Premium gate fires only when a non-default filter or sort is applied;
     // Reset (pops a default filter) and Cancel never pop paywall.
     final isPremiumChange =
-        result.hasActiveFilters || result.sortBy != null;
+        result.hasActiveFilters || result.hasActiveSorts;
     if (isPremiumChange) {
       final unlocked = await requirePremiumGuard(context, ref);
       if (!unlocked || !mounted) return;

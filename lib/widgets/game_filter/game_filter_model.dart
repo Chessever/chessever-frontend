@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:flutter/foundation.dart';
 
 /// Result filter options for chess games
 enum GameResultFilter { all, whiteWins, blackWins, draw }
@@ -186,6 +187,39 @@ class GameEcoFilter {
   int get hashCode => code.hashCode;
 }
 
+/// A single ordered sort key: a field plus its direction. Multiple criteria
+/// combine into a multi-key sort (applied in list order — index 0 is the
+/// primary key, index 1 the tie-breaker, and so on).
+class GameSortCriterion {
+  const GameSortCriterion({
+    required this.field,
+    this.direction = GamebaseSortDirection.desc,
+  });
+
+  final GamebaseSortField field;
+  final GamebaseSortDirection direction;
+
+  GameSortCriterion copyWith({
+    GamebaseSortField? field,
+    GamebaseSortDirection? direction,
+  }) {
+    return GameSortCriterion(
+      field: field ?? this.field,
+      direction: direction ?? this.direction,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GameSortCriterion &&
+          other.field == field &&
+          other.direction == direction;
+
+  @override
+  int get hashCode => Object.hash(field, direction);
+}
+
 /// Complete filter state for chess games
 class GameFilter {
   static const int defaultMinYear = 1800;
@@ -205,10 +239,10 @@ class GameFilter {
     int? maxYear,
     this.minRating = defaultMinRating,
     this.maxRating = absoluteMaxRating,
-    this.sortBy,
-    this.sortDirection,
+    List<GameSortCriterion>? sorts,
   }) : eco = eco ?? GameEcoFilter.all,
-       maxYear = maxYear ?? DateTime.now().year;
+       maxYear = maxYear ?? DateTime.now().year,
+       sorts = sorts ?? const [];
 
   final GameResultFilter result;
   final GameColorFilter color;
@@ -221,12 +255,19 @@ class GameFilter {
   final int minRating;
   final int maxRating;
 
-  /// Optional presentation sort, surfaced when the caller's dialog enables the
-  /// Sort section (database/My-Likes contexts). When null the consumer falls
-  /// back to its own default ordering. Sort is *not* counted as an "active
-  /// filter" — it shapes presentation, not the result set.
-  final GamebaseSortField? sortBy;
-  final GamebaseSortDirection? sortDirection;
+  /// Ordered multi-key presentation sort, surfaced when the caller's dialog
+  /// enables the Sort section (database/My-Likes contexts). Empty means the
+  /// consumer falls back to its own default ordering. Sort is *not* counted as
+  /// an "active filter" ([activeFilterCount]) — it shapes presentation, not the
+  /// result set — but it is surfaced in the filter-bar badge via
+  /// [activeSortCount] so users can tell a sort is applied.
+  final List<GameSortCriterion> sorts;
+
+  /// Whether any sort criterion is applied.
+  bool get hasActiveSorts => sorts.isNotEmpty;
+
+  /// Number of applied sort criteria (folded into the filter-bar badge count).
+  int get activeSortCount => sorts.length;
 
   /// Check if any filter is active (not default)
   bool get hasActiveFilters =>
@@ -269,8 +310,7 @@ class GameFilter {
     int? maxYear,
     int? minRating,
     int? maxRating,
-    GamebaseSortField? sortBy,
-    GamebaseSortDirection? sortDirection,
+    List<GameSortCriterion>? sorts,
   }) {
     return GameFilter(
       result: result ?? this.result,
@@ -283,8 +323,7 @@ class GameFilter {
       maxYear: maxYear ?? this.maxYear,
       minRating: minRating ?? this.minRating,
       maxRating: maxRating ?? this.maxRating,
-      sortBy: sortBy ?? this.sortBy,
-      sortDirection: sortDirection ?? this.sortDirection,
+      sorts: sorts ?? this.sorts,
     );
   }
 
@@ -304,8 +343,7 @@ class GameFilter {
         other.maxYear == maxYear &&
         other.minRating == minRating &&
         other.maxRating == maxRating &&
-        other.sortBy == sortBy &&
-        other.sortDirection == sortDirection;
+        listEquals(other.sorts, sorts);
   }
 
   @override
@@ -320,8 +358,7 @@ class GameFilter {
     maxYear,
     minRating,
     maxRating,
-    sortBy,
-    sortDirection,
+    Object.hashAll(sorts),
   );
 }
 
