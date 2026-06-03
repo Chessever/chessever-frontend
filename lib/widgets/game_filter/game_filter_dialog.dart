@@ -19,6 +19,8 @@ Future<GameFilter?> showGameFilterDialog({
   bool showFormatFilter = true,
   bool showLiveFilter = true,
   bool showSortSection = false,
+  bool showColorFilter = true,
+  bool showSortDirection = true,
 }) {
   return showDialog<GameFilter>(
     context: context,
@@ -29,6 +31,8 @@ Future<GameFilter?> showGameFilterDialog({
           showFormatFilter: showFormatFilter,
           showLiveFilter: showLiveFilter,
           showSortSection: showSortSection,
+          showColorFilter: showColorFilter,
+          showSortDirection: showSortDirection,
         ),
   );
 }
@@ -40,12 +44,19 @@ class GameFilterDialog extends StatefulWidget {
     this.showFormatFilter = true,
     this.showLiveFilter = true,
     this.showSortSection = false,
+    this.showColorFilter = true,
+    this.showSortDirection = true,
   });
 
   final GameFilter initialFilter;
   final bool showFormatFilter;
   final bool showLiveFilter;
   final bool showSortSection;
+  // Database/My-Likes contexts hide the Color filter and the asc/desc sort
+  // direction toggle (sort stays Date-style descending). Other screens keep
+  // both (defaults true).
+  final bool showColorFilter;
+  final bool showSortDirection;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -196,20 +207,22 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                             });
                           },
                         ),
-                        SizedBox(height: 10.h),
-                        _chipGrid<GamebaseSortDirection>(
-                          values: GamebaseSortDirection.values,
-                          selected:
-                              _sortDirection ?? GamebaseSortDirection.desc,
-                          label: _sortDirectionLabel,
-                          onTap: (v) {
-                            HapticFeedbackService.selection();
-                            setState(() {
-                              _sortDirection = v;
-                              _sortBy ??= GamebaseSortField.date;
-                            });
-                          },
-                        ),
+                        if (widget.showSortDirection) ...[
+                          SizedBox(height: 10.h),
+                          _chipGrid<GamebaseSortDirection>(
+                            values: GamebaseSortDirection.values,
+                            selected:
+                                _sortDirection ?? GamebaseSortDirection.desc,
+                            label: _sortDirectionLabel,
+                            onTap: (v) {
+                              HapticFeedbackService.selection();
+                              setState(() {
+                                _sortDirection = v;
+                                _sortBy ??= GamebaseSortField.date;
+                              });
+                            },
+                          ),
+                        ],
                         SizedBox(height: 20.h),
                       ],
 
@@ -256,20 +269,23 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       ),
                       SizedBox(height: 20.h),
 
-                      // 5. Color (box grid)
-                      _sectionLabel('Color'),
-                      SizedBox(height: 8.h),
-                      _chipGrid<GameColorFilter>(
-                        values: GameColorFilter.values,
-                        selected: _color,
-                        label: (v) =>
-                            v == GameColorFilter.all ? 'All' : v.displayText,
-                        onTap: (v) {
-                          HapticFeedbackService.selection();
-                          setState(() => _color = v);
-                        },
-                      ),
-                      SizedBox(height: 20.h),
+                      // 5. Color (box grid) — hidden in database/My-Likes
+                      // contexts via [showColorFilter].
+                      if (widget.showColorFilter) ...[
+                        _sectionLabel('Color'),
+                        SizedBox(height: 8.h),
+                        _chipGrid<GameColorFilter>(
+                          values: GameColorFilter.values,
+                          selected: _color,
+                          label: (v) =>
+                              v == GameColorFilter.all ? 'All' : v.displayText,
+                          onTap: (v) {
+                            HapticFeedbackService.selection();
+                            setState(() => _color = v);
+                          },
+                        ),
+                        SizedBox(height: 20.h),
+                      ],
 
                       // 6. Format (online/OTB) — only when caller enables it
                       if (widget.showFormatFilter) ...[
@@ -400,7 +416,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     HapticFeedbackService.buttonPress();
     final newFilter = GameFilter(
       result: _result,
-      color: _color,
+      // Color hidden → never carry a stale color filter (no UI to clear it).
+      color: widget.showColorFilter ? _color : GameColorFilter.all,
       timeControl: _timeControl,
       online: _online,
       live: _live,
@@ -409,7 +426,12 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       minRating: _selectedMinRating ?? GameFilter.defaultMinRating,
       maxRating: GameFilter.absoluteMaxRating,
       sortBy: widget.showSortSection ? _sortBy : null,
-      sortDirection: widget.showSortSection ? _sortDirection : null,
+      // Direction toggle hidden → sort is always descending.
+      sortDirection: widget.showSortSection
+          ? (widget.showSortDirection
+              ? _sortDirection
+              : GamebaseSortDirection.desc)
+          : null,
     );
     Navigator.of(context).pop(newFilter);
   }

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
-import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -51,7 +50,6 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   late final ScrollController _scrollController;
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
-  late final BookPaginationKey _paginationKey;
   final Set<String> _removingIds = {};
   Timer? _searchDebounce;
   // Overrides widget.folder.name after an in-place rename so the header
@@ -66,24 +64,36 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   String get _folderFilterKey => widget.folder.id;
 
+  /// Pagination key derived from the live filter/sort/search + premium state.
+  /// Filter/sort are premium-only, so free users always query with the default
+  /// filter (matching the dialog's premium gate). Search is free. A changed key
+  /// reloads page 0 server-side, so sort/filter/search cover the whole folder.
+  BookPaginationKey get _currentPaginationKey {
+    final filterState = ref.read(folderFilterProvider(_folderFilterKey));
+    final subscription = ref.read(subscriptionProvider);
+    final canFilterAndSort =
+        subscription.isSubscribed || subscription.isLoading;
+    final effectiveFilter =
+        canFilterAndSort ? filterState.filter : GameFilter.defaultFilter();
+    return BookPaginationKey(
+      folderId: widget.folder.id,
+      isSubscribed: _isSubscribed,
+      filter: effectiveFilter,
+      search: filterState.searchQuery.trim(),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    _paginationKey = BookPaginationKey(
-      folderId: widget.folder.id,
-      isSubscribed: _isSubscribed,
-    );
     _scrollController = ScrollController()..addListener(_onScroll);
     _searchController =
         TextEditingController()..addListener(() {
           if (mounted) setState(() {});
         });
     _searchFocusNode = FocusNode();
-
-    // Reset pagination state for this folder
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
-    });
+    // No explicit reset needed: the provider is keyed by folder+filter+search
+    // and auto-disposes on pop, so opening the folder loads a fresh page 0.
   }
 
   @override
@@ -101,7 +111,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     final currentScroll = _scrollController.offset;
     // Trigger load more when within 200px of the bottom.
     if (currentScroll >= maxScroll - 200) {
-      ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).loadMore();
+      ref
+          .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
+          .loadMore();
     }
   }
 
@@ -135,6 +147,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       showFormatFilter: false,
       showLiveFilter: false,
       showSortSection: true,
+      // Color filter + asc/desc sort direction removed for databases.
+      showColorFilter: false,
+      showSortDirection: false,
     );
     if (result == null || !mounted) return;
 
@@ -168,7 +183,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
       if (!mounted) return;
       // Refresh the paginated list after removal.
-      ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+      ref.read(bookGamesPaginatedProvider(_currentPaginationKey).notifier).refresh();
       // Library home cards cache per-folder game counts; without this
       // invalidation they keep showing the pre-delete number until app restart.
       ref.invalidate(folderAnalysisCountProvider);
@@ -217,7 +232,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 await repository.createSavedAnalysis(restored);
                 if (!mounted) return;
                 ref
-                    .read(bookGamesPaginatedProvider(_paginationKey).notifier)
+                    .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
                     .refresh();
                 ref.invalidate(folderAnalysisCountProvider);
                 ref.invalidate(libraryFoldersStreamProvider);
@@ -307,7 +322,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       initialFolderId: widget.folder.id,
     );
     if (!mounted) return;
-    ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+    ref.read(bookGamesPaginatedProvider(_currentPaginationKey).notifier).refresh();
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
   }
@@ -363,7 +378,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
     if (!mounted) return;
     // Refresh in case games were saved into this folder from the sheet.
-    ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+    ref.read(bookGamesPaginatedProvider(_currentPaginationKey).notifier).refresh();
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
   }
@@ -571,15 +586,16 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bookAsync = ref.watch(bookGamesPaginatedProvider(_paginationKey));
-    // Prefer the debounced provider query so the predicate matches what the
-    // active filter dialog sees; fall back to the raw controller text on the
-    // first keystroke before the debounce fires.
-    final providerQuery =
-        ref.watch(folderFilterProvider(_folderFilterKey)).searchQuery;
-    final effectiveQuery =
-        providerQuery.isNotEmpty ? providerQuery : _searchController.text;
-    final query = effectiveQuery.trim().toLowerCase();
+    // Watch the inputs that feed the pagination key so a filter/sort/search or
+    // premium-state change rebuilds and swaps to the matching server query.
+    final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
+    ref.watch(subscriptionProvider);
+    final bookAsync = ref.watch(
+      bookGamesPaginatedProvider(_currentPaginationKey),
+    );
+    // Search is applied server-side; this is only for child-folder filtering
+    // and empty-state messaging.
+    final query = filterState.searchQuery.trim().toLowerCase();
 
     return Scaffold(
       key: e2eKey(E2eIds.folderContentsRoot),
@@ -758,58 +774,6 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
   }
 
-  int _ratingFromMetadata(SavedAnalysis analysis, String key) {
-    final value = analysis.chessGame.metadata[key];
-    if (value is num) return value.toInt();
-    final text = value?.toString() ?? '';
-    final digits = RegExp(r'\d+').firstMatch(text)?.group(0);
-    return int.tryParse(digits ?? '') ?? 0;
-  }
-
-  DateTime _gameDate(SavedAnalysis analysis) {
-    final raw = analysis.chessGame.metadata['Date']?.toString().trim() ?? '';
-    if (raw.isNotEmpty && raw != '????.??.??') {
-      final normalized = raw.replaceAll('.', '-').replaceAll('?', '01');
-      final parsed = DateTime.tryParse(normalized);
-      if (parsed != null) return parsed;
-    }
-    return analysis.createdAt;
-  }
-
-  int _sortValue(SavedAnalysis analysis, GamebaseSortField field) {
-    switch (field) {
-      case GamebaseSortField.whiteElo:
-        return _ratingFromMetadata(analysis, 'WhiteElo');
-      case GamebaseSortField.blackElo:
-        return _ratingFromMetadata(analysis, 'BlackElo');
-      case GamebaseSortField.avgElo:
-        final white = _ratingFromMetadata(analysis, 'WhiteElo');
-        final black = _ratingFromMetadata(analysis, 'BlackElo');
-        if (white > 0 && black > 0) return ((white + black) / 2).round();
-        return white > 0 ? white : black;
-      case GamebaseSortField.date:
-        return _gameDate(analysis).millisecondsSinceEpoch;
-    }
-  }
-
-  List<SavedAnalysis> _sortAnalyses(
-    List<SavedAnalysis> analyses, {
-    required GamebaseSortField field,
-    required GamebaseSortDirection direction,
-  }) {
-    final sorted = List<SavedAnalysis>.from(analyses);
-    sorted.sort((a, b) {
-      final comparison =
-          _sortValue(a, field).compareTo(_sortValue(b, field));
-      final directed = direction == GamebaseSortDirection.asc
-          ? comparison
-          : -comparison;
-      if (directed != 0) return directed;
-      return b.createdAt.compareTo(a.createdAt);
-    });
-    return sorted;
-  }
-
   Widget _buildSavedGames(
     AsyncValue<PaginatedBookState> bookAsync,
     String query,
@@ -823,14 +787,18 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       onRefresh: () async {
         HapticFeedbackService.medium();
         await ref
-            .read(bookGamesPaginatedProvider(_paginationKey).notifier)
+            .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
             .refresh();
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
       child: bookAsync.when(
         data: (bookState) {
-          final analyses =
+          // Search, structured filter, and sort all run SERVER-SIDE
+          // (library_repository.getSavedAnalysesPaginated over the denormalized
+          // columns), so this page is already the final, ordered slice for the
+          // WHOLE folder — no client-side filtering/sorting here.
+          final filteredAnalyses =
               _isDatabase ? bookState.games : const <SavedAnalysis>[];
           final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
           final subscription = ref.watch(subscriptionProvider);
@@ -839,56 +807,19 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           final hasActiveFilters =
               canFilterAndSort && filterState.filter.hasActiveFilters;
 
-          // Stage 1: text search over title + key metadata (free for all).
-          var afterSearch = analyses.where((analysis) {
-            if (query.isEmpty) return true;
-            final md = analysis.chessGame.metadata;
-            final title = analysis.title.toLowerCase();
-            final white = (md['White'] ?? '').toString().toLowerCase();
-            final black = (md['Black'] ?? '').toString().toLowerCase();
-            final event = (md['Event'] ?? '').toString().toLowerCase();
-            return title.contains(query) ||
-                white.contains(query) ||
-                black.contains(query) ||
-                event.contains(query);
-          }).toList();
-
-          // Stage 2: structured GameFilter — premium-only. Free users see
-          // the unfiltered set even if a stale filter sits in provider state
-          // (e.g. after a sub lapsed); that way nobody gets stuck with an
-          // empty list they can't change.
-          if (hasActiveFilters) {
-            final cards = afterSearch.map(savedAnalysisToCardGame).toList();
-            final kept = GameFilterHelper.applyFilter(
-              cards,
-              filterState.filter,
-              playerNameQuery: query.isNotEmpty ? query : null,
-            ).map((g) => g.gameId).toSet();
-            afterSearch = afterSearch.where((a) => kept.contains(a.id)).toList();
-          }
-
-          // Sort comes from the same filter object (premium-only). Default
-          // for free users / unset state is date desc.
-          final sortField = canFilterAndSort
-              ? (filterState.filter.sortBy ?? GamebaseSortField.date)
-              : GamebaseSortField.date;
-          final sortDirection = canFilterAndSort
-              ? (filterState.filter.sortDirection ?? GamebaseSortDirection.desc)
-              : GamebaseSortDirection.desc;
-          final filteredAnalyses = _sortAnalyses(
-            afterSearch,
-            field: sortField,
-            direction: sortDirection,
-          );
-
-          // Filter child folders if query is present
+          // Child folders aren't part of the games query, so filter them by the
+          // search term here for display.
           final filteredFolders =
               childFolders.where((f) {
                 if (query.isEmpty) return true;
                 return f.name.toLowerCase().contains(query);
               }).toList();
 
-          if (analyses.isEmpty && childFolders.isEmpty && !bookState.hasMore) {
+          if (filteredAnalyses.isEmpty &&
+              childFolders.isEmpty &&
+              !bookState.hasMore &&
+              query.isEmpty &&
+              !hasActiveFilters) {
             return _buildEmptySavedState();
           }
           if (filteredAnalyses.isEmpty &&
@@ -897,12 +828,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             return _buildEmptySearchState();
           }
 
-          // Total items = child nodes + Games + Loading Tail.
-          // Suppress the tail while a search/filter is active so the user
-          // doesn't see an infinite spinner chasing the next server page
-          // when the currently visible matches don't fill the viewport.
-          final showLoadingTail =
-              bookState.hasMore && query.isEmpty && !hasActiveFilters;
+          // Filtering/sorting is server-side now, so the loading tail works
+          // even with an active filter/search (the server paginates matches).
+          final showLoadingTail = bookState.hasMore;
           final itemCount =
               filteredFolders.length +
               filteredAnalyses.length +

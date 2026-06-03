@@ -2,6 +2,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 
 /// Branded metadata headers appended to every exported game.
 const _kBrandSite = 'https://chessever.com';
@@ -144,15 +145,19 @@ Future<String> _streamFolderPgn({
   var offset = 0;
 
   while (true) {
+    // Export the whole folder: default filter (no filtering), default order.
+    final exportFilter = GameFilter.defaultFilter();
     final List<SavedAnalysis> page =
         isSubscribed
             ? await repo.getSharedFolderAnalysesPaginated(
               folderId: folderId,
+              filter: exportFilter,
               limit: pageSize,
               offset: offset,
             )
             : await repo.getSavedAnalysesPaginated(
               folderId: folderId,
+              filter: exportFilter,
               limit: pageSize,
               offset: offset,
             );

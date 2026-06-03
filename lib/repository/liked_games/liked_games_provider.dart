@@ -50,15 +50,19 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   /// as the "Add to library" flow. Returns the new state (`true` = now liked).
   /// Source-agnostic — works for broadcast, gamebase and twic games alike.
   Future<bool> toggle(GamesTourModel game) async {
-    if (!_inFlight.add(game.gameId)) {
-      return isLiked(game.gameId);
+    // Like identity is the original game (for saved-analysis games this is the
+    // sourceGameId, not the synthetic `saved_analysis_<id>` gameId), so a game
+    // liked here matches the same game opened from anywhere else.
+    final likeId = game.likeId;
+    if (!_inFlight.add(likeId)) {
+      return isLiked(likeId);
     }
 
     try {
       final folder = await ref.read(likedGamesFolderProvider.future);
       final list = List<SavedAnalysis>.from(state.valueOrNull ?? const []);
       final existing = list.firstWhereOrNull(
-        (a) => a.sourceGameId == game.gameId,
+        (a) => a.sourceGameId == likeId,
       );
 
       if (existing != null) {
@@ -79,7 +83,7 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
         userId: userId,
         folderId: folder.id,
         title: '${game.whitePlayer.name} vs ${game.blackPlayer.name}',
-        sourceGameId: game.gameId,
+        sourceGameId: likeId,
         sourceTournamentId: game.tourId,
         chessGame: chessGame,
         analysisState: const {},
@@ -99,16 +103,16 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       final created = await _repo.createSavedAnalysis(analysis);
       final reconciled =
           List<SavedAnalysis>.from(state.valueOrNull ?? const [])
-            ..removeWhere((a) => a.id.isEmpty && a.sourceGameId == game.gameId)
+            ..removeWhere((a) => a.id.isEmpty && a.sourceGameId == likeId)
             ..insert(0, created);
       state = AsyncValue.data(reconciled);
       return true;
     } catch (e) {
       debugPrint('[LikedGames] toggle failed: $e');
       await _reload();
-      return isLiked(game.gameId);
+      return isLiked(likeId);
     } finally {
-      _inFlight.remove(game.gameId);
+      _inFlight.remove(likeId);
     }
   }
 

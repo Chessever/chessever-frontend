@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/library/models/shared_book_preview.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -652,24 +654,151 @@ class LibraryRepository extends BaseRepository {
   });
 
   // ============ PAGINATED QUERIES ============
+  //
+  // Filter/sort/search run SERVER-SIDE on the denormalized typed columns
+  // (white_elo/black_elo/avg_elo/result/game_date/eco/time_control/
+  // white_name/black_name/event), which a DB trigger keeps in sync from
+  // chess_game->'md'. This replaces the old client-side filtering that only
+  // saw the loaded page — sort/filter now cover the FULL folder. The logic
+  // mirrors GameFilterHelper.applyFilter so results match the previous UX.
+
+  static String? _bookResultCode(GameResultFilter r) {
+    switch (r) {
+      case GameResultFilter.all:
+        return null;
+      case GameResultFilter.whiteWins:
+        return 'W';
+      case GameResultFilter.blackWins:
+        return 'B';
+      case GameResultFilter.draw:
+        return 'D';
+    }
+  }
+
+  static String? _bookTcCategory(GameTimeControlFilter tc) {
+    switch (tc) {
+      case GameTimeControlFilter.all:
+        return null;
+      case GameTimeControlFilter.rapid:
+        return 'rapid';
+      case GameTimeControlFilter.blitz:
+        return 'blitz';
+      case GameTimeControlFilter.classical:
+        return 'classical';
+    }
+  }
+
+  static String _bookSortColumn(GamebaseSortField f) {
+    switch (f) {
+      case GamebaseSortField.date:
+        return 'game_date';
+      case GamebaseSortField.whiteElo:
+        return 'white_elo';
+      case GamebaseSortField.blackElo:
+        return 'black_elo';
+      case GamebaseSortField.avgElo:
+        return 'avg_elo';
+    }
+  }
+
+  /// Strip characters reserved in the PostgREST `.or()` grammar so a raw
+  /// search term can't break the filter expression.
+  static String _sanitizeOrTerm(String s) =>
+      s.replaceAll(RegExp(r'[(),]'), ' ').trim();
+
+  /// Applies the book filter + free-text search to any query/count builder.
+  /// Generic over the builder payload so it serves both the data query
+  /// (`PostgrestList`) and the exact-count query (`int`).
+  PostgrestFilterBuilder<T> _applyBookFilters<T>(
+    PostgrestFilterBuilder<T> query,
+    GameFilter filter,
+    String search,
+  ) {
+    final term = _sanitizeOrTerm(search);
+    if (term.isNotEmpty) {
+      query = query.or(
+        'title.ilike.%$term%,white_name.ilike.%$term%,'
+        'black_name.ilike.%$term%,event.ilike.%$term%',
+      );
+    }
+
+    final resultCode = _bookResultCode(filter.result);
+    if (resultCode != null) {
+      query = query.eq('result', resultCode);
+    }
+
+    final tc = _bookTcCategory(filter.timeControl);
+    if (tc != null) {
+      // Mirror client _inferTimeControl: games whose TC can't be classified
+      // (null category) are never excluded.
+      query = query.or('time_control.is.null,time_control.eq.$tc');
+    }
+
+    final ecoCode = filter.eco.code;
+    if (!filter.eco.isAll && ecoCode != null && ecoCode.isNotEmpty) {
+      query = query.ilike('eco', '$ecoCode%');
+    }
+
+    // "Level" tier = max(white,black) >= minRating (client cardElo).
+    if (filter.minRating > GameFilter.absoluteMinRating) {
+      query = query.or(
+        'white_elo.gte.${filter.minRating},black_elo.gte.${filter.minRating}',
+      );
+    }
+
+    final hasYearFilter =
+        filter.minYear > GameFilter.absoluteMinYear ||
+        filter.maxYear < DateTime.now().year;
+    if (hasYearFilter) {
+      final lo = '${filter.minYear.toString().padLeft(4, '0')}-01-01';
+      final hi = '${filter.maxYear.toString().padLeft(4, '0')}-12-31';
+      // Unknown-date games (null game_date) pass, matching the client year
+      // check which only excludes games whose year is known and out of range.
+      query = query.or(
+        'game_date.is.null,and(game_date.gte.$lo,game_date.lte.$hi)',
+      );
+    }
+
+    return query;
+  }
+
+  PostgrestTransformBuilder<PostgrestList> _orderBook(
+    PostgrestFilterBuilder<PostgrestList> query,
+    GameFilter filter,
+  ) {
+    final column = _bookSortColumn(filter.sortBy ?? GamebaseSortField.date);
+    final ascending =
+        (filter.sortDirection ?? GamebaseSortDirection.desc) ==
+        GamebaseSortDirection.asc;
+    return query
+        .order(column, ascending: ascending, nullsFirst: false)
+        // Stable tie-break (and the default order when sorting by date).
+        .order('created_at', ascending: false);
+  }
 
   /// Paginated query for folder contents (owned folders).
-  /// Uses the composite index (user_id, folder_id, created_at DESC).
+  /// Filter/sort applied server-side over the whole folder.
   Future<List<SavedAnalysis>> getSavedAnalysesPaginated({
     required String folderId,
+    required GameFilter filter,
+    String search = '',
     int limit = 30,
     int offset = 0,
   }) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
-    final response = await supabase
+    var query = supabase
         .from('user_saved_analyses')
         .select()
         .eq('user_id', userId)
-        .eq('folder_id', folderId)
-        .order('created_at', ascending: false)
-        .range(offset, offset + limit - 1);
+        .eq('folder_id', folderId);
+    query = _applyBookFilters(query, filter, search);
+
+    final response = await _orderBook(
+      query,
+      filter,
+    ).range(offset, offset + limit - 1);
 
     return (response as List)
         .map((json) => SavedAnalysis.fromSupabase(json))
@@ -679,19 +808,57 @@ class LibraryRepository extends BaseRepository {
   /// Paginated query for shared folder contents (RLS handles access control).
   Future<List<SavedAnalysis>> getSharedFolderAnalysesPaginated({
     required String folderId,
+    required GameFilter filter,
+    String search = '',
     int limit = 30,
     int offset = 0,
   }) => handleApiCall(() async {
-    final response = await supabase
+    var query = supabase
         .from('user_saved_analyses')
         .select()
-        .eq('folder_id', folderId)
-        .order('created_at', ascending: false)
-        .range(offset, offset + limit - 1);
+        .eq('folder_id', folderId);
+    query = _applyBookFilters(query, filter, search);
+
+    final response = await _orderBook(
+      query,
+      filter,
+    ).range(offset, offset + limit - 1);
 
     return (response as List)
         .map((json) => SavedAnalysis.fromSupabase(json))
         .toList();
+  });
+
+  /// Exact count of rows matching the active filter/search in an owned folder.
+  Future<int> getFilteredAnalysisCountInFolder({
+    required String folderId,
+    required GameFilter filter,
+    String search = '',
+  }) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    var query = supabase
+        .from('user_saved_analyses')
+        .count(CountOption.exact)
+        .eq('user_id', userId)
+        .eq('folder_id', folderId);
+    query = _applyBookFilters(query, filter, search);
+    return await query;
+  });
+
+  /// Exact count of rows matching the active filter/search in a shared folder.
+  Future<int> getFilteredSharedFolderAnalysisCount({
+    required String folderId,
+    required GameFilter filter,
+    String search = '',
+  }) => handleApiCall(() async {
+    var query = supabase
+        .from('user_saved_analyses')
+        .count(CountOption.exact)
+        .eq('folder_id', folderId);
+    query = _applyBookFilters(query, filter, search);
+    return await query;
   });
 
   /// Count analyses in a shared folder (including sub-folders).

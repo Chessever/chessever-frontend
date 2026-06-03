@@ -25,6 +25,13 @@ class LikeFlightAnchor {
   /// `renderBox.localToGlobal(Offset.zero)` off this to find its target.
   final GlobalKey saveButtonKey = GlobalKey();
 
+  /// Attached to the small heart badge glyph on the save button. The flight
+  /// overlay docks the big flying heart onto THIS rect (center + size) so the
+  /// arriving heart lands exactly where — and at the same size as — the badge
+  /// it turns into. The badge keeps its layout size even while scaled to 0
+  /// (AnimatedScale is a transform), so this rect is measurable mid-flight.
+  final GlobalKey heartBadgeKey = GlobalKey();
+
   /// Drives the save button's own state machine — see [LikeFlightPhase].
   final ValueNotifier<LikeFlightPhase> phase =
       ValueNotifier<LikeFlightPhase>(LikeFlightPhase.idle);
@@ -36,6 +43,17 @@ class LikeFlightAnchor {
     if (box == null || !box.attached) return null;
     final topLeft = box.localToGlobal(Offset.zero);
     return topLeft & box.size;
+  }
+
+  /// Global rect of the small heart badge — the precise dock target for the
+  /// flying heart. Returns null if the badge isn't laid out yet (caller falls
+  /// back to [saveButtonGlobalRect]).
+  Rect? heartBadgeGlobalRect() {
+    final ctx = heartBadgeKey.currentContext;
+    if (ctx == null) return null;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
   }
 
   void _logPhase(LikeFlightPhase p) {

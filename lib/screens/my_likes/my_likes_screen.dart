@@ -99,6 +99,9 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       showFormatFilter: false,
       showLiveFilter: false,
       showSortSection: true,
+      // Color filter + asc/desc sort direction removed for the likes database.
+      showColorFilter: false,
+      showSortDirection: false,
     );
     if (result == null || !mounted) return;
 

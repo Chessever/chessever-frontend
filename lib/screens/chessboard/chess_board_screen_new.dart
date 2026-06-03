@@ -3044,7 +3044,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
 
     final anchor = ref.read(likeFlightAnchorProvider);
-    final isLiked = ref.watch(isGameLikedProvider(widget.game.gameId));
+    final isLiked = ref.watch(isGameLikedProvider(widget.game.likeId));
 
     return ValueListenableBuilder<LikeFlightPhase>(
       valueListenable: anchor.phase,
@@ -3107,18 +3107,36 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // The outer scale uses Curves.easeOutBack so the badge sticks the
         // landing with a tiny overshoot — same physics feel the flying
         // heart had, no hard pop at the end of the flight.
+        //
+        // While a like flight is in progress (bursting/flying) the badge is
+        // kept hidden so the big flying heart is the ONLY heart on screen —
+        // no "two hearts" overlap. The flying heart docks onto this badge's
+        // exact rect, then on `landed` the badge appears INSTANTLY
+        // (Duration.zero) so the docked-heart → badge handoff is seamless
+        // (same glyph, same size, same spot). The optimistic `isLiked` flips
+        // true early, so gating on phase is what keeps the badge hidden until
+        // the flying heart actually arrives.
+        final inFlight = phase == LikeFlightPhase.bursting ||
+            phase == LikeFlightPhase.flying;
+        final justLanded = phase == LikeFlightPhase.landed;
+        final showBadge = isLiked && !inFlight;
         final heartBadge = AnimatedScale(
-          scale: isLiked ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 320),
+          scale: showBadge ? 1.0 : 0.0,
+          duration:
+              justLanded ? Duration.zero : const Duration(milliseconds: 320),
           curve: Curves.easeOutBack,
           child: AnimatedOpacity(
-            opacity: isLiked ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
+            opacity: showBadge ? 1.0 : 0.0,
+            duration:
+                justLanded ? Duration.zero : const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
-            child: Icon(
-              Icons.favorite_rounded,
-              size: 11.sp,
-              color: context.colors.danger,
+            child: KeyedSubtree(
+              key: anchor.heartBadgeKey,
+              child: Icon(
+                Icons.favorite_rounded,
+                size: 11.sp,
+                color: context.colors.danger,
+              ),
             ),
           ),
         );
@@ -7241,7 +7259,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         ref
             .read(likedGamesProvider)
             .valueOrNull
-            ?.any((a) => a.sourceGameId == game.gameId) ??
+            ?.any((a) => a.sourceGameId == game.likeId) ??
         false;
     final tapLocal =
         _lastTapPosition == Offset.zero
@@ -7317,7 +7335,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     required LikeFlightAnchor anchor,
     required int interactionToken,
   }) {
-    final target = anchor.saveButtonGlobalRect();
+    // Dock onto the small heart BADGE, not the whole save slot — so the big
+    // heart lands exactly where, and at the same size as, the little heart it
+    // turns into. Fall back to the slot rect only if the badge isn't laid out.
+    final badgeRect = anchor.heartBadgeGlobalRect();
+    final target = badgeRect ?? anchor.saveButtonGlobalRect();
     debugPrint('[HeartFlight] _runFlight from=$from target=${target?.center}');
     if (target == null) {
       // No slot to fly to — just complete the chain.
@@ -7334,10 +7356,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final flightColor = context.colors.danger;
     // Visual continuity: start at the same size the in-board burst just ended
     // at (≈55% of board.shortestSide — matches HeartBurstLayer's default),
-    // shrink to fit the disk-icon slot (so it looks like the flying heart
-    // becomes the slot fill).
+    // shrink down to the badge glyph size so the flying heart becomes the
+    // badge — a continuous "big heart turns into the little one" morph.
     final startSize = widget.size * 0.55;
-    final endSize = math.min(target.width, target.height);
+    final endSize = target.shortestSide;
     _removeFlyingHeartEntry();
     late final OverlayEntry entry;
     entry = OverlayEntry(
@@ -7372,7 +7394,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   bool _isLikeableSource(GameSource source) =>
       source == GameSource.supabase ||
       source == GameSource.gamebase ||
-      source == GameSource.twic;
+      source == GameSource.twic ||
+      // Games opened from a library database or the Liked Games folder are
+      // saved analyses; their like identity is the original sourceGameId
+      // (see GamesTourModel.likeId), so they like/unlike like everywhere else.
+      source == GameSource.savedAnalysis;
 
   @override
   Widget build(BuildContext context) {

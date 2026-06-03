@@ -262,6 +262,10 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
   // The original source game ID is preserved in analysis.sourceGameId
   return GamesTourModel(
     gameId: 'saved_analysis_${analysis.id}',
+    // Original game id drives like/favorite identity (the synthetic gameId
+    // above is only for board-state isolation), so likes match this game
+    // everywhere else it appears.
+    sourceGameId: analysis.sourceGameId,
     source: GameSource.savedAnalysis,
     whitePlayer: whitePlayer,
     blackPlayer: blackPlayer,
@@ -343,6 +347,7 @@ GamesTourModel savedAnalysisToCardGame(SavedAnalysis analysis) {
 
   return GamesTourModel(
     gameId: analysis.id,
+    sourceGameId: analysis.sourceGameId,
     source: GameSource.savedAnalysis,
     whitePlayer: PlayerCard(
       name: whiteName,

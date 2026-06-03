@@ -87,6 +87,13 @@ class GamesTourModel {
   final int? avgElo; // New: average ELO of the tournament
   final bool isOnline;
 
+  /// Canonical source-game id for like/save identity. Set for saved-analysis
+  /// games — where [gameId] is a synthetic `saved_analysis_<id>` to isolate
+  /// board state — so the like system keys off the ORIGINAL game, exactly like
+  /// the same game is liked everywhere else. Null for live sources, whose
+  /// [gameId] is already the canonical id.
+  final String? sourceGameId;
+
   GamesTourModel({
     required this.gameId,
     this.source = GameSource.supabase,
@@ -115,7 +122,15 @@ class GamesTourModel {
     this.timeControl,
     this.avgElo,
     this.isOnline = false,
+    this.sourceGameId,
   });
+
+  /// Identity used by the like/favorite system. Prefers [sourceGameId] (the
+  /// original game) and falls back to [gameId] for live sources.
+  String get likeId {
+    final s = sourceGameId;
+    return (s != null && s.isNotEmpty) ? s : gameId;
+  }
 
   /// Calendar day the game belongs to, for UI bucketing.
   ///
@@ -155,6 +170,7 @@ class GamesTourModel {
     String? timeControl,
     int? avgElo,
     bool? isOnline,
+    String? sourceGameId,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -186,6 +202,7 @@ class GamesTourModel {
       timeControl: timeControl ?? this.timeControl,
       avgElo: avgElo ?? this.avgElo,
       isOnline: isOnline ?? this.isOnline,
+      sourceGameId: sourceGameId ?? this.sourceGameId,
     );
   }
 
@@ -591,7 +608,8 @@ class GamesTourModel {
         other.openingName == openingName &&
         other.timeControl == timeControl &&
         other.avgElo == avgElo &&
-        other.isOnline == isOnline;
+        other.isOnline == isOnline &&
+        other.sourceGameId == sourceGameId;
   }
 
   @override
@@ -624,6 +642,7 @@ class GamesTourModel {
       timeControl,
       avgElo,
       isOnline,
+      sourceGameId,
     ]);
   }
 }
