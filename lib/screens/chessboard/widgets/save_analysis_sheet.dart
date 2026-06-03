@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -171,6 +172,32 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       _isEditMode = true;
       _existingAnalysisId = saved!.analysisId;
       _initialFolderId = saved.folderId;
+    } else {
+      // Parity with opening from My Likes: when the game wasn't opened *as* a
+      // saved analysis (e.g. reached from For You / a tournament) but is
+      // already liked, it lives in the Liked Games folder as a saved analysis
+      // keyed by its like identity (`sourceGameId == game.likeId`). Adopt that
+      // entry so the sheet pre-selects (and shows the indicator on) the Liked
+      // Games folder, and a save updates the liked row instead of inserting a
+      // duplicate.
+      final likeId = widget.config.state.game.likeId;
+      final likedList = ref.read(likedGamesProvider).valueOrNull;
+      if (likedList != null) {
+        SavedAnalysis? liked;
+        for (final a in likedList) {
+          // Skip the optimistic placeholder row (empty id) so we never try to
+          // "update" a not-yet-persisted analysis.
+          if (a.sourceGameId == likeId && a.id.isNotEmpty) {
+            liked = a;
+            break;
+          }
+        }
+        if (liked != null) {
+          _isEditMode = true;
+          _existingAnalysisId = liked.id;
+          _initialFolderId = liked.folderId;
+        }
+      }
     }
     _initializeControllers();
   }
