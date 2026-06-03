@@ -201,6 +201,68 @@ String _serializeAnalysis(
   return exportGameToPgn(branded);
 }
 
+/// Serializes an arbitrary in-memory list of [SavedAnalysis] into a single
+/// PGN string using the same per-game branding ([Site]/[Source]/[Database]/
+/// optional [SourceURL]) as the folder pipeline. Use when the caller already
+/// holds the analyses (e.g. My Likes) and would otherwise re-fetch them
+/// through [exportFolderAsPgn] just for the side-effect of paging.
+String exportSavedAnalysesAsPgn({
+  required List<SavedAnalysis> analyses,
+  required String databaseName,
+  String? shareToken,
+  FolderExportProgress? onProgress,
+}) {
+  final total = analyses.length;
+  onProgress?.call(0, total);
+
+  final buffer = StringBuffer();
+  var processed = 0;
+  for (final analysis in analyses) {
+    final pgn = _serializeAnalysis(
+      analysis,
+      folderName: databaseName,
+      shareToken: shareToken,
+    );
+    processed += 1;
+    if (pgn.trim().isEmpty) {
+      onProgress?.call(processed, total);
+      continue;
+    }
+    if (buffer.isNotEmpty) buffer.write('\n\n');
+    buffer.write(pgn.trimRight());
+    onProgress?.call(processed, total);
+  }
+
+  if (buffer.isEmpty) return '';
+  if (!buffer.toString().endsWith('\n')) buffer.write('\n');
+  return buffer.toString();
+}
+
+/// Convenience wrapper that returns the same [FolderPgnFile] shape the share
+/// pipeline already consumes, so callers (My Likes) can hand the result
+/// straight into the existing temp-file + `Share.shareXFiles` plumbing.
+List<FolderPgnFile> exportSavedAnalysesAsPgnFiles({
+  required List<SavedAnalysis> analyses,
+  required String databaseName,
+  String? shareToken,
+  FolderExportProgress? onProgress,
+}) {
+  final pgn = exportSavedAnalysesAsPgn(
+    analyses: analyses,
+    databaseName: databaseName,
+    shareToken: shareToken,
+    onProgress: onProgress,
+  );
+  if (pgn.trim().isEmpty) return const <FolderPgnFile>[];
+  return [
+    FolderPgnFile(
+      filename: suggestedExportFilename(databaseName),
+      pgn: pgn,
+      gameCount: analyses.length,
+    ),
+  ];
+}
+
 /// Suggested filename for a folder export (safe ASCII, short).
 String suggestedExportFilename(String folderName) {
   final sanitized = folderName

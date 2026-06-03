@@ -172,9 +172,9 @@ class NotificationSettingsBody extends ConsumerWidget {
         const NotifSectionHeader(title: 'Library'),
 
         NotifToggleTile(
-          title: 'Database Updates',
+          title: 'Folder Updates',
           subtitle:
-              'Get notified when games are added, updated, or removed in your subscribed databases.',
+              'Get notified when games are added, updated, or removed in your subscribed folders.',
           value: prefs.bookUpdateAlerts,
           onChanged: !interactive
               ? null

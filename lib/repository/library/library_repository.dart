@@ -105,9 +105,9 @@ class LibraryRepository extends BaseRepository {
 
     if ((existing as List).isNotEmpty) return;
 
-    final rootFolder = await createFolder(name: 'My Folder');
+    final rootFolder = await createFolder(name: 'My Database');
     await createFolder(
-      name: 'My Database',
+      name: 'My Folder',
       parentId: rootFolder.id,
       nodeType: LibraryFolder.nodeTypeDatabase,
     );
@@ -139,7 +139,7 @@ class LibraryRepository extends BaseRepository {
             .from('user_folders')
             .insert({
               'user_id': userId,
-              'name': 'Liked Games',
+              'name': 'My Likes',
               'color': '#F5453A',
               'icon': 'liked',
               'order_index': nextOrder,

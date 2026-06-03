@@ -149,21 +149,21 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
     if (state.hasActiveFilters) {
       final filteredCount = state.filteredGames.length;
       if (isTwic && state.hasMorePages) {
-        return '${formatCompactCount(filteredCount)}+ filtered games to a database';
+        return '${formatCompactCount(filteredCount)}+ filtered games to a folder';
       }
-      return 'Add all ${formatCompactCount(filteredCount)} games to a database';
+      return 'Add all ${formatCompactCount(filteredCount)} games to a folder';
     }
 
     // No filters active — use server total for TWIC (most accurate)
     if (isTwic) {
       final total = state.totalCount ?? widget.knownTotalCount;
       if (total != null && total > 0) {
-        return 'Add all ${formatCompactCount(total)} games to a database';
+        return 'Add all ${formatCompactCount(total)} games to a folder';
       }
     }
 
     final count = state.filteredGames.length;
-    return 'Add all ${formatCompactCount(count)} games to a database';
+    return 'Add all ${formatCompactCount(count)} games to a folder';
   }
 
   @override

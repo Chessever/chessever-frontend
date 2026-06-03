@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -72,9 +74,7 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
         liveRoundIds: liveRoundIds,
       );
     } catch (error, stackTrace) {
-      debugPrint(
-        '[StrictLiveEvents] Failed to resolve live event IDs: $error\n$stackTrace',
-      );
+      _logStrictLiveResolveIssue('resolve live event IDs', error, stackTrace);
       return const <String>[];
     }
   }
@@ -109,8 +109,10 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
       unawaited(emitResolvedIds());
     },
     onError: (Object error, StackTrace stackTrace) {
-      debugPrint(
-        '[StrictLiveEvents] Configured live IDs stream failed: $error\n$stackTrace',
+      _logStrictLiveResolveIssue(
+        'configured live IDs stream',
+        error,
+        stackTrace,
       );
       hasConfiguredSnapshot = true;
       configuredLiveEntries = const <String>[];
@@ -125,9 +127,7 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
       unawaited(emitResolvedIds());
     },
     onError: (Object error, StackTrace stackTrace) {
-      debugPrint(
-        '[StrictLiveEvents] Live round IDs stream failed: $error\n$stackTrace',
-      );
+      _logStrictLiveResolveIssue('live round IDs stream', error, stackTrace);
       hasLiveRoundsSnapshot = true;
       liveRoundIds = const <String>[];
       unawaited(emitResolvedIds());
@@ -217,6 +217,34 @@ class _StrictLiveGroupBroadcastResolver {
       latestMoveTimesByRoundId: latestMoveTimesByRoundId,
     );
   }
+}
+
+/// Whether [error] is an expected connectivity hiccup (offline / timeout)
+/// rather than a genuine defect.
+///
+/// The live-event resolver and its source streams run on a 1-minute refresh
+/// timer, so without this distinction a single offline moment dumps a full
+/// stack trace to the console every cycle. Connectivity errors are an expected,
+/// gracefully-handled state (the resolver falls back to an empty live list), so
+/// they are logged tersely and without a stack trace; everything else keeps the
+/// full diagnostic.
+@visibleForTesting
+bool isExpectedLiveResolveError(Object error) {
+  return error is NetworkException ||
+      error is SocketException ||
+      error is TimeoutException;
+}
+
+void _logStrictLiveResolveIssue(
+  String label,
+  Object error,
+  StackTrace stackTrace,
+) {
+  if (isExpectedLiveResolveError(error)) {
+    debugPrint('[StrictLiveEvents] $label unavailable (offline/transient): $error');
+    return;
+  }
+  debugPrint('[StrictLiveEvents] Failed to $label: $error\n$stackTrace');
 }
 
 @visibleForTesting

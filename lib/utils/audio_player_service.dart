@@ -10,8 +10,6 @@ enum SfxType { move, castling, check, checkmate, draw, promotion, takeover }
 
 class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
-  static const Duration _minimumAnyPlaySpacing = Duration(milliseconds: 60);
-  static const Duration _minimumSameSoundSpacing = Duration(milliseconds: 120);
 
   // Note: These MUST NOT be `final` - they need to be reassignable
   // after the native SoLoud engine is torn down and reinitialized
@@ -35,9 +33,6 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _initialized = false;
   bool _assetsLoaded = false;
   Future<void>? _initializing;
-  Future<void> _operationQueue = Future<void>.value();
-  DateTime _lastPlayAt = DateTime.fromMillisecondsSinceEpoch(0);
-  SfxType? _lastPlayedType;
   bool _audioSessionConfigured = false;
 
   /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
@@ -115,29 +110,17 @@ class AudioPlayerService with WidgetsBindingObserver {
 
   /// Play a sound effect by type. Resolves the native handle AFTER ensuring
   /// the engine is initialized, preventing stale-handle issues.
+  ///
+  /// Fire-and-forget: each call plays independently. SoLoud mixes voices
+  /// natively, so SFX must NOT be serialized through a shared queue — doing so
+  /// couples every sound to the slowest/previous native op and lets a single
+  /// stalled init/recovery silence all subsequent moves.
   void playSound(SfxType type) {
-    final now = DateTime.now();
-    final elapsed = now.difference(_lastPlayAt);
-    if (elapsed < _minimumAnyPlaySpacing ||
-        (_lastPlayedType == type && elapsed < _minimumSameSoundSpacing)) {
-      return;
-    }
-
-    _lastPlayedType = type;
-    _lastPlayAt = now;
-    unawaited(_enqueueAudioOperation(() => _playWithRecovery(type)));
+    unawaited(_playWithRecovery(type));
   }
 
   /// Convenience: determine sound from SAN notation and play it.
   void playSfxForSan(String san) => playSound(sfxTypeForSan(san));
-
-  Future<void> _enqueueAudioOperation(Future<void> Function() operation) {
-    final next = _operationQueue.then((_) => operation()).catchError((e, s) {
-      debugPrint('⚠️ Audio operation failed: $e\n$s');
-    });
-    _operationQueue = next;
-    return next;
-  }
 
   Future<void> _playWithRecovery(SfxType type) async {
     try {
@@ -265,9 +248,7 @@ class AudioPlayerService with WidgetsBindingObserver {
         debugPrint(
           '🎧 AudioPlayerService: engine dead after resume, reinitializing',
         );
-        unawaited(
-          _enqueueAudioOperation(() => initializeAndLoadAllAssets(force: true)),
-        );
+        unawaited(initializeAndLoadAllAssets(force: true));
       } else {
         debugPrint(
           '🎧 AudioPlayerService: engine still alive after resume, no action',

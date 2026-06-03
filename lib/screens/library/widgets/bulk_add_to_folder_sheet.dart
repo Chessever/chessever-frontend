@@ -241,7 +241,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Database' : 'Folder'} "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -346,7 +346,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Select at least one database',
+            'Select at least one folder',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -496,7 +496,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
         SnackBar(
           content: Text(
             _savedEntries > 0
-                ? 'Added $_savedEntries entries to your databases'
+                ? 'Added $_savedEntries entries to your folders'
                 : 'No new games were added',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
@@ -619,7 +619,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
                       return Padding(
                         padding: EdgeInsets.all(20.sp),
                         child: Text(
-                          'No databases yet.',
+                          'No folders yet.',
                           style: AppTypography.textSmRegular.copyWith(
                             color: context.colors.textPrimary.withValues(
                               alpha: 0.5,
@@ -654,7 +654,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
                   error:
                       (e, _) => Center(
                         child: Text(
-                          'Error loading databases',
+                          'Error loading folders',
                           style: AppTypography.textSmRegular.copyWith(
                             color: kRedColor,
                           ),
@@ -731,7 +731,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
                               ),
                               SizedBox(width: 8.w),
                               Text(
-                                'New Database',
+                                'New Folder',
                                 style: AppTypography.textSmMedium.copyWith(
                                   color: context.colors.textPrimary,
                                 ),

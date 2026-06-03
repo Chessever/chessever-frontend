@@ -94,4 +94,9 @@ class LibraryFolder with LibraryFolderMappable {
 
   bool get isDatabase => nodeType == nodeTypeDatabase;
   bool get isFolder => nodeType == nodeTypeFolder;
+
+  /// User-facing label. The special liked-games collection is branded
+  /// "My Likes" everywhere, regardless of the stored row name (legacy rows
+  /// were created as "Liked Games"). For all other folders this is just [name].
+  String get displayName => isLikedGames ? 'My Likes' : name;
 }

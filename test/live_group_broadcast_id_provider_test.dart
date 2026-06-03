@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -282,6 +286,35 @@ void main() {
       );
 
       expect(result, [broadcast.id]);
+    });
+  });
+
+  group('isExpectedLiveResolveError', () {
+    test('treats the offline NetworkException as expected (no stack spam)', () {
+      expect(
+        isExpectedLiveResolveError(NetworkException('No internet connection')),
+        isTrue,
+      );
+      expect(
+        isExpectedLiveResolveError(NetworkException('Request timeout')),
+        isTrue,
+      );
+    });
+
+    test('treats raw SocketException and TimeoutException as expected', () {
+      expect(
+        isExpectedLiveResolveError(const SocketException('connect failed')),
+        isTrue,
+      );
+      expect(
+        isExpectedLiveResolveError(TimeoutException('slow')),
+        isTrue,
+      );
+    });
+
+    test('treats genuinely unexpected errors as not expected', () {
+      expect(isExpectedLiveResolveError(GenericApiException('boom')), isFalse);
+      expect(isExpectedLiveResolveError(StateError('bad state')), isFalse);
     });
   });
 }

@@ -240,7 +240,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Database' : 'Folder'} "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -306,7 +306,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Select at least one database',
+            'Select at least one folder',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -370,8 +370,8 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             successCount == 1
-                ? 'Added to 1 database'
-                : 'Added to $successCount databases',
+                ? 'Added to 1 folder'
+                : 'Added to $successCount folders',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -422,7 +422,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.w),
               child: Text(
-                'Add to Databases',
+                'Add to Folders',
                 style: AppTypography.textLgBold.copyWith(
                   color: context.colors.textPrimary,
                 ),
@@ -445,7 +445,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         ? Padding(
                           padding: EdgeInsets.all(24.sp),
                           child: Text(
-                            'No databases yet.',
+                            'No folders yet.',
                             style: AppTypography.textSmRegular.copyWith(
                               color: context.colors.textPrimary.withValues(
                                 alpha: 0.5,
@@ -599,7 +599,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                       ),
                       SizedBox(width: 8.w),
                       Text(
-                        'New Database',
+                        'New Folder',
                         style: AppTypography.textSmMedium.copyWith(
                           color: context.colors.textPrimary,
                         ),

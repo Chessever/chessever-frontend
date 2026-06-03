@@ -37,19 +37,24 @@ class BottomNavBar extends ConsumerWidget {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
 
     return Container(
-      padding: EdgeInsets.only(
-        top: 0,
-        bottom: MediaQuery.of(context).viewPadding.bottom,
-      ),
+      padding: EdgeInsets.only(top: 0, bottom: bottomPadding),
       decoration: BoxDecoration(
         color: context.colors.background,
         border: Border(
           top: BorderSide(color: context.colors.divider, width: 1.w),
         ),
       ),
-      height: (70.h + bottomPadding).clamp(70.0, 120.0),
-      child: Row(
-        children: List.generate(
+      // Design height (70.h) is a floor, not a fixed slot: each nav item is a
+      // Column (icon + label + vertical padding) whose label height rides
+      // MediaQuery.textScaler. A fixed height that also had the safe-area inset
+      // carved out of a capped total starved that Column on short screens /
+      // large text scales / large insets and overflowed the bottom. Flooring
+      // the row content (so it can grow when it must) and adding the inset on
+      // top via padding keeps the normal-device look while never overflowing.
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: 70.h),
+        child: Row(
+          children: List.generate(
           BottomNavBarItem.values.length,
           (index) => BottomNavBarWidget(
             key: switch (BottomNavBarItem.values[index]) {
@@ -77,6 +82,7 @@ class BottomNavBar extends ConsumerWidget {
             },
             svgIcon: bottomNavBarIcons[BottomNavBarItem.values[index]]!,
             title: namesBottomNavBarIcons[BottomNavBarItem.values[index]]!,
+            ),
           ),
         ),
       ),

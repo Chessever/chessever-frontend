@@ -17,6 +17,7 @@ class SegmentedSwitcher extends StatefulWidget {
   final TextStyle? textStyle;
   final TextStyle? selectedTextStyle;
   final List<Widget>? optionLabels;
+  final bool notifyOnReselect;
 
   const SegmentedSwitcher({
     super.key,
@@ -32,6 +33,7 @@ class SegmentedSwitcher extends StatefulWidget {
     this.textStyle,
     this.selectedTextStyle,
     this.optionLabels,
+    this.notifyOnReselect = false,
   }) : assert(
          initialSelection >= 0 && initialSelection < options.length,
          'initialSelection must be within options range',
@@ -65,15 +67,18 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
   }
 
   void _onSelectionChanged(int index, {bool fromExternal = false}) {
-    if (index == _selectedIndex || !mounted) return;
+    if (!mounted) return;
+    final isReselect = index == _selectedIndex;
 
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    if (!fromExternal) {
-      widget.onSelectionChanged(index);
+    if (!isReselect) {
+      setState(() {
+        _selectedIndex = index;
+      });
     }
+
+    if (fromExternal) return;
+    if (isReselect && !widget.notifyOnReselect) return;
+    widget.onSelectionChanged(index);
   }
 
   @override

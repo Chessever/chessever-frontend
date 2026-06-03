@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -10,7 +11,6 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Resolves (and lazily creates) the per-user special "Liked Games" folder.
 /// Identical mechanically to any user-created folder.
@@ -28,7 +28,6 @@ final likedGamesProvider =
 
 class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   LibraryRepository get _repo => ref.read(libraryRepositoryProvider);
-  SupabaseClient get _supabase => Supabase.instance.client;
 
   /// In-flight per-game-id toggle calls, so rapid re-taps don't race.
   final Set<String> _inFlight = <String>{};
@@ -51,29 +50,26 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   /// as the "Add to library" flow. Returns the new state (`true` = now liked).
   /// Source-agnostic — works for broadcast, gamebase and twic games alike.
   Future<bool> toggle(GamesTourModel game) async {
-    final folder = await ref.read(likedGamesFolderProvider.future);
-    final list = List<SavedAnalysis>.from(state.valueOrNull ?? const []);
-    final existing = list.firstWhereOrNull(
-      (a) => a.sourceGameId == game.gameId,
-    );
-
-    if (existing != null) {
-      // OPTIMISTIC unlike
-      list.removeWhere((a) => a.id == existing.id);
-      state = AsyncValue.data(list);
-      try {
-        await _repo.deleteSavedAnalysis(existing.id);
-      } catch (e) {
-        debugPrint('[LikedGames] unlike failed: $e');
-        await _reload();
-      }
-      return false;
+    if (!_inFlight.add(game.gameId)) {
+      return isLiked(game.gameId);
     }
 
-    // Guard against rapid double-fire on the same gameId.
-    if (!_inFlight.add(game.gameId)) return true;
     try {
-      final userId = _supabase.auth.currentUser?.id;
+      final folder = await ref.read(likedGamesFolderProvider.future);
+      final list = List<SavedAnalysis>.from(state.valueOrNull ?? const []);
+      final existing = list.firstWhereOrNull(
+        (a) => a.sourceGameId == game.gameId,
+      );
+
+      if (existing != null) {
+        // OPTIMISTIC unlike
+        list.removeWhere((a) => a.id == existing.id);
+        state = AsyncValue.data(list);
+        await _repo.deleteSavedAnalysis(existing.id);
+        return false;
+      }
+
+      final userId = ref.read(currentUserProvider)?.id;
       if (userId == null) throw Exception('User not authenticated');
 
       final chessGame = await _resolveChessGame(game);
@@ -101,15 +97,16 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       state = AsyncValue.data(list);
 
       final created = await _repo.createSavedAnalysis(analysis);
-      final reconciled = List<SavedAnalysis>.from(state.valueOrNull ?? const [])
-        ..removeWhere((a) => a.id.isEmpty && a.sourceGameId == game.gameId)
-        ..insert(0, created);
+      final reconciled =
+          List<SavedAnalysis>.from(state.valueOrNull ?? const [])
+            ..removeWhere((a) => a.id.isEmpty && a.sourceGameId == game.gameId)
+            ..insert(0, created);
       state = AsyncValue.data(reconciled);
       return true;
     } catch (e) {
-      debugPrint('[LikedGames] like failed: $e');
+      debugPrint('[LikedGames] toggle failed: $e');
       await _reload();
-      return false;
+      return isLiked(game.gameId);
     } finally {
       _inFlight.remove(game.gameId);
     }
@@ -181,6 +178,15 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
     if (game.blackPlayer.rating > 0) {
       meta['BlackElo'] = game.blackPlayer.rating.toString();
     }
+    // Persist FIDE ids so the games-tab color filter can identify each side —
+    // broadcast/gamebase PGNs often omit these headers, so write them from the
+    // live game rather than relying on ChessGame.fromPgn to carry them.
+    if (game.whitePlayer.fideId != null) {
+      meta['WhiteFideId'] = game.whitePlayer.fideId.toString();
+    }
+    if (game.blackPlayer.fideId != null) {
+      meta['BlackFideId'] = game.blackPlayer.fideId.toString();
+    }
     if (game.eco != null && game.eco!.isNotEmpty) {
       meta['ECO'] = game.eco!;
     }
@@ -191,7 +197,35 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       meta.putIfAbsent('Event', () => game.tourSlug!);
     }
 
+    // Persist the filter-relevant fields the raw PGN headers don't carry, so
+    // "My Likes" can reproduce the Favorites → Games tab filters. The broadcast
+    // time-control category ('standard'/'rapid'/'blitz') is distinct from the
+    // PGN `TimeControl` increment string, which the time-control filter can't
+    // interpret. Stored as strings to stay PGN-export safe.
+    if (game.timeControl != null && game.timeControl!.isNotEmpty) {
+      meta['TcCategory'] = game.timeControl!;
+    }
+    meta['IsOnline'] = game.isOnline ? 'true' : 'false';
+
     return chessGame.copyWith(metadata: meta);
+  }
+
+  /// Removes a specific liked game by its saved-analysis id (used by the
+  /// My Likes list's swipe-to-unlike, which acts on a SavedAnalysis rather
+  /// than a GamesTourModel). Optimistic; reloads and returns `false` on failure
+  /// so the caller can surface the error.
+  Future<bool> removeAnalysis(SavedAnalysis analysis) async {
+    final list = List<SavedAnalysis>.from(state.valueOrNull ?? const [])
+      ..removeWhere((a) => a.id == analysis.id);
+    state = AsyncValue.data(list);
+    try {
+      await _repo.deleteSavedAnalysis(analysis.id);
+      return true;
+    } catch (e) {
+      debugPrint('[LikedGames] removeAnalysis failed: $e');
+      await _reload();
+      return false;
+    }
   }
 
   Future<void> _reload() async {

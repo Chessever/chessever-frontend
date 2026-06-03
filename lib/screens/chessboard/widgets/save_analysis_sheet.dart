@@ -155,6 +155,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   String? _initialFolderId;
   bool _hasAppliedInitialFolder = false;
 
+  // Duplicate-as-new mode: only meaningful when _isEditMode is true. When on,
+  // save inserts a new row (and re-points the open board to the copy) instead
+  // of overwriting the existing analysis.
+  bool _isDuplicateMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -297,14 +302,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       // without a folder used to succeed at insert and then orphan the row
       // (visible only via SQL, still counting toward the free-tier limit).
       setState(() {
-        _errorMessage = 'Pick a database to save into';
+        _errorMessage = 'Pick a folder to save into';
       });
       HapticFeedback.lightImpact();
       return;
     }
 
-    // Creating a new analysis adds a row to user_saved_analyses; updates do not.
-    if (!_isEditMode || _existingAnalysisId == null) {
+    // Updates overwrite the existing row; inserts (new analysis OR a duplicate
+    // forked from an existing one) add a row and count against the free-tier
+    // cap, so gate them through canSaveMoreGames.
+    final isInsert =
+        !_isEditMode || _existingAnalysisId == null || _isDuplicateMode;
+    if (isInsert) {
       final allowed = await canSaveMoreGames(context, gamesToAdd: 1);
       if (!allowed || !mounted) return;
     }
@@ -390,7 +399,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       };
 
       String resolvedAnalysisId;
-      if (_isEditMode && _existingAnalysisId != null) {
+      if (!isInsert) {
         // Update existing library analysis instead of creating a new row.
         final savedAnalysis = SavedAnalysis(
           id: _existingAnalysisId!,
@@ -488,9 +497,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 SizedBox(width: 12.w),
                 Expanded(
                   child: Text(
-                    _isEditMode
-                        ? 'Game updated'
-                        : 'Analysis saved successfully',
+                    _isDuplicateMode
+                        ? 'Saved a copy'
+                        : (_isEditMode
+                            ? 'Game updated'
+                            : 'Analysis saved successfully'),
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
                     ),
@@ -516,8 +527,10 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage =
-              '${_isEditMode ? 'Failed to update' : 'Failed to save'}: ${e.toString()}';
+          final verb = _isDuplicateMode
+              ? 'duplicate'
+              : (_isEditMode ? 'update' : 'save');
+          _errorMessage = 'Failed to $verb: ${e.toString()}';
           _isSaving = false;
         });
         HapticFeedback.lightImpact();
@@ -536,6 +549,24 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           }
         });
       }
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  void _toggleDuplicateMode() {
+    setState(() {
+      _isDuplicateMode = !_isDuplicateMode;
+      if (_isDuplicateMode) {
+        // Force a fresh folder choice — duplicating into the same database is
+        // allowed, but starting with the originating folder pre-selected is a
+        // foot-gun (looks like an update target).
+        _selectedFolder = null;
+      } else {
+        // Returning to update mode: re-apply the originating folder pre-select
+        // on the next data build.
+        _hasAppliedInitialFolder = false;
+      }
+      _errorMessage = null;
     });
     HapticFeedback.selectionClick();
   }
@@ -671,7 +702,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   ),
                 ),
                 child: Icon(
-                  _isEditMode ? Icons.edit_rounded : Icons.bookmark_add_rounded,
+                  _isDuplicateMode
+                      ? Icons.content_copy_rounded
+                      : (_isEditMode
+                          ? Icons.edit_rounded
+                          : Icons.bookmark_add_rounded),
                   color: kPrimaryColor,
                   size: 22.sp,
                 ),
@@ -682,7 +717,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isEditMode ? 'Edit Game Details' : 'Save Analysis',
+                      _isDuplicateMode
+                          ? 'Save as Copy'
+                          : (_isEditMode
+                              ? 'Edit Game Details'
+                              : 'Save Analysis'),
                       style: AppTypography.textLgBold.copyWith(
                         color: context.colors.textPrimary,
                         letterSpacing: -0.3,
@@ -690,9 +729,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     ),
                     SizedBox(height: 2.h),
                     Text(
-                      _isEditMode
-                          ? 'Update title, folder & metadata'
-                          : 'Keep your variations & comments',
+                      _isDuplicateMode
+                          ? 'Fork into a new database'
+                          : (_isEditMode
+                              ? 'Update title, folder & metadata'
+                              : 'Keep your variations & comments'),
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textPrimary.withValues(
                           alpha: 0.5,
@@ -704,7 +745,91 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               ),
             ],
           ),
+          if (_isEditMode) ...[
+            SizedBox(height: 16.h),
+            _buildModeToggle(),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildModeToggle() {
+    return Container(
+      padding: EdgeInsets.all(4.sp),
+      decoration: BoxDecoration(
+        color: context.colors.textPrimary.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _modeSegment(
+              label: 'Update',
+              icon: Icons.check_rounded,
+              selected: !_isDuplicateMode,
+              onTap: _isSaving || !_isDuplicateMode ? null : _toggleDuplicateMode,
+            ),
+          ),
+          Expanded(
+            child: _modeSegment(
+              label: 'Save Copy',
+              icon: Icons.content_copy_rounded,
+              selected: _isDuplicateMode,
+              onTap: _isSaving || _isDuplicateMode ? null : _toggleDuplicateMode,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeSegment({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(vertical: 10.h),
+        decoration: BoxDecoration(
+          color: selected
+              ? kPrimaryColor.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(
+            color: selected
+                ? kPrimaryColor.withValues(alpha: 0.35)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 14.sp,
+              color: selected
+                  ? kPrimaryColor
+                  : context.colors.textPrimary.withValues(alpha: 0.5),
+            ),
+            SizedBox(width: 6.w),
+            Text(
+              label,
+              style: AppTypography.textXsMedium.copyWith(
+                color: selected
+                    ? kPrimaryColor
+                    : context.colors.textPrimary.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1721,9 +1846,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      _isEditMode
-                                          ? Icons.check_rounded
-                                          : Icons.bookmark_add_rounded,
+                                      _isDuplicateMode
+                                          ? Icons.content_copy_rounded
+                                          : (_isEditMode
+                                              ? Icons.check_rounded
+                                              : Icons.bookmark_add_rounded),
                                       color:
                                           canSave
                                               ? context.colors.textPrimary
@@ -1734,9 +1861,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                     SizedBox(width: 8.w),
                                     Text(
                                       canSave
-                                          ? (_isEditMode
-                                              ? 'Update Game'
-                                              : 'Save Analysis')
+                                          ? (_isDuplicateMode
+                                              ? 'Save Copy'
+                                              : (_isEditMode
+                                                  ? 'Update Game'
+                                                  : 'Save Analysis'))
                                           : _isCreatingNewFolder
                                           ? 'Name your folder'
                                           : 'Select a Folder',

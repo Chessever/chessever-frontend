@@ -185,7 +185,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
 
           case _BookRelation.ownBook:
             return _buildActionButton(
-              label: 'This is your database',
+              label: 'This is your folder',
               icon: Icons.check_circle_outline_rounded,
               onTap: () {
                 HapticFeedbackService.light();
@@ -354,14 +354,14 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 ),
                 SizedBox(height: 12.h),
                 Text(
-                  'Database not found',
+                  'Folder not found',
                   style: AppTypography.textLgMedium.copyWith(
                     color: context.colors.textPrimary.withValues(alpha: 0.85),
                   ),
                 ),
                 SizedBox(height: 6.h),
                 Text(
-                  'This database may have been removed or the link is invalid.',
+                  'This folder may have been removed or the link is invalid.',
                   style: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textPrimary.withValues(alpha: 0.55),
                   ),

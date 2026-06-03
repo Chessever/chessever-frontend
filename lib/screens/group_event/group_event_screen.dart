@@ -625,6 +625,7 @@ class _SegmentedSwitcher extends ConsumerWidget {
           .indexOf(selectedTourEvent)
           .clamp(0, visibleCategories.length - 1),
       onSelectionChanged: onSelectedChanged,
+      notifyOnReselect: true,
     );
   }
 }

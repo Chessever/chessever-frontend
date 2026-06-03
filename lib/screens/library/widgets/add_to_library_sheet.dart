@@ -16,7 +16,7 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
   String title = 'Add to Library',
   bool showCreateDatabase = true,
   String createDatabaseTitle = 'Create Folder or Database',
-  String createDatabaseSubtitle = 'New folder or game database',
+  String createDatabaseSubtitle = 'New database or game folder',
   bool showImports = true,
 }) {
   return showModalBottomSheet<AddToLibraryChoice>(

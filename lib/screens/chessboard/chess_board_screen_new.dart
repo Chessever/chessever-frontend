@@ -3030,9 +3030,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   Widget _buildSaveButton() {
-    final isEditableLibraryGame =
-        widget.game.source == GameSource.savedAnalysis &&
-        widget.savedAnalysisData?.analysisId != null;
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
@@ -3085,7 +3082,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             break;
           case AutoSaveStatus.idle:
             diskIcon = Icon(
-              isEditableLibraryGame ? Icons.edit_outlined : Icons.save_outlined,
+              Icons.save_outlined,
               color: context.colors.textPrimary,
               size: 20.sp,
             );
@@ -3109,13 +3106,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
           );
         }
 
-        // The header action must remain the save/edit action at all times.
-        // A double-tap like is represented only by the small red badge above;
-        // the flight phase still uses the keyed slot as its target, but it must
-        // not replace the save icon with a full heart in the AppBar.
+        // Header action stays the save icon at all times — a double-tap like
+        // is represented only by the small red badge above. The flight phase
+        // still uses the keyed slot as its target.
         return IconButton(
           icon: KeyedSubtree(key: anchor.saveButtonKey, child: diskIcon),
-          tooltip: isEditableLibraryGame ? 'Edit details' : 'Save analysis',
+          tooltip: 'Save analysis',
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         );
       },
@@ -6513,9 +6509,30 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
   // Double-tap-to-like: transient heart bursts spawned at the tap point.
   final HeartBurstController _burstController = HeartBurstController();
+  late final LikeFlightAnchor _likeFlightAnchor;
   Offset _lastTapPosition = Offset.zero;
   Offset _lastTapGlobalPosition = Offset.zero;
   OverlayEntry? _flyingHeartEntry;
+  bool _likeInteractionInProgress = false;
+  int _likeInteractionToken = 0;
+  // Same-square double-tap-to-like tracking. We detect the "like" double-tap
+  // with a passive Listener (raw pointer events) instead of a
+  // DoubleTapGestureRecognizer. A DoubleTapGestureRecognizer lives in the
+  // gesture arena and holds the pointer stream across two taps to disambiguate;
+  // that robs chessground's own pointer-based board (also a raw Listener) of the
+  // first tap's clean pointer-up, so the second tap of a tap-two-squares move
+  // gets rejected and the move silently fails. A passive Listener never enters
+  // the arena, so tap-to-move stays pristine. We only treat two quick taps on
+  // the SAME board square as a like — a move's two taps always land on DIFFERENT
+  // squares, so a move can never be mistaken for a like.
+  int? _lastLikeTapSquareIndex;
+  Duration? _lastLikeTapTimestamp;
+  static const Duration _likeInteractionLikeDuration = Duration(
+    milliseconds: 1650,
+  );
+  static const Duration _likeInteractionUnlikeDuration = Duration(
+    milliseconds: 900,
+  );
 
   /// Tracks the latest mounted board state for the debug VM service
   /// extension `likeBoard` so agents (marionette MCP) can trigger the like
@@ -6765,6 +6782,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    if (widget.game.gameId != oldWidget.game.gameId) {
+      _cancelLikeInteraction(resetAnchor: true);
+    }
+
     // We used to bump a _selectionEpoch and re-key the Chessboard on every
     // external FEN change to clear chessground's tap-selection — but the
     // resulting widget remount made chessground's didUpdateWidget never run,
@@ -6828,6 +6849,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   @override
   void initState() {
     super.initState();
+    _likeFlightAnchor = ref.read(likeFlightAnchorProvider);
     final analysisState = widget.chessBoardState.analysisState;
     _wasAtEnd = _isAtGameEnd(analysisState);
 
@@ -6862,11 +6884,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
   @override
   void dispose() {
+    _cancelLikeInteraction(resetAnchor: true);
     _flipCommitCtrl.dispose();
     _flipProgress.dispose();
     _burstController.dispose();
-    _flyingHeartEntry?.remove();
-    _flyingHeartEntry = null;
     super.dispose();
   }
 
@@ -7010,75 +7031,137 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
   // 3D card-flip wrapper. Listens to the rotation progress and applies an
   // X-axis rotation with perspective plus a subtle scale dip toward edge-on
-  // so the flip reads as a tactile, physical card turn. The outer
-  // GestureDetector picks up vertical drags only — taps still resolve to
-  // the Chessboard's tap recognizer through Flutter's gesture arena, so
-  // tap-to-move is intact.
+  // so the flip reads as a tactile, physical card turn.
+  //
+  // Gesture layering (outer → inner):
+  //   * Listener (passive, raw pointer events) — detects the same-square
+  //     double-tap-to-like WITHOUT entering the gesture arena, so it can never
+  //     swallow a tap-to-move. See _handleBoardPointerDownForLike.
+  //   * GestureDetector — picks up vertical drags only (the card flip). A pure
+  //     tap has no drag, so the drag recognizer loses the arena on taps and the
+  //     Chessboard's own pointer-based tap-to-move stays intact.
   Widget _wrapWithFlipGesture(Widget child) {
-    return GestureDetector(
+    return Listener(
       behavior: HitTestBehavior.deferToChild,
-      onVerticalDragStart: _onFlipDragStart,
-      onVerticalDragUpdate: _onFlipDragUpdate,
-      onVerticalDragEnd: _onFlipDragEnd,
-      onVerticalDragCancel: _onFlipDragCancel,
-      // Double-tap anywhere on the board likes/unlikes the current game.
-      // Only vertical drags are otherwise consumed here, so single taps still
-      // resolve to the Chessboard's tap recognizer (tap-to-move stays intact).
-      onDoubleTapDown: (details) {
-        _lastTapPosition = details.localPosition;
-        _lastTapGlobalPosition = details.globalPosition;
-      },
-      onDoubleTap: _handleDoubleTapLike,
-      // Debug-only long-press alias for the same like flow. Lets Marionette
-      // and other agent-driven test harnesses trigger the chain without
-      // having to fight the chessground tap-to-move gesture arena.
-      onLongPressStart:
-          kDebugMode
-              ? (details) {
-                _lastTapPosition = details.localPosition;
-                _lastTapGlobalPosition = details.globalPosition;
-                _handleDoubleTapLike();
-              }
-              : null,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          ValueListenableBuilder<double>(
-            valueListenable: _flipProgress,
-            child: child,
-            builder: (context, progress, c) {
-              if (progress == 0.0) return c!;
-              final rotation = progress * math.pi;
-              // Peaks at ~6% shrink when edge-on (|rotation| = π/2), eases back
-              // to 1.0 at flat. Sells the depth without making pieces lose
-              // tap-target presence mid-flip.
-              final scale = 1.0 - 0.06 * math.sin(rotation.abs());
-              return Transform(
-                alignment: Alignment.center,
-                transform:
-                    Matrix4.identity()
-                      ..setEntry(3, 2, 0.0014)
-                      ..rotateX(rotation)
-                      ..scaleByDouble(scale, scale, scale, 1.0),
-                child: c,
-              );
-            },
-          ),
-          // Heart-burst overlay — sits flat over the board (never rotates with
-          // the flip), ignores pointers, and removes itself when each burst ends.
-          Positioned.fill(
-            child: Builder(
-              builder:
-                  (context) => HeartBurstLayer(
-                    controller: _burstController,
-                    color: context.colors.danger,
-                    reduceMotion: MediaQuery.disableAnimationsOf(context),
-                  ),
+      onPointerDown: _handleBoardPointerDownForLike,
+      child: GestureDetector(
+        behavior: HitTestBehavior.deferToChild,
+        onVerticalDragStart: _onFlipDragStart,
+        onVerticalDragUpdate: _onFlipDragUpdate,
+        onVerticalDragEnd: _onFlipDragEnd,
+        onVerticalDragCancel: _onFlipDragCancel,
+        // Debug-only long-press alias for the same like flow. Lets Marionette
+        // and other agent-driven test harnesses trigger the chain without
+        // having to fight the chessground tap-to-move gesture arena.
+        onLongPressStart:
+            kDebugMode
+                ? (details) {
+                  _lastTapPosition = details.localPosition;
+                  _lastTapGlobalPosition = details.globalPosition;
+                  _handleDoubleTapLike();
+                }
+                : null,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            ValueListenableBuilder<double>(
+              valueListenable: _flipProgress,
+              child: child,
+              builder: (context, progress, c) {
+                if (progress == 0.0) return c!;
+                final rotation = progress * math.pi;
+                // Peaks at ~6% shrink when edge-on (|rotation| = π/2), eases back
+                // to 1.0 at flat. Sells the depth without making pieces lose
+                // tap-target presence mid-flip.
+                final scale = 1.0 - 0.06 * math.sin(rotation.abs());
+                return Transform(
+                  alignment: Alignment.center,
+                  transform:
+                      Matrix4.identity()
+                        ..setEntry(3, 2, 0.0014)
+                        ..rotateX(rotation)
+                        ..scaleByDouble(scale, scale, scale, 1.0),
+                  child: c,
+                );
+              },
             ),
-          ),
-        ],
+            // Heart-burst overlay — sits flat over the board (never rotates with
+            // the flip), ignores pointers, and removes itself when each burst ends.
+            Positioned.fill(
+              child: Builder(
+                builder:
+                    (context) => HeartBurstLayer(
+                      controller: _burstController,
+                      color: context.colors.danger,
+                      reduceMotion: MediaQuery.disableAnimationsOf(context),
+                    ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  /// Detects the same-square double-tap-to-like via raw pointer events.
+  ///
+  /// Runs on a passive [Listener] that wraps the board, so it never joins the
+  /// gesture arena and never steals a tap from chessground's pointer-based
+  /// tap-to-move. A tap-two-squares move always lands its two taps on two
+  /// DIFFERENT squares, so by only firing when two quick taps hit the SAME
+  /// board square we guarantee a move can never be mistaken for a like.
+  void _handleBoardPointerDownForLike(PointerDownEvent event) {
+    // Mouse right/middle clicks and multi-touch shouldn't arm a like.
+    if (event.buttons != kPrimaryButton && event.buttons != 0) {
+      _resetLikeTapTracking();
+      return;
+    }
+
+    final boardSize = widget.size;
+    final squareSize = boardSize / 8;
+    if (squareSize <= 0) {
+      _resetLikeTapTracking();
+      return;
+    }
+
+    final local = event.localPosition;
+    // Taps outside the board square (e.g. coordinate gutters) never count.
+    if (local.dx < 0 ||
+        local.dy < 0 ||
+        local.dx >= boardSize ||
+        local.dy >= boardSize) {
+      _resetLikeTapTracking();
+      return;
+    }
+
+    final file = (local.dx / squareSize).floor().clamp(0, 7);
+    final rank = (local.dy / squareSize).floor().clamp(0, 7);
+    final squareIndex = rank * 8 + file;
+
+    final lastIndex = _lastLikeTapSquareIndex;
+    final lastTime = _lastLikeTapTimestamp;
+    final isSameSquare = lastIndex != null && lastIndex == squareIndex;
+    final withinWindow =
+        lastTime != null && (event.timeStamp - lastTime) <= kDoubleTapTimeout;
+
+    if (isSameSquare && withinWindow) {
+      // Second quick tap on the same square → like. Reset so a held third tap
+      // can't immediately re-fire.
+      _resetLikeTapTracking();
+      _lastTapPosition = local;
+      _lastTapGlobalPosition = event.position;
+      _handleDoubleTapLike();
+    } else {
+      // First tap, a different square, or too slow → (re)arm for a possible
+      // same-square second tap.
+      _lastLikeTapSquareIndex = squareIndex;
+      _lastLikeTapTimestamp = event.timeStamp;
+    }
+  }
+
+  void _resetLikeTapTracking() {
+    _lastLikeTapSquareIndex = null;
+    _lastLikeTapTimestamp = null;
   }
 
   /// Likes/unlikes the currently-displayed game and spawns the matching burst.
@@ -7097,6 +7180,17 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final game = widget.game;
     debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
     if (!_isLikeableSource(game.source)) return;
+    if (_likeInteractionInProgress) {
+      debugPrint(
+        '[HeartFlight] like-trigger ignored in-flight gameId=${game.gameId}',
+      );
+      return;
+    }
+
+    _likeInteractionInProgress = true;
+    final interactionToken = ++_likeInteractionToken;
+    _removeFlyingHeartEntry();
+
     final wasLiked =
         ref
             .read(likedGamesProvider)
@@ -7112,7 +7206,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             ? tapLocal
             : _lastTapGlobalPosition;
 
-    final anchor = ref.read(likeFlightAnchorProvider);
+    final anchor = _likeFlightAnchor;
 
     if (!wasLiked) {
       // Stronger initial "thump" — feels tactile under a real double-tap.
@@ -7126,22 +7220,67 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       isUnlike: wasLiked,
       onFinished: () {
         if (!mounted) return;
+        if (interactionToken != _likeInteractionToken) return;
         if (wasLiked) return; // unlike: no flight, no slot fill
-        _runFlight(from: tapGlobal, anchor: anchor);
+        _runFlight(
+          from: tapGlobal,
+          anchor: anchor,
+          interactionToken: interactionToken,
+        );
       },
     );
 
     // Fire-and-forget — the notifier handles optimistic state + rollback.
-    unawaited(ref.read(likedGamesProvider.notifier).toggle(game));
+    final toggleFuture = ref
+        .read(likedGamesProvider.notifier)
+        .toggle(game)
+        .then<void>((_) {});
+    final visualFloor = Future<void>.delayed(
+      wasLiked ? _likeInteractionUnlikeDuration : _likeInteractionLikeDuration,
+    );
+    unawaited(
+      Future.wait<void>([toggleFuture, visualFloor])
+          .catchError((Object error, StackTrace stackTrace) {
+            debugPrint('[HeartFlight] like-toggle future failed: $error');
+            return <void>[];
+          })
+          .whenComplete(() {
+            if (!mounted) return;
+            if (interactionToken != _likeInteractionToken) return;
+            _likeInteractionInProgress = false;
+          }),
+    );
   }
 
-  void _runFlight({required Offset from, required LikeFlightAnchor anchor}) {
+  void _removeFlyingHeartEntry() {
+    _flyingHeartEntry?.remove();
+    _flyingHeartEntry = null;
+  }
+
+  void _cancelLikeInteraction({required bool resetAnchor}) {
+    _likeInteractionToken++;
+    _likeInteractionInProgress = false;
+    _removeFlyingHeartEntry();
+    if (resetAnchor) {
+      _likeFlightAnchor.reset();
+    }
+  }
+
+  void _runFlight({
+    required Offset from,
+    required LikeFlightAnchor anchor,
+    required int interactionToken,
+  }) {
     final target = anchor.saveButtonGlobalRect();
     debugPrint('[HeartFlight] _runFlight from=$from target=${target?.center}');
     if (target == null) {
       // No slot to fly to — just complete the chain.
       anchor.land();
-      Future.delayed(const Duration(milliseconds: 600), anchor.reset);
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        if (interactionToken != _likeInteractionToken) return;
+        anchor.reset();
+      });
       return;
     }
     anchor.beginFlight();
@@ -7153,7 +7292,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // becomes the slot fill).
     final startSize = widget.size * 0.55;
     final endSize = math.min(target.width, target.height);
-    final entry = OverlayEntry(
+    _removeFlyingHeartEntry();
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
       builder:
           (_) => FlyingHeart(
             from: from,
@@ -7163,14 +7304,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             endSize: endSize,
             duration: const Duration(milliseconds: 470),
             onArrived: () {
-              _flyingHeartEntry?.remove();
-              _flyingHeartEntry = null;
+              if (_flyingHeartEntry != entry) return;
+              _removeFlyingHeartEntry();
               if (!mounted) return;
+              if (interactionToken != _likeInteractionToken) return;
               anchor.land();
               // Tiny "click into place" haptic at the moment the heart docks.
               HapticFeedback.selectionClick();
               Future.delayed(const Duration(milliseconds: 540), () {
                 if (!mounted) return;
+                if (interactionToken != _likeInteractionToken) return;
                 anchor.reset();
               });
             },

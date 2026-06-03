@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 /// Result filter options for chess games
@@ -204,6 +205,8 @@ class GameFilter {
     int? maxYear,
     this.minRating = defaultMinRating,
     this.maxRating = absoluteMaxRating,
+    this.sortBy,
+    this.sortDirection,
   }) : eco = eco ?? GameEcoFilter.all,
        maxYear = maxYear ?? DateTime.now().year;
 
@@ -217,6 +220,13 @@ class GameFilter {
   final int maxYear;
   final int minRating;
   final int maxRating;
+
+  /// Optional presentation sort, surfaced when the caller's dialog enables the
+  /// Sort section (database/My-Likes contexts). When null the consumer falls
+  /// back to its own default ordering. Sort is *not* counted as an "active
+  /// filter" — it shapes presentation, not the result set.
+  final GamebaseSortField? sortBy;
+  final GamebaseSortDirection? sortDirection;
 
   /// Check if any filter is active (not default)
   bool get hasActiveFilters =>
@@ -259,6 +269,8 @@ class GameFilter {
     int? maxYear,
     int? minRating,
     int? maxRating,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
   }) {
     return GameFilter(
       result: result ?? this.result,
@@ -271,6 +283,8 @@ class GameFilter {
       maxYear: maxYear ?? this.maxYear,
       minRating: minRating ?? this.minRating,
       maxRating: maxRating ?? this.maxRating,
+      sortBy: sortBy ?? this.sortBy,
+      sortDirection: sortDirection ?? this.sortDirection,
     );
   }
 
@@ -289,7 +303,9 @@ class GameFilter {
         other.minYear == minYear &&
         other.maxYear == maxYear &&
         other.minRating == minRating &&
-        other.maxRating == maxRating;
+        other.maxRating == maxRating &&
+        other.sortBy == sortBy &&
+        other.sortDirection == sortDirection;
   }
 
   @override
@@ -304,6 +320,8 @@ class GameFilter {
     maxYear,
     minRating,
     maxRating,
+    sortBy,
+    sortDirection,
   );
 }
 

@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -17,6 +18,7 @@ Future<GameFilter?> showGameFilterDialog({
   required GameFilter currentFilter,
   bool showFormatFilter = true,
   bool showLiveFilter = true,
+  bool showSortSection = false,
 }) {
   return showDialog<GameFilter>(
     context: context,
@@ -26,6 +28,7 @@ Future<GameFilter?> showGameFilterDialog({
           initialFilter: currentFilter,
           showFormatFilter: showFormatFilter,
           showLiveFilter: showLiveFilter,
+          showSortSection: showSortSection,
         ),
   );
 }
@@ -36,11 +39,13 @@ class GameFilterDialog extends StatefulWidget {
     required this.initialFilter,
     this.showFormatFilter = true,
     this.showLiveFilter = true,
+    this.showSortSection = false,
   });
 
   final GameFilter initialFilter;
   final bool showFormatFilter;
   final bool showLiveFilter;
+  final bool showSortSection;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -54,6 +59,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameLiveFilter _live;
   late RangeValues _yearRange;
   late int? _selectedMinRating;
+  GamebaseSortField? _sortBy;
+  GamebaseSortDirection? _sortDirection;
 
   final ScrollController _scrollController = ScrollController();
   double _targetValue = 0.0;
@@ -73,6 +80,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     _selectedMinRating = RatingTierFilter.normalizeMinRating(
       widget.initialFilter.minRating,
     );
+    _sortBy = widget.initialFilter.sortBy;
+    _sortDirection = widget.initialFilter.sortDirection;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -154,7 +163,10 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Status (Live / Completed) — top priority when shown
+                      // 1. Status (Live / Completed) — top priority when shown.
+                      // In database/My-Likes contexts the caller drops this
+                      // (saved games are always finished) and asks for Sort
+                      // controls in its place via [showSortSection].
                       if (widget.showLiveFilter) ...[
                         _sectionLabel('Status'),
                         SizedBox(height: 8.h),
@@ -166,6 +178,36 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                           onTap: (v) {
                             HapticFeedbackService.selection();
                             setState(() => _live = v);
+                          },
+                        ),
+                        SizedBox(height: 20.h),
+                      ] else if (widget.showSortSection) ...[
+                        _sectionLabel('Sort'),
+                        SizedBox(height: 8.h),
+                        _chipGrid<GamebaseSortField>(
+                          values: GamebaseSortField.values,
+                          selected: _sortBy ?? GamebaseSortField.date,
+                          label: _sortFieldLabel,
+                          onTap: (v) {
+                            HapticFeedbackService.selection();
+                            setState(() {
+                              _sortBy = v;
+                              _sortDirection ??= GamebaseSortDirection.desc;
+                            });
+                          },
+                        ),
+                        SizedBox(height: 10.h),
+                        _chipGrid<GamebaseSortDirection>(
+                          values: GamebaseSortDirection.values,
+                          selected:
+                              _sortDirection ?? GamebaseSortDirection.desc,
+                          label: _sortDirectionLabel,
+                          onTap: (v) {
+                            HapticFeedbackService.selection();
+                            setState(() {
+                              _sortDirection = v;
+                              _sortBy ??= GamebaseSortField.date;
+                            });
                           },
                         ),
                         SizedBox(height: 20.h),
@@ -366,8 +408,32 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       maxYear: _yearRange.end.round(),
       minRating: _selectedMinRating ?? GameFilter.defaultMinRating,
       maxRating: GameFilter.absoluteMaxRating,
+      sortBy: widget.showSortSection ? _sortBy : null,
+      sortDirection: widget.showSortSection ? _sortDirection : null,
     );
     Navigator.of(context).pop(newFilter);
+  }
+
+  String _sortFieldLabel(GamebaseSortField f) {
+    switch (f) {
+      case GamebaseSortField.date:
+        return 'Date';
+      case GamebaseSortField.whiteElo:
+        return 'White Elo';
+      case GamebaseSortField.blackElo:
+        return 'Black Elo';
+      case GamebaseSortField.avgElo:
+        return 'Avg Elo';
+    }
+  }
+
+  String _sortDirectionLabel(GamebaseSortDirection d) {
+    switch (d) {
+      case GamebaseSortDirection.desc:
+        return 'Descending';
+      case GamebaseSortDirection.asc:
+        return 'Ascending';
+    }
   }
 
   Widget _sectionLabel(String text) {

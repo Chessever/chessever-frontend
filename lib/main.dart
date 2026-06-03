@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:logarte/logarte.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
@@ -184,6 +185,9 @@ Future<void> main() async {
       _e2eStartupLog('native splash preserved');
 
       FlutterError.onError = (details) {
+        // Verbose, colorful, full-stacktrace console log (copy-paste ready).
+        talker.handle(details.exception, details.stack, 'FlutterError.onError');
+        // Keep feeding the in-app logarte overlay too.
         logarte.log(
           'FLUTTER ERROR: ${details.exception}',
           stackTrace: details.stack,
@@ -192,6 +196,7 @@ Future<void> main() async {
         FlutterError.presentError(details);
       };
       PlatformDispatcher.instance.onError = (error, stack) {
+        talker.handle(error, stack, 'PlatformDispatcher.onError');
         logarte.log(
           'PLATFORM ERROR: $error',
           stackTrace: stack,
@@ -967,7 +972,9 @@ class _StartupFailureApp extends StatelessWidget {
 }
 
 // Initialize logarte globally
-final logarte = Logarte(password: 'devr0ll', disableDebugConsoleLogs: false);
+// Console logs disabled — Talker owns the console so errors print once,
+// verbose with full stacktrace. Logarte keeps the in-app overlay + network logs.
+final logarte = Logarte(password: 'devr0ll', disableDebugConsoleLogs: true);
 
 class MyApp extends HookConsumerWidget {
   const MyApp({super.key});

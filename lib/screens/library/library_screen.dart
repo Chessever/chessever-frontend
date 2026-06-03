@@ -2,6 +2,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
+import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
@@ -228,7 +229,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
+              '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Database' : 'Folder'} "${data.name}" created',
               style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: context.colors.surface.withValues(alpha: 0.95),
@@ -252,7 +253,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to create database: $e',
+              'Failed to create item: $e',
               style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor,
@@ -270,6 +271,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const TwicContentsScreen()));
+      return;
+    }
+
+    if (folder.isLikedGames) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const MyLikesScreen()));
       return;
     }
 
@@ -499,7 +507,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final filteredFolders = _filterFolders(allFolders);
 
     if (filteredFolders.isEmpty) {
-      return _buildSearchEmptyState('No databases match your search');
+      return _buildSearchEmptyState('No results match your search');
     }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -805,7 +813,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20.w),
                   child: Text(
-                    'Search any player, opening, or tournament. Save games to your personal databases for study.',
+                    'Search any player, opening, or tournament. Save games to your personal folders for study.',
                     style: AppTypography.textSmRegular.copyWith(
                       color: context.colors.textPrimary,
                       height: 1.5,

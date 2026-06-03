@@ -925,14 +925,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
-  logger:
-    dependency: "direct main"
-    description:
-      name: logger
-      sha256: a7967e31b703831a893bbc3c3dd11db08126fe5f369b5c648a36f821979f5be3
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.6.2"
   logging:
     dependency: transitive
     description:
@@ -1658,6 +1650,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.0"
+  talker:
+    dependency: "direct main"
+    description:
+      name: talker
+      sha256: f1a14d623f1d1bec42bb3bb77674eb766ffe8d26e5f79af652d85cb097c3e757
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.1.17"
+  talker_logger:
+    dependency: transitive
+    description:
+      name: talker_logger
+      sha256: "459205c3e571f97ecc6be6e1b1b7e6b97b853e78ea458894650be407596e3216"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.1.17"
   term_glyph:
     dependency: transitive
     description:

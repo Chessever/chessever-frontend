@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
+import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
@@ -19,13 +20,13 @@ import 'package:motor/motor.dart';
 import 'package:share_plus/share_plus.dart';
 
 String _formatGameCount(int count) {
-  if (count == 0) return 'Empty database';
+  if (count == 0) return 'Empty folder';
   if (count == 1) return '1 game';
   return '${formatCompactCount(count)} games';
 }
 
 String _formatChildCount(int count) {
-  if (count == 0) return 'Empty folder';
+  if (count == 0) return 'Empty database';
   if (count == 1) return '1 item';
   return '$count items';
 }
@@ -46,6 +47,12 @@ class FolderCard extends ConsumerWidget {
 
   void _navigateToFolder(BuildContext context) {
     HapticFeedback.mediumImpact();
+    if (folder.isLikedGames) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const MyLikesScreen()),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => FolderContentsScreen(folder: folder)),
     );
@@ -100,7 +107,7 @@ class FolderCard extends ConsumerWidget {
                 ),
               ),
               Text(
-                folder.name,
+                folder.displayName,
                 style: AppTypography.textSmMedium.copyWith(
                   color: context.colors.textPrimary,
                 ),
@@ -269,7 +276,7 @@ class FolderCard extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    folder.name,
+                    folder.displayName,
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
                     ),
@@ -523,15 +530,15 @@ class FolderCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(16.br),
                 ),
                 title: Text(
-                  'Delete ${folder.isFolder ? 'folder' : 'database'}?',
+                  'Delete ${folder.isFolder ? 'database' : 'folder'}?',
                   style: AppTypography.textSmBold.copyWith(
                     color: context.colors.textPrimary,
                   ),
                 ),
                 content: Text(
                   folder.isFolder
-                      ? 'This permanently deletes the folder and everything inside it. This cannot be undone.'
-                      : 'This permanently deletes the database and every game inside it. This cannot be undone.',
+                      ? 'This permanently deletes the database and everything inside it. This cannot be undone.'
+                      : 'This permanently deletes the folder and every game inside it. This cannot be undone.',
                   style: AppTypography.textXsRegular.copyWith(
                     color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
@@ -577,7 +584,7 @@ class FolderCard extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${folder.isFolder ? 'Folder' : 'Database'} deleted',
+            '${folder.isFolder ? 'Database' : 'Folder'} deleted',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -696,7 +703,7 @@ void showFolderOverlayMenu({
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(
-                    'only root-level database can be shared with others',
+                    'only root-level folder can be shared with others',
                   ),
                   behavior: SnackBarBehavior.floating,
                 ),
@@ -743,7 +750,7 @@ void showSharedFolderOverlayMenu({
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(
-                    'only root-level database can be shared with others',
+                    'only root-level folder can be shared with others',
                   ),
                   behavior: SnackBarBehavior.floating,
                 ),

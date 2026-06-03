@@ -28,7 +28,7 @@ Future<LibraryFolderCreationData?> showCreateFolderDialog(
     barrierColor: Colors.black.withValues(alpha: 0.8),
     builder:
         (context) => _FolderNameDialog(
-          title: initialParentId != null ? 'Add to Folder' : 'New Library Item',
+          title: initialParentId != null ? 'Add to Database' : 'New Library Item',
           confirmLabel: 'Create',
           initialParentId: initialParentId,
           isLocked: lockToParent,
@@ -173,8 +173,8 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                         widget.isRename
                             ? Icons.edit_rounded
                             : (_isDatabase
-                                ? Icons.storage_rounded
-                                : Icons.folder_rounded),
+                                ? Icons.folder_rounded
+                                : Icons.storage_rounded),
                         color: kPrimaryColor,
                         size: 22.sp,
                       ),
@@ -240,7 +240,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         children: [
           Expanded(
             child: _TypeButton(
-              label: 'Folder',
+              label: 'Database',
               isSelected: !_isDatabase,
               onTap: () {
                 setState(() => _isDatabase = false);
@@ -250,7 +250,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           ),
           Expanded(
             child: _TypeButton(
-              label: 'Database',
+              label: 'Folder',
               isSelected: _isDatabase,
               onTap: () {
                 setState(() {
@@ -268,7 +268,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   Widget _buildParentSelector(List<LibraryFolder> parents) {
     if (parents.isEmpty) {
       return Text(
-        'Create a folder first to organize databases inside it.',
+        'Create a database first to organize folders inside it.',
         style: AppTypography.textXsRegular.copyWith(color: kRedColor),
       ).animate().fadeIn();
     }
@@ -277,7 +277,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'PARENT FOLDER',
+          'PARENT DATABASE',
           style: AppTypography.textXsBold.copyWith(
             color: context.colors.textPrimary.withValues(alpha: 0.4),
             letterSpacing: 1.0,
@@ -344,7 +344,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Inside folder "${parent.name}"',
+              'Inside database "${parent.name}"',
               style: AppTypography.textXsMedium.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),

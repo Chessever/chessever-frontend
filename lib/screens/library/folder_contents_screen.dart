@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -6,8 +7,8 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
-import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
+import 'package:chessever2/screens/library/providers/folder_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
@@ -23,6 +24,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -45,10 +50,10 @@ class FolderContentsScreen extends ConsumerStatefulWidget {
 class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   late final ScrollController _scrollController;
   late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
   late final BookPaginationKey _paginationKey;
   final Set<String> _removingIds = {};
-  GamebaseSortField _sortBy = GamebaseSortField.date;
-  GamebaseSortDirection _sortDirection = GamebaseSortDirection.desc;
+  Timer? _searchDebounce;
   // Overrides widget.folder.name after an in-place rename so the header
   // reflects the new name without needing to pop/reopen.
   String? _overrideFolderName;
@@ -58,6 +63,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   bool get _isDatabase => widget.folder.isDatabase;
 
   String get _currentFolderName => _overrideFolderName ?? widget.folder.name;
+
+  String get _folderFilterKey => widget.folder.id;
 
   @override
   void initState() {
@@ -69,8 +76,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     _scrollController = ScrollController()..addListener(_onScroll);
     _searchController =
         TextEditingController()..addListener(() {
-          setState(() {});
+          if (mounted) setState(() {});
         });
+    _searchFocusNode = FocusNode();
 
     // Reset pagination state for this folder
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,8 +88,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -95,26 +105,52 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     }
   }
 
-  void _clearSearch() {
-    HapticFeedbackService.light();
-    _searchController.clear();
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      ref
+          .read(folderFilterProvider(_folderFilterKey).notifier)
+          .searchGames(value);
+    });
   }
 
-  void _showSortOptions() {
-    HapticFeedbackService.buttonPress();
-    showGamebaseSortOptions(
-      context: context,
-      sortBy: _sortBy,
-      sortDirection: _sortDirection,
-      onChanged: (field, direction) {
-        if (!mounted) return;
-        setState(() {
-          _sortBy = field;
-          _sortDirection = direction;
-        });
-      },
-    );
+  void _clearSearch() {
+    HapticFeedbackService.light();
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    ref.read(folderFilterProvider(_folderFilterKey).notifier).clearSearch();
   }
+
+  Future<void> _showFilterDialog() async {
+    HapticFeedbackService.buttonPress();
+    final current = ref.read(folderFilterProvider(_folderFilterKey)).filter;
+    final result = await showGameFilterDialog(
+      context: context,
+      currentFilter: current,
+      // Format (OTB/Online) is TWIC-only and doesn't apply to saved
+      // analyses; Status (Live/Completed) doesn't either since stored games
+      // are always finished. Sort takes the Status slot.
+      showFormatFilter: false,
+      showLiveFilter: false,
+      showSortSection: true,
+    );
+    if (result == null || !mounted) return;
+
+    // Premium gate fires only when a non-default filter or sort is applied;
+    // Reset (pops a default filter) and Cancel never pop paywall.
+    final isPremiumChange =
+        result.hasActiveFilters || result.sortBy != null;
+    if (isPremiumChange) {
+      final unlocked = await requirePremiumGuard(context, ref);
+      if (!unlocked || !mounted) return;
+    }
+    ref
+        .read(folderFilterProvider(_folderFilterKey).notifier)
+        .applyFilter(result);
+  }
+
 
   Future<void> _removeAnalysis(SavedAnalysis analysis) async {
     if (_removingIds.contains(analysis.id)) return;
@@ -217,7 +253,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       title: 'Add to "$_currentFolderName"',
       showCreateDatabase: _isFolder,
       createDatabaseTitle: 'Create Folder or Database',
-      createDatabaseSubtitle: 'Organize another folder or game database here',
+      createDatabaseSubtitle: 'Organize another database or game folder here',
       showImports: _isDatabase,
     );
     if (choice == null || !mounted) return;
@@ -354,7 +390,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Database' : 'Folder'} "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -477,7 +513,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           content: Text(
             error != null
                 ? 'Export failed: $error'
-                : 'Nothing to export in this database',
+                : 'Nothing to export here',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -536,7 +572,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   @override
   Widget build(BuildContext context) {
     final bookAsync = ref.watch(bookGamesPaginatedProvider(_paginationKey));
-    final query = _searchController.text.trim().toLowerCase();
+    // Prefer the debounced provider query so the predicate matches what the
+    // active filter dialog sees; fall back to the raw controller text on the
+    // first keystroke before the debounce fires.
+    final providerQuery =
+        ref.watch(folderFilterProvider(_folderFilterKey)).searchQuery;
+    final effectiveQuery =
+        providerQuery.isNotEmpty ? providerQuery : _searchController.text;
+    final query = effectiveQuery.trim().toLowerCase();
 
     return Scaffold(
       key: e2eKey(E2eIds.folderContentsRoot),
@@ -699,84 +742,18 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildSearchBar() {
-    final searchField = Container(
-      height: 38.h,
-      decoration: BoxDecoration(
-        color: context.colors.textPrimary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10.br),
-      ),
-      child: Row(
-        children: [
-          SizedBox(width: 12.w),
-          Icon(
-            Icons.search_rounded,
-            size: 18.sp,
-            color: const Color(0xFFA1A1AA),
-          ),
-          SizedBox(width: 8.w),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search games...',
-                hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: const Color(0xFFA1A1AA),
-                ),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                isDense: true,
-              ),
-            ),
-          ),
-          if (_searchController.text.isNotEmpty) ...[
-            GestureDetector(
-              onTap: _clearSearch,
-              child: Icon(
-                Icons.close,
-                size: 20.sp,
-                color: const Color(0xFFA1A1AA),
-              ),
-            ),
-            SizedBox(width: 8.w),
-          ],
-          SizedBox(width: 8.w),
-        ],
-      ),
-    );
+    final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: Row(
-        children: [
-          Expanded(child: searchField),
-          if (_isDatabase) ...[
-            SizedBox(width: 8.w),
-            GestureDetector(
-              onTap: _showSortOptions,
-              child: Container(
-                width: 38.h,
-                height: 38.h,
-                decoration: BoxDecoration(
-                  color: context.colors.textPrimary.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10.br),
-                  border: Border.all(
-                    color: context.colors.textPrimary.withValues(alpha: 0.08),
-                  ),
-                ),
-                child: Icon(
-                  _sortDirection == GamebaseSortDirection.desc
-                      ? Icons.south_rounded
-                      : Icons.north_rounded,
-                  size: 18.sp,
-                  color: kPrimaryColor,
-                ),
-              ),
-            ),
-          ],
-        ],
+      child: GameSearchFilterBar(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        currentFilter: filterState.filter,
+        hintText: 'Search games...',
+        onChanged: _onSearchChanged,
+        onClear: _clearSearch,
+        onFilterTap: _showFilterDialog,
       ),
     );
   }
@@ -815,17 +792,18 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     }
   }
 
-  List<SavedAnalysis> _sortAnalyses(List<SavedAnalysis> analyses) {
+  List<SavedAnalysis> _sortAnalyses(
+    List<SavedAnalysis> analyses, {
+    required GamebaseSortField field,
+    required GamebaseSortDirection direction,
+  }) {
     final sorted = List<SavedAnalysis>.from(analyses);
     sorted.sort((a, b) {
-      final comparison = _sortValue(
-        a,
-        _sortBy,
-      ).compareTo(_sortValue(b, _sortBy));
-      final directed =
-          _sortDirection == GamebaseSortDirection.asc
-              ? comparison
-              : -comparison;
+      final comparison =
+          _sortValue(a, field).compareTo(_sortValue(b, field));
+      final directed = direction == GamebaseSortDirection.asc
+          ? comparison
+          : -comparison;
       if (directed != 0) return directed;
       return b.createdAt.compareTo(a.createdAt);
     });
@@ -854,19 +832,53 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         data: (bookState) {
           final analyses =
               _isDatabase ? bookState.games : const <SavedAnalysis>[];
+          final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
+          final subscription = ref.watch(subscriptionProvider);
+          final canFilterAndSort =
+              subscription.isSubscribed || subscription.isLoading;
+          final hasActiveFilters =
+              canFilterAndSort && filterState.filter.hasActiveFilters;
+
+          // Stage 1: text search over title + key metadata (free for all).
+          var afterSearch = analyses.where((analysis) {
+            if (query.isEmpty) return true;
+            final md = analysis.chessGame.metadata;
+            final title = analysis.title.toLowerCase();
+            final white = (md['White'] ?? '').toString().toLowerCase();
+            final black = (md['Black'] ?? '').toString().toLowerCase();
+            final event = (md['Event'] ?? '').toString().toLowerCase();
+            return title.contains(query) ||
+                white.contains(query) ||
+                black.contains(query) ||
+                event.contains(query);
+          }).toList();
+
+          // Stage 2: structured GameFilter — premium-only. Free users see
+          // the unfiltered set even if a stale filter sits in provider state
+          // (e.g. after a sub lapsed); that way nobody gets stuck with an
+          // empty list they can't change.
+          if (hasActiveFilters) {
+            final cards = afterSearch.map(savedAnalysisToCardGame).toList();
+            final kept = GameFilterHelper.applyFilter(
+              cards,
+              filterState.filter,
+              playerNameQuery: query.isNotEmpty ? query : null,
+            ).map((g) => g.gameId).toSet();
+            afterSearch = afterSearch.where((a) => kept.contains(a.id)).toList();
+          }
+
+          // Sort comes from the same filter object (premium-only). Default
+          // for free users / unset state is date desc.
+          final sortField = canFilterAndSort
+              ? (filterState.filter.sortBy ?? GamebaseSortField.date)
+              : GamebaseSortField.date;
+          final sortDirection = canFilterAndSort
+              ? (filterState.filter.sortDirection ?? GamebaseSortDirection.desc)
+              : GamebaseSortDirection.desc;
           final filteredAnalyses = _sortAnalyses(
-            analyses.where((analysis) {
-              if (query.isEmpty) return true;
-              final md = analysis.chessGame.metadata;
-              final title = analysis.title.toLowerCase();
-              final white = (md['White'] ?? '').toString().toLowerCase();
-              final black = (md['Black'] ?? '').toString().toLowerCase();
-              final event = (md['Event'] ?? '').toString().toLowerCase();
-              return title.contains(query) ||
-                  white.contains(query) ||
-                  black.contains(query) ||
-                  event.contains(query);
-            }).toList(),
+            afterSearch,
+            field: sortField,
+            direction: sortDirection,
           );
 
           // Filter child folders if query is present
@@ -881,12 +893,16 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           }
           if (filteredAnalyses.isEmpty &&
               filteredFolders.isEmpty &&
-              query.isNotEmpty) {
+              (query.isNotEmpty || hasActiveFilters)) {
             return _buildEmptySearchState();
           }
 
-          // Total items = child nodes + Games + Loading Tail
-          final showLoadingTail = bookState.hasMore && query.isEmpty;
+          // Total items = child nodes + Games + Loading Tail.
+          // Suppress the tail while a search/filter is active so the user
+          // doesn't see an infinite spinner chasing the next server page
+          // when the currently visible matches don't fill the viewport.
+          final showLoadingTail =
+              bookState.hasMore && query.isEmpty && !hasActiveFilters;
           final itemCount =
               filteredFolders.length +
               filteredAnalyses.length +
@@ -999,7 +1015,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           ),
           SizedBox(height: 16.h),
           Text(
-            isFolder ? 'This folder is empty' : 'This database is empty',
+            isFolder ? 'This database is empty' : 'This folder is empty',
             style: AppTypography.textMdMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -1021,25 +1037,31 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildEmptySearchState() {
+    final hasActiveFilters =
+        ref.read(folderFilterProvider(_folderFilterKey)).filter.hasActiveFilters;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.search_off_rounded,
+            hasActiveFilters
+                ? Icons.filter_alt_off_outlined
+                : Icons.search_off_rounded,
             size: 64.sp,
             color: context.colors.textPrimary.withValues(alpha: 0.1),
           ),
           SizedBox(height: 16.h),
           Text(
-            'No matches found',
+            hasActiveFilters ? 'No matching games' : 'No matches found',
             style: AppTypography.textMdMedium.copyWith(
               color: context.colors.textPrimary,
             ),
           ),
           SizedBox(height: 8.h),
           Text(
-            'Try a different search term',
+            hasActiveFilters
+                ? 'Try adjusting your search or filters'
+                : 'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
               color: context.colors.textPrimary.withValues(alpha: 0.5),
             ),

@@ -278,7 +278,7 @@ class _LibrarySearchResultsViewState
       children: [
         // Folders Section
         if (widget.results.folders.isNotEmpty) ...[
-          _SectionHeader(title: 'Databases'),
+          _SectionHeader(title: 'Folders'),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),

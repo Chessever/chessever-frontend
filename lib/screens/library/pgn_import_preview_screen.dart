@@ -194,7 +194,7 @@ class _PgnImportPreviewScreenState
             alignment: Alignment.centerRight,
             child: IconButton(
               onPressed: _handleSave,
-              tooltip: 'Save to database',
+              tooltip: 'Save to folder',
               icon: Icon(
                 Icons.save_rounded,
                 color: context.colors.textPrimary,
