@@ -31,6 +31,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_tutorial_overlay.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
@@ -111,6 +112,12 @@ const Color kGameEndingRedColor = Color(0xCCF53236);
 /// notation↔explorer "Switch Views" tutorial (step 2/2) so the two
 /// teachings feel like a single orchestrated flow.
 final analysisSwitchViewsTutorialRequestProvider = StateProvider<int>((_) => 0);
+
+/// Counter bumped once the "Switch Views" walkthrough (step 2/3) is dismissed
+/// — or skipped — so the outer [_ChessBoardScreenNewState] runs the chained
+/// "Double-Tap to Like" teaching (step 3/3) right after, in order and without
+/// overlapping the previous card.
+final likeTutorialRequestProvider = StateProvider<int>((_) => 0);
 
 final boardSelectionClearRequestProvider = StateProvider.family<int, String>(
   (_, _) => 0,
@@ -778,6 +785,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late Animation<double> _swipeMoveAnimation;
   final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
 
+  // Step 3/3 ("Double-Tap to Like") — chained after the Switch Views step via
+  // [likeTutorialRequestProvider]. Hosted here (not in a nested panel) so the
+  // whole teaching flow is orchestrated from one place and shown back-to-back.
+  OverlayEntry? _likeTutorialEntry;
+  int _lastLikeTutorialRequest = 0;
+  bool _showLikeTutorial = false;
+
   static const String _kWalkthroughShownDateKey =
       'swipable_walkthrough_shown_date';
   static const String _kWalkthroughDontShowKey =
@@ -795,6 +809,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Note: We'll enable streaming in didChangeDependencies when ref is available
     WidgetsBinding.instance.addObserver(this);
     _setupSwipeAnimation();
+    _lastLikeTutorialRequest = ref.read(likeTutorialRequestProvider);
 
     // Store all games for score card context (used by player name tap → score card)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -943,12 +958,65 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   Future<void> _suppressWalkthrough() async {
     final prefs = ref.read(sharedPreferencesRepository);
-    // "Don't show again" on step 1 must also suppress step 2 so the user
-    // isn't immediately shown another tutorial they just opted out of.
+    // "Don't show again" on step 1 must also suppress steps 2 and 3 so the
+    // user isn't immediately shown more tutorials they just opted out of.
     await Future.wait([
       prefs.setBool(_kWalkthroughDontShowKey, true),
       prefs.setBool(kSwitchViewsWalkthroughDontShowKey, true),
+      prefs.setBool(kLikeWalkthroughDontShowKey, true),
     ]);
+  }
+
+  /// Step 3/3: shows the "Double-Tap to Like" teaching once the chained
+  /// request fires (after Switch Views dismisses or is skipped). Self-gates on
+  /// its own prefs so it isn't shown more than once per 7 days.
+  Future<void> _maybeStartLikeTutorial() async {
+    if (!mounted || _showLikeTutorial || _showTutorialOverlay) return;
+
+    final prefs = ref.read(sharedPreferencesRepository);
+    final dontShow = await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false;
+    if (dontShow || !mounted) return;
+
+    final lastShownMs = await prefs.getInt(kLikeWalkthroughShownDateKey);
+    if (lastShownMs != null) {
+      final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
+      if (DateTime.now().difference(lastShown).inDays < 7) return;
+    }
+    if (!mounted) return;
+
+    _showLikeTutorial = true;
+    _insertLikeTutorialOverlay();
+
+    await prefs.setInt(
+      kLikeWalkthroughShownDateKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  void _insertLikeTutorialOverlay() {
+    _likeTutorialEntry = OverlayEntry(
+      builder: (_) => LikeTutorialOverlay(
+        currentStep: 3,
+        totalSteps: 3,
+        onDismiss: _onLikeTutorialFinished,
+        onDontShowAgain: () async {
+          final prefs = ref.read(sharedPreferencesRepository);
+          await prefs.setBool(kLikeWalkthroughDontShowKey, true);
+          _onLikeTutorialFinished();
+        },
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(_likeTutorialEntry!);
+  }
+
+  void _removeLikeTutorialOverlay() {
+    _likeTutorialEntry?.remove();
+    _likeTutorialEntry = null;
+  }
+
+  void _onLikeTutorialFinished() {
+    _removeLikeTutorialOverlay();
+    _showLikeTutorial = false;
   }
 
   GamesTourModel _preferFresherGameSnapshot({
@@ -1582,6 +1650,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _boardKeepAliveSub?.close();
     _audioSub?.close();
     _pageSettleTimer?.cancel();
+    _removeLikeTutorialOverlay();
     _swipeController.dispose();
     _pageController.dispose();
     super.dispose();
@@ -1650,6 +1719,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   @override
   Widget build(BuildContext context) {
+    // Step 3/3 of the new-user teaching chain: when Switch Views (step 2)
+    // finishes or is skipped it bumps this counter; show the like teaching on
+    // the next frame so it appears right after the previous card, never atop
+    // it. The monotonic counter re-arms cleanly on a fresh screen open.
+    ref.listen<int>(likeTutorialRequestProvider, (_, next) {
+      if (next <= _lastLikeTutorialRequest) return;
+      _lastLikeTutorialRequest = next;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeStartLikeTutorial();
+      });
+    });
+
     final view = ref.watch(chessboardViewFromProviderNew);
     AsyncValue<GamesScreenModel> gamesAsync;
 
@@ -1924,7 +2005,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                             currentPageIndex: _currentPageIndex,
                             totalItems: syncedGames.length,
                             currentStep: 1,
-                            totalSteps: 2,
+                            totalSteps: 3,
                             onDismiss: () {
                               _onWalkthroughFinished();
                               _requestSwitchViewsTutorial();
@@ -8151,7 +8232,13 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
     final prefs = ref.read(sharedPreferencesRepository);
     final dontShow =
         await prefs.getBool(kSwitchViewsWalkthroughDontShowKey) ?? false;
-    if (dontShow || !mounted) return;
+    if (!mounted) return;
+    // Skipping this step must still hand off to step 3 so the like teaching
+    // isn't lost for users who already dismissed/saw Switch Views.
+    if (dontShow) {
+      _requestLikeTutorial();
+      return;
+    }
 
     // Respect the shared 7-day cadence — if the user already saw this
     // teaching in the standalone gamebase explorer recently, don't nag
@@ -8159,7 +8246,10 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
     final lastShownMs = await prefs.getInt(kSwitchViewsWalkthroughShownDateKey);
     if (lastShownMs != null) {
       final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
-      if (DateTime.now().difference(lastShown).inDays < 7) return;
+      if (DateTime.now().difference(lastShown).inDays < 7) {
+        _requestLikeTutorial();
+        return;
+      }
     }
     if (!mounted) return;
 
@@ -8200,8 +8290,14 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
             currentPageIndex: _currentPage,
             totalItems: _totalPages,
             currentStep: 2,
-            totalSteps: 2,
-            onDismiss: _onWalkthroughFinished,
+            totalSteps: 3,
+            // Normal dismiss → chain step 3 (Double-Tap to Like).
+            onDismiss: () {
+              _onWalkthroughFinished();
+              _requestLikeTutorial();
+            },
+            // "Don't show again" suppresses step 3 too (handled in
+            // _suppressWalkthrough), so do NOT chain it here.
             onDontShowAgain: () async {
               await _suppressWalkthrough();
               _onWalkthroughFinished();
@@ -8209,6 +8305,13 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
           ),
     );
     Overlay.of(context, rootOverlay: true).insert(_tutorialEntry!);
+  }
+
+  /// Bumps the shared counter so the outer screen runs the step 3/3 like
+  /// teaching right after this one — back-to-back, never overlapping.
+  void _requestLikeTutorial() {
+    if (!mounted) return;
+    ref.read(likeTutorialRequestProvider.notifier).update((v) => v + 1);
   }
 
   void _removeTutorialOverlay() {
@@ -8234,7 +8337,11 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
 
   Future<void> _suppressWalkthrough() async {
     final prefs = ref.read(sharedPreferencesRepository);
-    await prefs.setBool(kSwitchViewsWalkthroughDontShowKey, true);
+    // Opting out here also suppresses the chained step 3 like teaching.
+    await Future.wait([
+      prefs.setBool(kSwitchViewsWalkthroughDontShowKey, true),
+      prefs.setBool(kLikeWalkthroughDontShowKey, true),
+    ]);
   }
 
   @override
