@@ -88,8 +88,15 @@ const LinearGradient kAppLinearGradient = LinearGradient(
   transform: GradientRotation(75 * 3.1415927 / 180),
 );
 
+// Dim/scrim painted by [BackDropFilterWidget] behind dialogs. A black radial
+// vignette (lighter at the focused center, darker at the edges) carries the
+// "blacked out" dim now that the backdrop blur composites with the default
+// srcOver blend instead of luminosity. srcOver blurs+dims EVERYTHING uniformly
+// — including saturated country flags, which previously kept their full colour
+// because luminosity blending preserves the destination's chroma. Tune the two
+// alphas to make the background darker/lighter.
 RadialGradient radialOverlayGradient = RadialGradient(
-  colors: [kWhiteColor.withAlpha(20), kLightBlack.withAlpha(20)],
+  colors: [kBlackColor.withValues(alpha: 0.40), kBlackColor.withValues(alpha: 0.58)],
 );
 
 // Profile initials gradient
