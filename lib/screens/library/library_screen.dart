@@ -1,6 +1,7 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -42,6 +43,7 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
   bool _isSearchFocused = false;
 
@@ -67,7 +69,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _navigateToEmptyBoard() {
@@ -291,6 +303,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
+      previous,
+      next,
+    ) {
+      if (next.item == BottomNavBarItem.library) {
+        _scrollToTop();
+      }
+    });
+
     return ScreenWrapper(
       child: KeyedSubtree(
         key: e2eKey(E2eIds.libraryRoot),
@@ -422,6 +443,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           color: context.colors.textPrimary,
           backgroundColor: context.colors.surface,
           child: CustomScrollView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),

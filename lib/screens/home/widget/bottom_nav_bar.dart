@@ -11,6 +11,38 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum BottomNavBarItem { tournaments, calendar, library }
 
+/// Emitted whenever the user taps the already-selected bottom nav item.
+/// Screens that own a scrollable surface for [item] should listen and
+/// scroll their active list back to the top. [sequence] increments on
+/// every fresh request so repeated re-taps re-fire the listener even
+/// when [item] hasn't changed.
+class BottomNavBarReTapRequest {
+  const BottomNavBarReTapRequest({required this.item, required this.sequence});
+
+  final BottomNavBarItem item;
+  final int sequence;
+}
+
+class BottomNavBarReTapRequestNotifier
+    extends StateNotifier<BottomNavBarReTapRequest> {
+  BottomNavBarReTapRequestNotifier()
+    : super(
+        const BottomNavBarReTapRequest(
+          item: BottomNavBarItem.tournaments,
+          sequence: 0,
+        ),
+      );
+
+  void request(BottomNavBarItem item) {
+    state = BottomNavBarReTapRequest(item: item, sequence: state.sequence + 1);
+  }
+}
+
+final bottomNavBarReTapRequestProvider = StateNotifierProvider<
+  BottomNavBarReTapRequestNotifier,
+  BottomNavBarReTapRequest
+>((ref) => BottomNavBarReTapRequestNotifier());
+
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
   BottomNavBarItem.calendar: SvgAsset.calendarNavIcon,
@@ -69,7 +101,15 @@ class BottomNavBar extends ConsumerWidget {
             onTap: () {
               final previous = ref.read(selectedBottomNavBarItemProvider);
               final next = BottomNavBarItem.values[index];
-              if (previous == next) return;
+              if (previous == next) {
+                // Same tab re-tapped: signal screens to scroll their active
+                // list to top. Selected subtab + data are preserved; no
+                // pull-to-refresh, no reload.
+                ref
+                    .read(bottomNavBarReTapRequestProvider.notifier)
+                    .request(next);
+                return;
+              }
 
               ref.read(selectedBottomNavBarItemProvider.notifier).state = next;
 

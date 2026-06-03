@@ -8,6 +8,7 @@ import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
@@ -147,6 +148,34 @@ class GroupEventScreen extends HookConsumerWidget {
           ref.refresh(groupEventScreenProvider);
         }
       });
+    });
+
+    void scrollActiveEventsTabToTop() {
+      final ScrollController target;
+      if (selectedTourEvent == GroupEventCategory.forYou) {
+        target = forYouScrollController;
+      } else if (selectedTourEvent == GroupEventCategory.past) {
+        target = pastScrollController;
+      } else if (selectedTourEvent == GroupEventCategory.current) {
+        target = currentScrollController;
+      } else {
+        target = searchScrollController;
+      }
+      if (!target.hasClients) return;
+      target.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
+      previous,
+      next,
+    ) {
+      if (next.item == BottomNavBarItem.tournaments) {
+        scrollActiveEventsTabToTop();
+      }
     });
 
     void onScroll() {

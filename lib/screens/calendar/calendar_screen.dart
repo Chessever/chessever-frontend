@@ -6,6 +6,7 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event_rep
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -51,18 +52,38 @@ class CalendarScreen extends ConsumerStatefulWidget {
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final TextEditingController searchController = TextEditingController();
   final focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   Timer? _searchAnalyticsTimer;
 
   @override
   void dispose() {
     searchController.dispose();
     focusNode.dispose();
+    _scrollController.dispose();
     _searchAnalyticsTimer?.cancel();
     super.dispose();
   }
 
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
+      previous,
+      next,
+    ) {
+      if (next.item == BottomNavBarItem.calendar) {
+        _scrollToTop();
+      }
+    });
+
     final yearList = ref.read(availableYearsProvider);
     const timeControls = ['Standard', 'Rapid', 'Blitz'];
     final filterMode = ref.watch(calendarFilterModeProvider);
@@ -331,6 +352,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       displacement: 60.h,
                       strokeWidth: 3.w,
                       child: GridView.builder(
+                        controller: _scrollController,
                         padding: EdgeInsets.symmetric(horizontal: 16.sp),
                         physics: const AlwaysScrollableScrollPhysics(
                           parent: BouncingScrollPhysics(),
@@ -496,6 +518,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       child:
           sortedEvents.isEmpty
               ? ListView(
+                controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
@@ -517,6 +540,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               // Use grid layout for tablets, list for phones
               : isTablet && crossAxisCount > 1
               ? GridView.builder(
+                controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
@@ -541,6 +565,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 },
               )
               : ListView.builder(
+                controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),

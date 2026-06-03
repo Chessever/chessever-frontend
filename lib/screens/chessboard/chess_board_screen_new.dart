@@ -3048,13 +3048,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
     return ValueListenableBuilder<LikeFlightPhase>(
       valueListenable: anchor.phase,
-      builder: (context, _, __) {
-        // Idle (disk/save/saving) icon — exactly the original autosave UI,
-        // with a small heart badge in the corner if the game is liked.
-        Widget diskIcon;
+      builder: (context, phase, __) {
+        // Inner save-state icon: idle disk / saving spinner / saved check.
+        // Each variant carries a stable ValueKey so AnimatedSwitcher knows
+        // they're distinct children and crossfades+scales between them
+        // instead of hard-swapping. Removes the flicker that used to make
+        // save → saved → idle feel like three separate icons.
+        final Widget innerIcon;
         switch (autoSaveStatus) {
           case AutoSaveStatus.saving:
-            diskIcon = SizedBox(
+            innerIcon = SizedBox(
+              key: const ValueKey('save-spinner'),
               width: 20.sp,
               height: 20.sp,
               child: CircularProgressIndicator(
@@ -3066,51 +3070,93 @@ class _AppBarState extends ConsumerState<_AppBar> {
             );
             break;
           case AutoSaveStatus.saved:
-            diskIcon = Icon(
-                  Icons.check_circle_outline_rounded,
-                  color: kPrimaryColor,
-                  size: 20.sp,
-                )
-                .animate()
-                .scale(
-                  begin: const Offset(0.6, 0.6),
-                  end: const Offset(1.0, 1.0),
-                  duration: 300.ms,
-                  curve: Curves.easeOutBack,
-                )
-                .fadeIn(duration: 200.ms);
+            innerIcon = Icon(
+              Icons.check_circle_outline_rounded,
+              key: const ValueKey('save-check'),
+              color: kPrimaryColor,
+              size: 20.sp,
+            );
             break;
           case AutoSaveStatus.idle:
-            diskIcon = Icon(
+            innerIcon = Icon(
               Icons.save_outlined,
+              key: const ValueKey('save-disk'),
               color: context.colors.textPrimary,
               size: 20.sp,
             );
             break;
         }
-        if (isLiked) {
-          diskIcon = Stack(
-            clipBehavior: Clip.none,
-            children: [
-              diskIcon,
-              Positioned(
-                right: -4.sp,
-                bottom: -4.sp,
-                child: Icon(
-                  Icons.favorite_rounded,
-                  size: 11.sp,
-                  color: context.colors.danger,
-                ),
-              ),
-            ],
-          );
-        }
 
-        // Header action stays the save icon at all times — a double-tap like
-        // is represented only by the small red badge above. The flight phase
-        // still uses the keyed slot as its target.
+        final animatedInner = AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          switchInCurve: Curves.easeOutBack,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.7, end: 1.0).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: innerIcon,
+        );
+
+        // Heart badge fades + scales in/out smoothly when isLiked toggles.
+        // The outer scale uses Curves.easeOutBack so the badge sticks the
+        // landing with a tiny overshoot — same physics feel the flying
+        // heart had, no hard pop at the end of the flight.
+        final heartBadge = AnimatedScale(
+          scale: isLiked ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutBack,
+          child: AnimatedOpacity(
+            opacity: isLiked ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            child: Icon(
+              Icons.favorite_rounded,
+              size: 11.sp,
+              color: context.colors.danger,
+            ),
+          ),
+        );
+
+        final stack = Stack(
+          clipBehavior: Clip.none,
+          children: [
+            animatedInner,
+            Positioned(
+              right: -4.sp,
+              bottom: -4.sp,
+              child: heartBadge,
+            ),
+          ],
+        );
+
+        // When the heart just landed, give the whole slot a one-shot pulse
+        // so the badge's arrival reads as a continuation of the flight
+        // instead of a sudden appearance. The const ValueKey keeps the
+        // Animate state alive across rebuilds inside the same `landed`
+        // window so the pulse runs once, not on every rebuild.
+        final landed = phase == LikeFlightPhase.landed;
+        final pulsing = landed
+            ? stack
+                .animate(key: const ValueKey('save-button-landed-pulse'))
+                .scaleXY(
+                  begin: 1.28,
+                  end: 1.0,
+                  duration: 360.ms,
+                  curve: Curves.easeOutBack,
+                )
+            : stack;
+
+        // Header action stays the save icon at all times — a double-tap
+        // like is represented only by the small red badge above. The
+        // flight phase still uses the keyed slot as its target.
         return IconButton(
-          icon: KeyedSubtree(key: anchor.saveButtonKey, child: diskIcon),
+          icon: KeyedSubtree(key: anchor.saveButtonKey, child: pulsing),
           tooltip: 'Save analysis',
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         );
