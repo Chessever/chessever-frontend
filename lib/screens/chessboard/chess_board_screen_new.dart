@@ -3130,13 +3130,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
             duration:
                 justLanded ? Duration.zero : const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
-            child: KeyedSubtree(
-              key: anchor.heartBadgeKey,
-              child: Icon(
-                Icons.favorite_rounded,
-                size: 11.sp,
-                color: context.colors.danger,
-              ),
+            child: Icon(
+              Icons.favorite_rounded,
+              size: 11.sp,
+              color: context.colors.danger,
             ),
           ),
         );
@@ -3148,7 +3145,16 @@ class _AppBarState extends ConsumerState<_AppBar> {
             Positioned(
               right: -4.sp,
               bottom: -4.sp,
-              child: heartBadge,
+              // Key sits ABOVE the AnimatedScale on purpose: the badge is
+              // scaled to 0 while hidden during flight, and a key INSIDE the
+              // scale would have `localToGlobal` collapse to the transform
+              // origin (scale-0 maps every child point to center), giving the
+              // flight a wrong dock target. Measuring the un-transformed box
+              // here yields the badge's true rect even while it's invisible.
+              child: KeyedSubtree(
+                key: anchor.heartBadgeKey,
+                child: heartBadge,
+              ),
             ),
           ],
         );
