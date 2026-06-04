@@ -308,6 +308,8 @@ class MainActivity : FlutterActivity() {
 
   private fun mergeLiveRow(row: JSONObject) {
     val payload = pipPayload ?: return
+    // Frozen on an earlier move: keep the viewed position, ignore newer live data.
+    if (payload["followLive"] == false) return
 
     if (row.has("fen") && !row.isNull("fen")) {
       row.optString("fen").takeIf { it.isNotBlank() }?.let { payload["fen"] = it }
@@ -349,7 +351,7 @@ class MainActivity : FlutterActivity() {
     return if (hours > 0) {
       "%d:%02d:%02d".format(hours, minutes, secs)
     } else {
-      "%d:%02d".format(minutes, secs)
+      "%02d:%02d".format(minutes, secs)
     }
   }
 }
@@ -458,7 +460,8 @@ private class ChessPipOverlayView(context: Context) : View(context) {
       x = boardLeft,
       y = boardTop,
       size = actualBoardSize,
-      boardThemeIndex = (data["boardThemeIndex"] as? Number)?.toInt() ?: 0,
+      boardThemeIndex = (data["boardThemeIndex"] as? Number)?.toInt() ?: 9,
+      pieceStyleIndex = (data["pieceStyleIndex"] as? Number)?.toInt() ?: 0,
     )
     drawPlayerRow(
       canvas,
@@ -558,7 +561,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
   private fun displayClock(data: Map<String, Any?>, isWhite: Boolean): String {
     val prefix = if (isWhite) "white" else "black"
     val fallback = data["${prefix}Clock"] as? String ?: ""
-    if (!isOngoing(data) || isWhiteToMove(data) != isWhite) return fallback
+    if (!isOngoing(data) || data["followLive"] == false || isWhiteToMove(data) != isWhite) return fallback
 
     val baseSeconds = intValue(data["${prefix}ClockSeconds"]) ?: return fallback
     val lastMoveMillis = instantMillis(data["lastMoveTime"] as? String) ?: return fallback
@@ -626,7 +629,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     return if (hours > 0) {
       "%d:%02d:%02d".format(hours, minutes, secs)
     } else {
-      "%d:%02d".format(minutes, secs)
+      "%02d:%02d".format(minutes, secs)
     }
   }
 
@@ -638,7 +641,8 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     x: Float,
     y: Float,
     size: Float,
-    boardThemeIndex: Int
+    boardThemeIndex: Int,
+    pieceStyleIndex: Int
   ) {
     val board = parseFenBoard(fen)
     val square = size / 8f
@@ -687,7 +691,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
         if (piece != '\u0000') {
           val inset = square * 0.07f
           val rect = RectF(left + inset, top + inset, left + square - inset, top + square - inset)
-          drawPiece(canvas, piece, rect, if (isLoserKingSquare) -45f else 0f)
+          drawPiece(canvas, piece, rect, if (isLoserKingSquare) -45f else 0f, pieceStyleIndex)
         }
         if (isDrawKingSquare) {
           drawDrawIcon(canvas, RectF(left, top, left + square, top + square))
@@ -708,12 +712,12 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     }
   }
 
-  private fun drawPiece(canvas: Canvas, piece: Char, rect: RectF, rotationDegrees: Float) {
+  private fun drawPiece(canvas: Canvas, piece: Char, rect: RectF, rotationDegrees: Float, pieceStyleIndex: Int) {
     canvas.save()
     if (rotationDegrees != 0f) {
       canvas.rotate(rotationDegrees, rect.centerX(), rect.centerY())
     }
-    val bitmap = loadPieceBitmap(piece)
+    val bitmap = loadPieceBitmap(piece, pieceStyleIndex)
     if (bitmap != null) {
       canvas.drawBitmap(bitmap, null, rect, null)
     } else {
@@ -843,26 +847,86 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     return BoardSquare(file, 8 - rankValue)
   }
 
-  private fun loadPieceBitmap(piece: Char): Bitmap? {
+  // Piece set folder names matching chessground PieceSet.values order (index 0..38),
+  // so pieceStyleIndex selects the same set the in-app board renders.
+  private val pieceSetNames = listOf(
+    "cburnett", "merida", "pirouetti", "chessnut", "chess7", "alpha", "reillycraig",
+    "companion", "riohacha", "kosal", "leipzig", "fantasy", "spatial", "celtic",
+    "california", "caliente", "pixel", "firi", "rhosgfx", "maestro", "fresca",
+    "cardinal", "gioco", "tatiana", "staunty", "governor", "dubrovny", "icpieces",
+    "mpchess", "monarchy", "cooke", "shapes", "kiwen-suwi", "horsey", "anarcandy",
+    "xkcd", "letter", "disguised", "symmetric",
+  )
+
+  private fun pieceSetName(index: Int): String = pieceSetNames.getOrElse(index) { "cburnett" }
+
+  private fun pieceAssetCode(piece: Char): String? {
+    val type = when (piece.uppercaseChar()) {
+      'K', 'Q', 'R', 'B', 'N', 'P' -> piece.uppercaseChar()
+      else -> return null
+    }
+    val color = if (piece.isUpperCase()) "w" else "b"
+    return "$color$type"
+  }
+
+  private fun loadPieceBitmap(piece: Char, pieceStyleIndex: Int): Bitmap? {
+    val code = pieceAssetCode(piece) ?: return null
+    val set = pieceSetName(pieceStyleIndex)
+    val cacheKey = "$set/$code"
+    return pieceCache.getOrPut(cacheKey) {
+      loadPieceFromAssets(set, code) ?: loadPieceFromDrawable(piece)
+    }
+  }
+
+  private fun loadPieceFromAssets(set: String, code: String): Bitmap? {
+    val path = "flutter_assets/packages/chessground/assets/piece_sets/$set/$code.png"
+    return try {
+      context.assets.open(path).use { BitmapFactory.decodeStream(it) }
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun loadPieceFromDrawable(piece: Char): Bitmap? {
     val resName = when (piece) {
       'K' -> "piece_wk"; 'Q' -> "piece_wq"; 'R' -> "piece_wr"; 'B' -> "piece_wb"; 'N' -> "piece_wn"; 'P' -> "piece_wp"
       'k' -> "piece_bk"; 'q' -> "piece_bq"; 'r' -> "piece_br"; 'b' -> "piece_bb"; 'n' -> "piece_bn"; 'p' -> "piece_bp"
       else -> return null
     }
-    return pieceCache.getOrPut(resName) {
-      val resId = context.resources.getIdentifier(resName, "drawable", context.packageName)
-      if (resId == 0) null else BitmapFactory.decodeResource(context.resources, resId)
-    }
+    val resId = context.resources.getIdentifier(resName, "drawable", context.packageName)
+    return if (resId == 0) null else BitmapFactory.decodeResource(context.resources, resId)
   }
 
+  // Solid light/dark square colors for each chessground board theme, matching
+  // kBoardThemes order in lib/utils/board_customization_utils.dart (index 0..24).
+  // Default index 9 (Grey) mirrors BoardSettingsModel.defaultSettings.
   private fun boardThemeColors(index: Int): Pair<Int, Int> = when (index) {
-    1 -> Pair(Color.rgb(240, 217, 181), Color.rgb(181, 136, 99))
-    2 -> Pair(Color.rgb(238, 238, 210), Color.rgb(118, 150, 86))
-    3 -> Pair(Color.rgb(210, 210, 210), Color.rgb(150, 150, 150))
-    4 -> Pair(Color.rgb(238, 214, 175), Color.rgb(198, 124, 78))
-    5 -> Pair(Color.rgb(220, 204, 230), Color.rgb(136, 110, 170))
-    6 -> Pair(Color.rgb(210, 222, 238), Color.rgb(112, 142, 180))
-    else -> Pair(Color.rgb(210, 210, 210), Color.rgb(150, 150, 150))
+    0 -> Pair(0xFFF0D9B6.toInt(), 0xFFB58863.toInt())
+    1 -> Pair(0xFFDEE3E6.toInt(), 0xFF8CA2AD.toInt())
+    2 -> Pair(0xFFFFFFDD.toInt(), 0xFF86A666.toInt())
+    3 -> Pair(0xFFECECEC.toInt(), 0xFFC1C18E.toInt())
+    4 -> Pair(0xFF97B2C7.toInt(), 0xFF546F82.toInt())
+    5 -> Pair(0xFFD9E0E6.toInt(), 0xFF315991.toInt())
+    6 -> Pair(0xFFEAE6DD.toInt(), 0xFF7C7F87.toInt())
+    7 -> Pair(0xFFD7DAEB.toInt(), 0xFF547388.toInt())
+    8 -> Pair(0xFFF2F9BB.toInt(), 0xFF59935D.toInt())
+    9 -> Pair(0xFFB8B8B8.toInt(), 0xFF7D7D7D.toInt())
+    10 -> Pair(0xFFF0D9B5.toInt(), 0xFF946F51.toInt())
+    11 -> Pair(0xFFD1D1C9.toInt(), 0xFFC28E16.toInt())
+    12 -> Pair(0xFFE8CEAB.toInt(), 0xFFBC7944.toInt())
+    13 -> Pair(0xFFE2C89F.toInt(), 0xFF996633.toInt())
+    14 -> Pair(0xFF93AB91.toInt(), 0xFF4F644E.toInt())
+    15 -> Pair(0xFFC9C9C9.toInt(), 0xFF727272.toInt())
+    16 -> Pair(0xFFFFFFFF.toInt(), 0xFF8D8D8D.toInt())
+    17 -> Pair(0xFFB8B19F.toInt(), 0xFF6D6655.toInt())
+    18 -> Pair(0xFFE8E9B7.toInt(), 0xFFED7272.toInt())
+    19 -> Pair(0xFF9F90B0.toInt(), 0xFF7D4A8D.toInt())
+    20 -> Pair(0xFFE5DAF0.toInt(), 0xFF957AB0.toInt())
+    21 -> Pair(0xFFD8A45B.toInt(), 0xFF9B4D0F.toInt())
+    22 -> Pair(0xFFA38B5D.toInt(), 0xFF6C5017.toInt())
+    23 -> Pair(0xFFD0CECA.toInt(), 0xFF755839.toInt())
+    24 -> Pair(0xFFCAAF7D.toInt(), 0xFF7B5330.toInt())
+    else -> Pair(0xFFB8B8B8.toInt(), 0xFF7D7D7D.toInt())
   }
 
   private fun evalToRatio(evalCp: Double?, mate: Int?): Float {

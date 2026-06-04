@@ -15,6 +15,10 @@ final class ChessPipController: NSObject {
   private var renderTimer: DispatchSourceTimer?
   private var pollTimer: DispatchSourceTimer?
   private let pollQueue = DispatchQueue(label: "com.chessever.pip.poll")
+  // Foreground keeps the layer "playing" with a cached frame; we only redraw the
+  // 720x720 board when content changed or PiP is actually visible (ticking clock).
+  private var cachedImage: CGImage?
+  private var renderDirty = true
 
   private override init() {
     super.init()
@@ -42,8 +46,13 @@ final class ChessPipController: NSObject {
           return
         }
         self.payload = args
+        self.renderDirty = true
         self.prepareIfNeeded()
         self.enqueueFrame()
+        // Keep the sample-buffer layer actively streaming while foreground so
+        // iOS can auto-start PiP on background, and so isPictureInPicturePossible
+        // is already true for the manual enterIfEligible fallback.
+        self.startRenderLoop()
         if self.pipController?.isPictureInPictureActive == true {
           self.startNativePollingIfPossible()
         }
@@ -60,6 +69,10 @@ final class ChessPipController: NSObject {
         self.mergePayload(args)
         self.prepareIfNeeded()
         self.enqueueFrame()
+        // Keep the sample-buffer layer actively streaming while foreground so
+        // iOS can auto-start PiP on background, and so isPictureInPicturePossible
+        // is already true for the manual enterIfEligible fallback.
+        self.startRenderLoop()
         if self.pipController?.isPictureInPictureActive == true {
           self.startNativePollingIfPossible()
         }
@@ -152,12 +165,19 @@ final class ChessPipController: NSObject {
     configureAudioSession()
     prepareIfNeeded()
     enqueueFrame()
-    guard let pipController else { return false }
-    if pipController.isPictureInPictureActive { return true }
-    guard pipController.isPictureInPicturePossible else { return false }
     startRenderLoop()
+    guard let pipController else {
+      print("[PiP] enterIfEligible: controller nil (PiP unsupported or pre-iOS15)")
+      return false
+    }
+    if pipController.isPictureInPictureActive { return true }
+    guard pipController.isPictureInPicturePossible else {
+      print("[PiP] enterIfEligible: isPictureInPicturePossible=false — layer not yet streaming or audio session not .playback (category=\(AVAudioSession.sharedInstance().category.rawValue))")
+      return false
+    }
     startNativePollingIfPossible()
     pipController.startPictureInPicture()
+    print("[PiP] enterIfEligible: startPictureInPicture() invoked")
     return true
   }
 
@@ -168,6 +188,9 @@ final class ChessPipController: NSObject {
     if pipController?.isPictureInPictureActive == true {
       pipController?.stopPictureInPicture()
     }
+    // Hand the audio session back to the SFX layer (ambient respects the silent
+    // switch and mixes with other audio) now that no game is PiP-eligible.
+    restoreAmbientAudioSession()
   }
 
   private func configureAudioSession() {
@@ -180,6 +203,28 @@ final class ChessPipController: NSObject {
     }
   }
 
+  // Re-assert .playback if something (e.g. flutter_soloud lazily initializing on
+  // the first move sound) reset the category to .ambient. PiP requires .playback
+  // to be the active category at the moment the app backgrounds.
+  private func ensurePlaybackAudioSession() {
+    let session = AVAudioSession.sharedInstance()
+    guard session.category != .playback else { return }
+    do {
+      try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
+      try session.setActive(true)
+    } catch {
+      print("[PiP] Failed to re-assert playback audio session: \(error)")
+    }
+  }
+
+  private func restoreAmbientAudioSession() {
+    do {
+      try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+    } catch {
+      print("[PiP] Failed to restore ambient audio session: \(error)")
+    }
+  }
+
   private func enqueueFrame() {
     guard let displayLayer, let payload else { return }
     if !Thread.isMainThread {
@@ -189,8 +234,19 @@ final class ChessPipController: NSObject {
     if displayLayer.status == .failed {
       displayLayer.flush()
     }
-    guard let image = ChessPipRenderer.render(payload: payload, size: CGSize(width: 720, height: 720)) else {
-      return
+    let isActive = pipController?.isPictureInPictureActive == true
+    let image: CGImage
+    if !renderDirty, !isActive, let cached = cachedImage {
+      // Foreground & invisible: re-enqueue the cached frame just to keep the
+      // layer actively playing (cheap), skipping the Core Graphics redraw.
+      image = cached
+    } else {
+      guard let rendered = ChessPipRenderer.render(payload: payload, size: CGSize(width: 720, height: 720)) else {
+        return
+      }
+      image = rendered
+      cachedImage = rendered
+      renderDirty = false
     }
     guard let sampleBuffer = makeSampleBuffer(image: image) else { return }
     displayLayer.enqueue(sampleBuffer)
@@ -285,6 +341,7 @@ final class ChessPipController: NSObject {
       merged[key] = value
     }
     payload = merged
+    renderDirty = true
   }
 
   private func startRenderLoop() {
@@ -292,8 +349,10 @@ final class ChessPipController: NSObject {
     let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
     timer.schedule(deadline: .now(), repeating: 1.0)
     timer.setEventHandler { [weak self] in
-      guard self?.payload != nil else { return }
-      self?.enqueueFrame()
+      guard let self, self.payload != nil else { return }
+      // Hold .playback against any SoLoud/ambient stomp while a game is armed.
+      self.ensurePlaybackAudioSession()
+      self.enqueueFrame()
     }
     timer.resume()
     renderTimer = timer
@@ -383,6 +442,8 @@ final class ChessPipController: NSObject {
 
   private func mergeLiveRow(_ row: [String: Any]) {
     guard var payload else { return }
+    // Frozen on an earlier move: keep the viewed position, ignore newer live data.
+    if (payload["followLive"] as? Bool) == false { return }
 
     if let fen = row["fen"] as? String, !fen.isEmpty {
       payload["fen"] = fen
@@ -407,6 +468,7 @@ final class ChessPipController: NSObject {
     }
 
     self.payload = payload
+    renderDirty = true
     enqueueFrame()
   }
 
@@ -418,7 +480,7 @@ final class ChessPipController: NSObject {
     if hours > 0 {
       return String(format: "%d:%02d:%02d", hours, minutes, secs)
     }
-    return String(format: "%d:%02d", minutes, secs)
+    return String(format: "%02d:%02d", minutes, secs)
   }
 }
 
@@ -601,6 +663,7 @@ private enum ChessPipRenderer {
     let fallback = payload["\(prefix)Clock"] as? String ?? ""
     guard
       isOngoing(payload: payload),
+      (payload["followLive"] as? Bool) != false,
       isWhiteToMove(payload: payload) == isWhite,
       let baseSeconds = intValue(payload["\(prefix)ClockSeconds"]),
       let lastMoveTime = dateValue(payload["lastMoveTime"] as? String)
@@ -644,13 +707,57 @@ private enum ChessPipRenderer {
     if hours > 0 {
       return String(format: "%d:%02d:%02d", hours, minutes, secs)
     }
-    return String(format: "%d:%02d", minutes, secs)
+    return String(format: "%02d:%02d", minutes, secs)
+  }
+
+  private static func rgbColor(_ hex: Int) -> UIColor {
+    UIColor(
+      red: CGFloat((hex >> 16) & 0xff) / 255.0,
+      green: CGFloat((hex >> 8) & 0xff) / 255.0,
+      blue: CGFloat(hex & 0xff) / 255.0,
+      alpha: 1
+    )
+  }
+
+  // Solid light/dark square colors for each chessground board theme, matching
+  // kBoardThemes order in lib/utils/board_customization_utils.dart (index 0..24).
+  // Default index 9 (Grey) mirrors BoardSettingsModel.defaultSettings.
+  private static func boardSquareColors(_ index: Int) -> (light: UIColor, dark: UIColor) {
+    switch index {
+    case 0: return (rgbColor(0xf0d9b6), rgbColor(0xb58863))
+    case 1: return (rgbColor(0xdee3e6), rgbColor(0x8ca2ad))
+    case 2: return (rgbColor(0xffffdd), rgbColor(0x86a666))
+    case 3: return (rgbColor(0xececec), rgbColor(0xc1c18e))
+    case 4: return (rgbColor(0x97b2c7), rgbColor(0x546f82))
+    case 5: return (rgbColor(0xd9e0e6), rgbColor(0x315991))
+    case 6: return (rgbColor(0xeae6dd), rgbColor(0x7c7f87))
+    case 7: return (rgbColor(0xd7daeb), rgbColor(0x547388))
+    case 8: return (rgbColor(0xf2f9bb), rgbColor(0x59935d))
+    case 9: return (rgbColor(0xb8b8b8), rgbColor(0x7d7d7d))
+    case 10: return (rgbColor(0xf0d9b5), rgbColor(0x946f51))
+    case 11: return (rgbColor(0xd1d1c9), rgbColor(0xc28e16))
+    case 12: return (rgbColor(0xe8ceab), rgbColor(0xbc7944))
+    case 13: return (rgbColor(0xe2c89f), rgbColor(0x996633))
+    case 14: return (rgbColor(0x93ab91), rgbColor(0x4f644e))
+    case 15: return (rgbColor(0xc9c9c9), rgbColor(0x727272))
+    case 16: return (rgbColor(0xffffff), rgbColor(0x8d8d8d))
+    case 17: return (rgbColor(0xb8b19f), rgbColor(0x6d6655))
+    case 18: return (rgbColor(0xe8e9b7), rgbColor(0xed7272))
+    case 19: return (rgbColor(0x9f90b0), rgbColor(0x7d4a8d))
+    case 20: return (rgbColor(0xe5daf0), rgbColor(0x957ab0))
+    case 21: return (rgbColor(0xd8a45b), rgbColor(0x9b4d0f))
+    case 22: return (rgbColor(0xa38b5d), rgbColor(0x6c5017))
+    case 23: return (rgbColor(0xd0ceca), rgbColor(0x755839))
+    case 24: return (rgbColor(0xcaaf7d), rgbColor(0x7b5330))
+    default: return (rgbColor(0xb8b8b8), rgbColor(0x7d7d7d))
+    }
   }
 
   private static func drawBoard(payload: [String: Any], rect: CGRect) {
     let fen = payload["fen"] as? String ?? ""
     let board = parseFen(fen)
     let square = rect.width / 8
+    let themeColors = boardSquareColors(intValue(payload["boardThemeIndex"]) ?? 9)
     let lastMove = payload["lastMoveUci"] as? String
     let highlights = parseUci(lastMove)
     let loserKing = loserKingPiece(payload: payload)
@@ -667,10 +774,7 @@ private enum ChessPipRenderer {
           width: square,
           height: square
         )
-        ((rank + file).isMultiple(of: 2)
-          ? UIColor(red: 0.82, green: 0.82, blue: 0.82, alpha: 1)
-          : UIColor(red: 0.58, green: 0.58, blue: 0.58, alpha: 1)
-        ).setFill()
+        ((rank + file).isMultiple(of: 2) ? themeColors.light : themeColors.dark).setFill()
         UIRectFill(squareRect)
         let from = highlights.first
         let to = highlights.dropFirst().first

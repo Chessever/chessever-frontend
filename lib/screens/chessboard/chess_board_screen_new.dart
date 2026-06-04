@@ -1484,6 +1484,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         '';
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final evaluation = state?.evaluation;
+    // Whether the viewed position is the live mainline head. When the user has
+    // navigated back to an earlier move (or into an analysis side-variation),
+    // freeze PiP on that position instead of following new live moves. No state
+    // (game snapshot) means we are showing the latest.
+    final followLive =
+        analysisState != null
+            ? (!analysisState.isInAnalysisVariation && analysisState.isAtEnd)
+            : (state?.isAtEnd ?? true);
     final eventName =
         game.tourSlug != null && game.tourSlug!.isNotEmpty
             ? StringUtils.slugToTitle(game.tourSlug!)
@@ -1495,6 +1503,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     return <String, dynamic>{
       'eligible': true,
+      'followLive': followLive,
       'gameId': game.gameId,
       'fen': fen,
       'lastMoveUci': lastMoveUci,
@@ -1534,7 +1543,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       ),
       if (eventName != null) 'eventName': eventName,
       if (roundName != null) 'roundName': roundName,
-      'boardThemeIndex': boardSettings?.boardThemeIndex ?? 0,
+      'boardThemeIndex': boardSettings?.boardThemeIndex ?? 9,
       'pieceStyleIndex': boardSettings?.pieceStyleIndex ?? 0,
     };
   }
@@ -1550,7 +1559,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (hours > 0) {
       return '$hours:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
     }
-    return '$minutes:${secs.toString().padLeft(2, '0')}';
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
   Future<void> _handlePageChange(int newIndex) async {
