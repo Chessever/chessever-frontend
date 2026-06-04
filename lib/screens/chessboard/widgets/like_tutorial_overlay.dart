@@ -239,7 +239,10 @@ class _LikeTutorialOverlayState extends State<LikeTutorialOverlay>
                           ],
                         ),
                       ),
-                      const Spacer(),
+                      // Hand demo sits directly under the teaching dialog so it
+                      // hovers over the board area where double-tap actually
+                      // works, instead of floating at the bottom of the screen.
+                      SizedBox(height: 32.h),
                       SizedBox(
                         height: 120.h,
                         width: double.infinity,
@@ -252,7 +255,7 @@ class _LikeTutorialOverlayState extends State<LikeTutorialOverlay>
                           },
                         ),
                       ),
-                      SizedBox(height: 24.h),
+                      const Spacer(),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
