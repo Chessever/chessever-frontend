@@ -7,6 +7,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/screens/my_likes/widgets/roulette_tag_picker.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -675,19 +676,23 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
                 SizedBox(height: 24.h),
 
-                // Tags (official, personal-library) — always visible so the
-                // user can set/change them right in the save/edit flow.
-                _buildTagsSection()
-                    .animate()
-                    .fadeIn(duration: 300.ms, delay: 125.ms)
-                    .slideY(
-                      begin: 0.1,
-                      end: 0,
-                      duration: 350.ms,
-                      curve: Curves.easeOutCubic,
-                    ),
-
-                SizedBox(height: 24.h),
+                // Tags are a My-Likes-only concept: only liked games can be
+                // tagged, and the picker is the same roulette shown right after
+                // a like.
+                if (ref.watch(
+                  isGameLikedProvider(widget.config.state.game.likeId),
+                )) ...[
+                  _buildTagsSection()
+                      .animate()
+                      .fadeIn(duration: 300.ms, delay: 125.ms)
+                      .slideY(
+                        begin: 0.1,
+                        end: 0,
+                        duration: 350.ms,
+                        curve: Curves.easeOutCubic,
+                      ),
+                  SizedBox(height: 24.h),
+                ],
 
                 // Folder section
                 _buildFolderSection(foldersAsync)
@@ -1256,8 +1261,23 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     );
   }
 
+  Future<void> _openRouletteForTag() async {
+    if (_isSaving) return;
+    HapticFeedback.selectionClick();
+    final initial = _selectedTags.isNotEmpty ? _selectedTags.first : null;
+    final tag = await showRouletteTagPicker(context, initialTag: initial);
+    // Skip / dismiss (null) cancels in the edit context — keep the current tag.
+    // Use the explicit "Remove tag" control to clear.
+    if (!mounted || tag == null) return;
+    setState(() {
+      _userTouchedTags = true;
+      _selectedTags = <String>{tag};
+    });
+  }
+
   Widget _buildTagsSection() {
-    final count = _selectedTags.length;
+    final hasTag = _selectedTags.isNotEmpty;
+    final label = hasTag ? _selectedTags.first : null;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24.w),
       child: Column(
@@ -1272,92 +1292,97 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               ),
               SizedBox(width: 8.w),
               Text(
-                'Tags',
+                'Tag',
                 style: AppTypography.textSmMedium.copyWith(
                   color: context.colors.textPrimary.withValues(alpha: 0.8),
                   letterSpacing: 0.3,
                 ),
               ),
               const Spacer(),
-              if (count > 0)
-                Text(
-                  '$count selected',
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: kPrimaryColor,
+              if (hasTag)
+                GestureDetector(
+                  onTap:
+                      _isSaving
+                          ? null
+                          : () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              _userTouchedTags = true;
+                              _selectedTags = <String>{};
+                            });
+                          },
+                  child: Text(
+                    'Remove',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kRedColor.withValues(alpha: 0.9),
+                    ),
                   ),
                 ),
             ],
           ),
           SizedBox(height: 12.h),
-          Wrap(
-            spacing: 8.w,
-            runSpacing: 8.h,
-            children: [
-              for (final tag in kOfficialGameTags)
-                _tagChip(tag, _selectedTags.contains(tag.label)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tagChip(GameTag tag, bool selected) {
-    return GestureDetector(
-      onTap:
-          _isSaving
-              ? null
-              : () {
-                setState(() {
-                  _userTouchedTags = true;
-                  if (selected) {
-                    _selectedTags.remove(tag.label);
-                  } else {
-                    _selectedTags.add(tag.label);
-                  }
-                });
-                HapticFeedback.selectionClick();
-              },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          color:
-              selected
-                  ? kPrimaryColor.withValues(alpha: 0.15)
-                  : context.colors.textPrimary.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(20.br),
-          border: Border.all(
-            color:
-                selected
-                    ? kPrimaryColor.withValues(alpha: 0.45)
-                    : context.colors.textPrimary.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              selected ? Icons.check_rounded : tag.icon,
-              size: 14.sp,
-              color:
-                  selected
-                      ? kPrimaryColor
-                      : context.colors.textPrimary.withValues(alpha: 0.55),
-            ),
-            SizedBox(width: 6.w),
-            Text(
-              tag.label,
-              style: AppTypography.textXsMedium.copyWith(
+          GestureDetector(
+            onTap: _isSaving ? null : _openRouletteForTag,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+              decoration: BoxDecoration(
                 color:
-                    selected
-                        ? kPrimaryColor
-                        : context.colors.textPrimary.withValues(alpha: 0.7),
+                    hasTag
+                        ? kPrimaryColor.withValues(alpha: 0.12)
+                        : context.colors.textPrimary.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(14.br),
+                border: Border.all(
+                  color:
+                      hasTag
+                          ? kPrimaryColor.withValues(alpha: 0.4)
+                          : context.colors.textPrimary.withValues(alpha: 0.1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(7.sp),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(9.br),
+                    ),
+                    child: Icon(
+                      hasTag ? iconForGameTag(label!) : Icons.casino_rounded,
+                      size: 16.sp,
+                      color: kPrimaryColor,
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      hasTag ? label! : 'Spin to tag this game',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color:
+                            hasTag
+                                ? context.colors.textPrimary
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.6,
+                                ),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    hasTag ? 'Change' : 'Spin',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kPrimaryColor,
+                    ),
+                  ),
+                  SizedBox(width: 4.w),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18.sp,
+                    color: kPrimaryColor,
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

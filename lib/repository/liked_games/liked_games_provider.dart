@@ -214,6 +214,27 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
     return chessGame.copyWith(metadata: meta);
   }
 
+  /// Sets the official tags on the already-liked game identified by [likeId].
+  /// The roulette assigns a single tag (or none), but tags are stored as a list
+  /// for parity with the My Likes tag-filter UI. Optimistic; reloads on failure.
+  /// No-op if the liked row isn't present/persisted yet.
+  Future<void> setTagsForLikeId(String likeId, List<String> tags) async {
+    final list = List<SavedAnalysis>.from(state.valueOrNull ?? const []);
+    final idx = list.indexWhere(
+      (a) => a.sourceGameId == likeId && a.id.isNotEmpty,
+    );
+    if (idx == -1) return;
+    final updated = list[idx].copyWith(tags: tags, updatedAt: DateTime.now());
+    list[idx] = updated;
+    state = AsyncValue.data(list);
+    try {
+      await _repo.updateSavedAnalysis(updated);
+    } catch (e) {
+      debugPrint('[LikedGames] setTagsForLikeId failed: $e');
+      await _reload();
+    }
+  }
+
   /// Removes a specific liked game by its saved-analysis id (used by the
   /// My Likes list's swipe-to-unlike, which acts on a SavedAnalysis rather
   /// than a GamesTourModel). Optimistic; reloads and returns `false` on failure

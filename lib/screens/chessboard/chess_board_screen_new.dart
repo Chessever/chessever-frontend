@@ -87,6 +87,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:motor/motor.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
+import 'package:chessever2/screens/my_likes/widgets/roulette_tag_picker.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
@@ -7623,6 +7624,35 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             _likeInteractionInProgress = false;
           }),
     );
+
+    // Fresh like → offer the roulette so the user can tag the game. Tags are a
+    // My-Likes-only concept, so this only fires on a like (never an unlike).
+    if (!wasLiked) {
+      unawaited(_offerTagAfterLike(game, toggleFuture, interactionToken));
+    }
+  }
+
+  /// Raises the roulette tag picker shortly after a like lands, then writes the
+  /// chosen tag onto the freshly-liked game. Skipping / letting the spin expire
+  /// resolves to null and leaves the game untagged.
+  Future<void> _offerTagAfterLike(
+    GamesTourModel game,
+    Future<void> toggleFuture,
+    int interactionToken,
+  ) async {
+    // Let the heart burst + flight breathe before the sheet rises.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!mounted || interactionToken != _likeInteractionToken) return;
+    final tag = await showRouletteTagPicker(context);
+    if (!mounted || tag == null) return;
+    // Ensure the optimistic insert has reconciled to a real row id first.
+    try {
+      await toggleFuture;
+    } catch (_) {}
+    if (!mounted) return;
+    await ref
+        .read(likedGamesProvider.notifier)
+        .setTagsForLikeId(game.likeId, [tag]);
   }
 
   void _removeFlyingHeartEntry() {
