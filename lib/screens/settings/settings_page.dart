@@ -1,4 +1,5 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/screens/settings/widgets/account_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
@@ -8,12 +9,11 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-enum SettingsSection { board, engine, notification }
+enum SettingsSection { account, board, engine, notification }
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key, this.initiallyExpanded});
@@ -105,6 +105,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
               children: [
                 _CollapsibleSection(
+                  title: 'Account Settings',
+                  leading: Icon(
+                    Icons.person_outline_rounded,
+                    color: context.colors.iconPrimary,
+                    size: 22.ic,
+                  ),
+                  expanded: _expanded == SettingsSection.account,
+                  onTap: () => _toggle(SettingsSection.account),
+                  child: const AccountSettingsBody(),
+                ),
+                SizedBox(height: 14.h),
+                _CollapsibleSection(
                   title: 'Board Settings',
                   leading: SvgWidget(
                     SvgAsset.boardSettings,
@@ -140,79 +152,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   onTap: () => _toggle(SettingsSection.notification),
                   child: NotificationSettingsBody(trackPersist: _trackPersist),
                 ),
-                SizedBox(height: 24.h),
-                _DeleteAccountRow(
-                  onTap: () {
-                    HapticFeedbackService.navigation();
-                    showDeleteAccountDialog(context);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DeleteAccountRow extends StatelessWidget {
-  const _DeleteAccountRow({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final danger = context.colors.danger;
-    return Material(
-      color: context.colors.surface,
-      borderRadius: BorderRadius.circular(20.br),
-      child: InkWell(
-        key: e2eKey(E2eIds.settingsDeleteAccount),
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20.br),
-        splashColor: danger.withValues(alpha: 0.08),
-        highlightColor: danger.withValues(alpha: 0.04),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20.br),
-            border: Border.all(color: danger.withValues(alpha: 0.45)),
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
-            child: Row(
-              children: [
-                Container(
-                  width: 40.w,
-                  height: 40.h,
-                  decoration: BoxDecoration(
-                    color: danger.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(color: danger.withValues(alpha: 0.35)),
-                  ),
-                  child: Icon(
-                    Icons.delete_forever_outlined,
-                    color: danger,
-                    size: 22.ic,
-                  ),
-                ),
-                SizedBox(width: 14.w),
-                Expanded(
-                  child: Text(
-                    'Delete Account',
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: danger,
-                      fontSize: 14.f,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: danger,
-                  size: 24.ic,
-                ),
               ],
             ),
           ),
@@ -240,9 +179,10 @@ class _CollapsibleSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = kPrimaryColor;
-    final borderColor = expanded
-        ? accent.withValues(alpha: 0.45)
-        : context.colors.divider.withValues(alpha: 0.4);
+    final borderColor =
+        expanded
+            ? accent.withValues(alpha: 0.45)
+            : context.colors.divider.withValues(alpha: 0.4);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 240),
@@ -251,23 +191,24 @@ class _CollapsibleSection extends StatelessWidget {
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(20.br),
         border: Border.all(color: borderColor),
-        boxShadow: expanded
-            ? [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  spreadRadius: -4,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : context.isLightTheme
+        boxShadow:
+            expanded
                 ? [
-                    BoxShadow(
-                      color: context.colors.shadow,
-                      blurRadius: 8,
-                      offset: const Offset(0, 1),
-                    ),
-                  ]
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.18),
+                    blurRadius: 18,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+                : context.isLightTheme
+                ? [
+                  BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 8,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
                 : null,
       ),
       child: ClipRRect(
@@ -293,14 +234,16 @@ class _CollapsibleSection extends StatelessWidget {
                         width: 40.w,
                         height: 40.h,
                         decoration: BoxDecoration(
-                          color: expanded
-                              ? accent.withValues(alpha: 0.16)
-                              : context.colors.surfaceRecessed,
+                          color:
+                              expanded
+                                  ? accent.withValues(alpha: 0.16)
+                                  : context.colors.surfaceRecessed,
                           borderRadius: BorderRadius.circular(12.br),
                           border: Border.all(
-                            color: expanded
-                                ? accent.withValues(alpha: 0.35)
-                                : Colors.transparent,
+                            color:
+                                expanded
+                                    ? accent.withValues(alpha: 0.35)
+                                    : Colors.transparent,
                           ),
                         ),
                         child: Center(
@@ -331,9 +274,8 @@ class _CollapsibleSection extends StatelessWidget {
                         turns: expanded ? 0.25 : 0.0,
                         child: Icon(
                           Icons.chevron_right_rounded,
-                          color: expanded
-                              ? accent
-                              : context.colors.textTertiary,
+                          color:
+                              expanded ? accent : context.colors.textTertiary,
                           size: 24.ic,
                         ),
                       ),
