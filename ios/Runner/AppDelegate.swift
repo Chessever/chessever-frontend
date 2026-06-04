@@ -56,6 +56,7 @@ import OneSignalLiveActivities
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupLiveActivitiesChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    setupPipChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
   }
 
   private func setupAudioSessionChannel(binaryMessenger: FlutterBinaryMessenger) {
@@ -90,6 +91,10 @@ import OneSignalLiveActivities
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+
+  private func setupPipChannel(binaryMessenger: FlutterBinaryMessenger) {
+    ChessPipController.shared.configure(binaryMessenger: binaryMessenger)
   }
 
   private func getLiveActivityDebugState(result: @escaping FlutterResult) {

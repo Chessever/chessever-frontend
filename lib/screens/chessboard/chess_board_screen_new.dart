@@ -49,6 +49,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
+import 'package:chessever2/services/pip_service.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
@@ -58,6 +59,7 @@ import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -95,6 +97,7 @@ import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
@@ -775,6 +778,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   int _pageSettleGeneration = 0;
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _audioSub;
   ChessBoardProviderParams? _audioParams;
+  ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _pipSub;
+  ChessBoardProviderParams? _pipParams;
   bool _didInitialBoardBootstrap = false;
 
   bool _hasCheckedWalkthrough = false;
@@ -808,6 +813,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available
     WidgetsBinding.instance.addObserver(this);
+    PipService.instance.addListener(_handlePipModeChanged);
     _setupSwipeAnimation();
     _lastLikeTutorialRequest = ref.read(likeTutorialRequestProvider);
 
@@ -1390,6 +1396,172 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  void _ensurePipListener(ChessBoardProviderParams params) {
+    if (_pipParams == params) return;
+    _pipParams = params;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _pipParams != params) return;
+      _pipSub?.close();
+      _pipSub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
+        chessBoardScreenProviderNew(params),
+        _handlePipProviderChange,
+        fireImmediately: true,
+        onError: (e, st) {
+          debugPrint("Error in PiP chess board listener: $e");
+        },
+      );
+    });
+  }
+
+  void _handlePipProviderChange(
+    AsyncValue<ChessBoardStateNew>? prev,
+    AsyncValue<ChessBoardStateNew> next,
+  ) {
+    final state = next.valueOrNull;
+    if (state == null) return;
+    unawaited(_syncPipState(state));
+  }
+
+  void _handlePipModeChanged(bool isInPip) {
+    if (!isInPip && mounted) {
+      unawaited(_syncCurrentPipState());
+    }
+  }
+
+  Future<void> _syncCurrentPipState() async {
+    if (!mounted || widget.games.isEmpty) return;
+    final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final game = _resolveGameForIndex(safeIndex);
+    final params = _createParams(game, safeIndex);
+    final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    if (state == null) {
+      await _syncPipGameSnapshot(game);
+      return;
+    }
+    await _syncPipState(state);
+  }
+
+  Future<void> _syncPipState(ChessBoardStateNew state) async {
+    if (!_isPipEligible(state.game)) {
+      await PipService.instance.clearActiveGame();
+      return;
+    }
+    final payload = _buildPipPayload(state.game, state: state);
+    if (PipService.instance.isInPip) {
+      await PipService.instance.updatePosition(payload);
+    } else {
+      await PipService.instance.setActiveGame(payload);
+    }
+  }
+
+  Future<void> _syncPipGameSnapshot(GamesTourModel game) async {
+    if (!_isPipEligible(game)) {
+      await PipService.instance.clearActiveGame();
+      return;
+    }
+    final payload = _buildPipPayload(game);
+    await PipService.instance.setActiveGame(payload);
+  }
+
+  bool _isPipEligible(GamesTourModel game) {
+    if (kDebugMode) {
+      return true;
+    }
+    return GameFilterHelper.isLiveNow(game);
+  }
+
+  Map<String, dynamic> _buildPipPayload(
+    GamesTourModel game, {
+    ChessBoardStateNew? state,
+  }) {
+    final analysisState = state?.analysisState;
+    final fen =
+        analysisState?.position.fen ?? state?.position?.fen ?? game.fen ?? '';
+    final lastMoveUci =
+        analysisState?.lastMove?.uci ??
+        state?.lastMove?.uci ??
+        game.lastMove ??
+        '';
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    final evaluation = state?.evaluation;
+    // Whether the viewed position is the live mainline head. When the user has
+    // navigated back to an earlier move (or into an analysis side-variation),
+    // freeze PiP on that position instead of following new live moves. No state
+    // (game snapshot) means we are showing the latest.
+    final followLive =
+        analysisState != null
+            ? (!analysisState.isInAnalysisVariation && analysisState.isAtEnd)
+            : (state?.isAtEnd ?? true);
+    final eventName =
+        game.tourSlug != null && game.tourSlug!.isNotEmpty
+            ? StringUtils.slugToTitle(game.tourSlug!)
+            : null;
+    final roundName =
+        game.roundSlug != null && game.roundSlug!.isNotEmpty
+            ? StringUtils.formatRoundLabel(game.roundSlug!)
+            : null;
+
+    return <String, dynamic>{
+      'eligible': true,
+      'followLive': followLive,
+      'gameId': game.gameId,
+      'fen': fen,
+      'lastMoveUci': lastMoveUci,
+      'lastMove': game.lastMove ?? '',
+      'status': game.gameStatus.name,
+      if (game.lastMoveTime != null)
+        'lastMoveTime': game.lastMoveTime!.toUtc().toIso8601String(),
+      if (evaluation != null) 'evalCp': (evaluation * 100).round(),
+      if (state?.mate != null) 'mate': state!.mate,
+      'whiteName': game.whitePlayer.name,
+      'blackName': game.blackPlayer.name,
+      'whiteTitle': game.whitePlayer.title,
+      'blackTitle': game.blackPlayer.title,
+      'whiteRating': game.whitePlayer.rating,
+      'blackRating': game.blackPlayer.rating,
+      'whiteFed':
+          game.whitePlayer.countryCode.isNotEmpty
+              ? game.whitePlayer.countryCode
+              : game.whitePlayer.federation,
+      'blackFed':
+          game.blackPlayer.countryCode.isNotEmpty
+              ? game.blackPlayer.countryCode
+              : game.blackPlayer.federation,
+      if (game.whiteClockSeconds != null)
+        'whiteClockSeconds': game.whiteClockSeconds,
+      if (game.blackClockSeconds != null)
+        'blackClockSeconds': game.blackClockSeconds,
+      'whiteClock': _formatPipClock(
+        game.whiteClockSeconds,
+        game.whiteClockCentiseconds,
+        game.whiteTimeDisplay,
+      ),
+      'blackClock': _formatPipClock(
+        game.blackClockSeconds,
+        game.blackClockCentiseconds,
+        game.blackTimeDisplay,
+      ),
+      if (eventName != null) 'eventName': eventName,
+      if (roundName != null) 'roundName': roundName,
+      'boardThemeIndex': boardSettings?.boardThemeIndex ?? 9,
+      'pieceStyleIndex': boardSettings?.pieceStyleIndex ?? 0,
+    };
+  }
+
+  String _formatPipClock(int? seconds, int centiseconds, String fallback) {
+    final totalSeconds =
+        seconds ?? (centiseconds > 0 ? centiseconds ~/ 100 : null);
+    if (totalSeconds == null) return fallback;
+    final clamped = math.max(0, totalSeconds);
+    final hours = clamped ~/ 3600;
+    final minutes = (clamped % 3600) ~/ 60;
+    final secs = clamped % 60;
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _handlePageChange(int newIndex) async {
     if (_isRevertingPage) {
       _isRevertingPage = false;
@@ -1411,6 +1583,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       _currentPageIndex = newIndex;
     });
     _keepBoardProviderAlive(newIndex);
+    unawaited(_syncPipGameSnapshot(_resolveGameForIndex(newIndex)));
 
     // CRITICAL: Update the global provider to track which page is visible
     // This prevents off-screen games from playing audio
@@ -1486,6 +1659,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Stop Live Activity when user returns to the app
     _stopLiveActivityIfActive(currentGame);
+    unawaited(
+      _syncPipState(
+        ref.read(chessBoardScreenProviderNew(params)).valueOrNull ??
+            ChessBoardStateNew(game: currentGame),
+      ),
+    );
   }
 
   void _stopLiveActivityIfActive(GamesTourModel game) {
@@ -1517,6 +1696,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Auto-start Live Activity for live games when app goes to background
     unawaited(_startLiveActivityIfEligible(currentGame));
+  }
+
+  Future<void> _enterPipForCurrentGameIfEligible() async {
+    if (!mounted || widget.games.isEmpty) return;
+    final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final currentGame = _resolveGameForIndex(safeIndex);
+    final params = _createParams(currentGame, safeIndex);
+    final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    if (state != null) {
+      await _syncPipState(state);
+    } else {
+      await _syncPipGameSnapshot(currentGame);
+    }
+    if (_isPipEligible(state?.game ?? currentGame)) {
+      await PipService.instance.enterIfEligible();
+    }
   }
 
   Future<void> _startLiveActivityIfEligible(GamesTourModel game) async {
@@ -1634,8 +1829,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (state == AppLifecycleState.resumed) {
       _scheduleLifecycleResume();
     } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
+      unawaited(_enterPipForCurrentGameIfEligible());
       _handleLifecyclePaused();
     } else {
       ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
@@ -1646,9 +1844,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void dispose() {
     routeObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
+    PipService.instance.removeListener(_handlePipModeChanged);
     ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
     _boardKeepAliveSub?.close();
     _audioSub?.close();
+    _pipSub?.close();
+    unawaited(PipService.instance.clearActiveGame());
     _pageSettleTimer?.cancel();
     _removeLikeTutorialOverlay();
     _swipeController.dispose();
@@ -1861,6 +2062,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         syncedGames[_currentPageIndex.clamp(0, syncedGames.length - 1)];
     final currentParams = _createParams(currentGame, _currentPageIndex);
     _ensureAudioListener(currentParams);
+    _ensurePipListener(currentParams);
     // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
     // This prevents rebuilds when other games in the tournament get updated
     final isTablet = ResponsiveHelper.isTablet;
