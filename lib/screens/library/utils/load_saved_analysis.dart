@@ -141,6 +141,7 @@ SavedAnalysisData createSavedAnalysisData(SavedAnalysis analysis) {
     lastViewedPosition: analysis.lastViewedPosition,
     title: analysis.title,
     folderId: analysis.folderId,
+    tags: analysis.tags,
   );
 }
 
@@ -156,6 +157,7 @@ SavedAnalysisData createReadOnlySavedAnalysisData(SavedAnalysis analysis) {
     movePointer: null,
     isBoardFlipped: false,
     lastViewedPosition: analysis.lastViewedPosition,
+    tags: analysis.tags,
   );
 }
 

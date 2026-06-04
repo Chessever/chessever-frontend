@@ -1,29 +1,34 @@
-# PiP fixes (feat/pip → test/pip) — DONE
+# Library UI Overhaul — todo
 
-Shared contract: payload key `followLive` (bool). true = at live head → native polls + ticks. false = frozen on viewed move.
+Spec: 3-tab Library (Studies / My Database / Discovery), board tag flow, My Likes tags, Miniatures.
 
-## Bug 1 — board/piece theme parity ✅
-- [x] iOS `drawBoard`: 25-entry chessground theme table (boardSquareColors), default 9. Pieces already correct.
-- [x] Android `boardThemeColors`: full 25-entry chessground table (ARGB), default 9.
-- [x] Android pieces: load from flutter_assets piece_sets/<set>/<code>.png by pieceStyleIndex (39-set list), drawable fallback. Threaded drawBoard→drawPiece→loadPieceBitmap.
+## Scope split
+- **Pure UI (no migration)** — doing now.
+- **Backend-blocked (needs additive migration, awaiting permission)** — Studies data, Miniatures RPC + community like-count.
 
-## Bug 2 — live position updates ✅
-- [x] native polls games(fen,last_move,…) @4s; now gated on followLive.
+## Phase 1 — Board save/edit tag flow (explicit gap)  [in progress]
+- [ ] `lib/constants/game_tags.dart` — 10 official tags constant
+- [ ] save_analysis_sheet.dart: preload existing tags (liked path + getSavedAnalysis fetch)
+- [ ] save_analysis_sheet.dart: tag chips row (always visible), toggle select
+- [ ] save_analysis_sheet.dart: persist `tags` on insert + update (replace `const []`)
+- [ ] flutter analyze clean
 
-## Bug 3 — countdown parity ✅
-- [x] native displayClock already matches live-card algo (active side only, baseSeconds - elapsedSince(lastMoveTime)).
-- [x] padding `%d:%02d`→`%02d:%02d` (iOS x2, Android x2) + Dart `_formatPipClock`.
+## Phase 2 — Library 3 tabs
+- [ ] SegmentedSwitcher at top (Studies / My Database / Discovery), default My Database
+- [ ] My Database tab = current library content MINUS TWIC
+- [ ] Move TWIC card into Discovery tab
+- [ ] Per-tab scroll position + search input preserved
+- [ ] Studies tab scaffold (coming-soon state — backend absent)
+- [ ] Discovery tab = Miniatures scaffold (coming-soon — backend absent)
 
-## Bug 4 — preserve focused (non-latest) move ✅
-- [x] Dart followLive = !isInAnalysisVariation && isAtEnd (snapshot=true).
-- [x] iOS mergeLiveRow early-return + displayClock static when !followLive.
-- [x] Android mergeLiveRow early-return + displayClock static when !followLive.
+## Phase 3 — My Likes tag chips
+- [ ] Tag chips row at top of My Likes
+- [ ] Free: attach tags. Tap-to-FILTER opens paywall (premium)
 
-## Validate
-- [x] flutter analyze touched dart — no new errors (19 pre-existing lints only).
-- [ ] manual: iOS device + Android emu (debug = any game eligible). Live game needed to fully see Bug 2/3/4-follow.
+## Backend (awaiting permission — additive only)
+- [ ] Studies: store table + Lichess sync (substantial, recommend defer)
+- [ ] Miniatures: RPC/view over games (decisive + <20 moves, sort avg rating)
+- [ ] community game like-count table + increment on like
 
-## Files
-- lib/screens/chessboard/chess_board_screen_new.dart (_buildPipPayload, _formatPipClock)
-- ios/Runner/ChessPipController.swift (boardSquareColors, drawBoard, mergeLiveRow, displayClock, formatClock x2)
-- android/.../MainActivity.kt (boardThemeColors, piece asset loader, drawBoard/drawPiece, mergeLiveRow, displayClock, formatClock x2)
+## Test notes
+- Append per phase.

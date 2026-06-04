@@ -3470,6 +3470,7 @@ class ChessBoardScreenNotifierNew
     required String analysisId,
     required String title,
     String? folderId,
+    List<String>? tags,
   }) {
     final currentState = state.valueOrNull;
     savedAnalysisData = SavedAnalysisData(
@@ -3487,6 +3488,7 @@ class ChessBoardScreenNotifierNew
       lastViewedPosition: currentState?.analysisState.currentMoveIndex ?? 0,
       title: title,
       folderId: folderId,
+      tags: tags ?? savedAnalysisData?.tags ?? const <String>[],
     );
     // Snapshot current game tree so auto-save doesn't immediately re-save
     final analysisGame = currentState?.analysisState.game;
@@ -3546,7 +3548,7 @@ class ChessBoardScreenNotifierNew
         variationComments: currentState.variationComments,
         moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
-        tags: const [],
+        tags: savedAnalysisData?.tags ?? const [],
         isFavorite: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -3638,7 +3640,7 @@ class ChessBoardScreenNotifierNew
         variationComments: currentState.variationComments,
         moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
-        tags: const [],
+        tags: savedAnalysisData?.tags ?? const [],
         isFavorite: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -3747,6 +3749,7 @@ class ChessBoardScreenNotifierNew
       lastViewedPosition: lastViewedPosition,
       title: title ?? current.title,
       folderId: folderId ?? current.folderId,
+      tags: current.tags,
     );
   }
 
@@ -7387,6 +7390,11 @@ class SavedAnalysisData {
   /// Folder ID the analysis belongs to (for auto-save updates)
   final String? folderId;
 
+  /// Official tags attached to this analysis. Held in memory so background
+  /// auto-save / manual-update never overwrite the row's `tags` with an empty
+  /// list (which would silently wipe tags the user set in the save sheet).
+  final List<String> tags;
+
   const SavedAnalysisData({
     this.analysisId,
     this.sourceGameId,
@@ -7398,6 +7406,7 @@ class SavedAnalysisData {
     required this.lastViewedPosition,
     this.title,
     this.folderId,
+    this.tags = const <String>[],
   });
 }
 

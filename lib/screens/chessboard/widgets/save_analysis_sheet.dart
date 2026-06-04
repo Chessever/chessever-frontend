@@ -1,3 +1,4 @@
+import 'package:chessever2/constants/game_tags.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -146,6 +147,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   String? _errorMessage;
   bool _isCreatingNewFolder = false;
   bool _showGameDetails = false;
+
+  // Official tags attached to this game. Seeded from the existing saved/liked
+  // row so re-saving never silently wipes them; `_userTouchedTags` guards the
+  // async repo preload from clobbering a choice the user already made.
+  Set<String> _selectedTags = <String>{};
+  bool _userTouchedTags = false;
+
   String _selectedResult = '*';
   Color _selectedFolderColor = _folderColorPresets.first;
 
@@ -196,10 +204,30 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           _isEditMode = true;
           _existingAnalysisId = liked.id;
           _initialFolderId = liked.folderId;
+          // Seed synchronously for instant chip state; repo preload below
+          // confirms against the authoritative row.
+          _selectedTags = liked.tags.toSet();
         }
       }
     }
     _initializeControllers();
+    // Best-effort: pull the authoritative tag set for the row we're editing so
+    // an update never overwrites tags that aren't yet in memory.
+    _preloadTagsFromRepo();
+  }
+
+  Future<void> _preloadTagsFromRepo() async {
+    final id = _existingAnalysisId;
+    if (id == null) return;
+    try {
+      final repository = ref.read(libraryRepositoryProvider);
+      final existing = await repository.getSavedAnalysis(id);
+      if (existing != null && mounted && !_userTouchedTags) {
+        setState(() => _selectedTags = existing.tags.toSet());
+      }
+    } catch (_) {
+      // Preload is non-critical; the synchronous seed (if any) stands.
+    }
   }
 
   void _initializeControllers() {
@@ -440,7 +468,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           variationComments: state.variationComments,
           moveNags: state.moveNags,
           lastViewedPosition: state.analysisState.currentMoveIndex,
-          tags: const [],
+          tags: _selectedTags.toList(),
           notes: null,
           isFavorite: false,
           createdAt: DateTime.now(),
@@ -460,7 +488,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           analysisState: analysisStateJson,
           variationComments: state.variationComments,
           lastViewedPosition: state.analysisState.currentMoveIndex,
-          tags: const [],
+          tags: _selectedTags.toList(),
           notes: null,
           isFavorite: false,
           createdAt: DateTime.now(),
@@ -483,6 +511,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             analysisId: resolvedAnalysisId,
             title: title,
             folderId: targetFolderId,
+            tags: _selectedTags.toList(),
           );
 
       if (mounted && context.mounted) {
@@ -637,6 +666,20 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 _buildGameDetailsSection()
                     .animate()
                     .fadeIn(duration: 300.ms, delay: 100.ms)
+                    .slideY(
+                      begin: 0.1,
+                      end: 0,
+                      duration: 350.ms,
+                      curve: Curves.easeOutCubic,
+                    ),
+
+                SizedBox(height: 24.h),
+
+                // Tags (official, personal-library) — always visible so the
+                // user can set/change them right in the save/edit flow.
+                _buildTagsSection()
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 125.ms)
                     .slideY(
                       begin: 0.1,
                       end: 0,
@@ -1210,6 +1253,112 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildTagsSection() {
+    final count = _selectedTags.length;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.sell_rounded,
+                size: 16.sp,
+                color: context.colors.textPrimary.withValues(alpha: 0.6),
+              ),
+              SizedBox(width: 8.w),
+              Text(
+                'Tags',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary.withValues(alpha: 0.8),
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const Spacer(),
+              if (count > 0)
+                Text(
+                  '$count selected',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kPrimaryColor,
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: [
+              for (final tag in kOfficialGameTags)
+                _tagChip(tag, _selectedTags.contains(tag.label)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tagChip(GameTag tag, bool selected) {
+    return GestureDetector(
+      onTap:
+          _isSaving
+              ? null
+              : () {
+                setState(() {
+                  _userTouchedTags = true;
+                  if (selected) {
+                    _selectedTags.remove(tag.label);
+                  } else {
+                    _selectedTags.add(tag.label);
+                  }
+                });
+                HapticFeedback.selectionClick();
+              },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+        decoration: BoxDecoration(
+          color:
+              selected
+                  ? kPrimaryColor.withValues(alpha: 0.15)
+                  : context.colors.textPrimary.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20.br),
+          border: Border.all(
+            color:
+                selected
+                    ? kPrimaryColor.withValues(alpha: 0.45)
+                    : context.colors.textPrimary.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected ? Icons.check_rounded : tag.icon,
+              size: 14.sp,
+              color:
+                  selected
+                      ? kPrimaryColor
+                      : context.colors.textPrimary.withValues(alpha: 0.55),
+            ),
+            SizedBox(width: 6.w),
+            Text(
+              tag.label,
+              style: AppTypography.textXsMedium.copyWith(
+                color:
+                    selected
+                        ? kPrimaryColor
+                        : context.colors.textPrimary.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
