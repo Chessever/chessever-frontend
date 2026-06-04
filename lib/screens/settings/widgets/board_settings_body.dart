@@ -1,6 +1,9 @@
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -153,6 +156,73 @@ class BoardSettingsBody extends ConsumerWidget {
                 ),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleSound(value));
+                },
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+
+        SettingCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Picture in Picture',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: context.colors.textPrimary,
+                      fontSize: 13.f,
+                    ),
+                  ),
+                  if (!ref.watch(subscriptionProvider).isSubscribed) ...[
+                    SizedBox(width: 8.w),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.sp,
+                        vertical: 2.sp,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6.br),
+                        border: Border.all(
+                          color: kPrimaryColor.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Text(
+                        'PRO',
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kPrimaryColor,
+                          fontSize: 9.f,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'Pop a mini board out when you leave the app. Choose which games can float.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                  fontSize: 11.f,
+                ),
+              ),
+              SizedBox(height: 14.h),
+              _PipModeSelector(
+                selected: boardSettings.pipMode,
+                onSelected: (mode) async {
+                  // Premium-gated: choosing any active mode by a free user opens
+                  // the paywall; "Off" is always allowed.
+                  if (mode != PipMode.off &&
+                      !ref.read(subscriptionProvider).isSubscribed) {
+                    final subscribed = await showPremiumPaywallSheet(
+                      context: context,
+                    );
+                    if (!subscribed) return;
+                  }
+                  trackPersist(boardNotifier.setPipMode(mode));
                 },
               ),
             ],
@@ -1244,6 +1314,102 @@ class _PieceSetGridItem extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PipModeSelector extends StatelessWidget {
+  const _PipModeSelector({required this.selected, required this.onSelected});
+
+  final PipMode selected;
+  final ValueChanged<PipMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(4.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Row(
+        children: [
+          _buildOption(context, mode: PipMode.off, icon: Icons.block_rounded),
+          SizedBox(width: 4.w),
+          _buildOption(
+            context,
+            mode: PipMode.completed,
+            icon: Icons.flag_rounded,
+          ),
+          SizedBox(width: 4.w),
+          _buildOption(context, mode: PipMode.live, icon: Icons.sensors_rounded),
+          SizedBox(width: 4.w),
+          _buildOption(
+            context,
+            mode: PipMode.both,
+            icon: Icons.all_inclusive_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOption(
+    BuildContext context, {
+    required PipMode mode,
+    required IconData icon,
+  }) {
+    final isSelected = selected == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onSelected(mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(vertical: 8.sp),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? kPrimaryColor.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color: isSelected ? kPrimaryColor : Colors.transparent,
+              width: isSelected ? 1.5 : 1.0,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.18),
+                      blurRadius: 8,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: isSelected
+                    ? context.colors.textPrimary
+                    : context.colors.textTertiary,
+                size: 20.ic,
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                mode.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isSelected
+                      ? context.colors.textPrimary
+                      : context.colors.textTertiary,
+                  fontSize: 10.f,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

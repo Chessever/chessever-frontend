@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:chessever2/services/pip_service.dart';
 
 /// Sound effect types — used instead of raw AudioSource to avoid stale native
 /// handles after the SoLoud engine is torn down and reinitialized.
@@ -116,6 +117,10 @@ class AudioPlayerService with WidgetsBindingObserver {
   /// couples every sound to the slowest/previous native op and lets a single
   /// stalled init/recovery silence all subsequent moves.
   void playSound(SfxType type) {
+    // While in PiP the move SFX is played natively (iOS/Android) from the poll,
+    // so suppress the Flutter path to avoid double sounds. On iOS the Dart
+    // isolate is suspended in PiP anyway, making this a no-op there.
+    if (PipService.instance.isInPip) return;
     unawaited(_playWithRecovery(type));
   }
 

@@ -19,6 +19,11 @@ final class ChessPipController: NSObject {
   // 720x720 board when content changed or PiP is actually visible (ticking clock).
   private var cachedImage: CGImage?
   private var renderDirty = true
+  // Native move SFX for PiP: Dart/SoLoud is suspended in the background, so the
+  // poll plays these directly when a new move arrives while PiP is active.
+  private var moveSoundPlayer: AVAudioPlayer?
+  private var captureSoundPlayer: AVAudioPlayer?
+  private var lastSoundedMove: String?
 
   private override init() {
     super.init()
@@ -47,6 +52,8 @@ final class ChessPipController: NSObject {
         }
         self.payload = args
         self.renderDirty = true
+        // Foreground baseline so the first PiP poll doesn't replay this move.
+        self.lastSoundedMove = args["lastMoveUci"] as? String
         self.prepareIfNeeded()
         self.enqueueFrame()
         // Keep the sample-buffer layer actively streaming while foreground so
@@ -67,6 +74,10 @@ final class ChessPipController: NSObject {
           return
         }
         self.mergePayload(args)
+        // Foreground pushes update the baseline; SoLoud handles foreground SFX.
+        if self.pipController?.isPictureInPictureActive != true {
+          self.lastSoundedMove = args["lastMoveUci"] as? String
+        }
         self.prepareIfNeeded()
         self.enqueueFrame()
         // Keep the sample-buffer layer actively streaming while foreground so
@@ -96,6 +107,7 @@ final class ChessPipController: NSObject {
     // Audio session must be active and use a category that supports PiP
     // BEFORE the controller is created and while we are still foreground.
     configureAudioSession()
+    preloadSounds()
 
     let layer = AVSampleBufferDisplayLayer()
     layer.videoGravity = .resizeAspect
@@ -183,6 +195,7 @@ final class ChessPipController: NSObject {
 
   private func clear() {
     payload = nil
+    lastSoundedMove = nil
     stopNativePolling()
     stopRenderLoop()
     if pipController?.isPictureInPictureActive == true {
@@ -223,6 +236,71 @@ final class ChessPipController: NSObject {
     } catch {
       print("[PiP] Failed to restore ambient audio session: \(error)")
     }
+  }
+
+  private func preloadSounds() {
+    if moveSoundPlayer == nil {
+      moveSoundPlayer = Self.loadSound("assets/sfx/piece_move.wav")
+    }
+    if captureSoundPlayer == nil {
+      captureSoundPlayer = Self.loadSound("assets/sfx/piece_takeover.wav")
+    }
+  }
+
+  private static func loadSound(_ assetSubpath: String) -> AVAudioPlayer? {
+    let candidates = [
+      "flutter_assets/\(assetSubpath)",
+      "Frameworks/App.framework/flutter_assets/\(assetSubpath)",
+    ]
+    var url: URL?
+    for candidate in candidates {
+      if let path = Bundle.main.path(forResource: candidate, ofType: nil) {
+        url = URL(fileURLWithPath: path)
+        break
+      }
+      if let resourcePath = Bundle.main.resourcePath {
+        let path = (resourcePath as NSString).appendingPathComponent(candidate)
+        if FileManager.default.fileExists(atPath: path) {
+          url = URL(fileURLWithPath: path)
+          break
+        }
+      }
+    }
+    guard let url, let player = try? AVAudioPlayer(contentsOf: url) else {
+      print("[PiP] Failed to load sound \(assetSubpath)")
+      return nil
+    }
+    player.prepareToPlay()
+    return player
+  }
+
+  // Play the move/capture SFX natively while in PiP (Dart/SoLoud is suspended in
+  // the background). Foreground keeps using SoLoud, so this is gated to PiP-active
+  // to avoid double sounds.
+  private func playMoveSoundIfNeeded(
+    previousMove: String?,
+    newMove: String?,
+    previousFen: String?,
+    newFen: String?
+  ) {
+    guard pipController?.isPictureInPictureActive == true else { return }
+    guard
+      let newMove,
+      !newMove.isEmpty,
+      newMove != previousMove,
+      newMove != lastSoundedMove
+    else { return }
+    lastSoundedMove = newMove
+
+    let captured = Self.pieceCount(newFen) < Self.pieceCount(previousFen)
+    let player = (captured ? captureSoundPlayer : moveSoundPlayer) ?? moveSoundPlayer
+    player?.currentTime = 0
+    player?.play()
+  }
+
+  private static func pieceCount(_ fen: String?) -> Int {
+    guard let placement = fen?.split(separator: " ").first else { return 0 }
+    return placement.reduce(0) { $0 + ($1.isLetter ? 1 : 0) }
   }
 
   private func enqueueFrame() {
@@ -445,6 +523,9 @@ final class ChessPipController: NSObject {
     // Frozen on an earlier move: keep the viewed position, ignore newer live data.
     if (payload["followLive"] as? Bool) == false { return }
 
+    let previousMove = payload["lastMoveUci"] as? String ?? payload["lastMove"] as? String
+    let previousFen = payload["fen"] as? String
+
     if let fen = row["fen"] as? String, !fen.isEmpty {
       payload["fen"] = fen
     }
@@ -470,6 +551,12 @@ final class ChessPipController: NSObject {
     self.payload = payload
     renderDirty = true
     enqueueFrame()
+    playMoveSoundIfNeeded(
+      previousMove: previousMove,
+      newMove: payload["lastMoveUci"] as? String,
+      previousFen: previousFen,
+      newFen: payload["fen"] as? String
+    )
   }
 
   private static func formatClock(seconds: Int) -> String {

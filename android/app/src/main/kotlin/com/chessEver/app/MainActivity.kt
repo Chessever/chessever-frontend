@@ -10,6 +10,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -32,6 +34,8 @@ import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalDateTime
@@ -47,6 +51,12 @@ class MainActivity : FlutterActivity() {
   private var pollRunnable: Runnable? = null
   private var clockRunnable: Runnable? = null
   private var activePollCall: Call? = null
+  // Native move SFX for PiP (mirrors iOS). Flutter SFX is suppressed while in PiP
+  // so these don't double up; capture vs move chosen by FEN piece-count drop.
+  private var soundPool: SoundPool? = null
+  private var moveSoundId = 0
+  private var captureSoundId = 0
+  private var lastSoundedMove: String? = null
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -60,6 +70,8 @@ class MainActivity : FlutterActivity() {
             clearPipState()
           } else {
             pipPayload = args.toMutableMap()
+            // Foreground baseline so the first PiP poll doesn't replay this move.
+            if (!isCurrentlyInPip()) lastSoundedMove = args["lastMoveUci"] as? String
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
             if (isCurrentlyInPip()) {
@@ -76,6 +88,8 @@ class MainActivity : FlutterActivity() {
             clearPipState()
           } else {
             mergePayload(args)
+            // Foreground pushes update the baseline; Flutter handles foreground SFX.
+            if (!isCurrentlyInPip()) lastSoundedMove = args["lastMoveUci"] as? String
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
             if (isCurrentlyInPip()) {
@@ -97,6 +111,52 @@ class MainActivity : FlutterActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    initSounds()
+  }
+
+  private fun initSounds() {
+    if (soundPool != null) return
+    val attrs = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_MEDIA)
+      .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+      .build()
+    val pool = SoundPool.Builder().setMaxStreams(4).setAudioAttributes(attrs).build()
+    extractAsset("flutter_assets/assets/sfx/piece_move.wav", "pip_move.wav")?.let {
+      moveSoundId = pool.load(it, 1)
+    }
+    extractAsset("flutter_assets/assets/sfx/piece_takeover.wav", "pip_capture.wav")?.let {
+      captureSoundId = pool.load(it, 1)
+    }
+    soundPool = pool
+  }
+
+  // .wav assets in flutter_assets may be stored compressed, so SoundPool can't
+  // open them via AssetFileDescriptor — copy to cache once and load from file.
+  private fun extractAsset(assetPath: String, outName: String): String? {
+    return try {
+      val outFile = File(cacheDir, outName)
+      if (!outFile.exists() || outFile.length() == 0L) {
+        assets.open(assetPath).use { input ->
+          FileOutputStream(outFile).use { output -> input.copyTo(output) }
+        }
+      }
+      outFile.absolutePath
+    } catch (e: Exception) {
+      Log.w("ChessPip", "Failed to extract $assetPath: $e")
+      null
+    }
+  }
+
+  private fun playPipMoveSound(captured: Boolean) {
+    val pool = soundPool ?: return
+    val id = if (captured && captureSoundId != 0) captureSoundId else moveSoundId
+    if (id == 0) return
+    pool.play(id, 1f, 1f, 1, 0, 1f)
+  }
+
+  private fun fenPieceCount(fen: String?): Int {
+    val placement = fen?.substringBefore(' ') ?: return 0
+    return placement.count { it.isLetter() }
   }
 
   override fun onUserLeaveHint() {
@@ -127,6 +187,8 @@ class MainActivity : FlutterActivity() {
   override fun onDestroy() {
     stopClockTicker()
     stopNativePolling()
+    soundPool?.release()
+    soundPool = null
     super.onDestroy()
   }
 
@@ -311,6 +373,9 @@ class MainActivity : FlutterActivity() {
     // Frozen on an earlier move: keep the viewed position, ignore newer live data.
     if (payload["followLive"] == false) return
 
+    val previousMove = (payload["lastMoveUci"] ?: payload["lastMove"]) as? String
+    val previousFen = payload["fen"] as? String
+
     if (row.has("fen") && !row.isNull("fen")) {
       row.optString("fen").takeIf { it.isNotBlank() }?.let { payload["fen"] = it }
     }
@@ -341,6 +406,14 @@ class MainActivity : FlutterActivity() {
 
     pipOverlay?.payload = payload
     pipOverlay?.invalidate()
+
+    // Native move SFX while in PiP (Flutter SFX is suppressed during PiP).
+    val newMove = payload["lastMoveUci"] as? String
+    if (isCurrentlyInPip() && !newMove.isNullOrBlank() &&
+        newMove != previousMove && newMove != lastSoundedMove) {
+      lastSoundedMove = newMove
+      playPipMoveSound(fenPieceCount(payload["fen"] as? String) < fenPieceCount(previousFen))
+    }
   }
 
   private fun formatClock(seconds: Int): String {
