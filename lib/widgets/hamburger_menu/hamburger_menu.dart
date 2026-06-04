@@ -4,8 +4,8 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
-import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -15,14 +15,12 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
-import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:logarte/logarte.dart';
 import 'package:chessever2/main.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -106,12 +104,16 @@ class HamburgerMenu extends HookConsumerWidget {
               if (logarte.isOverlayAttached) {
                 logarte.detachOverlay();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Logarte Debug Console Disabled')),
+                  const SnackBar(
+                    content: Text('Logarte Debug Console Disabled'),
+                  ),
                 );
               } else {
                 logarte.attach(context: context, visible: true);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Logarte Debug Console Enabled')),
+                  const SnackBar(
+                    content: Text('Logarte Debug Console Enabled'),
+                  ),
                 );
               }
             }
@@ -120,268 +122,269 @@ class HamburgerMenu extends HookConsumerWidget {
             bottom: true,
             child: Column(
               children: [
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    if (isTablet)
-                      Padding(
-                        padding: EdgeInsets.only(
-                          left: 8.sp,
-                          top: 8.h,
-                          bottom: 8.h,
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: InkWell(
-                            onTap: () {
-                              HapticFeedbackService.buttonPress();
-                              Navigator.of(context).pop();
-                            },
-                            borderRadius: BorderRadius.circular(12.br),
-                            child: Container(
-                              width: 44.w,
-                              height: 44.h,
-                              decoration: BoxDecoration(
-                                color: context.colors.surfaceRecessed,
-                                borderRadius: BorderRadius.circular(12.br),
-                              ),
-                              child: Icon(
-                                Icons.menu_rounded,
-                                color: context.colors.iconPrimary,
-                                size: 24.0,
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      if (isTablet)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            left: 8.sp,
+                            top: 8.h,
+                            bottom: 8.h,
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: InkWell(
+                              onTap: () {
+                                HapticFeedbackService.buttonPress();
+                                Navigator.of(context).pop();
+                              },
+                              borderRadius: BorderRadius.circular(12.br),
+                              child: Container(
+                                width: 44.w,
+                                height: 44.h,
+                                decoration: BoxDecoration(
+                                  color: context.colors.surfaceRecessed,
+                                  borderRadius: BorderRadius.circular(12.br),
+                                ),
+                                child: Icon(
+                                  Icons.menu_rounded,
+                                  color: context.colors.iconPrimary,
+                                  size: 24.0,
+                                ),
                               ),
                             ),
                           ),
+                        )
+                      else
+                        SizedBox(height: 16.h),
+
+                      // User profile header (avatar + name + PRO badge)
+                      const _UserProfileHeader(),
+                      SizedBox(height: 8.h),
+
+                      // Menu items
+                      //
+                      // Each utility SVG is shipped with white-ish tints baked
+                      // in (looks correct on the dark drawer). In light theme
+                      // that bakes a white-on-light-grey contrast bug, so we
+                      // recolour to `iconPrimary` only when the theme is light;
+                      // dark theme renders the asset unchanged.
+                      _MenuItem(
+                        key: e2eKey(E2eIds.drawerOpeningExplorer),
+                        customIcon: SvgWidget(
+                          SvgAsset.openingExplorer,
+                          semanticsLabel: 'Opening Explorer Icon',
+                          height: 20.h,
+                          width: 20.w,
+                          colorFilter:
+                              context.isLightTheme
+                                  ? ColorFilter.mode(
+                                    context.colors.iconPrimary,
+                                    BlendMode.srcIn,
+                                  )
+                                  : null,
                         ),
-                      )
-                    else
-                      SizedBox(height: 16.h),
-
-                    // User profile header (avatar + name + PRO badge)
-                    const _UserProfileHeader(),
-                    SizedBox(height: 8.h),
-
-                    // Menu items
-                    //
-                    // Each utility SVG is shipped with white-ish tints baked
-                    // in (looks correct on the dark drawer). In light theme
-                    // that bakes a white-on-light-grey contrast bug, so we
-                    // recolour to `iconPrimary` only when the theme is light;
-                    // dark theme renders the asset unchanged.
-                    _MenuItem(
-                      key: e2eKey(E2eIds.drawerOpeningExplorer),
-                      customIcon: SvgWidget(
-                        SvgAsset.openingExplorer,
-                        semanticsLabel: 'Opening Explorer Icon',
-                        height: 20.h,
-                        width: 20.w,
-                        colorFilter: context.isLightTheme
-                            ? ColorFilter.mode(
-                                context.colors.iconPrimary,
-                                BlendMode.srcIn,
-                              )
-                            : null,
+                        icon: Icons.explore_outlined,
+                        title: 'Opening Explorer',
+                        textStyle: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 1.0,
+                          letterSpacing: -0.14,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          callbacks.onOpeningExplorerPressed();
+                        },
+                        showChevron: true,
                       ),
-                      icon: Icons.explore_outlined,
-                      title: 'Opening Explorer',
-                      textStyle: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 1.0,
-                        letterSpacing: -0.14,
+                      _MenuItem(
+                        key: e2eKey(E2eIds.drawerAnalysisBoard),
+                        customIcon: SvgWidget(
+                          SvgAsset.analysisBoard,
+                          semanticsLabel: 'Analysis Board Icon',
+                          height: 20.h,
+                          width: 20.w,
+                          // Multi-colour mini-chessboard artwork — must keep
+                          // its baked white/grey/dark squares in both themes.
+                          // Tinting collapses it into a single solid blob.
+                          preserveOriginalColors: true,
+                        ),
+                        icon: Icons.grid_view_rounded,
+                        title: 'Board Editor',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          callbacks.onAnalysisBoardPressed();
+                        },
+                        showChevron: true,
                       ),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        callbacks.onOpeningExplorerPressed();
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      key: e2eKey(E2eIds.drawerAnalysisBoard),
-                      customIcon: SvgWidget(
-                        SvgAsset.analysisBoard,
-                        semanticsLabel: 'Analysis Board Icon',
-                        height: 20.h,
-                        width: 20.w,
-                        // Multi-colour mini-chessboard artwork — must keep
-                        // its baked white/grey/dark squares in both themes.
-                        // Tinting collapses it into a single solid blob.
-                        preserveOriginalColors: true,
+                      _MenuItem(
+                        icon: Icons.favorite_border,
+                        title: 'Favorites',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          callbacks.onFavoritesPressed();
+                        },
+                        showChevron: true,
                       ),
-                      icon: Icons.grid_view_rounded,
-                      title: 'Board Editor',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 20.h / 14.h,
+                      _MenuItem(
+                        key: e2eKey(E2eIds.drawerSettings),
+                        customIcon: SvgWidget(
+                          SvgAsset.settings,
+                          semanticsLabel: 'Settings Icon',
+                          height: 20.h,
+                          width: 20.w,
+                          colorFilter:
+                              context.isLightTheme
+                                  ? ColorFilter.mode(
+                                    context.colors.iconPrimary,
+                                    BlendMode.srcIn,
+                                  )
+                                  : null,
+                        ),
+                        title: 'Settings',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () => showSettingsDialog(context),
+                        showChevron: true,
                       ),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        callbacks.onAnalysisBoardPressed();
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      icon: Icons.favorite_border,
-                      title: 'Favorites',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 20.h / 14.h,
+                      _MenuItem(
+                        icon: Icons.desktop_mac_outlined,
+                        title: 'ChessEver Desktop',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () async {
+                          final uri = Uri.parse('https://chessever.com');
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                        showChevron: true,
                       ),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        callbacks.onFavoritesPressed();
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      key: e2eKey(E2eIds.drawerSettings),
-                      customIcon: SvgWidget(
-                        SvgAsset.settings,
-                        semanticsLabel: 'Settings Icon',
-                        height: 20.h,
-                        width: 20.w,
-                        colorFilter: context.isLightTheme
-                            ? ColorFilter.mode(
-                                context.colors.iconPrimary,
-                                BlendMode.srcIn,
-                              )
-                            : null,
-                      ),
-                      title: 'Settings',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 20.h / 14.h,
-                      ),
-                      onPressed: () => showSettingsDialog(context),
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      icon: Icons.desktop_mac_outlined,
-                      title: 'ChessEver Desktop',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 20.h / 14.h,
-                      ),
-                      onPressed: () async {
-                        final uri = Uri.parse('https://chessever.com');
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(
-                            uri,
-                            mode: LaunchMode.externalApplication,
+                      _MenuItem(
+                        customIcon: SvgWidget(
+                          SvgAsset.leaveFeedback,
+                          semanticsLabel: 'Leave Feedback Icon',
+                          height: 20.h,
+                          width: 20.w,
+                          colorFilter:
+                              context.isLightTheme
+                                  ? ColorFilter.mode(
+                                    context.colors.iconPrimary,
+                                    BlendMode.srcIn,
+                                  )
+                                  : null,
+                        ),
+                        icon: Icons.rate_review_outlined,
+                        title: 'Leave Feedback',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          ReviewPromptService.instance.maybePrompt(
+                            context: context,
+                            trigger: ReviewPromptTrigger.sidebar,
+                            force: true,
                           );
-                        }
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      customIcon: SvgWidget(
-                        SvgAsset.leaveFeedback,
-                        semanticsLabel: 'Leave Feedback Icon',
-                        height: 20.h,
-                        width: 20.w,
-                        colorFilter: context.isLightTheme
-                            ? ColorFilter.mode(
-                                context.colors.iconPrimary,
-                                BlendMode.srcIn,
-                              )
-                            : null,
+                        },
+                        showChevron: true,
                       ),
-                      icon: Icons.rate_review_outlined,
-                      title: 'Leave Feedback',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 20.h / 14.h,
+                      _MenuItem(
+                        icon: Icons.star_outline,
+                        title: 'Rate this app',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () {
+                          _openStoreListing();
+                        },
+                        showChevron: true,
                       ),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        ReviewPromptService.instance.maybePrompt(
-                          context: context,
-                          trigger: ReviewPromptTrigger.sidebar,
-                          force: true,
-                        );
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      icon: Icons.star_outline,
-                      title: 'Rate this app',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 20.h / 14.h,
+                      _MenuItem(
+                        customIcon: SvgWidget(
+                          SvgAsset.versionIcon,
+                          semanticsLabel: 'Info Icon',
+                          height: 20.h,
+                          width: 20.w,
+                          colorFilter:
+                              context.isLightTheme
+                                  ? ColorFilter.mode(
+                                    context.colors.iconPrimary,
+                                    BlendMode.srcIn,
+                                  )
+                                  : null,
+                        ),
+                        title:
+                            versionString.isNotEmpty
+                                ? 'Version $versionString'
+                                : 'Version',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () {
+                          _showAboutDialog(context, versionString);
+                        },
+                        showChevron: true,
                       ),
-                      onPressed: () {
-                        _openStoreListing();
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      customIcon: SvgWidget(
-                        SvgAsset.versionIcon,
-                        semanticsLabel: 'Info Icon',
-                        height: 20.h,
-                        width: 20.w,
-                        colorFilter: context.isLightTheme
-                            ? ColorFilter.mode(
-                                context.colors.iconPrimary,
-                                BlendMode.srcIn,
-                              )
-                            : null,
-                      ),
-                      title:
-                          versionString.isNotEmpty
-                              ? 'Version $versionString'
-                              : 'Version',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.iconPrimary,
-                        height: 20.h / 14.h,
-                      ),
-                      onPressed: () {
-                        _showAboutDialog(context, versionString);
-                      },
-                      showChevron: true,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
 
-              // Footer: Get Premium card + Restore Purchases + Divider + Log Out
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: ResponsiveHelper.isTablet ? 280.0 : 0,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // "Get Premium" card — shown only for non-premium users
-                    _GetPremiumCard(),
+                // Footer: Get Premium card + Restore Purchases + Divider + Log Out
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: ResponsiveHelper.isTablet ? 280.0 : 0,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // "Get Premium" card — shown only for non-premium users
+                      _GetPremiumCard(),
 
-                    // Restore Purchases
-                    _RestorePurchasesRow(),
-
-                    // Divider
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                      child: Container(
-                        height: 1,
-                        color: context.colors.divider,
+                      // Divider
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                        child: Container(
+                          height: 1,
+                          color: context.colors.divider,
+                        ),
                       ),
-                    ),
 
-                    _LogOutButton(
-                      key: e2eKey(E2eIds.drawerLogout),
-                      onLogoutPressed: () {
-                        callbacks.onLogoutPressed();
-                      },
-                    ),
+                      _LogOutButton(
+                        key: e2eKey(E2eIds.drawerLogout),
+                        onLogoutPressed: () {
+                          callbacks.onLogoutPressed();
+                        },
+                      ),
 
-                    if (ResponsiveHelper.isTablet) SizedBox(height: 16.0),
-                  ],
+                      if (ResponsiveHelper.isTablet) SizedBox(height: 16.0),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -396,22 +399,18 @@ class _UserProfileHeader extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final subscriptionState = ref.watch(subscriptionProvider);
     final isPremium = subscriptionState.isSubscribed;
-    final managementUrl = subscriptionState.managementUrl;
     final name = user?.displayName?.trim();
     final displayName = (name?.isNotEmpty ?? false) ? name! : 'Anonymous';
 
     return GestureDetector(
-      onTap:
-          isPremium
-              ? () async {
-                Navigator.of(context).pop();
-                if (!context.mounted) return;
-                await showPremiumCelebration(
-                  context,
-                  managementUrl: managementUrl,
-                );
-              }
-              : null,
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedbackService.navigation();
+        Navigator.of(context).pop();
+        Navigator.of(
+          context,
+        ).push(SettingsPage.route(initiallyExpanded: SettingsSection.account));
+      },
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
         child: Row(
@@ -457,7 +456,10 @@ class _ProBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: kPrimaryColor,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4), width: 1),
+        border: Border.all(
+          color: kPrimaryColor.withValues(alpha: 0.4),
+          width: 1,
+        ),
       ),
       child: Text(
         'PRO',
@@ -495,10 +497,7 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
         decoration: BoxDecoration(
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: context.colors.divider,
-            width: 1,
-          ),
+          border: Border.all(color: context.colors.divider, width: 1),
         ),
         padding: EdgeInsets.fromLTRB(12.sp, 8.sp, 6.sp, 8.sp),
         child: Row(
@@ -573,61 +572,6 @@ class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
   }
 }
 
-/// Restore Purchases row — kept for App Store compliance
-class _RestorePurchasesRow extends ConsumerWidget {
-  const _RestorePurchasesRow();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return InkWell(
-      onTap: () async {
-        HapticFeedbackService.buttonPress();
-        final success =
-            await ref.read(subscriptionProvider.notifier).restorePurchases();
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                success
-                    ? 'Purchases restored successfully!'
-                    : 'No purchases found to restore',
-              ),
-              backgroundColor: success
-                  ? context.colors.successStrong
-                  : context.colors.surfaceRecessed,
-            ),
-          );
-        }
-      },
-      child: Container(
-        padding: EdgeInsets.only(
-          left: 16.sp,
-          top: 10.sp,
-          bottom: 10.sp,
-          right: 8.sp,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.restore_rounded,
-              size: 24.ic,
-              color: context.colors.iconPrimary.withValues(alpha:0.5),
-            ),
-            SizedBox(width: 12.w),
-            Text(
-              'Restore Purchases',
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.iconPrimary.withValues(alpha:0.5),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _LogOutButton extends StatelessWidget {
   const _LogOutButton({required this.onLogoutPressed, super.key});
 
@@ -660,7 +604,10 @@ class _LogOutButton extends StatelessWidget {
             Text(
               isAnonymous ? 'Sign up' : 'Log out',
               style: AppTypography.textSmMedium.copyWith(
-                color: isAnonymous ? context.colors.iconPrimary : context.colors.danger,
+                color:
+                    isAnonymous
+                        ? context.colors.iconPrimary
+                        : context.colors.danger,
                 height: 20.h / 14.h,
               ),
             ),
@@ -679,11 +626,9 @@ class _MenuItem extends StatelessWidget {
     this.showChevron = false,
     this.onPressed,
     this.textStyle,
-    this.maxLines = 1,
     super.key,
   });
 
-  final int? maxLines;
   final IconData? icon;
   final Widget? customIcon;
   final String title;
@@ -713,7 +658,7 @@ class _MenuItem extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            maxLines: maxLines,
+            maxLines: 1,
             style:
                 textStyle ??
                 AppTypography.textSmRegular.copyWith(
@@ -782,10 +727,7 @@ class _AboutDialog extends StatelessWidget {
             decoration: BoxDecoration(
               color: context.colors.surfaceElevated,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: context.colors.divider,
-                width: 1,
-              ),
+              border: Border.all(color: context.colors.divider, width: 1),
               boxShadow: [
                 BoxShadow(
                   color: context.colors.shadow,
@@ -806,8 +748,8 @@ class _AboutDialog extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        context.colors.iconPrimary.withValues(alpha:0.05),
-                        context.colors.iconPrimary.withValues(alpha:0.02),
+                        context.colors.iconPrimary.withValues(alpha: 0.05),
+                        context.colors.iconPrimary.withValues(alpha: 0.02),
                       ],
                     ),
                     borderRadius: const BorderRadius.only(
@@ -821,10 +763,14 @@ class _AboutDialog extends StatelessWidget {
                             width: 56.w,
                             height: 56.h,
                             decoration: BoxDecoration(
-                              color: context.colors.iconPrimary.withValues(alpha:0.1),
+                              color: context.colors.iconPrimary.withValues(
+                                alpha: 0.1,
+                              ),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: context.colors.iconPrimary.withValues(alpha:0.2),
+                                color: context.colors.iconPrimary.withValues(
+                                  alpha: 0.2,
+                                ),
                                 width: 1,
                               ),
                             ),
@@ -872,7 +818,9 @@ class _AboutDialog extends StatelessWidget {
                       Text(
                         'Version $version',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.iconPrimary.withValues(alpha:0.5),
+                          color: context.colors.iconPrimary.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                       ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
                     ],
@@ -936,7 +884,8 @@ class _AboutDialog extends StatelessWidget {
                           },
                           style: TextButton.styleFrom(
                             padding: EdgeInsets.symmetric(vertical: 14.h),
-                            backgroundColor: context.colors.iconPrimary.withValues(alpha:0.05),
+                            backgroundColor: context.colors.iconPrimary
+                                .withValues(alpha: 0.05),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -944,7 +893,9 @@ class _AboutDialog extends StatelessWidget {
                           child: Text(
                             'Close',
                             style: AppTypography.textSmMedium.copyWith(
-                              color: context.colors.iconPrimary.withValues(alpha:0.7),
+                              color: context.colors.iconPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                         ),
@@ -991,10 +942,10 @@ class _LinkButton extends StatelessWidget {
           child: Container(
             padding: EdgeInsets.all(16.sp),
             decoration: BoxDecoration(
-              color: context.colors.iconPrimary.withValues(alpha:0.03),
+              color: context.colors.iconPrimary.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: context.colors.iconPrimary.withValues(alpha:0.08),
+                color: context.colors.iconPrimary.withValues(alpha: 0.08),
                 width: 1,
               ),
             ),
@@ -1004,13 +955,13 @@ class _LinkButton extends StatelessWidget {
                   width: 40.w,
                   height: 40.h,
                   decoration: BoxDecoration(
-                    color: context.colors.iconPrimary.withValues(alpha:0.08),
+                    color: context.colors.iconPrimary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     icon,
                     size: 20.ic,
-                    color: context.colors.iconPrimary.withValues(alpha:0.8),
+                    color: context.colors.iconPrimary.withValues(alpha: 0.8),
                   ),
                 ),
                 SizedBox(width: 12.w),
@@ -1021,14 +972,18 @@ class _LinkButton extends StatelessWidget {
                       Text(
                         label,
                         style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.iconPrimary.withValues(alpha:0.9),
+                          color: context.colors.iconPrimary.withValues(
+                            alpha: 0.9,
+                          ),
                         ),
                       ),
                       SizedBox(height: 2.h),
                       Text(
                         subtitle,
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.iconPrimary.withValues(alpha:0.5),
+                          color: context.colors.iconPrimary.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                       ),
                     ],
@@ -1037,7 +992,7 @@ class _LinkButton extends StatelessWidget {
                 Icon(
                   Icons.arrow_forward_ios,
                   size: 14.ic,
-                  color: context.colors.iconPrimary.withValues(alpha:0.4),
+                  color: context.colors.iconPrimary.withValues(alpha: 0.4),
                 ),
               ],
             ),

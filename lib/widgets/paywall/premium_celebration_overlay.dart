@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:app_settings/app_settings.dart';
+import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -9,22 +9,18 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Shows a beautiful celebration overlay when user subscribes to premium.
 /// Call this after a successful subscription purchase.
-/// Pass [managementUrl] to show a "Manage subscription" button.
-Future<void> showPremiumCelebration(
-  BuildContext context, {
-  String? managementUrl,
-}) async {
+/// The Account Settings button opens subscription/account controls.
+Future<void> showPremiumCelebration(BuildContext context) async {
   await showGeneralDialog(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black.withValues(alpha: 0.85),
     transitionDuration: const Duration(milliseconds: 400),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return _PremiumCelebrationOverlay(managementUrl: managementUrl);
+      return const _PremiumCelebrationOverlay();
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       return FadeTransition(opacity: animation, child: child);
@@ -43,9 +39,7 @@ Future<void> showPremiumCelebration(
 }
 
 class _PremiumCelebrationOverlay extends StatefulWidget {
-  const _PremiumCelebrationOverlay({this.managementUrl});
-
-  final String? managementUrl;
+  const _PremiumCelebrationOverlay();
 
   @override
   State<_PremiumCelebrationOverlay> createState() =>
@@ -228,7 +222,9 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                   Text(
                         'You now have access to all features',
                         style: AppTypography.textMdMedium.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.7),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.7,
+                          ),
                         ),
                       )
                       .animate()
@@ -237,24 +233,15 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
 
                   SizedBox(height: 32.h),
 
-                  // Manage subscription button
+                  // Account settings button
                   GestureDetector(
-                        onTap: () async {
+                        onTap: () {
                           HapticFeedbackService.buttonPress();
-
-                          final url = widget.managementUrl;
-                          if (url != null && url.isNotEmpty) {
-                            final uri = Uri.tryParse(url);
-                            if (uri != null && await canLaunchUrl(uri)) {
-                              await launchUrl(
-                                uri,
-                                mode: LaunchMode.externalApplication,
-                              );
-                              return;
-                            }
-                          }
-                          await AppSettings.openAppSettings(
-                            type: AppSettingsType.subscriptions,
+                          Navigator.of(context).pop();
+                          Navigator.of(context).push(
+                            SettingsPage.route(
+                              initiallyExpanded: SettingsSection.account,
+                            ),
                           );
                         },
                         child: Container(
@@ -263,10 +250,14 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                             vertical: 12.sp,
                           ),
                           decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(alpha: 0.1),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.1,
+                            ),
                             borderRadius: BorderRadius.circular(8.br),
                             border: Border.all(
-                              color: context.colors.textPrimary.withValues(alpha: 0.2),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.2,
+                              ),
                               width: 1,
                             ),
                           ),
@@ -275,14 +266,18 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                             children: [
                               Icon(
                                 Icons.settings_outlined,
-                                color: context.colors.textPrimary.withValues(alpha: 0.8),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.8,
+                                ),
                                 size: 18.ic,
                               ),
                               SizedBox(width: 8.w),
                               Text(
-                                'Manage subscription',
+                                'Account Settings',
                                 style: AppTypography.textSmMedium.copyWith(
-                                  color: context.colors.textPrimary.withValues(alpha: 0.8),
+                                  color: context.colors.textPrimary.withValues(
+                                    alpha: 0.8,
+                                  ),
                                 ),
                               ),
                             ],
@@ -299,7 +294,9 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                   Text(
                         'Tap anywhere to continue',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.4),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.4,
+                          ),
                         ),
                       )
                       .animate(
