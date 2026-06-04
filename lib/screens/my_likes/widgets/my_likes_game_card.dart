@@ -1,3 +1,4 @@
+import 'package:chessever2/constants/game_tags.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
@@ -57,7 +58,16 @@ class MyLikesGameCard extends ConsumerWidget {
       onTap: isLocked ? () => _handleLockedTap(context, ref) : onOpen,
     );
 
-    final content = isLocked ? _lockedOverlay(card) : card;
+    final visual =
+        analysis.tags.isEmpty
+            ? card
+            : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [card, _buildTagsStrip(context)],
+            );
+
+    final content = isLocked ? _lockedOverlay(visual) : visual;
 
     return SwipeActionCard(
       dismissKey: ValueKey('mylikes_remove_${analysis.id}'),
@@ -83,6 +93,49 @@ class MyLikesGameCard extends ConsumerWidget {
           child: IgnorePointer(child: const _PremiumBadge()),
         ),
       ],
+    );
+  }
+
+  /// Compact, read-only chips showing the tags the user attached to this game
+  /// (set in the board save/edit sheet). Tapping them to filter happens via the
+  /// tag row at the top of the screen, so these are non-interactive.
+  Widget _buildTagsStrip(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12.w, 6.h, 12.w, 2.h),
+      child: Wrap(
+        spacing: 6.w,
+        runSpacing: 6.h,
+        children: [
+          for (final tag in analysis.tags)
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+              decoration: BoxDecoration(
+                color: context.colors.danger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.br),
+                border: Border.all(
+                  color: context.colors.danger.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    iconForGameTag(tag),
+                    size: 11.sp,
+                    color: context.colors.danger.withValues(alpha: 0.9),
+                  ),
+                  SizedBox(width: 4.w),
+                  Text(
+                    tag,
+                    style: AppTypography.textXxsMedium.copyWith(
+                      color: context.colors.textPrimary.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
