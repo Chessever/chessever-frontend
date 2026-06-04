@@ -37,12 +37,18 @@ class FolderCard extends ConsumerWidget {
   final bool isFeatured;
   final VoidCallback? onTap;
 
+  /// Overrides the displayed title without touching the underlying folder
+  /// identity (used e.g. to surface TWIC as "ChessEver Master Database" in
+  /// the Discovery tab while keeping its internal id/logic unchanged).
+  final String? titleOverride;
+
   const FolderCard({
     super.key,
     required this.folder,
     this.isExpanded = false,
     this.isFeatured = false,
     this.onTap,
+    this.titleOverride,
   });
 
   void _navigateToFolder(BuildContext context) {
@@ -107,7 +113,7 @@ class FolderCard extends ConsumerWidget {
                 ),
               ),
               Text(
-                folder.displayName,
+                titleOverride ?? folder.displayName,
                 style: AppTypography.textSmMedium.copyWith(
                   color: context.colors.textPrimary,
                 ),
@@ -276,7 +282,7 @@ class FolderCard extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    folder.displayName,
+                    titleOverride ?? folder.displayName,
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
                     ),

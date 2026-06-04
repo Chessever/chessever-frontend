@@ -27,11 +27,16 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+
+/// The three top-level Library surfaces. Order matches the segmented control
+/// and is used directly as the IndexedStack index, so don't reorder casually.
+enum _LibraryTab { studies, myDatabase, discovery }
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -46,6 +51,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
   bool _isSearchFocused = false;
+
+  // Lands on My Database by default. Per-tab search text is preserved in
+  // `_tabQueries`; scroll position survives switches because the tab bodies
+  // live in an IndexedStack (all kept alive).
+  _LibraryTab _activeTab = _LibraryTab.myDatabase;
+  final Map<_LibraryTab, String> _tabQueries = {};
 
   @override
   void initState() {
@@ -321,7 +332,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
             child: Column(
-              children: [_buildTopBar(), Expanded(child: _buildContent())],
+              children: [
+                _buildTopBar(),
+                _buildTabSelector(),
+                Expanded(child: _buildTabBody()),
+              ],
             ),
           ),
         ),
@@ -409,6 +424,104 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       onChanged: (query) {
         setState(() => _searchQuery = query.trim().toLowerCase());
       },
+    );
+  }
+
+  Widget _buildTabSelector() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
+      child: SegmentedSwitcher(
+        options: const ['Studies', 'My Database', 'Discovery'],
+        initialSelection: _LibraryTab.myDatabase.index,
+        currentSelection: _activeTab.index,
+        backgroundColor: context.colors.surface,
+        selectedBackgroundColor: context.colors.surfaceRecessed,
+        onSelectionChanged: _onTabChanged,
+      ),
+    );
+  }
+
+  void _onTabChanged(int index) {
+    final next = _LibraryTab.values[index];
+    if (next == _activeTab) return;
+    HapticFeedbackService.light();
+    // Stash the outgoing tab's search text, restore the incoming tab's.
+    _tabQueries[_activeTab] = _searchController.text;
+    final restored = _tabQueries[next] ?? '';
+    setState(() {
+      _activeTab = next;
+      _searchController.text = restored;
+      _searchController.selection = TextSelection.collapsed(
+        offset: restored.length,
+      );
+      _searchQuery = restored.trim().toLowerCase();
+    });
+  }
+
+  Widget _buildTabBody() {
+    // IndexedStack keeps every tab mounted, so My Database's scroll position
+    // (and provider subscriptions) survive switching away and back.
+    return IndexedStack(
+      index: _activeTab.index,
+      children: [
+        _buildStudiesTab(),
+        _buildContent(),
+        _buildDiscoveryTab(),
+      ],
+    );
+  }
+
+  Widget _buildStudiesTab() {
+    return const Center(
+      child: _ComingSoonPanel(
+        icon: Icons.menu_book_rounded,
+        title: 'Studies',
+        message:
+            'Curated Lichess studies, filtered for quality and ranked so the '
+            'strongest surface first. Landing here soon.',
+      ),
+    );
+  }
+
+  Widget _buildDiscoveryTab() {
+    return CustomScrollView(
+      // Explicit non-primary: keeps this view from contending for the
+      // PrimaryScrollController with the My Database tab that lives alongside
+      // it in the IndexedStack.
+      primary: false,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      slivers: [
+        SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+        SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          sliver: SliverToBoxAdapter(
+            child: FolderCard(
+              folder: kTwicFolder,
+              isExpanded: true,
+              isFeatured: true,
+              titleOverride: 'ChessEver Master Database',
+              onTap: () => _navigateToFolder(kTwicFolder),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24.w),
+            child: _ComingSoonPanel(
+              icon: Icons.bolt_rounded,
+              title: 'Miniatures',
+              message:
+                  'A community feed of short, decisive games — strongest games '
+                  'first, then most-liked as likes roll in. Arriving soon.',
+              compact: true,
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+      ],
     );
   }
 
@@ -513,9 +626,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildFoldersSliver(List<LibraryFolder> folders) {
-    // Pin the permanent collections at the top: real per-user Liked Games
-    // folder first (auto-created via ensureDefaultFolders), then TWIC, then
-    // the rest in normal order.
+    // Pin the My Likes collection at the top (auto-created via
+    // ensureDefaultFolders), then the rest in normal order. The ChessEver
+    // master database (TWIC) now lives in the Discovery tab, not here.
     final likedIdx = folders.indexWhere((f) => f.isLikedGames);
     final rest =
         likedIdx == -1
@@ -523,7 +636,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             : (List<LibraryFolder>.from(folders)..removeAt(likedIdx));
     final allFolders = <LibraryFolder>[
       if (likedIdx != -1) folders[likedIdx],
-      kTwicFolder,
       ...rest,
     ];
     final filteredFolders = _filterFolders(allFolders);
@@ -693,6 +805,95 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Placeholder surface for tabs whose backend isn't wired yet (Studies,
+/// Miniatures). Kept deliberately honest — no fake data, just a clear note
+/// that the section is on the way.
+class _ComingSoonPanel extends StatelessWidget {
+  const _ComingSoonPanel({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.compact = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: 24.w,
+        vertical: compact ? 28.h : 36.h,
+      ),
+      decoration: BoxDecoration(
+        color: context.colors.surface.withValues(alpha: compact ? 0.6 : 0.0),
+        borderRadius: BorderRadius.circular(20.br),
+        border:
+            compact
+                ? Border.all(
+                  color: context.colors.textPrimary.withValues(alpha: 0.06),
+                )
+                : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: EdgeInsets.all(16.sp),
+            decoration: BoxDecoration(
+              color: kPrimaryColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 30.sp, color: kPrimaryColor),
+          ),
+          SizedBox(height: 16.h),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: AppTypography.textLgBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+                child: Text(
+                  'Soon',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kPrimaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.w),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.6),
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
