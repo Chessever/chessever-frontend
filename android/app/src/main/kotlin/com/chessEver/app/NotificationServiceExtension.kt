@@ -196,15 +196,20 @@ class NotificationServiceExtension : INotificationServiceExtension {
       )
     }
 
-    // Request promoted ongoing for Android 15+ (Live Updates on lock screen)
+    // Android 16 (API 36) "Live Updates": promote this ongoing notification so it
+    // surfaces as a live activity on the lock screen / status-bar chip.
+    //
+    // We set the raw EXTRA_REQUEST_PROMOTED_ONGOING key
+    // ("android.requestPromotedOngoing") rather than
+    // NotificationCompat.Builder#setRequestPromotedOngoing(true): that helper only
+    // exists in androidx.core 1.17+, while the extra works on every version and is
+    // simply ignored on older OS levels. Requires the POST_PROMOTED_NOTIFICATIONS
+    // permission (declared in the manifest) and a promotable style — we use
+    // BigTextStyle above on API 35+ (BigPictureStyle does NOT qualify for promotion).
     if (eventType != "end" && Build.VERSION.SDK_INT >= 35) {
       builder.addExtras(Bundle().apply {
         putBoolean("android.requestPromotedOngoing", true)
       })
-      // Ensure the notification is seen as prominent
-      if (Build.VERSION.SDK_INT >= 35) {
-        builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-      }
     }
 
     // Add action to end updates
