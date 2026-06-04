@@ -895,22 +895,19 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   Future<void> _checkAndShowWalkthrough(BuildContext context) async {
     final prefs = ref.read(sharedPreferencesRepository);
     final dontShow = await prefs.getBool(_kWalkthroughDontShowKey) ?? false;
-    if (dontShow) return;
-
     final lastShownMs = await prefs.getInt(_kWalkthroughShownDateKey);
-    final now = DateTime.now();
 
-    bool shouldShow = false;
-    if (lastShownMs == null) {
-      shouldShow = true;
-    } else {
-      final lastShownDate = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
-      if (now.difference(lastShownDate).inDays >= 7) {
-        shouldShow = true;
-      }
+    // Show each instruction once. Display step 1 only if it has never been seen
+    // and isn't opted out. Otherwise hand off to step 2 so any later unseen
+    // steps still appear — in order, one at a time (each self-gates on its key).
+    if (dontShow || lastShownMs != null) {
+      _requestSwitchViewsTutorial();
+      return;
     }
 
-    if (shouldShow && context.mounted) {
+    final now = DateTime.now();
+
+    if (context.mounted) {
       // Trigger local overlay instead of ShowcaseView
       setState(() {
         _showTutorialOverlay = true;
@@ -985,11 +982,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final dontShow = await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false;
     if (dontShow || !mounted) return;
 
+    // Show once: if it's ever been seen, don't show it again.
     final lastShownMs = await prefs.getInt(kLikeWalkthroughShownDateKey);
-    if (lastShownMs != null) {
-      final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
-      if (DateTime.now().difference(lastShown).inDays < 7) return;
-    }
+    if (lastShownMs != null) return;
     if (!mounted) return;
 
     _showLikeTutorial = true;
@@ -1466,7 +1461,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
+    // PiP is temporarily disabled for everyone (the settings entry is hidden,
+    // see board_settings_body.dart). Remove this early return to re-enable.
+    return false;
     // PiP is a premium-only feature.
+    // ignore: dead_code
     if (!ref.read(subscriptionProvider).isSubscribed) return false;
     final mode =
         ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.live;
@@ -8455,16 +8454,12 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
       return;
     }
 
-    // Respect the shared 7-day cadence — if the user already saw this
-    // teaching in the standalone gamebase explorer recently, don't nag
-    // them with it again in the chained flow.
+    // Show once: if this teaching has ever been seen (here or in the standalone
+    // gamebase explorer), skip it but still hand off to step 3.
     final lastShownMs = await prefs.getInt(kSwitchViewsWalkthroughShownDateKey);
     if (lastShownMs != null) {
-      final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
-      if (DateTime.now().difference(lastShown).inDays < 7) {
-        _requestLikeTutorial();
-        return;
-      }
+      _requestLikeTutorial();
+      return;
     }
     if (!mounted) return;
 

@@ -1,9 +1,9 @@
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/providers/pip_mode_provider.dart';
+// import 'package:chessever2/providers/pip_mode_provider.dart'; // PiP disabled
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+// import 'package:chessever2/revenue_cat_service/subscribe_state.dart'; // PiP disabled
+// import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart'; // PiP disabled
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -163,6 +163,8 @@ class BoardSettingsBody extends ConsumerWidget {
         ),
         SizedBox(height: 18.h),
 
+        // Picture-in-Picture is temporarily disabled; settings entry hidden.
+        /*
         SettingCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,7 +231,7 @@ class BoardSettingsBody extends ConsumerWidget {
           ),
         ),
         SizedBox(height: 18.h),
-
+        */
         SettingCard(
           child: Row(
             children: [
@@ -1320,6 +1322,8 @@ class _PieceSetGridItem extends StatelessWidget {
   }
 }
 
+// Picture-in-Picture selector — hidden while PiP is disabled.
+/*
 class _PipModeSelector extends StatelessWidget {
   const _PipModeSelector({required this.selected, required this.onSelected});
 
@@ -1415,6 +1419,7 @@ class _PipModeSelector extends StatelessWidget {
     );
   }
 }
+*/
 
 class _ViewModeSelector extends StatelessWidget {
   const _ViewModeSelector({
