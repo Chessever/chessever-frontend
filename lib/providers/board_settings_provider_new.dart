@@ -36,7 +36,7 @@ class BoardSettingsNew {
         true, // Use chess piece symbols (♔♕♖♗♘) instead of letters
     this.showCoordinates = true,
     this.rawPgnMode = false,
-    this.pipModeIndex = 2, // PipMode.live (default)
+    this.pipModeIndex = 0, // PipMode.off (default)
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -233,7 +233,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         rawPgnMode: model.rawPgnMode,
         // pip_mode isn't part of BoardSettingsModel's mapper; read it straight
         // from the row so we don't need to regenerate the dart_mappable code.
-        pipModeIndex: (response['pip_mode'] as int?) ?? 2,
+        pipModeIndex: (response['pip_mode'] as int?) ?? 0,
       );
 
       // Cache locally
@@ -508,7 +508,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         useFigurine: map['useFigurine'] as bool? ?? true,
         showCoordinates: map['showCoordinates'] as bool? ?? true,
         rawPgnMode: map['rawPgnMode'] as bool? ?? false,
-        pipModeIndex: map['pipModeIndex'] as int? ?? 2,
+        pipModeIndex: map['pipModeIndex'] as int? ?? 0,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;

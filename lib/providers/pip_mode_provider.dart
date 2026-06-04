@@ -15,7 +15,7 @@ extension PipModeInfo on PipMode {
 
   static PipMode fromIndex(int? index) {
     if (index == null || index < 0 || index >= PipMode.values.length) {
-      return PipMode.live; // default: live games only
+      return PipMode.off; // default: off (opt-in only)
     }
     return PipMode.values[index];
   }

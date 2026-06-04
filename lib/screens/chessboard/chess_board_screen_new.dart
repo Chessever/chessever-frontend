@@ -1461,14 +1461,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
-    // PiP is temporarily disabled for everyone (the settings entry is hidden,
-    // see board_settings_body.dart). Remove this early return to re-enable.
-    return false;
     // PiP is a premium-only feature.
-    // ignore: dead_code
     if (!ref.read(subscriptionProvider).isSubscribed) return false;
     final mode =
-        ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.live;
+        ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.off;
     switch (mode) {
       case PipMode.off:
         return false;
