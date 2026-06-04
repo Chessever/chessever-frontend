@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.1.0
+  version: 1.2.0
 
 servers:
   - url: http://localhost:3232
@@ -1573,6 +1573,271 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/studies:
+    get:
+      summary: List Lichess studies
+      description: |
+        Returns credibility-gated, active Lichess studies. Studies are
+        auto-discovered daily from Lichess's public trending list and pulled via
+        the Lichess API. Sorted by credibility score by default. No premium gate (v1).
+      operationId: listStudies
+      tags:
+        - Studies
+      parameters:
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [score, recent, name, chapters, created]
+            default: score
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive substring search on study name
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of studies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/LichessStudyListItem"
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/studies/refresh:
+    post:
+      summary: Trigger a studies re-sync (pull-to-refresh)
+      description: Enqueues a background Lichess study sync. Returns immediately.
+      operationId: refreshStudies
+      tags:
+        - Studies
+      responses:
+        "200":
+          description: Sync enqueued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    type: object
+                    properties:
+                      enqueued:
+                        type: boolean
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/studies/{id}:
+    get:
+      summary: Get a study with its chapters
+      operationId: getStudy
+      tags:
+        - Studies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Lichess study ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Study detail with chapter list (no PGN bodies)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    $ref: "#/components/schemas/LichessStudyDetail"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Study not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/studies/{id}/chapters/{chapterId}/pgn:
+    get:
+      summary: Get a chapter's PGN
+      description: Returns the cached PGN of a single study chapter as text.
+      operationId: getStudyChapterPgn
+      tags:
+        - Studies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Lichess study ID
+          schema:
+            type: string
+        - name: chapterId
+          in: path
+          required: true
+          description: Chapter ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Chapter PGN
+          content:
+            application/x-chess-pgn:
+              schema:
+                type: string
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Chapter not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/miniatures:
+    get:
+      summary: List miniatures
+      description: |
+        Decisive short games (more than two full moves, ended by move 19) derived
+        from the master database. Default sort is by average rating (strongest
+        first). Premium gating is not enforced in v1.
+      operationId: listMiniatures
+      tags:
+        - Miniatures
+      parameters:
+        - name: window
+          in: query
+          required: false
+          description: Time window over the game date
+          schema:
+            type: string
+            enum: [today, week, all]
+            default: all
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [rating, moves, recent]
+            default: rating
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of miniatures
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Miniature"
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1582,6 +1847,109 @@ components:
       description: API key for authentication
 
   schemas:
+    LichessStudyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+        authorUsername:
+          type: string
+          nullable: true
+        name:
+          type: string
+        views:
+          type: integer
+          description: View count scraped from Lichess's trending list (popularity signal)
+        lichessCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lichessUpdatedAt:
+          type: string
+          format: date-time
+        chapterCount:
+          type: integer
+        plyTotal:
+          type: integer
+        hasAnnotations:
+          type: boolean
+        credibilityScore:
+          type: number
+          description: 0-100 quality score; studies below the tunable threshold are not served
+        passedGate:
+          type: boolean
+        status:
+          type: string
+          enum: [active, gone]
+        syncedAt:
+          type: string
+          format: date-time
+    LichessStudyChapterMeta:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        chapterId:
+          type: string
+        name:
+          type: string
+          nullable: true
+        plyCount:
+          type: integer
+        orderIndex:
+          type: integer
+    LichessStudyDetail:
+      type: object
+      properties:
+        study:
+          $ref: "#/components/schemas/LichessStudyListItem"
+        chapters:
+          type: array
+          items:
+            $ref: "#/components/schemas/LichessStudyChapterMeta"
+    Miniature:
+      type: object
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        avgRating:
+          type: integer
+          nullable: true
+        plyCount:
+          type: integer
+        finalMoveNumber:
+          type: integer
+        result:
+          type: string
+          enum: [W, B]
+        timeControl:
+          type: string
+          enum: [CLASSICAL, RAPID, BLITZ]
+        isOnline:
+          type: boolean
+        date:
+          type: string
+          format: date-time
+        event:
+          type: string
+          nullable: true
+        eco:
+          type: string
+          nullable: true
+        whiteName:
+          type: string
+          nullable: true
+        blackName:
+          type: string
+          nullable: true
+        whiteElo:
+          type: integer
+          nullable: true
+        blackElo:
+          type: integer
+          nullable: true
     PositionAggregatesQueryRequest:
       type: object
       required:
