@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/repository/gamebase/discovery/discovery_providers.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
@@ -11,6 +14,8 @@ import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
+import 'package:chessever2/screens/library/discovery/miniatures_tab.dart';
+import 'package:chessever2/screens/library/discovery/studies_tab.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -57,6 +62,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   // live in an IndexedStack (all kept alive).
   _LibraryTab _activeTab = _LibraryTab.myDatabase;
   final Map<_LibraryTab, String> _tabQueries = {};
+  Timer? _studiesSearchDebounce;
 
   @override
   void initState() {
@@ -77,6 +83,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   void dispose() {
+    _studiesSearchDebounce?.cancel();
     _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     _searchController.dispose();
@@ -423,6 +430,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       hintText: 'Search',
       onChanged: (query) {
         setState(() => _searchQuery = query.trim().toLowerCase());
+        // Studies search hits the backend `q` param (debounced); My Database
+        // filters folders locally via _searchQuery; Discovery has no search.
+        if (_activeTab == _LibraryTab.studies) {
+          _studiesSearchDebounce?.cancel();
+          _studiesSearchDebounce = Timer(
+            const Duration(milliseconds: 350),
+            () => ref.read(studiesQueryProvider.notifier).setSearch(query.trim()),
+          );
+        }
       },
     );
   }
@@ -456,6 +472,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       );
       _searchQuery = restored.trim().toLowerCase();
     });
+    // Keep the Studies backend query in sync with its restored search text.
+    if (next == _LibraryTab.studies) {
+      _studiesSearchDebounce?.cancel();
+      ref.read(studiesQueryProvider.notifier).setSearch(restored.trim());
+    }
   }
 
   Widget _buildTabBody() {
@@ -472,55 +493,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildStudiesTab() {
-    return const Center(
-      child: _ComingSoonPanel(
-        icon: Icons.menu_book_rounded,
-        title: 'Studies',
-        message:
-            'Curated Lichess studies, filtered for quality and ranked so the '
-            'strongest surface first. Landing here soon.',
-      ),
-    );
+    return const StudiesTab();
   }
 
   Widget _buildDiscoveryTab() {
-    return CustomScrollView(
-      // Explicit non-primary: keeps this view from contending for the
-      // PrimaryScrollController with the My Database tab that lives alongside
-      // it in the IndexedStack.
-      primary: false,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      slivers: [
-        SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-        SliverPadding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          sliver: SliverToBoxAdapter(
-            child: FolderCard(
-              folder: kTwicFolder,
-              isExpanded: true,
-              isFeatured: true,
-              titleOverride: 'ChessEver Master Database',
-              onTap: () => _navigateToFolder(kTwicFolder),
-            ),
+    // The ChessEver master database is pinned at the top of Discovery (it's
+    // community content, not the user's own); Miniatures fill the rest.
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 8.h),
+          child: FolderCard(
+            folder: kTwicFolder,
+            isExpanded: true,
+            isFeatured: true,
+            titleOverride: 'ChessEver Master Database',
+            onTap: () => _navigateToFolder(kTwicFolder),
           ),
         ),
-        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24.w),
-            child: _ComingSoonPanel(
-              icon: Icons.bolt_rounded,
-              title: 'Miniatures',
-              message:
-                  'A community feed of short, decisive games — strongest games '
-                  'first, then most-liked as likes roll in. Arriving soon.',
-              compact: true,
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        const Expanded(child: MiniaturesTab()),
       ],
     );
   }
@@ -805,95 +796,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// Placeholder surface for tabs whose backend isn't wired yet (Studies,
-/// Miniatures). Kept deliberately honest — no fake data, just a clear note
-/// that the section is on the way.
-class _ComingSoonPanel extends StatelessWidget {
-  const _ComingSoonPanel({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.compact = false,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(
-        horizontal: 24.w,
-        vertical: compact ? 28.h : 36.h,
-      ),
-      decoration: BoxDecoration(
-        color: context.colors.surface.withValues(alpha: compact ? 0.6 : 0.0),
-        borderRadius: BorderRadius.circular(20.br),
-        border:
-            compact
-                ? Border.all(
-                  color: context.colors.textPrimary.withValues(alpha: 0.06),
-                )
-                : null,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: EdgeInsets.all(16.sp),
-            decoration: BoxDecoration(
-              color: kPrimaryColor.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 30.sp, color: kPrimaryColor),
-          ),
-          SizedBox(height: 16.h),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: AppTypography.textLgBold.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                decoration: BoxDecoration(
-                  color: kPrimaryColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: Text(
-                  'Soon',
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: kPrimaryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.w),
-            child: Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.6),
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

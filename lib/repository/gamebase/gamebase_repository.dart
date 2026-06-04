@@ -9,6 +9,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/repository/gamebase/discovery/discovery_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 
@@ -394,6 +395,112 @@ class GamebaseRepository {
       }
       return null;
     }
+  }
+
+  // ── Discovery: Lichess Studies ────────────────────────────────────────
+
+  Future<PagedResult<LichessStudy>> listStudies({
+    String sort = 'score',
+    String order = 'desc',
+    int limit = 50,
+    int offset = 0,
+    String? q,
+  }) async {
+    final response = await _dio.get(
+      '$_baseUrl/api/studies',
+      queryParameters: {
+        'sort': sort,
+        'order': order,
+        'limit': limit,
+        'offset': offset,
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+      },
+      options: Options(
+        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+      ),
+    );
+    final data = Map<String, dynamic>.from(response.data['data'] as Map);
+    return PagedResult.fromData(data, LichessStudy.fromJson);
+  }
+
+  /// Enqueues a background Lichess re-sync (pull-to-refresh). Best-effort.
+  Future<bool> refreshStudies() async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/studies/refresh',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+      final data = response.data['data'];
+      return data is Map && data['enqueued'] == true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[GamebaseRepository] refreshStudies: $e');
+      return false;
+    }
+  }
+
+  Future<LichessStudyDetail?> getStudy(String id) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/studies/$id',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+      final data = response.data['data'];
+      if (data == null) return null;
+      return LichessStudyDetail.fromJson(Map<String, dynamic>.from(data));
+    } on DioException catch (e) {
+      if (kDebugMode) debugPrint('[GamebaseRepository] getStudy: ${e.message}');
+      return null;
+    }
+  }
+
+  /// Returns the chapter's PGN body (plain text), or null on failure.
+  Future<String?> getStudyChapterPgn(String studyId, String chapterId) async {
+    try {
+      final response = await _dio.get<String>(
+        '$_baseUrl/api/studies/$studyId/chapters/$chapterId/pgn',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/x-chess-pgn'},
+          responseType: ResponseType.plain,
+        ),
+      );
+      final body = response.data;
+      return (body != null && body.trim().isNotEmpty) ? body : null;
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getStudyChapterPgn: ${e.message}');
+      }
+      return null;
+    }
+  }
+
+  // ── Discovery: Miniatures ─────────────────────────────────────────────
+
+  Future<PagedResult<Miniature>> listMiniatures({
+    String window = 'all',
+    String sort = 'rating',
+    String order = 'desc',
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final response = await _dio.get(
+      '$_baseUrl/api/miniatures',
+      queryParameters: {
+        'window': window,
+        'sort': sort,
+        'order': order,
+        'limit': limit,
+        'offset': offset,
+      },
+      options: Options(
+        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+      ),
+    );
+    final data = Map<String, dynamic>.from(response.data['data'] as Map);
+    return PagedResult.fromData(data, Miniature.fromJson);
   }
 
   Future<CloudEval?> getEvalByFen(String fen) async {
