@@ -106,6 +106,7 @@ import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
@@ -1734,8 +1735,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final pushEnabled = ref.read(notificationsSettingsProvider).enabled;
     if (!pushEnabled) return;
 
-    // Backgrounding an active board is an explicit opt-in for live tracking,
-    // so don't re-gate it behind the broader live-updates category toggle.
+    // Live Activities are a premium-only feature.
+    if (!ref.read(subscriptionProvider).isSubscribed) return;
+
+    // Respect the user's Live Updates preference (Settings → Notifications).
+    final prefs = ref.read(notificationPreferencesProvider).valueOrNull;
+    if (prefs == null || !prefs.liveGameUpdates) return;
 
     // Don't start if already active for this game
     final liveService = LiveUpdatesService.instance;

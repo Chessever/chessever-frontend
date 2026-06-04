@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart'
     show TrackPersist;
 import 'package:chessever2/theme/app_colors.dart';
@@ -8,6 +9,8 @@ import 'package:chessever2/widgets/notification_settings/notif_lead_time_control
 import 'package:chessever2/widgets/notification_settings/notif_push_card.dart';
 import 'package:chessever2/widgets/notification_settings/notif_section_header.dart';
 import 'package:chessever2/widgets/notification_settings/notif_toggle_tile.dart';
+import 'package:chessever2/widgets/notification_settings/pro_badge.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -26,6 +29,7 @@ class NotificationSettingsBody extends ConsumerWidget {
     final prefsLoading = prefsAsync.isLoading;
     final pushEnabled = pushSettings.enabled;
     final interactive = pushEnabled && !prefsLoading;
+    final isSubscribed = ref.watch(subscriptionProvider).isSubscribed;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -165,6 +169,34 @@ class NotificationSettingsBody extends ConsumerWidget {
               ),
             ),
           ),
+        ),
+
+        SizedBox(height: 24.h),
+
+        const NotifSectionHeader(title: 'Live'),
+
+        NotifToggleTile(
+          title: 'Live Updates',
+          subtitle:
+              'Move-by-move updates on your lock screen for ongoing games. '
+              'Premium only.',
+          value: prefs.liveGameUpdates && isSubscribed,
+          badge: isSubscribed ? null : const ProBadge(),
+          onChanged: !interactive
+              ? null
+              : (value) async {
+                  if (value && !ref.read(subscriptionProvider).isSubscribed) {
+                    final subscribed = await showPremiumPaywallSheet(
+                      context: context,
+                    );
+                    if (!subscribed) return;
+                  }
+                  trackPersist(
+                    ref
+                        .read(notificationPreferencesProvider.notifier)
+                        .setLiveGameUpdates(value),
+                  );
+                },
         ),
 
         SizedBox(height: 24.h),
