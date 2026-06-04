@@ -1464,9 +1464,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
-    if (kDebugMode) {
-      return true;
-    }
     return GameFilterHelper.isLiveNow(game);
   }
 
