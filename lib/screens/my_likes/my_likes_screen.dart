@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:chessever2/constants/game_tags.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -418,6 +419,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
             child: _buildSearchBar(),
           ),
         ),
+        SliverToBoxAdapter(child: _buildTagChipsRow()),
         if (data.hasNoMatches)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -449,6 +451,82 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       onChanged: _onSearchChanged,
       onClear: _clearSearch,
       onFilterTap: _showFilterDialog,
+    );
+  }
+
+  /// Tag chips: tapping one to *filter* is premium. Attaching tags stays free
+  /// and happens in the board save/edit sheet, not here.
+  Future<void> _onTagChipTap(String tag) async {
+    HapticFeedbackService.buttonPress();
+    final isPremium = ref.read(subscriptionProvider).isSubscribed;
+    if (!isPremium) {
+      final unlocked = await requirePremiumGuard(context, ref);
+      if (!unlocked || !mounted) return;
+    }
+    ref.read(myLikesFilterProvider.notifier).toggleTag(tag);
+  }
+
+  Widget _buildTagChipsRow() {
+    final selected = ref.watch(
+      myLikesFilterProvider.select((s) => s.selectedTags),
+    );
+    return SizedBox(
+      height: 34.h,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 4.h),
+        itemCount: kOfficialGameTags.length,
+        separatorBuilder: (_, __) => SizedBox(width: 8.w),
+        itemBuilder: (context, index) {
+          final tag = kOfficialGameTags[index];
+          final isOn = selected.contains(tag.label);
+          return GestureDetector(
+            onTap: () => _onTagChipTap(tag.label),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+              decoration: BoxDecoration(
+                color:
+                    isOn
+                        ? context.colors.danger.withValues(alpha: 0.15)
+                        : context.colors.textPrimary.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(20.br),
+                border: Border.all(
+                  color:
+                      isOn
+                          ? context.colors.danger.withValues(alpha: 0.5)
+                          : context.colors.textPrimary.withValues(alpha: 0.1),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isOn ? Icons.check_rounded : tag.icon,
+                    size: 13.sp,
+                    color:
+                        isOn
+                            ? context.colors.danger
+                            : context.colors.textPrimary.withValues(alpha: 0.55),
+                  ),
+                  SizedBox(width: 5.w),
+                  Text(
+                    tag.label,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color:
+                          isOn
+                              ? context.colors.danger
+                              : context.colors.textPrimary.withValues(
+                                alpha: 0.7,
+                              ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 

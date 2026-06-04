@@ -60,15 +60,28 @@ class MyLikesData {
 /// Favorites games tab exposes (apply/clear filter, search/clear) so the same
 /// [GameFilter] dialog drives both.
 class MyLikesFilterState {
-  const MyLikesFilterState({required this.filter, required this.searchQuery});
+  const MyLikesFilterState({
+    required this.filter,
+    required this.searchQuery,
+    this.selectedTags = const <String>{},
+  });
 
   final GameFilter filter;
   final String searchQuery;
 
-  MyLikesFilterState copyWith({GameFilter? filter, String? searchQuery}) {
+  /// Official tags the user is filtering by (premium). Empty = no tag filter.
+  /// A game matches if it carries ANY of the selected tags (union).
+  final Set<String> selectedTags;
+
+  MyLikesFilterState copyWith({
+    GameFilter? filter,
+    String? searchQuery,
+    Set<String>? selectedTags,
+  }) {
     return MyLikesFilterState(
       filter: filter ?? this.filter,
       searchQuery: searchQuery ?? this.searchQuery,
+      selectedTags: selectedTags ?? this.selectedTags,
     );
   }
 }
@@ -85,6 +98,14 @@ class MyLikesFilterNotifier extends StateNotifier<MyLikesFilterState> {
       state = state.copyWith(filter: GameFilter.defaultFilter());
   void searchGames(String query) => state = state.copyWith(searchQuery: query);
   void clearSearch() => state = state.copyWith(searchQuery: '');
+
+  void toggleTag(String tag) {
+    final next = Set<String>.from(state.selectedTags);
+    if (!next.remove(tag)) next.add(tag);
+    state = state.copyWith(selectedTags: next);
+  }
+
+  void clearTags() => state = state.copyWith(selectedTags: const <String>{});
 }
 
 final myLikesFilterProvider =
@@ -220,6 +241,15 @@ final myLikesViewProvider = Provider.autoDispose<AsyncValue<MyLikesData>>((ref) 
             playerNameQuery: query.isNotEmpty ? query : null,
           ).map((g) => g.gameId).toSet();
       entries = entries.where((e) => keptIds.contains(e.game.gameId)).toList();
+    }
+
+    // Tag filter (premium only): keep games carrying ANY selected tag.
+    if (canFilterAndSort && filterState.selectedTags.isNotEmpty) {
+      final wanted = filterState.selectedTags;
+      entries =
+          entries
+              .where((e) => e.analysis.tags.any(wanted.contains))
+              .toList();
     }
 
     // Sort override (premium only). When a multi-key sort is set, flatten the
