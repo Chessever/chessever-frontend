@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/board_settings/models/board_settings_model.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
@@ -35,6 +36,7 @@ class BoardSettingsNew {
         true, // Use chess piece symbols (♔♕♖♗♘) instead of letters
     this.showCoordinates = true,
     this.rawPgnMode = false,
+    this.pipModeIndex = 2, // PipMode.live (default)
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -61,6 +63,13 @@ class BoardSettingsNew {
   /// Hide auto symbols (NAGs / Lichess annotations) and PGN comments in the
   /// move-list notation. Renders the moves as clean PGN.
   final bool rawPgnMode;
+
+  /// Picture-in-Picture eligibility, stored as the PipMode index
+  /// (0=off, 1=completed, 2=live, 3=both). Premium-gated.
+  final int pipModeIndex;
+
+  /// Picture-in-Picture mode as an enum.
+  PipMode get pipMode => PipModeInfo.fromIndex(pipModeIndex);
 
   /// Get the current piece set from chessground
   PieceSet get pieceSet => getPieceSetByIndex(pieceStyleIndex);
@@ -131,6 +140,7 @@ class BoardSettingsNew {
     bool? useFigurine,
     bool? showCoordinates,
     bool? rawPgnMode,
+    int? pipModeIndex,
   }) {
     return BoardSettingsNew(
       boardColorIndex: boardColorIndex ?? this.boardColorIndex,
@@ -144,6 +154,7 @@ class BoardSettingsNew {
       useFigurine: useFigurine ?? this.useFigurine,
       showCoordinates: showCoordinates ?? this.showCoordinates,
       rawPgnMode: rawPgnMode ?? this.rawPgnMode,
+      pipModeIndex: pipModeIndex ?? this.pipModeIndex,
     );
   }
 }
@@ -220,6 +231,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         useFigurine: model.useFigurine,
         showCoordinates: model.showCoordinates,
         rawPgnMode: model.rawPgnMode,
+        // pip_mode isn't part of BoardSettingsModel's mapper; read it straight
+        // from the row so we don't need to regenerate the dart_mappable code.
+        pipModeIndex: (response['pip_mode'] as int?) ?? 2,
       );
 
       // Cache locally
@@ -327,6 +341,15 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     await _persist(newSettings);
   }
 
+  /// Set Picture-in-Picture mode (premium-gated by the caller).
+  Future<void> setPipMode(PipMode mode) async {
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(pipModeIndex: mode.index);
+    debugPrint('📺 BoardSettings: PiP mode changed to ${mode.label}');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Toggle figurine notation (chess piece symbols instead of letters)
   Future<void> toggleFigurine(bool value) async {
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
@@ -417,6 +440,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
           'use_figurine': settings.useFigurine,
           'show_coordinates': settings.showCoordinates,
           'raw_pgn_mode': settings.rawPgnMode,
+          'pip_mode': settings.pipModeIndex,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -442,6 +466,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'useFigurine': settings.useFigurine,
         'showCoordinates': settings.showCoordinates,
         'rawPgnMode': settings.rawPgnMode,
+        'pipModeIndex': settings.pipModeIndex,
       });
       await db.setString(_cacheKey, json);
       debugPrint('[BoardSettings] Cached settings locally');
@@ -483,6 +508,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         useFigurine: map['useFigurine'] as bool? ?? true,
         showCoordinates: map['showCoordinates'] as bool? ?? true,
         rawPgnMode: map['rawPgnMode'] as bool? ?? false,
+        pipModeIndex: map['pipModeIndex'] as int? ?? 2,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;

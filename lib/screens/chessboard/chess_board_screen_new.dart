@@ -50,6 +50,8 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/services/pip_service.dart';
+import 'package:chessever2/providers/pip_mode_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
@@ -1464,10 +1466,21 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
-    if (kDebugMode) {
-      return true;
+    // PiP is a premium-only feature.
+    if (!ref.read(subscriptionProvider).isSubscribed) return false;
+    final mode =
+        ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.live;
+    switch (mode) {
+      case PipMode.off:
+        return false;
+      case PipMode.live:
+        return GameFilterHelper.isLiveNow(game);
+      case PipMode.completed:
+        return game.effectiveGameStatus.isFinished;
+      case PipMode.both:
+        return GameFilterHelper.isLiveNow(game) ||
+            game.effectiveGameStatus.isFinished;
     }
-    return GameFilterHelper.isLiveNow(game);
   }
 
   Map<String, dynamic> _buildPipPayload(
