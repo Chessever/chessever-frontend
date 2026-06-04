@@ -38,7 +38,6 @@ class LiveUpdatesService {
     required Map<String, dynamic> attributes,
     required Map<String, dynamic> content,
   }) async {
-    /*
     await setup();
     if (kIsWeb) return;
 
@@ -88,11 +87,9 @@ class LiveUpdatesService {
     if (started) {
       await _registerSubscription(gameId, enabled: true);
     }
-    */
   }
 
   Future<void> endLiveActivity(String activityId) async {
-    /*
     if (kIsWeb) return;
 
     final gameId = _activeGameId;
@@ -109,7 +106,6 @@ class LiveUpdatesService {
 
     _activeGameId = null;
     await _registerSubscription(gameId, enabled: false);
-    */
   }
 
   /// Convenience method to start live updates for a game when app goes to background.

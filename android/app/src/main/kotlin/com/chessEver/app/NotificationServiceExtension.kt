@@ -197,7 +197,6 @@ class NotificationServiceExtension : INotificationServiceExtension {
     }
 
     // Request promoted ongoing for Android 15+ (Live Updates on lock screen)
-    /*
     if (eventType != "end" && Build.VERSION.SDK_INT >= 35) {
       builder.addExtras(Bundle().apply {
         putBoolean("android.requestPromotedOngoing", true)
@@ -207,7 +206,6 @@ class NotificationServiceExtension : INotificationServiceExtension {
         builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
       }
     }
-    */
 
     // Add action to end updates
     if (eventType != "end") {
