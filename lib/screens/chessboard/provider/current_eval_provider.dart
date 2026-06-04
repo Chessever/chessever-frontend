@@ -164,7 +164,8 @@ Future<CloudEval?> _readGamebaseEvalFast({
   } catch (e) {
     debugPrint('⚠️ $sourceTag: Gamebase error: $e');
   }
-  debugPrint("⚪️ EVAL SOURCE ($sourceTag): GAMEBASE MISS - fen=$fen");
+  // Silenced — per-eval spam.
+  // debugPrint("⚪️ EVAL SOURCE ($sourceTag): GAMEBASE MISS - fen=$fen");
   return null;
 }
 
@@ -420,9 +421,10 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   // 3️⃣ Return empty - Stockfish is managed by board notifier directly
   // This provider is for quick cache/Supabase lookups only
   // The board notifier handles Stockfish evaluation separately to avoid duplicate jobs
-  debugPrint(
-    '⚠️ cascadeEvalForBoard: No cached eval for $fen, board notifier will use Stockfish',
-  );
+  // Silenced — per-eval spam.
+  // debugPrint(
+  //   '⚠️ cascadeEvalForBoard: No cached eval for $fen, board notifier will use Stockfish',
+  // );
   return _emptyCloudEval(fen, multiPV: multiPV);
 });
 

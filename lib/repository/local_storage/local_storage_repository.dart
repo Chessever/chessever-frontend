@@ -22,10 +22,11 @@ class SharedPreferencesService {
 
   SharedPreferences? _prefs;
   Future<SharedPreferences?>? _initFuture;
-  bool _initFailed = false;
+  DateTime? _lastInitFailureAt;
 
   /// Timeout for SharedPreferences operations
   static const Duration _timeout = Duration(seconds: 3);
+  static const Duration _retryAfterFailure = Duration(seconds: 10);
 
   /// Returns the cached SharedPreferences instance, or null if unavailable.
   SharedPreferences? get prefsOrNull => _prefs;
@@ -46,18 +47,34 @@ class SharedPreferencesService {
   /// Has timeout protection - returns null if initialization fails/times out.
   Future<SharedPreferences?> initialize() async {
     if (_prefs != null) return _prefs!;
-    if (_initFailed) return null;
 
-    _initFuture ??= _initWithTimeout();
-    return _initFuture;
+    final inFlight = _initFuture;
+    if (inFlight != null) return inFlight;
+
+    final lastFailureAt = _lastInitFailureAt;
+    if (lastFailureAt != null &&
+        DateTime.now().difference(lastFailureAt) < _retryAfterFailure) {
+      return null;
+    }
+
+    final future = _initWithTimeout();
+    _initFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_initFuture, future)) {
+        _initFuture = null;
+      }
+    }
   }
 
   Future<SharedPreferences?> _initWithTimeout() async {
     try {
       _prefs = await SharedPreferences.getInstance().timeout(_timeout);
+      _lastInitFailureAt = null;
       return _prefs;
     } catch (e) {
-      _initFailed = true;
+      _lastInitFailureAt = DateTime.now();
       if (kDebugMode) {
         debugPrint('⚠️ SharedPreferences init failed/timed out: $e');
       }
@@ -69,7 +86,6 @@ class SharedPreferencesService {
   /// Has timeout protection - returns null if unavailable.
   Future<SharedPreferences?> ensureInitialized() async {
     if (_prefs != null) return _prefs!;
-    if (_initFailed) return null;
     return initialize();
   }
 
@@ -77,7 +93,7 @@ class SharedPreferencesService {
   bool get isInitialized => _prefs != null;
 
   /// Check if initialization was attempted but failed.
-  bool get initializationFailed => _initFailed;
+  bool get initializationFailed => _lastInitFailureAt != null && _prefs == null;
 }
 
 final sharedPreferencesRepository = AutoDisposeProvider<AppSharedPreferences>((

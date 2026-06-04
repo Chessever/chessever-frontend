@@ -337,6 +337,13 @@ class ChessBoardStateNew {
   showPrincipalVariations; // Toggle visibility of principal variation cards only
   final bool
   hasUnseenMoves; // Flag to indicate if there are unseen moves (for live games)
+
+  /// Whether the user is viewing the live tail (latest mainline move), as
+  /// opposed to having scrolled back to an earlier move or into a variation.
+  /// Drives PiP "followLive": only when at the tail should PiP keep following
+  /// new live moves; otherwise PiP freezes on the viewed position.
+  final bool isAtLiveTail;
+
   /// FEN position where current PVs were generated
   final String? variantBaseFen;
 
@@ -423,6 +430,7 @@ class ChessBoardStateNew {
     this.showEngineAnalysis = true, // Active by default
     this.showPrincipalVariations = true, // Active by default
     this.hasUnseenMoves = false,
+    this.isAtLiveTail = true,
     this.variantBaseFen,
     this.variantBaseMovePointer,
     this.variantBaseLastMove,
@@ -474,6 +482,7 @@ class ChessBoardStateNew {
     bool? showEngineAnalysis,
     bool? showPrincipalVariations,
     bool? hasUnseenMoves,
+    bool? isAtLiveTail,
     Object? variantBaseFen = _noChange,
     Object? variantBaseMovePointer = _noChange,
     Object? variantBaseLastMove = _noChange,
@@ -539,6 +548,7 @@ class ChessBoardStateNew {
       showPrincipalVariations:
           showPrincipalVariations ?? this.showPrincipalVariations,
       hasUnseenMoves: hasUnseenMoves ?? this.hasUnseenMoves,
+      isAtLiveTail: isAtLiveTail ?? this.isAtLiveTail,
       variantBaseFen:
           identical(variantBaseFen, _noChange)
               ? this.variantBaseFen
@@ -665,6 +675,7 @@ class ChessBoardStateNew {
         other.showEngineAnalysis == showEngineAnalysis &&
         other.showPrincipalVariations == showPrincipalVariations &&
         other.hasUnseenMoves == hasUnseenMoves &&
+        other.isAtLiveTail == isAtLiveTail &&
         other.variantBaseFen == variantBaseFen &&
         _dynamicListEquality.equals(
           other.variantBaseMovePointer,
@@ -735,6 +746,7 @@ class ChessBoardStateNew {
       showEngineAnalysis,
       showPrincipalVariations,
       hasUnseenMoves,
+      isAtLiveTail,
       variantBaseFen,
       variantBaseMovePointer == null
           ? null

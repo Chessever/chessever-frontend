@@ -1470,9 +1470,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         return false;
       case PipMode.live:
         return GameFilterHelper.isLiveNow(game);
-      case PipMode.completed:
-        return game.effectiveGameStatus.isFinished;
-      case PipMode.both:
+      case PipMode.all:
         return GameFilterHelper.isLiveNow(game) ||
             game.effectiveGameStatus.isFinished;
     }
@@ -1492,14 +1490,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         '';
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final evaluation = state?.evaluation;
-    // Whether the viewed position is the live mainline head. When the user has
+    // Whether the viewed position is the live mainline tail. When the user has
     // navigated back to an earlier move (or into an analysis side-variation),
     // freeze PiP on that position instead of following new live moves. No state
     // (game snapshot) means we are showing the latest.
-    final followLive =
-        analysisState != null
-            ? (!analysisState.isInAnalysisVariation && analysisState.isAtEnd)
-            : (state?.isAtEnd ?? true);
+    //
+    // NOTE: do NOT use analysisState.isAtEnd here — the navigator only loads the
+    // move path up to the current position, so isAtEnd is always true regardless
+    // of where the user scrolled. `isAtLiveTail` is the reliable signal (set in
+    // _syncAnalysisFromNavigator from the navigator's mainline-tail check).
+    final followLive = state?.isAtLiveTail ?? true;
     final eventName =
         game.tourSlug != null && game.tourSlug!.isNotEmpty
             ? StringUtils.slugToTitle(game.tourSlug!)
@@ -7162,9 +7162,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final shouldShowEffect = isGameOver && isAtGameEnd;
 
     if (shouldShowEffect && !_wasAtEnd) {
-      ref
-          .read(eventNoSpoilersRevealedGamesProvider.notifier)
-          .reveal(widget.game.gameId);
+      // didUpdateWidget can run inside a LayoutBuilder's performLayout, so
+      // mutating the provider here throws "Tried to modify a provider while
+      // the widget tree was building." Defer the write past the current frame.
+      final gameId = widget.game.gameId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref
+            .read(eventNoSpoilersRevealedGamesProvider.notifier)
+            .reveal(gameId);
+      });
     }
 
     // When navigating TO the final position, delay showing the effect for animation
@@ -9891,10 +9898,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         navigatorState.game.mainline.map((move) => move.san).toList();
     final lichessGameId = _extractLichessGameId(navigatorState.game);
     final lichessSiteUrl = _extractLichessSiteUrl(navigatorState.game);
-    // Debug: Log extracted Lichess identifiers
-    debugPrint(
-      '🎯 [Notation] Extracted: gameId=$lichessGameId, siteUrl=$lichessSiteUrl, isLive=${navigatorState.game.isLiveGame}, moves=${mainlineSans.length}',
-    );
+    // Debug: Log extracted Lichess identifiers (silenced — per-frame spam)
+    // debugPrint(
+    //   '🎯 [Notation] Extracted: gameId=$lichessGameId, siteUrl=$lichessSiteUrl, isLive=${navigatorState.game.isLiveGame}, moves=${mainlineSans.length}',
+    // );
     final lichessAnnotationsAsync = ref.watch(
       lichessMoveAnnotationsProvider(
         LichessMoveAnnotationsParams(

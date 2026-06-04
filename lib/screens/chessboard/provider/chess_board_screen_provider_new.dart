@@ -5634,15 +5634,6 @@ class ChessBoardScreenNotifierNew
 
       final baselineState = state.value ?? initialState;
       if (keepPvs) {
-        _releaseLog(
-          '🎯 EVAL: Refreshing evaluation while preserving current PVs for ${fen.split(' ').take(3).join(' ')}',
-        );
-      } else {
-        _releaseLog(
-          '🎯 EVAL: Clearing stale PVs, starting fresh evaluation for FEN: ${fen.split(' ').take(3).join(' ')}...',
-        );
-      }
-      if (keepPvs) {
         state = AsyncValue.data(baselineState.copyWith(isEvaluating: true));
       } else {
         state = AsyncValue.data(
@@ -5658,9 +5649,10 @@ class ChessBoardScreenNotifierNew
         );
       }
 
-      _releaseLog(
-        '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
-      );
+      // Silenced — per-eval spam.
+      // _releaseLog(
+      //   '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
+      // );
 
       int startingDepth = 0;
 
@@ -5668,9 +5660,10 @@ class ChessBoardScreenNotifierNew
       // Local Stockfish only starts if the best available eval is still too
       // shallow for the main board.
       try {
-        _releaseLog(
-          '🎯 EVAL: Requesting cascade evaluation (local → Gamebase → Supabase) with $configuredMultiPV PVs...',
-        );
+        // Silenced — per-eval spam.
+        // _releaseLog(
+        //   '🎯 EVAL: Requesting cascade evaluation (local → Gamebase → Supabase) with $configuredMultiPV PVs...',
+        // );
         final cascadeEval = await ref.read(
           cascadeEvalProviderForBoard(
             CascadeEvalParams(
@@ -5881,7 +5874,8 @@ class ChessBoardScreenNotifierNew
             return;
           }
         } else {
-          _releaseLog('🎯 EVAL: Cascade returned empty PVs');
+          // Silenced — per-eval spam.
+          // _releaseLog('🎯 EVAL: Cascade returned empty PVs');
         }
       } catch (e) {
         _releaseLog('🎯 EVAL ERROR: Cascade failed for $fen: $e');
@@ -5895,10 +5889,11 @@ class ChessBoardScreenNotifierNew
               ? const Duration(milliseconds: 800)
               : combinedSearchDuration;
       _isFirstEvalAfterToggle = false;
-      debugPrint(
-        '⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
-        'at ${DateTime.now().millisecondsSinceEpoch}',
-      );
+      // Silenced — per-eval spam.
+      // debugPrint(
+      //   '⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
+      //   'at ${DateTime.now().millisecondsSinceEpoch}',
+      // );
       final stockfishFuture = StockfishSingleton().evaluatePosition(
         fenToAnalyze,
         depth: combinedMaxDepth,
@@ -6079,9 +6074,10 @@ class ChessBoardScreenNotifierNew
         final stockfishResult = await stockfishFuture;
 
         if (stockfishResult.isCancelled) {
-          _releaseLog(
-            '🎯 EVAL: Stockfish result cancelled before completion for $fen',
-          );
+          // Silenced — per-eval spam.
+          // _releaseLog(
+          //   '🎯 EVAL: Stockfish result cancelled before completion for $fen',
+          // );
           if (mounted && _activeEvalRequestId == currentRequestId) {
             _activeEvalRequestId = null;
             _activeEvalKey = null;
@@ -6114,7 +6110,8 @@ class ChessBoardScreenNotifierNew
               final latestFen = latestPosition?.fen;
               if (latestFen != null &&
                   _normalizeFen(latestFen) == _normalizeFen(fen)) {
-                _releaseLog('🎯 EVAL: Retrying evaluation after cancellation');
+                // Silenced — per-eval spam.
+                // _releaseLog('🎯 EVAL: Retrying evaluation after cancellation');
                 _evaluatePosition(force: true);
               }
             });
@@ -6739,6 +6736,11 @@ class ChessBoardScreenNotifierNew
         isEvaluating: sameFenAsCurrent ? current.isEvaluating : true,
         // Clear unseen indicator if navigating to the last mainline move
         hasUnseenMoves: isAtMainlineTail ? false : current.hasUnseenMoves,
+        // Track whether the viewed position is the live mainline tail. Drives
+        // PiP followLive: only freeze-follow when the user is on the latest move
+        // (and not inside an analysis variation). Applies to completed games too
+        // so PiP shows the exact viewed move instead of jumping to the latest.
+        isAtLiveTail: isAtMainlineTail,
       );
 
       var progressedState = _setVariantProgress(
@@ -6778,12 +6780,17 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  // Width/head ramp by engine rank. chessground maps `scale` to both shaft
+  // width and arrowhead size, so this is the only lever for thickness. Even
+  // 0.15 step from 1.0 down to 0.40 widens the spread (was 0.12 step / 0.52
+  // floor) to make the 1st recommendation clearly thickest while the gradient
+  // stays smooth and the 5th arrow remains visible. Range must stay in (0, 1].
   static const List<double> _engineArrowRankScales = [
     1.0,
-    0.88,
-    0.76,
-    0.64,
-    0.52,
+    0.85,
+    0.70,
+    0.55,
+    0.40,
   ];
 
   static const List<double> _engineArrowRankAlphas = [

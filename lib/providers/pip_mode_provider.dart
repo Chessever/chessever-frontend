@@ -2,15 +2,15 @@
 ///
 /// Persisted in board settings (`user_engine_settings.pip_mode`, synced) and
 /// premium-gated at the eligibility check + settings UI. Enum order is the
-/// stored integer: off=0, completed=1, live=2 (default), both=3.
-enum PipMode { off, completed, live, both }
+/// stored integer: off=0 (default), live=1, all=2. "all" covers live +
+/// completed games.
+enum PipMode { off, live, all }
 
 extension PipModeInfo on PipMode {
   String get label => switch (this) {
     PipMode.off => 'Off',
-    PipMode.completed => 'Completed',
     PipMode.live => 'Live',
-    PipMode.both => 'Both',
+    PipMode.all => 'All',
   };
 
   static PipMode fromIndex(int? index) {

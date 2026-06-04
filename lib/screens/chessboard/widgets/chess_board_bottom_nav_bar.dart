@@ -102,20 +102,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       }
     }
 
-    // COMPREHENSIVE DEBUG LOGGING - Verify dynamic depth search is working
-    if (showEngineAnalysis) {
-      if (gaugeProgress != null && depthText != null) {
-        final fenFragment = gaugeProgress.fenFragment;
-        final fragmentLength =
-            fenFragment.length < 20 ? fenFragment.length : 20;
-        final fragmentPreview = fenFragment.substring(0, fragmentLength);
-        final fragmentSuffix = fenFragment.length > fragmentLength ? '...' : '';
-      } else {
-        debugPrint(
-          '⚠️  BottomNav (Game $gameIndex): Engine analysis ON but NO depth data available yet (overlay=${showDepthOverlay})',
-        );
-      }
-    }
 
     // Build the navigation buttons row
     final buttonsRow = Row(

@@ -1338,17 +1338,11 @@ class _PipModeSelector extends StatelessWidget {
         children: [
           _buildOption(context, mode: PipMode.off, icon: Icons.block_rounded),
           SizedBox(width: 4.w),
-          _buildOption(
-            context,
-            mode: PipMode.completed,
-            icon: Icons.flag_rounded,
-          ),
-          SizedBox(width: 4.w),
           _buildOption(context, mode: PipMode.live, icon: Icons.sensors_rounded),
           SizedBox(width: 4.w),
           _buildOption(
             context,
-            mode: PipMode.both,
+            mode: PipMode.all,
             icon: Icons.all_inclusive_rounded,
           ),
         ],

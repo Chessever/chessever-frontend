@@ -35,6 +35,11 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _assetsLoaded = false;
   Future<void>? _initializing;
   bool _audioSessionConfigured = false;
+  // Set when the app is truly backgrounded (paused/detached) so the next resume
+  // can force-refresh Android audio. Android can return from background with
+  // SoLoud still reporting initialized while its native output session / asset
+  // handles no longer produce sound. Android-only; never read on iOS.
+  bool _needsAndroidResumeRefresh = false;
 
   /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
   Future<void> _configureAudioSession() async {
@@ -147,8 +152,17 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _initializeInternal({required bool force}) async {
-    if (force && player.isInitialized) {
-      _teardownPlayer();
+    if (force) {
+      // A forced init means the previous Dart AudioSource handles may no longer
+      // match the native audio device/session even when SoLoud still reports
+      // initialized after backgrounding. Always clear the flags so assets are
+      // reloaded with fresh native handles — no stale-handle reuse.
+      if (player.isInitialized) {
+        _teardownPlayer();
+      } else {
+        _initialized = false;
+        _assetsLoaded = false;
+      }
     }
 
     // If the native engine was killed while the Dart flag stayed true, reset.
@@ -247,8 +261,25 @@ class AudioPlayerService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
     if (state == AppLifecycleState.resumed) {
-      // Only reinitialize if the native engine is gone. Avoids unnecessary
-      // teardown→reinit cycles that create windows of broken audio.
+      if (Platform.isAndroid && _needsAndroidResumeRefresh) {
+        _needsAndroidResumeRefresh = false;
+        // Android can return from background with SoLoud still reporting
+        // initialized while its native output session / asset handles no longer
+        // produce sound, so play() silently no-ops. Force a fresh engine + asset
+        // load after a real background pause; transient inactive/hidden states
+        // are ignored. Fire-and-forget (NOT serialized through a queue): a move
+        // right after resume calls initializeAndLoadAllAssets() which awaits this
+        // same in-flight future before playing.
+        debugPrint(
+          '🎧 AudioPlayerService: Android resumed after background, refreshing audio engine',
+        );
+        unawaited(initializeAndLoadAllAssets(force: true));
+        return;
+      }
+
+      // Otherwise only reinitialize if the native engine is actually gone.
+      // Avoids unnecessary teardown→reinit cycles (esp. iOS) that create
+      // windows of broken audio.
       if (!player.isInitialized) {
         debugPrint(
           '🎧 AudioPlayerService: engine dead after resume, reinitializing',
@@ -267,6 +298,12 @@ class AudioPlayerService with WidgetsBindingObserver {
     // and tearing down there causes sound to disappear on Android.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      // Mark a real background so the next resume force-refreshes Android audio.
+      // inactive/hidden are transient (control center, split-screen, dialogs)
+      // and are intentionally NOT treated as background — no teardown there.
+      if (Platform.isAndroid) {
+        _needsAndroidResumeRefresh = true;
+      }
       // Do not deinit during normal lifecycle transitions. SoLoud's native
       // audio callback can still be mixing a short SFX while Dart receives
       // paused/detached, and tearing down then can corrupt the active voice.

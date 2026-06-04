@@ -59,7 +59,6 @@ import 'services/deep_link_service.dart';
 import 'services/pgn_file_intake_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
-import 'theme/theme_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
 
@@ -225,12 +224,14 @@ Future<void> main() async {
             // ========== PERFORMANCE OPTIMIZATIONS ==========
             // Disable performance tracing - causes frame drops
             options.tracesSampleRate = 0.0;
+            // ignore: experimental_member_use
             options.profilesSampleRate = 0.0;
             options.enableAutoPerformanceTracing = false;
             options.enableUserInteractionTracing = false;
 
             // Disable expensive features that can block UI
             options.attachScreenshot = false;
+            // ignore: experimental_member_use
             options.attachViewHierarchy = false;
 
             // Limit breadcrumbs to reduce memory/processing overhead
@@ -476,6 +477,10 @@ Future<void> _initializeSupabaseWithRecovery({
   required String supabaseAnonKey,
   required String persistSessionKey,
 }) async {
+  if (_isSupabaseInitialized()) {
+    return;
+  }
+
   // Clean corrupted persisted sessions before init to avoid hard crashes.
   await _sanitizeSupabasePersistedSession(persistSessionKey);
 
@@ -486,8 +491,8 @@ Future<void> _initializeSupabaseWithRecovery({
     pkceAsyncStorage: SafeGotrueAsyncStorage(),
   );
 
-  try {
-    await Supabase.initialize(
+  Future<void> initialize() {
+    return Supabase.initialize(
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
       authOptions: authOptions,
@@ -497,23 +502,18 @@ Future<void> _initializeSupabaseWithRecovery({
         throw TimeoutException('Supabase.initialize timed out');
       },
     );
+  }
+
+  try {
+    await initialize();
   } catch (e) {
     debugPrint('⚠️ Supabase init failed: $e');
     if (_isSupabaseInitialized()) {
       return;
     }
-    // One retry after clearing persisted auth tokens.
-    await _clearSupabasePersistedSession(persistSessionKey);
-    await Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
-      authOptions: authOptions,
-    ).timeout(
-      const Duration(seconds: 6),
-      onTimeout: () {
-        throw TimeoutException('Supabase.initialize timed out');
-      },
-    );
+    // Retry once, but never clear auth storage here. A slow network or a
+    // refresh race must not turn a valid persisted session into a logout.
+    await initialize();
   }
 }
 
@@ -721,7 +721,6 @@ class StartupGate extends ConsumerStatefulWidget {
 
 class _StartupGateState extends ConsumerState<StartupGate> {
   bool _ready = false;
-  bool _initializing = true;
   bool _inFlight = false;
   bool _postStartupInitialized = false;
   String? _errorMessage;
@@ -766,7 +765,6 @@ class _StartupGateState extends ConsumerState<StartupGate> {
     if (!mounted || _inFlight) return;
     _inFlight = true;
     setState(() {
-      _initializing = true;
       _errorMessage = null;
     });
 
@@ -788,7 +786,6 @@ class _StartupGateState extends ConsumerState<StartupGate> {
       _e2eStartupLog('StartupGate: splash removed, app ready');
       setState(() {
         _ready = true;
-        _initializing = false;
       });
     } catch (e, st) {
       _e2eStartupLog('StartupGate: failed with $e');
@@ -800,7 +797,6 @@ class _StartupGateState extends ConsumerState<StartupGate> {
       if (!mounted) return;
       setState(() {
         _ready = false;
-        _initializing = false;
         _errorMessage = _friendlyStartupError(e);
       });
     } finally {

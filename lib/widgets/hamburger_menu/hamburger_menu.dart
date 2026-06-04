@@ -15,7 +15,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
-import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
+import 'package:chessever2/widgets/paywall/manage_subscription_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
@@ -396,7 +396,6 @@ class _UserProfileHeader extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final subscriptionState = ref.watch(subscriptionProvider);
     final isPremium = subscriptionState.isSubscribed;
-    final managementUrl = subscriptionState.managementUrl;
     final name = user?.displayName?.trim();
     final displayName = (name?.isNotEmpty ?? false) ? name! : 'Anonymous';
 
@@ -406,10 +405,7 @@ class _UserProfileHeader extends ConsumerWidget {
               ? () async {
                 Navigator.of(context).pop();
                 if (!context.mounted) return;
-                await showPremiumCelebration(
-                  context,
-                  managementUrl: managementUrl,
-                );
+                await showManageSubscriptionSheet(context);
               }
               : null,
       child: Padding(

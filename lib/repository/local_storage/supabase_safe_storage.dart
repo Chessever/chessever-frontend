@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Safe LocalStorage for Supabase that avoids startup hangs on Android
@@ -22,12 +21,26 @@ class SafeSupabaseLocalStorage extends LocalStorage {
 
   SharedPreferences? _prefs;
   bool _prefsAvailable = false;
-  bool _initAttempted = false;
+  Future<void>? _initFuture;
   final Map<String, String> _memory = <String, String>{};
 
   Future<void> _ensurePrefs() async {
-    if (_prefsAvailable || _initAttempted) return;
-    _initAttempted = true;
+    if (_prefsAvailable) return;
+    final inFlight = _initFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _loadPrefs();
+    _initFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_initFuture, future)) {
+        _initFuture = null;
+      }
+    }
+  }
+
+  Future<void> _loadPrefs() async {
     try {
       // initialize() now has built-in timeout and returns null on failure
       _prefs = await SharedPreferencesService.instance.initialize();
@@ -110,12 +123,26 @@ class SafeGotrueAsyncStorage extends GotrueAsyncStorage {
   final Duration initTimeout;
   SharedPreferences? _prefs;
   bool _prefsAvailable = false;
-  bool _initAttempted = false;
+  Future<void>? _initFuture;
   final Map<String, String> _memory = <String, String>{};
 
   Future<void> _ensurePrefs() async {
-    if (_prefsAvailable || _initAttempted) return;
-    _initAttempted = true;
+    if (_prefsAvailable) return;
+    final inFlight = _initFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _loadPrefs();
+    _initFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_initFuture, future)) {
+        _initFuture = null;
+      }
+    }
+  }
+
+  Future<void> _loadPrefs() async {
     try {
       // initialize() now has built-in timeout and returns null on failure
       _prefs = await SharedPreferencesService.instance.initialize();
