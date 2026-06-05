@@ -51,7 +51,6 @@ import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/services/pip_service.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
@@ -1461,8 +1460,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
-    // PiP is a premium-only feature.
-    if (!ref.read(subscriptionProvider).isSubscribed) return false;
+    // PiP is free for everyone; eligibility depends only on the chosen mode.
     final mode =
         ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.off;
     switch (mode) {

@@ -2,8 +2,6 @@ import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -167,39 +165,12 @@ class BoardSettingsBody extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Text(
-                    'Picture in Picture',
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: context.colors.textPrimary,
-                      fontSize: 13.f,
-                    ),
-                  ),
-                  if (!ref.watch(subscriptionProvider).isSubscribed) ...[
-                    SizedBox(width: 8.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8.sp,
-                        vertical: 2.sp,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6.br),
-                        border: Border.all(
-                          color: kPrimaryColor.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Text(
-                        'PRO',
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kPrimaryColor,
-                          fontSize: 9.f,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+              Text(
+                'Picture in Picture',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  fontSize: 13.f,
+                ),
               ),
               SizedBox(height: 4.h),
               Text(
@@ -212,16 +183,8 @@ class BoardSettingsBody extends ConsumerWidget {
               SizedBox(height: 14.h),
               _PipModeSelector(
                 selected: boardSettings.pipMode,
-                onSelected: (mode) async {
-                  // Premium-gated: choosing any active mode by a free user opens
-                  // the paywall; "Off" is always allowed.
-                  if (mode != PipMode.off &&
-                      !ref.read(subscriptionProvider).isSubscribed) {
-                    final subscribed = await showPremiumPaywallSheet(
-                      context: context,
-                    );
-                    if (!subscribed) return;
-                  }
+                onSelected: (mode) {
+                  // PiP is free for everyone — no paywall.
                   trackPersist(boardNotifier.setPipMode(mode));
                 },
               ),
