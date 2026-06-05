@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/gamebase/discovery/discovery_models.dart';
 import 'package:chessever2/repository/gamebase/discovery/discovery_providers.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/library/discovery/discovery_filter_widgets.dart';
 import 'package:chessever2/screens/library/discovery/study_chapters_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -42,10 +43,23 @@ class StudiesTab extends ConsumerWidget {
     if (picked != null) ref.read(studiesQueryProvider.notifier).setSort(picked);
   }
 
+  Future<void> _pickFilters(BuildContext context, WidgetRef ref) async {
+    HapticFeedback.selectionClick();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _StudiesFilterSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final listAsync = ref.watch(studiesListProvider);
     final sort = ref.watch(studiesQueryProvider.select((q) => q.sort));
+    final filterCount = ref.watch(
+      studiesQueryProvider.select((q) => q.activeFilterCount),
+    );
 
     return RefreshIndicator(
       onRefresh: () => _refresh(ref),
@@ -58,9 +72,21 @@ class StudiesTab extends ConsumerWidget {
         ),
         slivers: [
           SliverToBoxAdapter(
-            child: _SortBar(
-              label: sort.label,
-              onTap: () => _pickSort(context, ref),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 8.h),
+              child: Row(
+                children: [
+                  FilterButton(
+                    count: filterCount,
+                    onTap: () => _pickFilters(context, ref),
+                  ),
+                  const Spacer(),
+                  _SortChip(
+                    label: sort.label,
+                    onTap: () => _pickSort(context, ref),
+                  ),
+                ],
+              ),
             ),
           ),
           listAsync.when(
@@ -99,47 +125,169 @@ class StudiesTab extends ConsumerWidget {
   }
 }
 
-class _SortBar extends StatelessWidget {
-  const _SortBar({required this.label, required this.onTap});
+class _SortChip extends StatelessWidget {
+  const _SortChip({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 8.h),
-      child: Row(
-        children: [
-          const Spacer(),
-          GestureDetector(
-            onTap: onTap,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(20.br),
-                border: Border.all(
-                  color: context.colors.textPrimary.withValues(alpha: 0.1),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(20.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.swap_vert_rounded, size: 15.sp, color: kPrimaryColor),
+            SizedBox(width: 6.w),
+            Text(
+              label,
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ECO categories are a fixed A–E set (not facet-dependent).
+const List<String> _ecoCategories = ['A', 'B', 'C', 'D', 'E'];
+
+class _StudiesFilterSheet extends ConsumerStatefulWidget {
+  const _StudiesFilterSheet();
+
+  @override
+  ConsumerState<_StudiesFilterSheet> createState() =>
+      _StudiesFilterSheetState();
+}
+
+class _StudiesFilterSheetState extends ConsumerState<_StudiesFilterSheet> {
+  late Set<String> _eco;
+  late Set<String> _variants;
+  late Set<String> _chapterModes;
+  bool? _gamebook;
+  bool? _hasAnnotations;
+
+  @override
+  void initState() {
+    super.initState();
+    final q = ref.read(studiesQueryProvider);
+    _eco = {...q.ecoCategories};
+    _variants = {...q.variants};
+    _chapterModes = {...q.chapterModes};
+    _gamebook = q.gamebook;
+    _hasAnnotations = q.hasAnnotations;
+  }
+
+  void _toggle(Set<String> set, String value) {
+    setState(() {
+      if (!set.remove(value)) set.add(value);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final facets = ref.watch(studyFacetsProvider).valueOrNull ?? StudyFacets.empty;
+
+    return FilterSheetScaffold(
+      title: 'Filter studies',
+      onClear: () {
+        setState(() {
+          _eco = {};
+          _variants = {};
+          _chapterModes = {};
+          _gamebook = null;
+          _hasAnnotations = null;
+        });
+      },
+      onApply: () {
+        ref.read(studiesQueryProvider.notifier).applyFilters(
+              ecoCategories: _eco,
+              variants: _variants,
+              chapterModes: _chapterModes,
+              gamebook: _gamebook,
+              hasAnnotations: _hasAnnotations,
+            );
+        Navigator.of(context).pop();
+      },
+      children: [
+        FilterSection(
+          title: 'ECO CATEGORY',
+          child: Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: [
+              for (final c in _ecoCategories)
+                FilterPill(
+                  label: c,
+                  selected: _eco.contains(c),
+                  onTap: () => _toggle(_eco, c),
                 ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.swap_vert_rounded, size: 15.sp, color: kPrimaryColor),
-                  SizedBox(width: 6.w),
-                  Text(
-                    label,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.85),
-                    ),
+            ],
+          ),
+        ),
+        if (facets.variants.isNotEmpty) ...[
+          SizedBox(height: 20.h),
+          FilterSection(
+            title: 'VARIANT',
+            child: Wrap(
+              spacing: 8.w,
+              runSpacing: 8.h,
+              children: [
+                for (final v in facets.variants)
+                  FilterPill(
+                    label: v,
+                    selected: _variants.contains(v),
+                    onTap: () => _toggle(_variants, v),
                   ),
-                ],
-              ),
+              ],
             ),
           ),
         ],
-      ),
+        if (facets.chapterModes.isNotEmpty) ...[
+          SizedBox(height: 20.h),
+          FilterSection(
+            title: 'CHAPTER TYPE',
+            child: Wrap(
+              spacing: 8.w,
+              runSpacing: 8.h,
+              children: [
+                for (final m in facets.chapterModes)
+                  FilterPill(
+                    label: m,
+                    selected: _chapterModes.contains(m),
+                    onTap: () => _toggle(_chapterModes, m),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        SizedBox(height: 20.h),
+        TriToggle(
+          label: 'Interactive (gamebook)',
+          value: _gamebook,
+          onChanged: (v) => setState(() => _gamebook = v),
+        ),
+        SizedBox(height: 14.h),
+        TriToggle(
+          label: 'Has annotations',
+          value: _hasAnnotations,
+          onChanged: (v) => setState(() => _hasAnnotations = v),
+        ),
+        SizedBox(height: 8.h),
+      ],
     );
   }
 }

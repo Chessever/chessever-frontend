@@ -405,6 +405,7 @@ class GamebaseRepository {
     int limit = 50,
     int offset = 0,
     String? q,
+    Map<String, dynamic>? filters,
   }) async {
     final response = await _dio.get(
       '$_baseUrl/api/studies',
@@ -414,6 +415,7 @@ class GamebaseRepository {
         'limit': limit,
         'offset': offset,
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        ..._cleanParams(filters),
       },
       options: Options(
         headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
@@ -421,6 +423,38 @@ class GamebaseRepository {
     );
     final data = Map<String, dynamic>.from(response.data['data'] as Map);
     return PagedResult.fromData(data, LichessStudy.fromJson);
+  }
+
+  /// Distinct filter values for the studies filter UI. Empty on failure.
+  Future<StudyFacets> getStudyFacets() async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/studies/facets',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+      final data = response.data['data'];
+      if (data == null) return StudyFacets.empty;
+      return StudyFacets.fromJson(Map<String, dynamic>.from(data));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[GamebaseRepository] getStudyFacets: $e');
+      return StudyFacets.empty;
+    }
+  }
+
+  /// Drops null / empty-string / empty-list values so we never send blank
+  /// query params to the backend.
+  Map<String, dynamic> _cleanParams(Map<String, dynamic>? params) {
+    if (params == null) return const {};
+    final out = <String, dynamic>{};
+    params.forEach((key, value) {
+      if (value == null) return;
+      if (value is String && value.trim().isEmpty) return;
+      if (value is Iterable && value.isEmpty) return;
+      out[key] = value;
+    });
+    return out;
   }
 
   /// Enqueues a background Lichess re-sync (pull-to-refresh). Best-effort.
@@ -485,6 +519,7 @@ class GamebaseRepository {
     String order = 'desc',
     int limit = 50,
     int offset = 0,
+    Map<String, dynamic>? filters,
   }) async {
     final response = await _dio.get(
       '$_baseUrl/api/miniatures',
@@ -494,6 +529,7 @@ class GamebaseRepository {
         'order': order,
         'limit': limit,
         'offset': offset,
+        ..._cleanParams(filters),
       },
       options: Options(
         headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},

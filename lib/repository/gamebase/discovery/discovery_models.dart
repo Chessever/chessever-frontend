@@ -18,6 +18,14 @@ int _parseInt(Object? raw, [int fallback = 0]) {
   return int.tryParse(raw?.toString() ?? '') ?? fallback;
 }
 
+List<String> _strList(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final e in raw)
+      if (e != null && e.toString().trim().isNotEmpty) e.toString(),
+  ];
+}
+
 /// A single page of `{ items, total, limit, offset }` envelopes.
 class PagedResult<T> {
   const PagedResult({
@@ -62,6 +70,14 @@ class LichessStudy {
     required this.chapterCount,
     required this.plyTotal,
     required this.hasAnnotations,
+    required this.ecos,
+    required this.ecoCategories,
+    required this.openings,
+    required this.variants,
+    required this.chapterModes,
+    required this.players,
+    required this.isGamebook,
+    required this.hasCustomPositions,
     required this.credibilityScore,
     required this.passedGate,
     required this.status,
@@ -77,6 +93,14 @@ class LichessStudy {
   final int chapterCount;
   final int plyTotal;
   final bool hasAnnotations;
+  final List<String> ecos;
+  final List<String> ecoCategories;
+  final List<String> openings;
+  final List<String> variants;
+  final List<String> chapterModes;
+  final List<String> players;
+  final bool isGamebook;
+  final bool hasCustomPositions;
   final double credibilityScore;
   final bool passedGate;
   final String status;
@@ -93,6 +117,14 @@ class LichessStudy {
       chapterCount: _parseInt(json['chapterCount']),
       plyTotal: _parseInt(json['plyTotal']),
       hasAnnotations: json['hasAnnotations'] == true,
+      ecos: _strList(json['ecos']),
+      ecoCategories: _strList(json['ecoCategories']),
+      openings: _strList(json['openings']),
+      variants: _strList(json['variants']),
+      chapterModes: _strList(json['chapterModes']),
+      players: _strList(json['players']),
+      isGamebook: json['isGamebook'] == true,
+      hasCustomPositions: json['hasCustomPositions'] == true,
       credibilityScore:
           (json['credibilityScore'] is num)
               ? (json['credibilityScore'] as num).toDouble()
@@ -105,6 +137,41 @@ class LichessStudy {
   }
 }
 
+/// Distinct filter values across served studies (`/api/studies/facets`).
+class StudyFacets {
+  const StudyFacets({
+    required this.ecoCategories,
+    required this.openings,
+    required this.variants,
+    required this.chapterModes,
+    required this.players,
+  });
+
+  final List<String> ecoCategories;
+  final List<String> openings;
+  final List<String> variants;
+  final List<String> chapterModes;
+  final List<String> players;
+
+  factory StudyFacets.fromJson(Map<String, dynamic> json) {
+    return StudyFacets(
+      ecoCategories: _strList(json['ecoCategories']),
+      openings: _strList(json['openings']),
+      variants: _strList(json['variants']),
+      chapterModes: _strList(json['chapterModes']),
+      players: _strList(json['players']),
+    );
+  }
+
+  static const empty = StudyFacets(
+    ecoCategories: [],
+    openings: [],
+    variants: [],
+    chapterModes: [],
+    players: [],
+  );
+}
+
 class LichessStudyChapter {
   const LichessStudyChapter({
     required this.id,
@@ -112,6 +179,17 @@ class LichessStudyChapter {
     required this.name,
     required this.plyCount,
     required this.orderIndex,
+    this.eco,
+    this.opening,
+    this.variant,
+    this.result,
+    this.chapterMode,
+    this.isSetup = false,
+    this.whiteName,
+    this.blackName,
+    this.whiteElo,
+    this.blackElo,
+    this.hasAnnotations = false,
   });
 
   final String id;
@@ -119,6 +197,17 @@ class LichessStudyChapter {
   final String? name;
   final int plyCount;
   final int orderIndex;
+  final String? eco;
+  final String? opening;
+  final String? variant;
+  final String? result;
+  final String? chapterMode;
+  final bool isSetup;
+  final String? whiteName;
+  final String? blackName;
+  final int? whiteElo;
+  final int? blackElo;
+  final bool hasAnnotations;
 
   factory LichessStudyChapter.fromJson(Map<String, dynamic> json) {
     return LichessStudyChapter(
@@ -127,7 +216,29 @@ class LichessStudyChapter {
       name: json['name']?.toString(),
       plyCount: _parseInt(json['plyCount']),
       orderIndex: _parseInt(json['orderIndex']),
+      eco: json['eco']?.toString(),
+      opening: json['opening']?.toString(),
+      variant: json['variant']?.toString(),
+      result: json['result']?.toString(),
+      chapterMode: json['chapterMode']?.toString(),
+      isSetup: json['isSetup'] == true,
+      whiteName: json['whiteName']?.toString(),
+      blackName: json['blackName']?.toString(),
+      whiteElo: json['whiteElo'] == null ? null : _parseInt(json['whiteElo']),
+      blackElo: json['blackElo'] == null ? null : _parseInt(json['blackElo']),
+      hasAnnotations: json['hasAnnotations'] == true,
     );
+  }
+
+  /// "1.White vs Black" style subtitle for game chapters, else the opening/eco.
+  String? get gameSubtitle {
+    final w = (whiteName ?? '').trim();
+    final b = (blackName ?? '').trim();
+    if (w.isNotEmpty && b.isNotEmpty) return '$w – $b';
+    final op = (opening ?? '').trim();
+    if (op.isNotEmpty) return op;
+    final e = (eco ?? '').trim();
+    return e.isNotEmpty ? e : null;
   }
 }
 
@@ -163,6 +274,9 @@ class Miniature {
     required this.date,
     required this.event,
     required this.eco,
+    required this.ecoCategory,
+    required this.opening,
+    required this.variation,
     required this.whiteName,
     required this.blackName,
     required this.whiteElo,
@@ -181,6 +295,9 @@ class Miniature {
   final DateTime? date;
   final String? event;
   final String? eco;
+  final String? ecoCategory;
+  final String? opening;
+  final String? variation;
   final String? whiteName;
   final String? blackName;
   final int? whiteElo;
@@ -198,6 +315,9 @@ class Miniature {
       date: _parseDate(json['date']),
       event: json['event']?.toString(),
       eco: json['eco']?.toString(),
+      ecoCategory: json['ecoCategory']?.toString(),
+      opening: json['opening']?.toString(),
+      variation: json['variation']?.toString(),
       whiteName: json['whiteName']?.toString(),
       blackName: json['blackName']?.toString(),
       whiteElo: json['whiteElo'] == null ? null : _parseInt(json['whiteElo']),
@@ -256,6 +376,7 @@ class Miniature {
       pgn: fallbackPgn,
       lastMoveTime: date,
       eco: ecoClean.isNotEmpty ? ecoClean : null,
+      openingName: (opening ?? '').trim().isNotEmpty ? opening!.trim() : null,
       avgElo: avgRating,
       isOnline: isOnline,
     );

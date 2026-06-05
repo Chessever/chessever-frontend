@@ -19,33 +19,122 @@ extension StudiesSortX on StudiesSort {
 }
 
 class StudiesQuery {
-  const StudiesQuery({this.sort = StudiesSort.score, this.q = ''});
+  const StudiesQuery({
+    this.sort = StudiesSort.score,
+    this.q = '',
+    this.ecoCategories = const <String>{},
+    this.variants = const <String>{},
+    this.chapterModes = const <String>{},
+    this.gamebook,
+    this.hasAnnotations,
+  });
 
   final StudiesSort sort;
   final String q;
+  final Set<String> ecoCategories;
+  final Set<String> variants;
+  final Set<String> chapterModes;
+  final bool? gamebook;
+  final bool? hasAnnotations;
 
-  StudiesQuery copyWith({StudiesSort? sort, String? q}) =>
-      StudiesQuery(sort: sort ?? this.sort, q: q ?? this.q);
+  int get activeFilterCount =>
+      ecoCategories.length +
+      variants.length +
+      chapterModes.length +
+      (gamebook != null ? 1 : 0) +
+      (hasAnnotations != null ? 1 : 0);
+
+  bool get hasFilters => activeFilterCount > 0;
+
+  /// Backend query params for the v1.4.0 study filters (comma-joined multis).
+  Map<String, dynamic> filterParams() => {
+    if (ecoCategories.isNotEmpty) 'ecoCategory': ecoCategories.join(','),
+    if (variants.isNotEmpty) 'variant': variants.join(','),
+    if (chapterModes.isNotEmpty) 'chapterMode': chapterModes.join(','),
+    if (gamebook != null) 'gamebook': gamebook,
+    if (hasAnnotations != null) 'hasAnnotations': hasAnnotations,
+  };
 
   @override
   bool operator ==(Object other) =>
-      other is StudiesQuery && other.sort == sort && other.q == q;
+      other is StudiesQuery &&
+      other.sort == sort &&
+      other.q == q &&
+      _setEq(other.ecoCategories, ecoCategories) &&
+      _setEq(other.variants, variants) &&
+      _setEq(other.chapterModes, chapterModes) &&
+      other.gamebook == gamebook &&
+      other.hasAnnotations == hasAnnotations;
 
   @override
-  int get hashCode => Object.hash(sort, q);
+  int get hashCode => Object.hash(
+    sort,
+    q,
+    Object.hashAllUnordered(ecoCategories),
+    Object.hashAllUnordered(variants),
+    Object.hashAllUnordered(chapterModes),
+    gamebook,
+    hasAnnotations,
+  );
 }
+
+bool _setEq(Set<String> a, Set<String> b) =>
+    a.length == b.length && a.containsAll(b);
 
 class StudiesQueryNotifier extends StateNotifier<StudiesQuery> {
   StudiesQueryNotifier() : super(const StudiesQuery());
 
-  void setSort(StudiesSort sort) => state = state.copyWith(sort: sort);
-  void setSearch(String q) => state = state.copyWith(q: q);
+  void setSort(StudiesSort sort) => state = StudiesQuery(
+    sort: sort,
+    q: state.q,
+    ecoCategories: state.ecoCategories,
+    variants: state.variants,
+    chapterModes: state.chapterModes,
+    gamebook: state.gamebook,
+    hasAnnotations: state.hasAnnotations,
+  );
+
+  void setSearch(String q) => state = StudiesQuery(
+    sort: state.sort,
+    q: q,
+    ecoCategories: state.ecoCategories,
+    variants: state.variants,
+    chapterModes: state.chapterModes,
+    gamebook: state.gamebook,
+    hasAnnotations: state.hasAnnotations,
+  );
+
+  /// Replaces the whole filter set (used by the filter sheet's Apply).
+  void applyFilters({
+    required Set<String> ecoCategories,
+    required Set<String> variants,
+    required Set<String> chapterModes,
+    required bool? gamebook,
+    required bool? hasAnnotations,
+  }) {
+    state = StudiesQuery(
+      sort: state.sort,
+      q: state.q,
+      ecoCategories: ecoCategories,
+      variants: variants,
+      chapterModes: chapterModes,
+      gamebook: gamebook,
+      hasAnnotations: hasAnnotations,
+    );
+  }
+
+  void clearFilters() => state = StudiesQuery(sort: state.sort, q: state.q);
 }
 
 final studiesQueryProvider =
     StateNotifierProvider<StudiesQueryNotifier, StudiesQuery>(
       (ref) => StudiesQueryNotifier(),
     );
+
+final studyFacetsProvider = FutureProvider.autoDispose<StudyFacets>((ref) async {
+  final repo = ref.watch(gamebaseRepositoryProvider);
+  return repo.getStudyFacets();
+});
 
 /// The studies list for the active query. `score`/`recent` default to desc
 /// (best/newest first); `name` reads better ascending.
@@ -59,6 +148,7 @@ final studiesListProvider =
         order: order,
         q: query.q,
         limit: 50,
+        filters: query.filterParams(),
       );
     });
 
@@ -96,27 +186,82 @@ class MiniaturesQuery {
   const MiniaturesQuery({
     this.window = MiniatureWindow.all,
     this.sort = MiniatureSort.rating,
+    this.results = const <String>{},
+    this.timeControls = const <String>{},
+    this.ecoCategories = const <String>{},
   });
 
   final MiniatureWindow window;
   final MiniatureSort sort;
+  final Set<String> results; // W / B
+  final Set<String> timeControls; // CLASSICAL / RAPID / BLITZ
+  final Set<String> ecoCategories; // A-E
 
-  MiniaturesQuery copyWith({MiniatureWindow? window, MiniatureSort? sort}) =>
-      MiniaturesQuery(window: window ?? this.window, sort: sort ?? this.sort);
+  int get activeFilterCount =>
+      results.length + timeControls.length + ecoCategories.length;
+
+  bool get hasFilters => activeFilterCount > 0;
+
+  Map<String, dynamic> filterParams() => {
+    if (results.isNotEmpty) 'result': results.join(','),
+    if (timeControls.isNotEmpty) 'timeControl': timeControls.join(','),
+    if (ecoCategories.isNotEmpty) 'ecoCategory': ecoCategories.join(','),
+  };
 
   @override
   bool operator ==(Object other) =>
-      other is MiniaturesQuery && other.window == window && other.sort == sort;
+      other is MiniaturesQuery &&
+      other.window == window &&
+      other.sort == sort &&
+      _setEq(other.results, results) &&
+      _setEq(other.timeControls, timeControls) &&
+      _setEq(other.ecoCategories, ecoCategories);
 
   @override
-  int get hashCode => Object.hash(window, sort);
+  int get hashCode => Object.hash(
+    window,
+    sort,
+    Object.hashAllUnordered(results),
+    Object.hashAllUnordered(timeControls),
+    Object.hashAllUnordered(ecoCategories),
+  );
 }
 
 class MiniaturesQueryNotifier extends StateNotifier<MiniaturesQuery> {
   MiniaturesQueryNotifier() : super(const MiniaturesQuery());
 
-  void setWindow(MiniatureWindow window) => state = state.copyWith(window: window);
-  void setSort(MiniatureSort sort) => state = state.copyWith(sort: sort);
+  void setWindow(MiniatureWindow window) => state = MiniaturesQuery(
+    window: window,
+    sort: state.sort,
+    results: state.results,
+    timeControls: state.timeControls,
+    ecoCategories: state.ecoCategories,
+  );
+
+  void setSort(MiniatureSort sort) => state = MiniaturesQuery(
+    window: state.window,
+    sort: sort,
+    results: state.results,
+    timeControls: state.timeControls,
+    ecoCategories: state.ecoCategories,
+  );
+
+  void applyFilters({
+    required Set<String> results,
+    required Set<String> timeControls,
+    required Set<String> ecoCategories,
+  }) {
+    state = MiniaturesQuery(
+      window: state.window,
+      sort: state.sort,
+      results: results,
+      timeControls: timeControls,
+      ecoCategories: ecoCategories,
+    );
+  }
+
+  void clearFilters() =>
+      state = MiniaturesQuery(window: state.window, sort: state.sort);
 }
 
 final miniaturesQueryProvider =
@@ -135,5 +280,6 @@ final miniaturesListProvider =
         sort: query.sort.api,
         order: order,
         limit: 50,
+        filters: query.filterParams(),
       );
     });

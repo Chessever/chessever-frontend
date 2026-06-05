@@ -212,11 +212,27 @@ class _ChapterCard extends StatelessWidget {
                   ),
                   SizedBox(height: 2.h),
                   Text(
-                    moves <= 0 ? 'Position' : (moves == 1 ? '1 move' : '$moves moves'),
+                    [
+                      moves <= 0
+                          ? 'Position'
+                          : (moves == 1 ? '1 move' : '$moves moves'),
+                      if ((chapter.eco ?? '').trim().isNotEmpty) chapter.eco!.trim(),
+                    ].join('  ·  '),
                     style: AppTypography.textXsRegular.copyWith(
                       color: const Color(0xFFA1A1A1),
                     ),
                   ),
+                  if (chapter.gameSubtitle != null) ...[
+                    SizedBox(height: 2.h),
+                    Text(
+                      chapter.gameSubtitle!,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textPrimary.withValues(alpha: 0.45),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),

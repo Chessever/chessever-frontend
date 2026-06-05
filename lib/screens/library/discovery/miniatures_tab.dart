@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/gamebase/discovery/discovery_models.dart';
 import 'package:chessever2/repository/gamebase/discovery/discovery_providers.dart';
+import 'package:chessever2/screens/library/discovery/discovery_filter_widgets.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -28,6 +29,16 @@ class MiniaturesTab extends ConsumerWidget {
     if (picked != null) {
       ref.read(miniaturesQueryProvider.notifier).setSort(picked);
     }
+  }
+
+  Future<void> _pickFilters(BuildContext context, WidgetRef ref) async {
+    HapticFeedback.selectionClick();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _MiniaturesFilterSheet(),
+    );
   }
 
   void _openMiniature(
@@ -75,7 +86,22 @@ class MiniaturesTab extends ConsumerWidget {
             },
           ),
         ),
-        _SortRow(label: query.sort.label, onTap: () => _pickSort(context, ref)),
+        Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
+          child: Row(
+            children: [
+              FilterButton(
+                count: query.activeFilterCount,
+                onTap: () => _pickFilters(context, ref),
+              ),
+              const Spacer(),
+              _SortChip(
+                label: query.sort.label,
+                onTap: () => _pickSort(context, ref),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
@@ -117,47 +143,147 @@ class MiniaturesTab extends ConsumerWidget {
   }
 }
 
-class _SortRow extends StatelessWidget {
-  const _SortRow({required this.label, required this.onTap});
+class _SortChip extends StatelessWidget {
+  const _SortChip({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
-      child: Row(
-        children: [
-          const Spacer(),
-          GestureDetector(
-            onTap: onTap,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(20.br),
-                border: Border.all(
-                  color: context.colors.textPrimary.withValues(alpha: 0.1),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.swap_vert_rounded, size: 15.sp, color: kPrimaryColor),
-                  SizedBox(width: 6.w),
-                  Text(
-                    label,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.85),
-                    ),
-                  ),
-                ],
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(20.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.swap_vert_rounded, size: 15.sp, color: kPrimaryColor),
+            SizedBox(width: 6.w),
+            Text(
+              label,
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+}
+
+const List<String> _miniatureEcoCategories = ['A', 'B', 'C', 'D', 'E'];
+
+class _MiniaturesFilterSheet extends ConsumerStatefulWidget {
+  const _MiniaturesFilterSheet();
+
+  @override
+  ConsumerState<_MiniaturesFilterSheet> createState() =>
+      _MiniaturesFilterSheetState();
+}
+
+class _MiniaturesFilterSheetState
+    extends ConsumerState<_MiniaturesFilterSheet> {
+  late Set<String> _results;
+  late Set<String> _timeControls;
+  late Set<String> _eco;
+
+  @override
+  void initState() {
+    super.initState();
+    final q = ref.read(miniaturesQueryProvider);
+    _results = {...q.results};
+    _timeControls = {...q.timeControls};
+    _eco = {...q.ecoCategories};
+  }
+
+  void _toggle(Set<String> set, String value) {
+    setState(() {
+      if (!set.remove(value)) set.add(value);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterSheetScaffold(
+      title: 'Filter miniatures',
+      onClear: () {
+        setState(() {
+          _results = {};
+          _timeControls = {};
+          _eco = {};
+        });
+      },
+      onApply: () {
+        ref.read(miniaturesQueryProvider.notifier).applyFilters(
+              results: _results,
+              timeControls: _timeControls,
+              ecoCategories: _eco,
+            );
+        Navigator.of(context).pop();
+      },
+      children: [
+        FilterSection(
+          title: 'RESULT',
+          child: Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: [
+              FilterPill(
+                label: 'White wins',
+                selected: _results.contains('W'),
+                onTap: () => _toggle(_results, 'W'),
+              ),
+              FilterPill(
+                label: 'Black wins',
+                selected: _results.contains('B'),
+                onTap: () => _toggle(_results, 'B'),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 20.h),
+        FilterSection(
+          title: 'TIME CONTROL',
+          child: Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: [
+              for (final tc in const ['CLASSICAL', 'RAPID', 'BLITZ'])
+                FilterPill(
+                  label: tc[0] + tc.substring(1).toLowerCase(),
+                  selected: _timeControls.contains(tc),
+                  onTap: () => _toggle(_timeControls, tc),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(height: 20.h),
+        FilterSection(
+          title: 'ECO CATEGORY',
+          child: Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: [
+              for (final c in _miniatureEcoCategories)
+                FilterPill(
+                  label: c,
+                  selected: _eco.contains(c),
+                  onTap: () => _toggle(_eco, c),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(height: 8.h),
+      ],
     );
   }
 }
