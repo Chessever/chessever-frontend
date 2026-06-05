@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.2.0
+  version: 1.3.0
 
 servers:
   - url: http://localhost:3232
@@ -1619,6 +1619,72 @@ paths:
           description: Case-insensitive substring search on study name
           schema:
             type: string
+        - name: eco
+          in: query
+          required: false
+          description: Filter to studies containing any of these exact ECO codes (comma-separated or repeated). e.g. B12,C44
+          schema:
+            type: string
+        - name: ecoCategory
+          in: query
+          required: false
+          description: Filter by ECO category letter(s) A-E (comma-separated or repeated)
+          schema:
+            type: string
+        - name: opening
+          in: query
+          required: false
+          description: Filter to studies containing any of these exact opening names (comma-separated or repeated)
+          schema:
+            type: string
+        - name: variant
+          in: query
+          required: false
+          description: Filter by variant(s), e.g. Standard, Chess960 (comma-separated or repeated)
+          schema:
+            type: string
+        - name: chapterMode
+          in: query
+          required: false
+          description: Filter by chapter mode(s), e.g. gamebook, normal, practice (comma-separated or repeated)
+          schema:
+            type: string
+        - name: player
+          in: query
+          required: false
+          description: Filter to studies featuring any of these exact player names (comma-separated or repeated)
+          schema:
+            type: string
+        - name: gamebook
+          in: query
+          required: false
+          description: true = only interactive (gamebook) studies; false = exclude them
+          schema:
+            type: boolean
+        - name: customPositions
+          in: query
+          required: false
+          description: true = only studies with custom start positions (e.g. endgame/tactics)
+          schema:
+            type: boolean
+        - name: hasAnnotations
+          in: query
+          required: false
+          description: true = only studies with comments/variations/NAGs
+          schema:
+            type: boolean
+        - name: minViews
+          in: query
+          required: false
+          description: Minimum Lichess view count
+          schema:
+            type: integer
+        - name: minChapters
+          in: query
+          required: false
+          description: Minimum chapter count
+          schema:
+            type: integer
       responses:
         "200":
           description: List of studies
@@ -1643,6 +1709,35 @@ paths:
                         type: integer
                       offset:
                         type: integer
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/studies/facets:
+    get:
+      summary: Distinct study filter values
+      description: |
+        Returns the distinct filter values across served (gated, active) studies
+        so the frontend can populate filter dropdowns dynamically.
+      operationId: getStudyFacets
+      tags:
+        - Studies
+      responses:
+        "200":
+          description: Available facet values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    $ref: "#/components/schemas/StudyFacets"
         "401":
           description: Missing or invalid API key
           content:
@@ -1873,6 +1968,42 @@ components:
           type: integer
         hasAnnotations:
           type: boolean
+        ecos:
+          type: array
+          description: Distinct ECO codes across the study's chapters
+          items:
+            type: string
+        ecoCategories:
+          type: array
+          description: Distinct ECO category letters (A-E)
+          items:
+            type: string
+        openings:
+          type: array
+          description: Distinct opening names across chapters
+          items:
+            type: string
+        variants:
+          type: array
+          description: Distinct variants (e.g. Standard, Chess960)
+          items:
+            type: string
+        chapterModes:
+          type: array
+          description: Distinct chapter modes (gamebook, normal, practice, conceal)
+          items:
+            type: string
+        players:
+          type: array
+          description: Distinct featured player names (for game-based chapters)
+          items:
+            type: string
+        isGamebook:
+          type: boolean
+          description: True if any chapter is an interactive (gamebook) lesson
+        hasCustomPositions:
+          type: boolean
+          description: True if any chapter starts from a custom position (SetUp)
         credibilityScore:
           type: number
           description: 0-100 quality score; studies below the tunable threshold are not served
@@ -1884,6 +2015,30 @@ components:
         syncedAt:
           type: string
           format: date-time
+    StudyFacets:
+      type: object
+      description: Distinct filter values across served studies
+      properties:
+        ecoCategories:
+          type: array
+          items:
+            type: string
+        openings:
+          type: array
+          items:
+            type: string
+        variants:
+          type: array
+          items:
+            type: string
+        chapterModes:
+          type: array
+          items:
+            type: string
+        players:
+          type: array
+          items:
+            type: string
     LichessStudyChapterMeta:
       type: object
       properties:
@@ -1899,6 +2054,37 @@ components:
           type: integer
         orderIndex:
           type: integer
+        eco:
+          type: string
+          nullable: true
+        opening:
+          type: string
+          nullable: true
+        variant:
+          type: string
+          nullable: true
+        result:
+          type: string
+          nullable: true
+        chapterMode:
+          type: string
+          nullable: true
+        isSetup:
+          type: boolean
+        whiteName:
+          type: string
+          nullable: true
+        blackName:
+          type: string
+          nullable: true
+        whiteElo:
+          type: integer
+          nullable: true
+        blackElo:
+          type: integer
+          nullable: true
+        hasAnnotations:
+          type: boolean
     LichessStudyDetail:
       type: object
       properties:
