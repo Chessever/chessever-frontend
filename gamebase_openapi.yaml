@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.3.0
+  version: 1.4.0
 
 servers:
   - url: http://localhost:3232
@@ -1902,6 +1902,85 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: result
+          in: query
+          required: false
+          description: Filter by result(s) W (white win) / B (black win). Comma-separated or repeated.
+          schema:
+            type: string
+        - name: eco
+          in: query
+          required: false
+          description: Filter by exact ECO code(s), comma-separated or repeated (e.g. B12,C44)
+          schema:
+            type: string
+        - name: ecoCategory
+          in: query
+          required: false
+          description: Filter by ECO category letter(s) A-E, comma-separated or repeated
+          schema:
+            type: string
+        - name: timeControl
+          in: query
+          required: false
+          description: Filter by time control(s) CLASSICAL/RAPID/BLITZ, comma-separated or repeated
+          schema:
+            type: string
+        - name: isOnline
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: minRating
+          in: query
+          required: false
+          description: Minimum average rating of the two players
+          schema:
+            type: integer
+        - name: maxRating
+          in: query
+          required: false
+          description: Maximum average rating of the two players
+          schema:
+            type: integer
+        - name: minMoves
+          in: query
+          required: false
+          description: Minimum final move number
+          schema:
+            type: integer
+        - name: maxMoves
+          in: query
+          required: false
+          description: Maximum final move number
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          required: false
+          description: Inclusive lower bound on game date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          required: false
+          description: Inclusive upper bound on game date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: player
+          in: query
+          required: false
+          description: Case-insensitive substring match on either player's name
+          schema:
+            type: string
+        - name: playerId
+          in: query
+          required: false
+          description: Exact player UUID match on either side
+          schema:
+            type: string
       responses:
         "200":
           description: List of miniatures
@@ -2124,6 +2203,16 @@ components:
         eco:
           type: string
           nullable: true
+        ecoCategory:
+          type: string
+          nullable: true
+          description: ECO category letter (A-E)
+        opening:
+          type: string
+          nullable: true
+        variation:
+          type: string
+          nullable: true
         whiteName:
           type: string
           nullable: true
@@ -2135,6 +2224,18 @@ components:
           nullable: true
         blackElo:
           type: integer
+          nullable: true
+        whitePlayerId:
+          type: string
+          nullable: true
+        blackPlayerId:
+          type: string
+          nullable: true
+        whiteFed:
+          type: string
+          nullable: true
+        blackFed:
+          type: string
           nullable: true
     PositionAggregatesQueryRequest:
       type: object
