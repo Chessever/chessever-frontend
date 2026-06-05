@@ -792,7 +792,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late Animation<double> _swipeFadeAnimation;
   late Animation<double> _swipeScaleAnimation;
   late Animation<double> _swipeMoveAnimation;
-  final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
 
   // Step 3/3 ("Double-Tap to Like") — chained after the Switch Views step via
   // [likeTutorialRequestProvider]. Hosted here (not in a nested panel) so the
@@ -1000,16 +999,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _insertLikeTutorialOverlay() {
     _likeTutorialEntry = OverlayEntry(
-      builder: (_) => LikeTutorialOverlay(
-        currentStep: 3,
-        totalSteps: 3,
-        onDismiss: _onLikeTutorialFinished,
-        onDontShowAgain: () async {
-          final prefs = ref.read(sharedPreferencesRepository);
-          await prefs.setBool(kLikeWalkthroughDontShowKey, true);
-          _onLikeTutorialFinished();
-        },
-      ),
+      builder:
+          (_) => LikeTutorialOverlay(
+            currentStep: 3,
+            totalSteps: 3,
+            onDismiss: _onLikeTutorialFinished,
+            onDontShowAgain: () async {
+              final prefs = ref.read(sharedPreferencesRepository);
+              await prefs.setBool(kLikeWalkthroughDontShowKey, true);
+              _onLikeTutorialFinished();
+            },
+          ),
     );
     Overlay.of(context, rootOverlay: true).insert(_likeTutorialEntry!);
   }
@@ -1148,6 +1148,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       initialFen: widget.initialFen,
     );
   }
+
+  String _likeFlightAnchorId(int pageIndex) =>
+      '${identityHashCode(this)}:$pageIndex';
 
   void _ensureLatestMoveSelected({
     required WidgetRef ref,
@@ -2007,6 +2010,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       return _LoadingScreen(
         games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
         currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+        likeFlightAnchorId: _likeFlightAnchorId(_currentPageIndex),
         onGameChanged: (index) {},
         lastViewedIndex: _lastViewedIndex,
       );
@@ -2042,6 +2046,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       return _LoadingScreen(
         games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
         currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+        likeFlightAnchorId: _likeFlightAnchorId(_currentPageIndex),
         onGameChanged: (index) {},
         lastViewedIndex: _lastViewedIndex,
       );
@@ -2167,6 +2172,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                         games: syncedGames,
                                         currentGameIndex: index,
                                         currentPageIndex: _currentPageIndex,
+                                        likeFlightAnchorId: _likeFlightAnchorId(
+                                          index,
+                                        ),
                                         onGameChanged: _navigateToGame,
                                         lastViewedIndex: _lastViewedIndex,
                                         hideEventInfo: widget.hideEventInfo,
@@ -2186,6 +2194,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                         () => _LoadingScreen(
                                           games: liveGames,
                                           currentGameIndex: index,
+                                          likeFlightAnchorId:
+                                              _likeFlightAnchorId(index),
                                           onGameChanged: _navigateToGame,
                                           lastViewedIndex: _lastViewedIndex,
                                           hideEventInfo: widget.hideEventInfo,
@@ -2197,6 +2207,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                   return _LoadingScreen(
                                     games: liveGames,
                                     currentGameIndex: index,
+                                    likeFlightAnchorId: _likeFlightAnchorId(
+                                      index,
+                                    ),
                                     onGameChanged: _navigateToGame,
                                     lastViewedIndex: _lastViewedIndex,
                                     hideEventInfo: widget.hideEventInfo,
@@ -2213,7 +2226,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                       if (_showTutorialOverlay)
                         Positioned.fill(
                           child: _SwipeTutorialOverlay(
-                            key: _tutorialOverlayKey,
                             animationController: _swipeController,
                             moveAnimation: _swipeMoveAnimation,
                             fadeAnimation: _swipeFadeAnimation,
@@ -2257,7 +2269,6 @@ class _SwipeTutorialOverlay extends StatefulWidget {
   final int totalSteps;
 
   const _SwipeTutorialOverlay({
-    super.key,
     required this.onDismiss,
     required this.onDontShowAgain,
     required this.animationController,
@@ -2691,6 +2702,7 @@ class _GamePage extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final int currentPageIndex;
+  final String likeFlightAnchorId;
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
@@ -2706,6 +2718,7 @@ class _GamePage extends StatelessWidget {
     required this.games,
     required this.currentGameIndex,
     required this.currentPageIndex,
+    required this.likeFlightAnchorId,
     required this.onGameChanged,
     required this.onToggleGamebase,
     this.lastViewedIndex,
@@ -2732,6 +2745,7 @@ class _GamePage extends StatelessWidget {
         game: game,
         games: games,
         currentGameIndex: currentGameIndex,
+        likeFlightAnchorId: likeFlightAnchorId,
         onGameChanged: onGameChanged,
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
@@ -2740,6 +2754,7 @@ class _GamePage extends StatelessWidget {
       body: _GameBody(
         index: currentGameIndex,
         currentPageIndex: currentPageIndex,
+        likeFlightAnchorId: likeFlightAnchorId,
         game: game,
         state: state,
         playerProfileDataSource: playerProfileDataSource,
@@ -2758,6 +2773,7 @@ class _GamePage extends StatelessWidget {
 class _LoadingScreen extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
+  final String likeFlightAnchorId;
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
@@ -2765,6 +2781,7 @@ class _LoadingScreen extends StatelessWidget {
   const _LoadingScreen({
     required this.games,
     required this.currentGameIndex,
+    required this.likeFlightAnchorId,
     required this.onGameChanged,
     this.lastViewedIndex,
     this.hideEventInfo = false,
@@ -2800,6 +2817,7 @@ class _LoadingScreen extends StatelessWidget {
         game: games[currentGameIndex],
         games: games,
         currentGameIndex: currentGameIndex,
+        likeFlightAnchorId: likeFlightAnchorId,
         onGameChanged: onGameChanged,
         isLoading: true,
         lastViewedIndex: lastViewedIndex,
@@ -2999,6 +3017,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final GamesTourModel game;
   final List<GamesTourModel> games;
   final int currentGameIndex;
+  final String likeFlightAnchorId;
   final void Function(int) onGameChanged;
   final bool isLoading;
   final int? lastViewedIndex;
@@ -3009,6 +3028,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
     required this.game,
     required this.games,
     required this.currentGameIndex,
+    required this.likeFlightAnchorId,
     required this.onGameChanged,
     this.isLoading = false,
     this.lastViewedIndex,
@@ -3340,7 +3360,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
       ),
     );
 
-    final anchor = ref.read(likeFlightAnchorProvider);
+    final anchor = ref.read(
+      likeFlightAnchorProvider(widget.likeFlightAnchorId),
+    );
     final isLiked = ref.watch(isGameLikedProvider(widget.game.likeId));
 
     return ValueListenableBuilder<LikeFlightPhase>(
@@ -3413,7 +3435,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // (same glyph, same size, same spot). The optimistic `isLiked` flips
         // true early, so gating on phase is what keeps the badge hidden until
         // the flying heart actually arrives.
-        final inFlight = phase == LikeFlightPhase.bursting ||
+        final inFlight =
+            phase == LikeFlightPhase.bursting ||
             phase == LikeFlightPhase.flying;
         final justLanded = phase == LikeFlightPhase.landed;
         final showBadge = isLiked && !inFlight;
@@ -3448,10 +3471,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
               // origin (scale-0 maps every child point to center), giving the
               // flight a wrong dock target. Measuring the un-transformed box
               // here yields the badge's true rect even while it's invisible.
-              child: KeyedSubtree(
-                key: anchor.heartBadgeKey,
-                child: heartBadge,
-              ),
+              child: KeyedSubtree(key: anchor.heartBadgeKey, child: heartBadge),
             ),
           ],
         );
@@ -3462,16 +3482,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // Animate state alive across rebuilds inside the same `landed`
         // window so the pulse runs once, not on every rebuild.
         final landed = phase == LikeFlightPhase.landed;
-        final pulsing = landed
-            ? stack
-                .animate(key: const ValueKey('save-button-landed-pulse'))
-                .scaleXY(
-                  begin: 1.28,
-                  end: 1.0,
-                  duration: 360.ms,
-                  curve: Curves.easeOutBack,
-                )
-            : stack;
+        final pulsing =
+            landed
+                ? stack
+                    .animate(key: const ValueKey('save-button-landed-pulse'))
+                    .scaleXY(
+                      begin: 1.28,
+                      end: 1.0,
+                      duration: 360.ms,
+                      curve: Curves.easeOutBack,
+                    )
+                : stack;
 
         // Header action stays the save icon at all times — a double-tap
         // like is represented only by the small red badge above. The
@@ -5998,6 +6019,7 @@ class _GameBody extends StatelessWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
+  final String likeFlightAnchorId;
   final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
   final bool showClock;
@@ -6007,6 +6029,7 @@ class _GameBody extends StatelessWidget {
     required this.currentPageIndex,
     required this.game,
     required this.state,
+    required this.likeFlightAnchorId,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
     this.showClock = true,
@@ -6020,6 +6043,7 @@ class _GameBody extends StatelessWidget {
       currentPageIndex: currentPageIndex,
       game: game,
       state: state,
+      likeFlightAnchorId: likeFlightAnchorId,
       playerProfileDataSource: playerProfileDataSource,
       showGamebaseButton: showGamebaseButton,
       showClock: showClock,
@@ -6032,6 +6056,7 @@ class _AnalysisGameBody extends ConsumerWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
+  final String likeFlightAnchorId;
   final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
   final bool showClock;
@@ -6041,6 +6066,7 @@ class _AnalysisGameBody extends ConsumerWidget {
     required this.currentPageIndex,
     required this.game,
     required this.state,
+    required this.likeFlightAnchorId,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
     this.showClock = true,
@@ -6114,6 +6140,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           _BoardWithSidebar(
             index: index,
             currentPageIndex: currentPageIndex,
+            likeFlightAnchorId: likeFlightAnchorId,
             state: state,
             game: game,
           ),
@@ -6281,6 +6308,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                       _TabletBoardWithSidebar(
                         index: index,
                         currentPageIndex: currentPageIndex,
+                        likeFlightAnchorId: likeFlightAnchorId,
                         state: state,
                         game: game,
                         boardSize: optimalBoardSize,
@@ -6378,6 +6406,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                     _BoardWithSidebar(
                       index: index,
                       currentPageIndex: currentPageIndex,
+                      likeFlightAnchorId: likeFlightAnchorId,
                       state: state,
                       game: game,
                     ),
@@ -6589,6 +6618,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
   final int currentPageIndex;
+  final String likeFlightAnchorId;
   final GamesTourModel game;
   final double boardSize;
   final double evalBarWidth;
@@ -6597,6 +6627,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
     required this.index,
     required this.state,
     required this.currentPageIndex,
+    required this.likeFlightAnchorId,
     required this.game,
     required this.boardSize,
     required this.evalBarWidth,
@@ -6654,6 +6685,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           chessBoardState: state,
           isFlipped: state.isBoardFlipped,
           index: index,
+          likeFlightAnchorId: likeFlightAnchorId,
           game: state.game,
         ),
       ],
@@ -6665,12 +6697,14 @@ class _BoardWithSidebar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
   final int currentPageIndex;
+  final String likeFlightAnchorId;
   final GamesTourModel game;
 
   const _BoardWithSidebar({
     required this.index,
     required this.state,
     required this.currentPageIndex,
+    required this.likeFlightAnchorId,
     required this.game,
   });
 
@@ -6772,6 +6806,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                     chessBoardState: state,
                     isFlipped: state.isBoardFlipped,
                     index: index,
+                    likeFlightAnchorId: likeFlightAnchorId,
                     game: state.game,
                   ),
                   // DISABLED: Move annotation overlay (requires move impact analysis)
@@ -6802,6 +6837,7 @@ class _AnalysisBoard extends ConsumerStatefulWidget {
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
   final int index;
+  final String likeFlightAnchorId;
   final GamesTourModel game;
 
   const _AnalysisBoard({
@@ -6809,6 +6845,7 @@ class _AnalysisBoard extends ConsumerStatefulWidget {
     required this.chessBoardState,
     this.isFlipped = false,
     required this.index,
+    required this.likeFlightAnchorId,
     required this.game,
   });
 
@@ -7174,9 +7211,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       final gameId = widget.game.gameId;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ref
-            .read(eventNoSpoilersRevealedGamesProvider.notifier)
-            .reveal(gameId);
+        ref.read(eventNoSpoilersRevealedGamesProvider.notifier).reveal(gameId);
       });
     }
 
@@ -7223,7 +7258,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   @override
   void initState() {
     super.initState();
-    _likeFlightAnchor = ref.read(likeFlightAnchorProvider);
+    _likeFlightAnchor = ref.read(
+      likeFlightAnchorProvider(widget.likeFlightAnchorId),
+    );
     final analysisState = widget.chessBoardState.analysisState;
     _wasAtEnd = _isAtGameEnd(analysisState);
 
@@ -7650,9 +7687,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       await toggleFuture;
     } catch (_) {}
     if (!mounted) return;
-    await ref
-        .read(likedGamesProvider.notifier)
-        .setTagsForLikeId(game.likeId, [tag]);
+    await ref.read(likedGamesProvider.notifier).setTagsForLikeId(game.likeId, [
+      tag,
+    ]);
   }
 
   void _removeFlyingHeartEntry() {

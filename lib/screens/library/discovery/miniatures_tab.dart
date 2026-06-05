@@ -595,17 +595,23 @@ class _MiniatureSortSheet extends StatelessWidget {
               ),
             ),
             for (final option in MiniatureSort.values)
-              ListTile(
-                onTap: () => Navigator.of(context).pop(option),
-                title: Text(
-                  option.label,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary,
+              // Transparent Material gives the ListTile a Material ancestor for
+              // ink; the colored sheet Container would otherwise hide it.
+              Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  onTap: () => Navigator.of(context).pop(option),
+                  title: Text(
+                    option.label,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
                   ),
+                  trailing: option == current
+                      ? Icon(Icons.check_rounded,
+                          color: kPrimaryColor, size: 20.sp)
+                      : null,
                 ),
-                trailing: option == current
-                    ? Icon(Icons.check_rounded, color: kPrimaryColor, size: 20.sp)
-                    : null,
               ),
           ],
         ),

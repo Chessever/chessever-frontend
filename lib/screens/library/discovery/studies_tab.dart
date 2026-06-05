@@ -487,18 +487,25 @@ class _SortSheet<T> extends StatelessWidget {
               ),
             ),
             for (final option in options)
-              ListTile(
-                onTap: () => Navigator.of(context).pop(option),
-                title: Text(
-                  labelOf(option),
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary,
+              // Wrap in a transparent Material so the ListTile ink/highlight
+              // has a Material ancestor; the colored sheet Container would
+              // otherwise intercept it and trip a framework assertion.
+              Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  onTap: () => Navigator.of(context).pop(option),
+                  title: Text(
+                    labelOf(option),
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
                   ),
+                  trailing:
+                      option == current
+                          ? Icon(Icons.check_rounded,
+                              color: kPrimaryColor, size: 20.sp)
+                          : null,
                 ),
-                trailing:
-                    option == current
-                        ? Icon(Icons.check_rounded, color: kPrimaryColor, size: 20.sp)
-                        : null,
               ),
           ],
         ),

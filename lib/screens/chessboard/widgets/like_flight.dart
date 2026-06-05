@@ -19,22 +19,37 @@ enum LikeFlightPhase { idle, bursting, flying, landed }
 /// widget attaches [saveButtonKey] to its icon container so the flight
 /// animation can compute the on-screen target rect.
 class LikeFlightAnchor {
-  LikeFlightAnchor();
+  LikeFlightAnchor({String? debugLabel}) {
+    _debugLabel = debugLabel;
+  }
+
+  late final String? _debugLabel;
 
   /// Attached to the save button's icon container. The flight overlay reads
   /// `renderBox.localToGlobal(Offset.zero)` off this to find its target.
-  final GlobalKey saveButtonKey = GlobalKey();
+  late final GlobalKey saveButtonKey = GlobalKey(
+    debugLabel:
+        _debugLabel == null
+            ? 'likeFlight.saveButton'
+            : 'likeFlight.saveButton.$_debugLabel',
+  );
 
   /// Attached to the small heart badge glyph on the save button. The flight
   /// overlay docks the big flying heart onto THIS rect (center + size) so the
   /// arriving heart lands exactly where — and at the same size as — the badge
   /// it turns into. The badge keeps its layout size even while scaled to 0
   /// (AnimatedScale is a transform), so this rect is measurable mid-flight.
-  final GlobalKey heartBadgeKey = GlobalKey();
+  late final GlobalKey heartBadgeKey = GlobalKey(
+    debugLabel:
+        _debugLabel == null
+            ? 'likeFlight.heartBadge'
+            : 'likeFlight.heartBadge.$_debugLabel',
+  );
 
   /// Drives the save button's own state machine — see [LikeFlightPhase].
-  final ValueNotifier<LikeFlightPhase> phase =
-      ValueNotifier<LikeFlightPhase>(LikeFlightPhase.idle);
+  final ValueNotifier<LikeFlightPhase> phase = ValueNotifier<LikeFlightPhase>(
+    LikeFlightPhase.idle,
+  );
 
   Rect? saveButtonGlobalRect() {
     final ctx = saveButtonKey.currentContext;
@@ -83,12 +98,14 @@ class LikeFlightAnchor {
   void dispose() => phase.dispose();
 }
 
-/// Shared anchor instance. Not autoDispose: the save button and the board's
-/// double-tap handler both `ref.read` it and they MUST resolve to the same
-/// instance, otherwise the GlobalKey on the save button doesn't match the
-/// rect lookup at flight time and the flight is silently skipped.
-final likeFlightAnchorProvider = Provider<LikeFlightAnchor>((ref) {
-  final anchor = LikeFlightAnchor();
+/// Page-scoped anchor. Not autoDispose: a board page and its app-bar save
+/// button must resolve to the same instance, but adjacent PageView pages must
+/// not share GlobalKeys while the swipe tutorial programmatically drags pages.
+final likeFlightAnchorProvider = Provider.family<LikeFlightAnchor, String>((
+  ref,
+  anchorId,
+) {
+  final anchor = LikeFlightAnchor(debugLabel: anchorId);
   ref.onDispose(anchor.dispose);
   return anchor;
 });
