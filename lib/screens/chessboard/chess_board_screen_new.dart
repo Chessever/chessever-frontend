@@ -47,6 +47,7 @@ import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/services/pip_service.dart';
@@ -1466,8 +1467,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
-    // PiP is a premium-only feature.
-    if (!ref.read(subscriptionProvider).isSubscribed) return false;
     final mode =
         ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.off;
     switch (mode) {
@@ -1476,9 +1475,28 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       case PipMode.live:
         return GameFilterHelper.isLiveNow(game);
       case PipMode.all:
-        return GameFilterHelper.isLiveNow(game) ||
-            game.effectiveGameStatus.isFinished;
+        // Legacy persisted value. PiP now only enters for live games.
+        return GameFilterHelper.isLiveNow(game);
     }
+  }
+
+  Map<String, dynamic> _pipAnalyticsProperties(
+    GamesTourModel game, {
+    required PipMode mode,
+    required bool isLive,
+  }) {
+    return {
+      'mode': mode == PipMode.all ? PipMode.live.label : mode.label,
+      'is_live': isLive,
+      'game_id': game.gameId,
+      'game_source': game.source.name,
+      'game_status': game.gameStatus.name,
+      'tour_id': game.tourId,
+      if (game.tourSlug != null) 'tour_slug': game.tourSlug,
+      'round_id': game.roundId,
+      if (game.roundSlug != null) 'round_slug': game.roundSlug,
+      if (game.boardNr != null) 'board_nr': game.boardNr,
+    };
   }
 
   Map<String, dynamic> _buildPipPayload(
@@ -1717,13 +1735,34 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
     final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    final game = state?.game ?? currentGame;
+    final mode =
+        ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.off;
+    final isLive = GameFilterHelper.isLiveNow(game);
+    final isEligible = _isPipEligible(game);
+
+    AnalyticsService.instance.trackEventDetached(
+      'PiP Enter Attempted',
+      properties: {
+        ..._pipAnalyticsProperties(game, mode: mode, isLive: isLive),
+        'eligible': isEligible,
+      },
+    );
+
     if (state != null) {
       await _syncPipState(state);
     } else {
       await _syncPipGameSnapshot(currentGame);
     }
-    if (_isPipEligible(state?.game ?? currentGame)) {
-      await PipService.instance.enterIfEligible();
+    if (isEligible) {
+      final entered = await PipService.instance.enterIfEligible();
+      AnalyticsService.instance.trackEventDetached(
+        entered ? 'PiP Entered' : 'PiP Enter Failed',
+        properties: {
+          ..._pipAnalyticsProperties(game, mode: mode, isLive: isLive),
+          'eligible': true,
+        },
+      );
     }
   }
 

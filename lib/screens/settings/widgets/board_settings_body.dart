@@ -2,9 +2,8 @@ import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -32,21 +31,23 @@ class BoardSettingsBody extends ConsumerWidget {
 
     return boardSettingsAsync.when(
       data: (boardSettings) => _buildContent(context, ref, boardSettings),
-      loading: () => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 32),
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (error, stack) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-          child: Text(
-            'Error loading board settings',
-            style: AppTypography.textMdRegular.copyWith(
-              color: context.colors.textPrimary,
+      loading:
+          () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+      error:
+          (error, stack) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                'Error loading board settings',
+                style: AppTypography.textMdRegular.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
             ),
           ),
-        ),
-      ),
     );
   }
 
@@ -91,9 +92,7 @@ class BoardSettingsBody extends ConsumerWidget {
               _ViewModeSelector(
                 selectedIndex: boardSettings.gamesListViewModeIndex,
                 onModeSelected: (index) {
-                  trackPersist(
-                    boardNotifier.setGamesListViewModeIndex(index),
-                  );
+                  trackPersist(boardNotifier.setGamesListViewModeIndex(index));
                 },
               ),
             ],
@@ -145,14 +144,16 @@ class BoardSettingsBody extends ConsumerWidget {
               Switch.adaptive(
                 value: boardSettings.soundEnabled,
                 thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor
+                          : context.colors.textSecondary.withValues(alpha: 0.6),
                 ),
                 trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleSound(value));
@@ -176,34 +177,11 @@ class BoardSettingsBody extends ConsumerWidget {
                       fontSize: 13.f,
                     ),
                   ),
-                  if (!ref.watch(subscriptionProvider).isSubscribed) ...[
-                    SizedBox(width: 8.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8.sp,
-                        vertical: 2.sp,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6.br),
-                        border: Border.all(
-                          color: kPrimaryColor.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Text(
-                        'PRO',
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kPrimaryColor,
-                          fontSize: 9.f,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
               SizedBox(height: 4.h),
               Text(
-                'Pop a mini board out when you leave the app. Choose which games can float.',
+                'Pop a mini board out for live games when you leave the app.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textSecondary,
                   fontSize: 11.f,
@@ -213,15 +191,13 @@ class BoardSettingsBody extends ConsumerWidget {
               _PipModeSelector(
                 selected: boardSettings.pipMode,
                 onSelected: (mode) async {
-                  // Premium-gated: choosing any active mode by a free user opens
-                  // the paywall; "Off" is always allowed.
-                  if (mode != PipMode.off &&
-                      !ref.read(subscriptionProvider).isSubscribed) {
-                    final subscribed = await showPremiumPaywallSheet(
-                      context: context,
-                    );
-                    if (!subscribed) return;
-                  }
+                  AnalyticsService.instance.trackEventDetached(
+                    'PiP Mode Changed',
+                    properties: {
+                      'previous_mode': boardSettings.pipMode.label,
+                      'selected_mode': mode.label,
+                    },
+                  );
                   trackPersist(boardNotifier.setPipMode(mode));
                 },
               ),
@@ -283,14 +259,16 @@ class BoardSettingsBody extends ConsumerWidget {
               Switch.adaptive(
                 value: boardSettings.useFigurine,
                 thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor
+                          : context.colors.textSecondary.withValues(alpha: 0.6),
                 ),
                 trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleFigurine(value));
@@ -329,14 +307,16 @@ class BoardSettingsBody extends ConsumerWidget {
               Switch.adaptive(
                 value: boardSettings.showCoordinates,
                 thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor
+                          : context.colors.textSecondary.withValues(alpha: 0.6),
                 ),
                 trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleShowCoordinates(value));
@@ -375,14 +355,16 @@ class BoardSettingsBody extends ConsumerWidget {
               Switch.adaptive(
                 value: boardSettings.rawPgnMode,
                 thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor
+                          : context.colors.textSecondary.withValues(alpha: 0.6),
                 ),
                 trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleRawPgnMode(value));
@@ -438,9 +420,10 @@ class _AutoPinSection extends ConsumerWidget {
                 value: prefs.favoritePlayersAutoPinEnabled,
                 thumbColor: WidgetStatePropertyAll(kPrimaryColor),
                 trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   trackPersist(notifier.setFavoritePlayersAutoPin(value));
@@ -479,9 +462,10 @@ class _AutoPinSection extends ConsumerWidget {
                 value: prefs.countrymenAutoPinEnabled,
                 thumbColor: WidgetStatePropertyAll(kPrimaryColor),
                 trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : context.colors.divider.withValues(alpha: 0.5),
                 ),
                 onChanged: (value) {
                   trackPersist(notifier.setCountrymenAutoPin(value));
@@ -644,13 +628,14 @@ class _BoardThemePickerCard extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (context) => _BoardThemeGallerySheet(
-        currentIndex: currentIndex,
-        onThemeSelected: (index) {
-          onThemeSelected(index);
-          Navigator.pop(context);
-        },
-      ),
+      builder:
+          (context) => _BoardThemeGallerySheet(
+            currentIndex: currentIndex,
+            onThemeSelected: (index) {
+              onThemeSelected(index);
+              Navigator.pop(context);
+            },
+          ),
     );
   }
 }
@@ -804,15 +789,16 @@ class _BoardThemeGridItem extends StatelessWidget {
             color: isSelected ? kPrimaryColor : Colors.transparent,
             width: 2,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    spreadRadius: 0,
-                  ),
-                ]
-              : null,
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                  : null,
         ),
         child: Column(
           children: [
@@ -1081,13 +1067,14 @@ class _PieceSetPickerCard extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (context) => _PieceSetGallerySheet(
-        currentIndex: currentIndex,
-        onPieceSetSelected: (index) {
-          onPieceSetSelected(index);
-          Navigator.pop(context);
-        },
-      ),
+      builder:
+          (context) => _PieceSetGallerySheet(
+            currentIndex: currentIndex,
+            onPieceSetSelected: (index) {
+              onPieceSetSelected(index);
+              Navigator.pop(context);
+            },
+          ),
     );
   }
 }
@@ -1241,15 +1228,16 @@ class _PieceSetGridItem extends StatelessWidget {
             color: isSelected ? kPrimaryColor : Colors.transparent,
             width: 2,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    spreadRadius: 0,
-                  ),
-                ]
-              : null,
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                  : null,
         ),
         child: Column(
           children: [
@@ -1293,9 +1281,10 @@ class _PieceSetGridItem extends StatelessWidget {
               width: double.infinity,
               padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 6.sp),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? kPrimaryColor.withValues(alpha: 0.1)
-                    : Colors.transparent,
+                color:
+                    isSelected
+                        ? kPrimaryColor.withValues(alpha: 0.1)
+                        : Colors.transparent,
                 borderRadius: BorderRadius.vertical(
                   bottom: Radius.circular(10.br),
                 ),
@@ -1328,6 +1317,8 @@ class _PipModeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveSelected = selected == PipMode.all ? PipMode.live : selected;
+
     return Container(
       padding: EdgeInsets.all(4.sp),
       decoration: BoxDecoration(
@@ -1336,14 +1327,18 @@ class _PipModeSelector extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _buildOption(context, mode: PipMode.off, icon: Icons.block_rounded),
-          SizedBox(width: 4.w),
-          _buildOption(context, mode: PipMode.live, icon: Icons.sensors_rounded),
+          _buildOption(
+            context,
+            selected: effectiveSelected,
+            mode: PipMode.off,
+            icon: Icons.block_rounded,
+          ),
           SizedBox(width: 4.w),
           _buildOption(
             context,
-            mode: PipMode.all,
-            icon: Icons.all_inclusive_rounded,
+            selected: effectiveSelected,
+            mode: PipMode.live,
+            icon: Icons.sensors_rounded,
           ),
         ],
       ),
@@ -1352,6 +1347,7 @@ class _PipModeSelector extends StatelessWidget {
 
   Widget _buildOption(
     BuildContext context, {
+    required PipMode selected,
     required PipMode mode,
     required IconData icon,
   }) {
@@ -1363,31 +1359,34 @@ class _PipModeSelector extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: EdgeInsets.symmetric(vertical: 8.sp),
           decoration: BoxDecoration(
-            color: isSelected
-                ? kPrimaryColor.withValues(alpha: 0.08)
-                : Colors.transparent,
+            color:
+                isSelected
+                    ? kPrimaryColor.withValues(alpha: 0.08)
+                    : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
               color: isSelected ? kPrimaryColor : Colors.transparent,
               width: isSelected ? 1.5 : 1.0,
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: kPrimaryColor.withValues(alpha: 0.18),
-                      blurRadius: 8,
-                      spreadRadius: 0,
-                    ),
-                  ]
-                : null,
+            boxShadow:
+                isSelected
+                    ? [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.18),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                      ),
+                    ]
+                    : null,
           ),
           child: Column(
             children: [
               Icon(
                 icon,
-                color: isSelected
-                    ? context.colors.textPrimary
-                    : context.colors.textTertiary,
+                color:
+                    isSelected
+                        ? context.colors.textPrimary
+                        : context.colors.textTertiary,
                 size: 20.ic,
               ),
               SizedBox(height: 4.h),
@@ -1396,9 +1395,10 @@ class _PipModeSelector extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected
-                      ? context.colors.textPrimary
-                      : context.colors.textTertiary,
+                  color:
+                      isSelected
+                          ? context.colors.textPrimary
+                          : context.colors.textTertiary,
                   fontSize: 10.f,
                 ),
               ),
@@ -1468,40 +1468,44 @@ class _ViewModeSelector extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: EdgeInsets.symmetric(vertical: 8.sp),
           decoration: BoxDecoration(
-            color: isSelected
-                ? kPrimaryColor.withValues(alpha: 0.08)
-                : Colors.transparent,
+            color:
+                isSelected
+                    ? kPrimaryColor.withValues(alpha: 0.08)
+                    : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
               color: isSelected ? kPrimaryColor : Colors.transparent,
               width: isSelected ? 1.5 : 1.0,
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: kPrimaryColor.withValues(alpha: 0.18),
-                      blurRadius: 8,
-                      spreadRadius: 0,
-                    ),
-                  ]
-                : null,
+            boxShadow:
+                isSelected
+                    ? [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.18),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                      ),
+                    ]
+                    : null,
           ),
           child: Column(
             children: [
               Icon(
                 icon,
-                color: isSelected
-                    ? context.colors.textPrimary
-                    : context.colors.textTertiary,
+                color:
+                    isSelected
+                        ? context.colors.textPrimary
+                        : context.colors.textTertiary,
                 size: 20.ic,
               ),
               SizedBox(height: 4.h),
               Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected
-                      ? context.colors.textPrimary
-                      : context.colors.textTertiary,
+                  color:
+                      isSelected
+                          ? context.colors.textPrimary
+                          : context.colors.textTertiary,
                   fontSize: 10.f,
                 ),
               ),
