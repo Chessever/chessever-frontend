@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/gamebase/discovery/discovery_models.dart';
 import 'package:chessever2/repository/gamebase/discovery/discovery_providers.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/discovery/discovery_filter_widgets.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -8,10 +9,13 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Discovery → Miniatures: community feed of short decisive games.
@@ -116,19 +120,42 @@ class MiniaturesTab extends ConsumerWidget {
                 if (page.items.isEmpty) {
                   return const _EmptyMiniatures();
                 }
+                // Free users browse the top of the list; a paywall card caps
+                // the free range (v1 gating is client-side — backend isn't
+                // enforcing yet).
+                final isPremium = ref.watch(
+                  subscriptionProvider.select((s) => s.isSubscribed),
+                );
+                const freeCap = 12;
+                final items = page.items;
+                final capped = !isPremium && items.length > freeCap;
+                final visible = capped ? freeCap : items.length;
+                final itemCount = visible + (capped ? 1 : 0);
                 return ListView.separated(
                   primary: false,
                   physics: const AlwaysScrollableScrollPhysics(
                     parent: BouncingScrollPhysics(),
                   ),
                   padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
-                  itemCount: page.items.length,
+                  itemCount: itemCount,
                   separatorBuilder: (_, __) => SizedBox(height: 8.h),
-                  itemBuilder: (context, i) => _MiniatureCard(
-                    miniature: page.items[i],
-                    onTap: () =>
-                        _openMiniature(context, ref, page.items, i),
-                  ),
+                  itemBuilder: (context, i) {
+                    if (capped && i == visible) {
+                      return _MiniaturePaywallCard(
+                        onTap: () async {
+                          HapticFeedbackService.buttonPress();
+                          await requirePremiumGuard(context, ref);
+                        },
+                      );
+                    }
+                    return _MiniatureCard(
+                      miniature: items[i],
+                      onTap: () => _openMiniature(context, ref, items, i),
+                    ).animate().fadeIn(
+                          duration: 220.ms,
+                          delay: Duration(milliseconds: (i % 12) * 28),
+                        );
+                  },
                 );
               },
               loading: () => _MiniaturesLoading(),
@@ -300,7 +327,7 @@ class _MiniatureCard extends StatelessWidget {
     final black = (miniature.blackName ?? 'Black').trim();
     final whiteWins = miniature.result == 'W';
 
-    return GestureDetector(
+    return TappableScale(
       onTap: onTap,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
@@ -468,6 +495,73 @@ class _Chip extends StatelessWidget {
             style: AppTypography.textXxsMedium.copyWith(color: color),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Client-side paywall card shown at the edge of the free range.
+class _MiniaturePaywallCard extends StatelessWidget {
+  const _MiniaturePaywallCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TappableScale(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 18.h),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              kPrimaryColor.withValues(alpha: 0.16),
+              kPrimaryColor.withValues(alpha: 0.06),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14.br),
+          border: Border.all(color: kPrimaryColor.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(10.sp),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.18),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.workspace_premium_rounded,
+                  size: 20.sp, color: kPrimaryColor),
+            ),
+            SizedBox(width: 14.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'See every miniature',
+                    style: AppTypography.textSmBold.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 3.h),
+                  Text(
+                    'Upgrade to browse the full archive, filter and sort freely.',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Icon(Icons.chevron_right_rounded, size: 20.sp, color: kPrimaryColor),
+          ],
+        ),
       ),
     );
   }

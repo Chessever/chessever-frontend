@@ -8,9 +8,11 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -92,9 +94,18 @@ class StudiesTab extends ConsumerWidget {
           listAsync.when(
             data: (page) {
               if (page.items.isEmpty) {
-                return const SliverFillRemaining(
+                return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _EmptyStudies(),
+                  child:
+                      filterCount > 0
+                          ? _EmptyFilteredStudies(
+                            onClear:
+                                () =>
+                                    ref
+                                        .read(studiesQueryProvider.notifier)
+                                        .clearFilters(),
+                          )
+                          : const _EmptyStudies(),
                 );
               }
               return SliverPadding(
@@ -103,7 +114,10 @@ class StudiesTab extends ConsumerWidget {
                   delegate: SliverChildBuilderDelegate(
                     (context, i) => Padding(
                       padding: EdgeInsets.only(bottom: 8.h),
-                      child: _StudyCard(study: page.items[i]),
+                      child: _StudyCard(study: page.items[i]).animate().fadeIn(
+                            duration: 220.ms,
+                            delay: Duration(milliseconds: (i % 12) * 28),
+                          ),
                     ),
                     childCount: page.items.length,
                   ),
@@ -299,7 +313,7 @@ class _StudyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return TappableScale(
       onTap: () {
         HapticFeedbackService.cardTap();
         Navigator.of(context).push(
@@ -548,6 +562,43 @@ class _EmptyStudies extends StatelessWidget {
             'Pull to refresh',
             style: AppTypography.textSmRegular.copyWith(
               color: context.colors.textPrimary.withValues(alpha: 0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyFilteredStudies extends StatelessWidget {
+  const _EmptyFilteredStudies({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.filter_alt_off_outlined,
+            size: 56.sp,
+            color: context.colors.textPrimary.withValues(alpha: 0.4),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'No studies match your filters',
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.85),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          TextButton(
+            onPressed: onClear,
+            child: Text(
+              'Clear filters',
+              style: AppTypography.textSmMedium.copyWith(color: kPrimaryColor),
             ),
           ),
         ],

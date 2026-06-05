@@ -10,6 +10,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_button.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -170,7 +171,7 @@ class _ChapterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final moves = (chapter.plyCount / 2).ceil();
-    return GestureDetector(
+    return TappableScale(
       onTap: onTap,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),

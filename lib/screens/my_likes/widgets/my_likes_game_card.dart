@@ -5,6 +5,7 @@ import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +45,7 @@ class MyLikesGameCard extends ConsumerWidget {
   final Future<void> Function() onRemove;
 
   Future<void> _handleLockedTap(BuildContext context, WidgetRef ref) async {
+    HapticFeedbackService.cardTap();
     final unlocked = await requirePremiumGuard(context, ref);
     if (unlocked) onOpen();
   }

@@ -676,12 +676,15 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
                 SizedBox(height: 24.h),
 
-                // Tags are a My-Likes-only concept: only liked games can be
-                // tagged, and the picker is the same roulette shown right after
-                // a like.
+                // Tags are a My-Likes-only concept: liked games can be tagged
+                // via the same roulette shown right after a like. Also show the
+                // section whenever the game already carries tags, so an existing
+                // tag set stays visible/editable (never silently stuck) even if
+                // the game was unliked.
                 if (ref.watch(
-                  isGameLikedProvider(widget.config.state.game.likeId),
-                )) ...[
+                      isGameLikedProvider(widget.config.state.game.likeId),
+                    ) ||
+                    _selectedTags.isNotEmpty) ...[
                   _buildTagsSection()
                       .animate()
                       .fadeIn(duration: 300.ms, delay: 125.ms)

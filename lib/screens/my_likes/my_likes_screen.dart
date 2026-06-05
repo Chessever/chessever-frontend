@@ -17,6 +17,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -181,6 +182,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         child: Column(
           children: [
             _buildHeader(),
+            _buildWindowTabs(),
             Expanded(
               child: viewAsync.when(
                 data: _buildBody,
@@ -219,14 +221,43 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           ),
           const Spacer(),
           if (totalLiked > 0)
-            IconButton(
-              onPressed: _handleExportPgn,
-              tooltip: 'Export as PGN',
+            // Export now lives in the 3-dot menu, not as a primary action.
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              color: context.colors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.br),
+              ),
               icon: Icon(
-                Icons.ios_share_rounded,
+                Icons.more_vert_rounded,
                 color: context.colors.textPrimary,
                 size: 20.sp,
               ),
+              onSelected: (value) {
+                if (value == 'export') _handleExportPgn();
+              },
+              itemBuilder:
+                  (context) => [
+                    PopupMenuItem<String>(
+                      value: 'export',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.ios_share_rounded,
+                            size: 18.sp,
+                            color: context.colors.textPrimary,
+                          ),
+                          SizedBox(width: 12.w),
+                          Text(
+                            'Export as PGN',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
             ),
         ],
       ),
@@ -404,7 +435,61 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     }
   }
 
+  Widget _buildWindowTabs() {
+    final window = ref.watch(myLikesFilterProvider.select((s) => s.window));
+    final isPremium = ref.watch(
+      subscriptionProvider.select((s) => s.isSubscribed),
+    );
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 4.h),
+      child: SegmentedSwitcher(
+        options: const ['Today', 'This Week', 'All Time'],
+        currentSelection: window.index,
+        backgroundColor: context.colors.surface,
+        selectedBackgroundColor: context.colors.surfaceRecessed,
+        // Show a small lock on All Time for free users.
+        optionLabels: [
+          const Text('Today'),
+          const Text('This Week'),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Flexible(
+                child: Text('All Time', overflow: TextOverflow.ellipsis),
+              ),
+              if (!isPremium) ...[
+                SizedBox(width: 4.w),
+                Icon(
+                  Icons.lock_rounded,
+                  size: 12.sp,
+                  color: const Color(0xFFFFB300),
+                ),
+              ],
+            ],
+          ),
+        ],
+        onSelectionChanged: (i) {
+          HapticFeedbackService.buttonPress();
+          ref
+              .read(myLikesFilterProvider.notifier)
+              .setWindow(MyLikesWindow.values[i]);
+        },
+      ),
+    );
+  }
+
   Widget _buildBody(MyLikesData data) {
+    // All Time archive is Premium for free users — show the gentle lock panel
+    // instead of the list at this exact spot.
+    final window = ref.watch(myLikesFilterProvider.select((s) => s.window));
+    final isPremium = ref.watch(
+      subscriptionProvider.select((s) => s.isSubscribed),
+    );
+    if (window == MyLikesWindow.allTime && !isPremium) {
+      return _buildAllTimeLocked();
+    }
+
     if (data.isEmpty) return _buildEmptyState();
 
     Widget content = CustomScrollView(
@@ -587,6 +672,74 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         ),
       ),
     );
+  }
+
+  Widget _buildAllTimeLocked() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80.w,
+              height: 80.h,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFB300).withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(20.br),
+              ),
+              child: Icon(
+                Icons.lock_rounded,
+                color: const Color(0xFFFFB300),
+                size: 36.ic,
+              ),
+            ),
+            SizedBox(height: 20.h),
+            Text(
+              'Your full library, unlocked',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'Your older liked games are saved. Upgrade to view your full '
+              'liked-games library.',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 24.h),
+            GestureDetector(
+              onTap: () async {
+                HapticFeedbackService.buttonPress();
+                await requirePremiumGuard(context, ref);
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 14.h),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFFFFB300),
+                      const Color(0xFFFFB300).withValues(alpha: 0.82),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14.br),
+                ),
+                child: Text(
+                  'Upgrade to Premium',
+                  style: AppTypography.textSmBold.copyWith(color: kBlackColor),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.04, end: 0);
   }
 
   Widget _buildEmptyState() {

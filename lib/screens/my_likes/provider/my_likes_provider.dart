@@ -56,6 +56,21 @@ class MyLikesData {
   bool get hasNoMatches => totalLiked > 0 && visibleCount == 0;
 }
 
+/// The three My Likes time windows. Today + This Week are the free, renewing
+/// window; All Time is the full archive (Premium for free users).
+enum MyLikesWindow { today, thisWeek, allTime }
+
+extension MyLikesWindowX on MyLikesWindow {
+  String get label => switch (this) {
+    MyLikesWindow.today => 'Today',
+    MyLikesWindow.thisWeek => 'This Week',
+    MyLikesWindow.allTime => 'All Time',
+  };
+
+  /// Free users may freely browse Today + This Week; All Time is gated.
+  bool get isFreeWindow => this != MyLikesWindow.allTime;
+}
+
 /// Filter + search state for the My Likes screen. Mirrors the surface the
 /// Favorites games tab exposes (apply/clear filter, search/clear) so the same
 /// [GameFilter] dialog drives both.
@@ -64,6 +79,7 @@ class MyLikesFilterState {
     required this.filter,
     required this.searchQuery,
     this.selectedTags = const <String>{},
+    this.window = MyLikesWindow.thisWeek,
   });
 
   final GameFilter filter;
@@ -73,15 +89,20 @@ class MyLikesFilterState {
   /// A game matches if it carries ANY of the selected tags (union).
   final Set<String> selectedTags;
 
+  /// Active time window tab.
+  final MyLikesWindow window;
+
   MyLikesFilterState copyWith({
     GameFilter? filter,
     String? searchQuery,
     Set<String>? selectedTags,
+    MyLikesWindow? window,
   }) {
     return MyLikesFilterState(
       filter: filter ?? this.filter,
       searchQuery: searchQuery ?? this.searchQuery,
       selectedTags: selectedTags ?? this.selectedTags,
+      window: window ?? this.window,
     );
   }
 }
@@ -98,6 +119,8 @@ class MyLikesFilterNotifier extends StateNotifier<MyLikesFilterState> {
       state = state.copyWith(filter: GameFilter.defaultFilter());
   void searchGames(String query) => state = state.copyWith(searchQuery: query);
   void clearSearch() => state = state.copyWith(searchQuery: '');
+
+  void setWindow(MyLikesWindow window) => state = state.copyWith(window: window);
 
   void toggleTag(String tag) {
     final next = Set<String>.from(state.selectedTags);
@@ -220,6 +243,29 @@ final myLikesViewProvider = Provider.autoDispose<AsyncValue<MyLikesData>>((ref) 
             .toList();
 
     final total = entries.length;
+
+    // Time-window tab filter (Today / This Week / All Time). Today + This Week
+    // are the free renewing window; All Time shows everything (UI gates the
+    // archive behind Premium for free users).
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    bool inWindow(DateTime likedAtLocal) {
+      final likedDay = DateTime(
+        likedAtLocal.year,
+        likedAtLocal.month,
+        likedAtLocal.day,
+      );
+      switch (filterState.window) {
+        case MyLikesWindow.today:
+          return likedDay == todayStart;
+        case MyLikesWindow.thisWeek:
+          return !likedDay.isBefore(todayStart.subtract(const Duration(days: 6)));
+        case MyLikesWindow.allTime:
+          return true;
+      }
+    }
+
+    entries = entries.where((e) => inWindow(e.likedAt)).toList();
 
     final query = filterState.searchQuery.trim().toLowerCase();
     if (query.isNotEmpty) {
