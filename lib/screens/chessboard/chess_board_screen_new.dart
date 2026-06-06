@@ -1394,6 +1394,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  // Guards so the PiP provider listener does NOT hit the native channel on every
+  // board/eval provider emission (it re-emits on each engine depth tick). When
+  // PiP is off we clear once; otherwise we sync only when the payload changes.
+  bool _pipCleared = false;
+  String? _lastPipSig;
+
   void _ensurePipListener(ChessBoardProviderParams params) {
     if (_pipParams == params) return;
     _pipParams = params;
@@ -1441,10 +1447,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   Future<void> _syncPipState(ChessBoardStateNew state) async {
     if (!_isPipEligible(state.game)) {
-      await PipService.instance.clearActiveGame();
+      // PiP off / ineligible: clear the native side ONCE, then no-op on every
+      // subsequent provider tick. Previously this fired a native clearActiveGame
+      // MethodChannel on each emission (incl. eval-depth ticks), contending with
+      // the engine on the main isolate and delaying eval bars.
+      if (!_pipCleared) {
+        _pipCleared = true;
+        _lastPipSig = null;
+        await PipService.instance.clearActiveGame();
+      }
       return;
     }
+    _pipCleared = false;
     final payload = _buildPipPayload(state.game, state: state);
+    // Skip the native round-trip when nothing the PiP card shows changed (the
+    // provider re-emits constantly while the engine deepens).
+    final sig = payload.toString();
+    if (sig == _lastPipSig) return;
+    _lastPipSig = sig;
     if (PipService.instance.isInPip) {
       await PipService.instance.updatePosition(payload);
     } else {

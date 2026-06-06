@@ -279,9 +279,10 @@ class _PipSettingCard extends StatelessWidget {
   }
 }
 
-/// Live Activity mode card. The lock-screen widget refreshes only when a new
-/// move arrives (not continuously), so the note frames it as a glanceable,
-/// time-to-time view rather than a real-time stream.
+/// Live Activity mode card. iOS only repaints the locked widget when a push
+/// arrives, and between-move clock pushes are low-priority (the system defers
+/// them until screen-on), so the note frames it as a lower-frequency glanceable
+/// view that catches up when you wake the phone — not a real-time stream.
 class _LiveActivitySettingCard extends StatelessWidget {
   const _LiveActivitySettingCard({
     required this.selected,
@@ -306,9 +307,10 @@ class _LiveActivitySettingCard extends StatelessWidget {
           ),
           SizedBox(height: 4.h),
           Text(
-            'Keep an eye on a game from your lock screen with the board, clocks '
-            'and evaluation. It refreshes each time a new move arrives — not '
-            'continuously — so it is a glanceable, time-to-time view.',
+            'A glanceable lock-screen view of the board, clocks and '
+            'evaluation. It refreshes at a lower frequency than the live app and '
+            'catches up when you wake your phone — a quick look, not a live '
+            'stream.',
             style: AppTypography.textSmRegular.copyWith(
               color: context.colors.textSecondary,
               fontSize: 11.f,

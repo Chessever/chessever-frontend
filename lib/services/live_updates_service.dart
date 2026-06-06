@@ -17,8 +17,9 @@ class LiveUpdatesService {
   /// [_maxActive]; starting one beyond the cap evicts the oldest (FIFO).
   final List<String> _activeGameIds = <String>[];
 
-  /// Max concurrent Live Activities. Beyond this the oldest is replaced.
-  static const int _maxActive = 3;
+  /// Max concurrent Live Activities. Hard cap of 1 — only ever ONE live card at
+  /// a time; starting a new one evicts (ends) the previous.
+  static const int _maxActive = 1;
 
   /// Most-recently-started active game (kept for back-compat callers).
   String? get activeGameId =>

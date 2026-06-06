@@ -758,13 +758,12 @@ private struct LockPlayerRow: View {
           .font(.system(size: 17, weight: .bold, design: .rounded))
           .foregroundStyle(ChessDesign.white)
           .monospacedDigit()
-      } else {
-        LiveClockPill(
-          clock: clock,
-          isWhite: isWhite,
-          isActiveTurn: isActiveTurn,
-          followLive: followLive
-        )
+      } else if isActiveTurn {
+        // Clocks removed from the Live Activity — a small accent dot marks whose
+        // move it is. The card now updates the board/eval on each move only.
+        Circle()
+          .fill(ChessDesign.accent)
+          .frame(width: 7, height: 7)
       }
     }
   }
@@ -966,12 +965,12 @@ private struct PlayerInfoRow: View {
 
       Spacer(minLength: 6)
 
-      LiveClockPill(
-        clock: clock,
-        isWhite: isWhite,
-        isActiveTurn: isActiveTurn,
-        followLive: followLive
-      )
+      // Clocks removed — small accent dot marks the side to move.
+      if isActiveTurn {
+        Circle()
+          .fill(ChessDesign.accent)
+          .frame(width: 6, height: 6)
+      }
     }
   }
 
@@ -1120,9 +1119,13 @@ private struct LiveClockPill: View {
 
   @ViewBuilder
   private func clockLabel(clock: ClockState, displaySeconds: Int) -> some View {
-    // Avoid Text(timerInterval:) here. It has rendered as a black rectangle in
-    // the Live Activity extension on device. The server refreshes content state
-    // every second, so a plain text clock still ticks without the timer view.
+    // Static clock only. Text(timerInterval:) black-cards this extension —
+    // RE-CONFIRMED on device 2026-06-07: WidgetKit reports the render batch as
+    // "success" with every image permitted, yet the card displays black. The
+    // timer view collapses the lock-screen layout to the background tint (a
+    // display/layout failure, NOT a crash, OOM, or image rejection). The clock
+    // advances only when a move push delivers a new ContentState.
+    // See live_activity_local_countdown_breaks.
     Text(formatSeconds(displaySeconds))
   }
 

@@ -230,25 +230,9 @@ class NotificationServiceExtension : INotificationServiceExtension {
       builder.setProgress(100, progress, false)
     }
 
-    // Live, ticking countdown for the side to move — system-driven, so it ticks
-    // every second WITHOUT a per-second push (pushes only re-anchor on a move).
-    // Mirrors the iOS Live Activity clock. On game end the timer is dropped and
-    // the result shows instead. Guarded so a stale/flagged clock never shows a
-    // negative/past countdown.
-    if (!isGameOver && followLive && lastMoveTimeMillis != null &&
-        sideToMoveRemainingSeconds != null) {
-      val endMs = lastMoveTimeMillis + sideToMoveRemainingSeconds * 1000L
-      if (endMs > System.currentTimeMillis()) {
-        builder.setWhen(endMs)
-          .setUsesChronometer(true)
-          .setChronometerCountDown(true)
-          .setShowWhen(true)
-      } else {
-        builder.setShowWhen(false)
-      }
-    } else {
-      builder.setShowWhen(false)
-    }
+    // Clocks removed from the live card — no chronometer. The notification updates
+    // the board, last move and evaluation on each move only.
+    builder.setShowWhen(false)
 
     if (Build.VERSION.SDK_INT >= 35) {
       builder.setStyle(
@@ -611,8 +595,9 @@ class NotificationServiceExtension : INotificationServiceExtension {
       typeface = if (isAdvantage) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
     }
     val nameX = x + avatarRadius * 2 + 8f
-    // A finished game shows the score on the right; otherwise the clock.
-    val clockText = if (score == null) clockSeconds?.let { formatClock(it) } else null
+    // Clocks removed: a finished game shows the score on the right; a live game
+    // shows nothing on the right (the board + last move carry the state).
+    val clockText: String? = null
     val clockWidth = clockText?.let { clockPillWidth(it) } ?: 0f
     val baseAvailable = maxWidth - (nameX - x)
     val trailingWidth = if (score != null) 40f else clockWidth
@@ -903,14 +888,6 @@ class NotificationServiceExtension : INotificationServiceExtension {
       parts += eventName
     }
     parts += "$lastMove  $evalText"
-
-    val clockText = listOfNotNull(
-      whiteClockSeconds?.let(::formatClock),
-      blackClockSeconds?.let(::formatClock),
-    )
-    if (clockText.isNotEmpty()) {
-      parts += "Clocks ${clockText.joinToString(" - ")}"
-    }
 
     return parts.joinToString("\n")
   }

@@ -5,7 +5,7 @@ import { Chess } from "npm:chess.js@1.0.0";
 type LiveSubscriptionRow = {
   user_id: string;
   game_id: string;
-  platform: "ios";
+  platform: "ios" | "android";
   started_at: string | null;
   last_event_at: string | null;
 };
@@ -181,14 +181,22 @@ const CONCURRENCY = readIntEnv("LIVE_ACTIVITY_REFRESH_CONCURRENCY", 5, 1, 20);
 const UPDATE_PRIORITY = normalizeLiveActivityPriority(
   readIntEnv("LIVE_ACTIVITY_UPDATE_PRIORITY", 10, 5, 10),
 );
-// Between moves, send at most one low-priority clock nudge per this interval.
-// Protects Apple's Live Activity update budget so moves are never throttled away.
-const CLOCK_NUDGE_INTERVAL_MS = readIntEnv(
-  "LIVE_ACTIVITY_CLOCK_NUDGE_INTERVAL_MS",
-  15000,
-  1000,
-  600000,
-);
+// MOVE-ONLY delivery: we push a Live Activity update ONLY when a new move lands,
+// always at priority 10 (immediate + guaranteed). There are NO between-move clock
+// nudges — clocks were removed from the widget (they were unreliable, and the
+// interim pushes just burned Apple's high-priority budget and delayed real moves).
+// This keeps push volume to ~1 per move so every move is delivered.
+// Android Live Notifications (silent, rendered by the app's NotificationService-
+// Extension) are sent straight from this function via the OneSignal Create Message
+// API — on a REAL MOVE only (Android's notification chronometer ticks the clock
+// locally, so there are no between-move nudges). Defaults OFF so deploying this
+// cannot touch a single Android user until it is explicitly enabled and verified
+// on a device. LIVE_ACTIVITY_ANDROID_ENABLED="true" turns it on; it is the kill
+// switch. These are NEVER the notification-outbox / sendLiveGameAlert path that
+// flooded users on 2026-06-06.
+const ANDROID_ENABLED =
+  (Deno.env.get("LIVE_ACTIVITY_ANDROID_ENABLED") ?? "false").toLowerCase() ===
+    "true";
 const LIVE_ACTIVITY_REFRESH_ALLOWED_KEYS = parseAllowedKeys(
   Deno.env.get("LIVE_ACTIVITY_REFRESH_ALLOWED_KEYS") ?? "",
 );
@@ -273,11 +281,12 @@ async function selectSubscriptions(options: {
   nowMs: number;
 }) {
   const fetchLimit = Math.min(options.limit * 4, Math.max(options.limit, 1000));
+  const platforms = ANDROID_ENABLED ? ["ios", "android"] : ["ios"];
   let query = supabase
     .from("user_live_game_subscriptions")
     .select("user_id,game_id,platform,started_at,last_event_at")
     .eq("enabled", true)
-    .eq("platform", "ios");
+    .in("platform", platforms);
 
   if (options.gameId) {
     query = query.eq("game_id", options.gameId);
@@ -401,6 +410,12 @@ async function refreshSubscription(
     nowMs: options.nowMs,
   });
 
+  // Android is served by a silent Create-Message live notification, not the
+  // iOS ActivityKit endpoint. Same freshness/ghost-sub gates, different transport.
+  if (row.platform === "android") {
+    return await refreshAndroidSubscription(row, game, payload, options);
+  }
+
   if (isGameOverStatus(game.status)) {
     if (!options.dryRun) {
       const updateResult = await sendLiveActivityUpdate(activityId, payload);
@@ -466,25 +481,20 @@ async function refreshSubscription(
     };
   }
 
-  // Deliverability guard (Apple's Live Activity update budget): send a high-priority
-  // push only on the FIRST refresh after a real move; between moves send at most one
-  // low-priority clock nudge per CLOCK_NUDGE_INTERVAL_MS. Blasting priority-10 every
-  // second makes iOS throttle and then DROP all updates (incl. moves) — the cause of
-  // "clock updated once then never; new moves never arrive".
+  // Move-only, full priority: push ONLY when a new move landed, ALWAYS at
+  // priority 10 (immediate + guaranteed delivery). No between-move clock nudges —
+  // interim updates were removed (clocks are gone from the widget; the nudges just
+  // burned Apple's budget and delayed real moves).
   const lastEventMs = parseDateMs(row.last_event_at);
   const moved = lastEventMs === null || lastMoveMs > lastEventMs;
-  const sinceLastPushMs = lastEventMs === null
-    ? Number.POSITIVE_INFINITY
-    : options.nowMs - lastEventMs;
-  if (!moved && !options.force && sinceLastPushMs < CLOCK_NUDGE_INTERVAL_MS) {
+  if (!moved && !options.force) {
     return { status: "throttled", gameId: row.game_id, userId: row.user_id };
   }
-  const updatePriority = moved ? 10 : 5;
 
   const updateResult = await sendLiveActivityUpdate(
     activityId,
     payload,
-    updatePriority,
+    10,
   );
   if (updateResult.notFound) {
     await disableLiveSubscription(row);
@@ -517,6 +527,198 @@ async function refreshSubscription(
       }
       : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Android Live Notification path (silent, NSE-rendered). On-move only.
+// ---------------------------------------------------------------------------
+async function refreshAndroidSubscription(
+  row: LiveSubscriptionRow,
+  game: GameRow,
+  payload: LiveUpdatePayload,
+  options: { dryRun: boolean; debug: boolean; force?: boolean; nowMs: number },
+): Promise<RefreshResult> {
+  // Finished game → one final "end" notification (shows the result, dismissable),
+  // then disable the sub.
+  if (isGameOverStatus(game.status)) {
+    if (!options.dryRun) {
+      const endResult = await sendAndroidLiveNotification(row, payload, "end");
+      if (!endResult.ok && !endResult.notFound) {
+        return errorResult(row, endResult, "android end failed");
+      }
+      await disableLiveSubscription(row);
+    }
+    return { status: "ended", gameId: row.game_id, userId: row.user_id };
+  }
+
+  if (!isOngoingStatus(game.status)) {
+    await disableLiveSubscription(row);
+    return {
+      status: "disabled_not_live_status",
+      gameId: row.game_id,
+      userId: row.user_id,
+    };
+  }
+
+  // Ghost-sub guard: never push for a game whose last move is stale (this is the
+  // gate that, together with isOngoing, prevents the 2026-06-06 flood class of bug).
+  const lastMoveMs = parseDateMs(game.last_move_time);
+  if (lastMoveMs === null || options.nowMs - lastMoveMs > FRESH_WINDOW_MS) {
+    if (!options.dryRun) {
+      await sendAndroidLiveNotification(row, payload, "end");
+      await disableLiveSubscription(row);
+    }
+    return {
+      status: "disabled_stale",
+      gameId: row.game_id,
+      userId: row.user_id,
+    };
+  }
+
+  // Android's clock ticks LOCALLY via the notification chronometer, so — unlike
+  // iOS — we never send between-move clock nudges. Push ONLY on a real move (it
+  // redraws the board and re-anchors the clock). Keeps Android push volume to
+  // roughly one per move.
+  const lastEventMs = parseDateMs(row.last_event_at);
+  const moved = lastEventMs === null || lastMoveMs > lastEventMs;
+  if (!moved && !options.force) {
+    return { status: "throttled", gameId: row.game_id, userId: row.user_id };
+  }
+
+  if (options.dryRun) {
+    return {
+      status: "updated",
+      gameId: row.game_id,
+      userId: row.user_id,
+      ...(options.debug
+        ? { debug: { payload: debugPayloadSnapshot(payload), dryRun: true } }
+        : {}),
+    };
+  }
+
+  const result = await sendAndroidLiveNotification(row, payload, "update");
+  if (!result.ok) {
+    return errorResult(row, result, "android update failed");
+  }
+  await markLiveSubscriptionEvent(row);
+  return {
+    status: "updated",
+    gameId: row.game_id,
+    userId: row.user_id,
+    ...(options.debug
+      ? {
+        debug: {
+          payload: debugPayloadSnapshot(payload),
+          oneSignal: debugOneSignalResult(result),
+        },
+      }
+      : {}),
+  };
+}
+
+async function sendAndroidLiveNotification(
+  row: LiveSubscriptionRow,
+  payload: LiveUpdatePayload,
+  event: "start" | "update" | "end",
+): Promise<OneSignalResult> {
+  // The app's NotificationServiceExtension intercepts any push carrying
+  // `data.live_notification` (event.preventDefault()) and renders its OWN ongoing
+  // notification on the low-importance "live_updates" channel (no sound/vibration/
+  // badge). So this is a SILENT card update, never an alert. It is NOT the
+  // notification-outbox / sendLiveGameAlert path that flooded users on 2026-06-06.
+  const liveNotification = {
+    key: "live_game",
+    event,
+    event_attributes: {
+      game_id: payload.game_id,
+      player_white: payload.player_white,
+      player_black: payload.player_black,
+      white_title: payload.white_title ?? "",
+      black_title: payload.black_title ?? "",
+      white_fed: payload.white_fed ?? "",
+      black_fed: payload.black_fed ?? "",
+      white_photo: payload.white_photo ?? "",
+      black_photo: payload.black_photo ?? "",
+      white_flag: payload.white_flag ?? "",
+      black_flag: payload.black_flag ?? "",
+      event_name: payload.event_name ?? "",
+      round_name: payload.round_name ?? "",
+      board_theme_index: payload.board_theme_index ?? 0,
+      piece_style_index: payload.piece_style_index ?? 0,
+    },
+    event_updates: {
+      fen: payload.fen ?? "",
+      last_move: payload.last_move ?? "",
+      last_move_uci: payload.last_move_uci ?? payload.last_move ?? "",
+      white_clock_seconds: payload.white_clock_seconds,
+      black_clock_seconds: payload.black_clock_seconds,
+      last_move_time: payload.last_move_time,
+      eval_cp: payload.eval_cp,
+      eval_mate: payload.eval_mate,
+      status: payload.status,
+      is_game_over: payload.is_game_over ? 1 : 0,
+      follow_live: 1,
+      white_flag: payload.white_flag ?? "",
+      black_flag: payload.black_flag ?? "",
+    },
+  };
+
+  const fallback = payload.last_move_numbered ?? payload.last_move ?? "";
+  const body: Record<string, unknown> = {
+    app_id: ONESIGNAL_APP_ID,
+    target_channel: "push",
+    isAndroid: true,
+    include_aliases: { external_id: [row.user_id] },
+    collapse_id: `live_${payload.game_id}`,
+    priority: 10,
+    // Benign fallback shown ONLY by a hypothetical build with no NSE (our shipping
+    // builds suppress it). Never a stale "game over" alert.
+    headings: { en: `${payload.player_white} vs ${payload.player_black}` },
+    contents: { en: fallback.length > 0 ? fallback : "Live game" },
+    data: {
+      type: "live_game_update_v2",
+      game_id: payload.game_id,
+      live_notification: liveNotification,
+    },
+  };
+
+  return sendOneSignalCreateMessage(body);
+}
+
+async function sendOneSignalCreateMessage(
+  body: Record<string, unknown>,
+): Promise<OneSignalResult> {
+  try {
+    const res = await fetch("https://api.onesignal.com/notifications", {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (res.ok) {
+      return {
+        ok: true,
+        notFound: false,
+        status: res.status,
+        responseText: truncateForDebug(text),
+      };
+    }
+    const lower = text.toLowerCase();
+    return {
+      ok: false,
+      notFound: res.status === 404 || lower.includes("not found") ||
+        lower.includes("no subscribers") ||
+        lower.includes("included players"),
+      status: res.status,
+      errorText: text,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, notFound: false, status: 0, errorText: message };
+  }
 }
 
 function parseNotificationId(text: string | undefined): string | null {
@@ -642,11 +844,11 @@ async function sendLiveActivityUpdate(
     event: "update",
     name: `live_activity_refresh:${activityId}`,
     event_updates: { data: updateData },
-    // Priority is move-aware: 10 on a real move, 5 for clock nudges between moves.
-    // Apple throttles then drops sustained priority-10 bursts (Live Activity budget),
-    // so we reserve 10 for moves and nudge the clock at low priority.
+    // Always priority 10 — we only ever push on a real move now.
     priority,
-    stale_date: Math.floor(Date.now() / 1000) + 60,
+    // Move-only cards sit between moves; keep them "fresh" for an hour so iOS
+    // doesn't dim the card as stale during a normal think.
+    stale_date: Math.floor(Date.now() / 1000) + 3600,
     ios_relevance_score: 1,
   };
 
@@ -867,7 +1069,7 @@ async function markLiveSubscriptionEvent(row: LiveSubscriptionRow) {
     .from("user_live_game_subscriptions")
     .update({ last_event_at: new Date().toISOString() })
     .eq("game_id", row.game_id)
-    .eq("platform", "ios")
+    .eq("platform", row.platform)
     .eq("user_id", row.user_id);
 }
 
@@ -879,7 +1081,7 @@ async function disableLiveSubscription(row: LiveSubscriptionRow) {
       last_event_at: new Date().toISOString(),
     })
     .eq("game_id", row.game_id)
-    .eq("platform", "ios")
+    .eq("platform", row.platform)
     .eq("user_id", row.user_id);
 }
 
