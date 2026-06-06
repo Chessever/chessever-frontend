@@ -1,10 +1,10 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/revenue_cat_service/subscription_retention_state.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -81,6 +81,8 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedMode = ref.watch(selectedFavoritesModeProvider);
+    final retentionGrace =
+        ref.watch(subscriptionRetentionGraceProvider).valueOrNull;
 
     return Scaffold(
       key: e2eKey(E2eIds.favoritesRoot),
@@ -96,6 +98,8 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
               _buildAppBar(context, selectedMode),
               SizedBox(height: 8.h),
               _buildSegmentedSwitcher(selectedMode),
+              if (retentionGrace != null)
+                SubscriptionRetentionWarningBanner(grace: retentionGrace),
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
@@ -113,7 +117,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
                         return Center(
                           child: Text(
                             'Invalid page index: $index',
-                            style:  TextStyle(color: context.colors.textPrimary),
+                            style: TextStyle(color: context.colors.textPrimary),
                           ),
                         );
                     }

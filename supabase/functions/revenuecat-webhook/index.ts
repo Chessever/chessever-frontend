@@ -11,44 +11,43 @@ const ATTRIBUTION_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const FREE_FAVORITE_PLAYERS_LIMIT = 3;
 const FREE_SAVED_ANALYSES_LIMIT = 10;
 
-async function trimToFreeTier(
+async function scheduleRetentionGrace(
+  supabase: ReturnType<typeof createClient>,
+  appUserId: string,
+  expiredAt: Date,
+): Promise<void> {
+  if (!appUserId) return;
+
+  const { error } = await supabase.rpc("begin_subscription_retention_grace", {
+    p_user_id: appUserId,
+    p_expired_at: expiredAt.toISOString(),
+  });
+
+  if (error) {
+    console.warn(
+      `begin_subscription_retention_grace failed for ${appUserId}: ${error.message}`,
+    );
+    return;
+  }
+
+  console.log(
+    `Retention grace scheduled for ${appUserId}: favorites cap ${FREE_FAVORITE_PLAYERS_LIMIT} after 7 days, saved analyses cap ${FREE_SAVED_ANALYSES_LIMIT} after 14 days.`,
+  );
+}
+
+async function clearRetentionGrace(
   supabase: ReturnType<typeof createClient>,
   appUserId: string,
 ): Promise<void> {
   if (!appUserId) return;
 
-  const [favRes, savedRes] = await Promise.all([
-    supabase.rpc("trim_favorite_players_to_top_n", {
-      p_user_id: appUserId,
-      p_keep: FREE_FAVORITE_PLAYERS_LIMIT,
-    }),
-    supabase.rpc("trim_saved_analyses_to_recent_n", {
-      p_user_id: appUserId,
-      p_keep: FREE_SAVED_ANALYSES_LIMIT,
-    }),
-  ]);
+  const { error } = await supabase.rpc("clear_subscription_retention_grace", {
+    p_user_id: appUserId,
+  });
 
-  if (favRes.error) {
+  if (error) {
     console.warn(
-      `trim_favorite_players_to_top_n failed for ${appUserId}: ${favRes.error.message}`,
-    );
-  } else {
-    console.log(
-      `Trimmed ${
-        favRes.data ?? 0
-      } favorite players for ${appUserId} (cap ${FREE_FAVORITE_PLAYERS_LIMIT}).`,
-    );
-  }
-
-  if (savedRes.error) {
-    console.warn(
-      `trim_saved_analyses_to_recent_n failed for ${appUserId}: ${savedRes.error.message}`,
-    );
-  } else {
-    console.log(
-      `Trimmed ${
-        savedRes.data ?? 0
-      } saved analyses for ${appUserId} (cap ${FREE_SAVED_ANALYSES_LIMIT}).`,
+      `clear_subscription_retention_grace failed for ${appUserId}: ${error.message}`,
     );
   }
 }
@@ -328,6 +327,14 @@ function eventDate(event: Record<string, unknown>): Date {
   );
 }
 
+function expirationGraceStartDate(event: Record<string, unknown>): Date {
+  return (
+    dateFromMillis(event.expiration_at_ms) ??
+      dateFromMillis(event.event_timestamp_ms) ??
+      new Date()
+  );
+}
+
 function referralInstallDate(referral: ReferralRow): Date | null {
   return (
     parseDate(referral.install_at) ??
@@ -465,17 +472,29 @@ Deno.serve(async (req) => {
     // truth for mobile, web, and desktop entitlement checks.
     await upsertSubscriptionState(supabase, event, isTrialPeriod);
 
+    if (
+      appUserId &&
+      (isPurchase || eventType === "UNCANCELLATION" || eventType === "PRODUCT_CHANGE")
+    ) {
+      await clearRetentionGrace(supabase, appUserId);
+    }
+
     // EXPIRATION fires when the user's entitlement actually ends (auto-renew
-    // off + period_end reached, or revoked). At that point the user is back
-    // on the free tier and must obey the free-tier caps server-side, since
-    // the client guards only block *new* adds — they never prune existing
-    // overage left behind by the previous premium session.
+    // off + period_end reached, or revoked). At that point the user becomes a
+    // free user immediately, but existing over-limit chess work is protected by
+    // an in-app warning grace window: favorites are trimmed after 7 days and
+    // saved analyses/database overage after 14 days. Cleanup is performed by
+    // public.enforce_subscription_retention_grace, not inside this webhook.
     if (eventType === "EXPIRATION") {
       if (appUserId) {
-        await trimToFreeTier(supabase, appUserId);
+        await scheduleRetentionGrace(
+          supabase,
+          appUserId,
+          expirationGraceStartDate(event),
+        );
       }
       return new Response(
-        JSON.stringify({ message: "Free-tier limits enforced" }),
+        JSON.stringify({ message: "Retention grace scheduled" }),
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
