@@ -50,6 +50,26 @@ private extension Dictionary where Key == String, Value == AnyCodable {
     }
     return nil
   }
+
+  // Wire-type-agnostic bool. The Flutter START payload sends these flags as ints
+  // (1/0) while the edge-fn UPDATE payload sends real JSON booleans (true/false).
+  // Decoding with asInt() alone silently returned false on every live UPDATE push
+  // (is_game_over never registered → clock kept ticking on a finished game, no
+  // score; is_check never highlighted). Try bool → int → string so BOTH wire
+  // shapes decode correctly.
+  func asBoolValue(_ key: String) -> Bool? {
+    if let boolValue = self[key]?.asBool() {
+      return boolValue
+    }
+    if let intValue = self[key]?.asInt() {
+      return intValue != 0
+    }
+    if let stringValue = self[key]?.asString() {
+      let lowered = stringValue.lowercased()
+      return lowered == "1" || lowered == "true"
+    }
+    return nil
+  }
 }
 
 // MARK: - Design System
@@ -144,6 +164,8 @@ private struct LiveGameState {
   let blackTitle: String?
   let whiteFed: String?
   let blackFed: String?
+  let whiteFlag: String?
+  let blackFlag: String?
   let lastMove: String
   let lastMoveUci: String?
   let fen: String
@@ -156,11 +178,18 @@ private struct LiveGameState {
   let whiteClockSeconds: Int?
   let blackClockSeconds: Int?
   let lastMoveTime: Date?
+  let clockAnchorTime: Date?
+  let activeClockColor: String?
+  let activeClockDeadline: Date?
   let isWhiteToMove: Bool
   let isCheck: Bool
   let isCheckmate: Bool
   let isGameOver: Bool
   let gameStatus: String?
+  /// Whether the viewer is following the live tail (latest move). Only then may
+  /// the side-to-move clock tick. Absent on server pushes → defaults to true
+  /// (a push always represents the live tail).
+  let followLive: Bool
   let gameId: String?
   let widgetURL: URL?
   let boardThemeIndex: Int
@@ -217,6 +246,9 @@ private struct LiveGameState {
     whiteClockSeconds = data.asIntValue("white_clock_seconds")
     blackClockSeconds = data.asIntValue("black_clock_seconds")
     lastMoveTime = LiveGameState.parseDate(data.asNonEmptyString("last_move_time"))
+    clockAnchorTime = LiveGameState.parseDate(data.asNonEmptyString("clock_anchor_time"))
+    activeClockColor = LiveGameState.normalizeClockColor(data.asNonEmptyString("active_clock_color"))
+    activeClockDeadline = LiveGameState.parseDate(data.asNonEmptyString("active_clock_deadline"))
     boardThemeIndex =
       data.asIntValue("board_theme_index") ??
       attrData.asIntValue("board_theme_index") ??
@@ -228,13 +260,25 @@ private struct LiveGameState {
       0
     pieceSetDirectory = PieceImageProvider.directory(for: pieceStyleIndex)
     isWhiteToMove = LiveGameState.parseSideToMove(fen)
-    isCheck = (data.asInt("is_check") ?? 0) != 0
-    isCheckmate = (data.asInt("is_checkmate") ?? 0) != 0
-    isGameOver = (data.asInt("is_game_over") ?? 0) != 0
+    isCheck = data.asBoolValue("is_check") ?? false
+    isCheckmate = data.asBoolValue("is_checkmate") ?? false
+    isGameOver = data.asBoolValue("is_game_over") ?? false
     gameStatus = data.asNonEmptyString("status")
+    followLive = data.asBoolValue("follow_live") ?? true
+    whiteFlag = data.asNonEmptyString("white_flag") ?? attrData.asNonEmptyString("white_flag")
+    blackFlag = data.asNonEmptyString("black_flag") ?? attrData.asNonEmptyString("black_flag")
     gameId = data.asNonEmptyString("game_id") ?? attrData.asNonEmptyString("game_id")
     if let gameId, !gameId.isEmpty {
-      widgetURL = URL(string: "com.chessever.app://games/\(gameId)")
+      // Carry the focused move's FEN so tapping opens the app on that exact
+      // move (not the live tail). URLComponents percent-encodes the FEN.
+      var components = URLComponents()
+      components.scheme = "com.chessever.app"
+      components.host = "games"
+      components.path = "/\(gameId)"
+      if !fen.isEmpty {
+        components.queryItems = [URLQueryItem(name: "fen", value: fen)]
+      }
+      widgetURL = components.url
     } else {
       widgetURL = nil
     }
@@ -271,6 +315,22 @@ private struct LiveGameState {
     return "="
   }
 
+  /// Per-player score for a finished game (nil while ongoing/unknown).
+  var whiteScore: String? { LiveGameState.score(for: gameStatus, white: true) }
+  var blackScore: String? { LiveGameState.score(for: gameStatus, white: false) }
+
+  private static func score(for status: String?, white: Bool) -> String? {
+    guard let s = status?.trimmingCharacters(in: .whitespaces), !s.isEmpty else {
+      return nil
+    }
+    switch s {
+    case "1-0": return white ? "1" : "0"
+    case "0-1": return white ? "0" : "1"
+    case "1/2-1/2", "½-½", "0.5-0.5", "1/2": return "½"
+    default: return nil
+    }
+  }
+
   var isWhiteAdvantage: Bool {
     if let mate = evalMate { return mate > 0 }
     return (evalCp ?? 0) >= 0
@@ -291,11 +351,22 @@ private struct LiveGameState {
     let seconds = isWhite ? whiteClockSeconds : blackClockSeconds
     guard let seconds else { return nil }
     let clampedSeconds = max(0, seconds)
-    if isWhiteToMove == isWhite, let lastMoveTime {
-      let endDate = lastMoveTime.addingTimeInterval(TimeInterval(clampedSeconds))
-      return ClockState(seconds: clampedSeconds, endDate: endDate)
+    guard isWhiteToMove == isWhite, followLive, !isGameOver else {
+      return ClockState(seconds: clampedSeconds, endDate: nil)
     }
-    return ClockState(seconds: clampedSeconds, endDate: nil)
+
+    let color = isWhite ? "white" : "black"
+    let deadlineFromPayload = activeClockColor == color ? activeClockDeadline : nil
+    let anchor = clockAnchorTime ?? lastMoveTime
+    let derivedDeadline = anchor?.addingTimeInterval(TimeInterval(clampedSeconds))
+    let deadline = deadlineFromPayload ?? derivedDeadline
+    guard let deadline else {
+      return ClockState(seconds: clampedSeconds, endDate: nil)
+    }
+    if deadline.timeIntervalSinceNow <= 0 {
+      return ClockState(seconds: 0, endDate: nil)
+    }
+    return ClockState(seconds: clampedSeconds, endDate: deadline)
   }
 
   private static func parseSideToMove(_ fen: String) -> Bool {
@@ -375,6 +446,13 @@ private struct LiveGameState {
     guard let value, !value.isEmpty else { return nil }
     return value.uppercased()
   }
+
+  private static func normalizeClockColor(_ value: String?) -> String? {
+    guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+      return nil
+    }
+    return normalized == "white" || normalized == "black" ? normalized : nil
+  }
 }
 
 private struct ClockState {
@@ -401,7 +479,7 @@ struct ChessEverLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: DefaultLiveActivityAttributes.self) { context in
       let state = LiveGameState(context: context)
-      SafeLockScreenView(state: state)
+      ChessLockScreenView(state: state)
         .activityBackgroundTint(ChessDesign.background)
         .widgetURL(state.widgetURL)
     } dynamicIsland: { context in
@@ -430,6 +508,15 @@ struct ChessEverLiveActivityWidget: Widget {
         }
         DynamicIslandExpandedRegion(.center) {
           VStack(spacing: 4) {
+            // Eval bar + eval text always visible (including finished games).
+            HStack(spacing: 6) {
+              EvalBarHorizontal(evalCp: state.evalCp, evalMate: state.evalMate)
+                .frame(width: 70, height: 8)
+              Text(state.evalText)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(ChessDesign.textSecondary)
+            }
+
             if state.isGameOver {
               Text(state.gameStatus ?? "Final")
                 .font(.system(size: 14, weight: .bold))
@@ -438,14 +525,6 @@ struct ChessEverLiveActivityWidget: Widget {
                 .minimumScaleFactor(0.6)
                 .allowsTightening(true)
             } else {
-              HStack(spacing: 6) {
-                EvalBarHorizontal(evalCp: state.evalCp, evalMate: state.evalMate)
-                  .frame(width: 70, height: 8)
-                Text(state.evalText)
-                  .font(.system(size: 11, weight: .bold, design: .monospaced))
-                  .foregroundStyle(ChessDesign.textSecondary)
-              }
-
               Text(state.lastMove)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(state.isCheck ? ChessDesign.checkRed : ChessDesign.white)
@@ -549,6 +628,148 @@ private struct SafeMiniBoard: View {
   }
 }
 
+// MARK: - Redesigned Lock Screen (board left · players right)
+
+private struct ChessLockScreenView: View {
+  let state: LiveGameState
+
+  var body: some View {
+    HStack(spacing: 10) {
+      // Thin eval bar on the far left — no text on it, the board owns the space.
+      EvalBarVertical(evalCp: state.evalCp, evalMate: state.evalMate)
+        .frame(width: 7)
+
+      // Big themed board. Pieces render as colored letters (safe fallback that
+      // avoids the Watchdog crash from sync image I/O in the extension).
+      MiniBoard(
+        fen: state.fen,
+        highlightSquares: state.highlightSquares,
+        isCheck: state.isCheck,
+        lightSquare: state.boardTheme.lightSquare,
+        darkSquare: state.boardTheme.darkSquare,
+        pieceSetDirectory: state.pieceSetDirectory
+      )
+      .frame(width: 118, height: 118)
+      .clipShape(RoundedRectangle(cornerRadius: 10))
+      .overlay(
+        RoundedRectangle(cornerRadius: 10)
+          .strokeBorder(
+            state.isCheck
+              ? ChessDesign.checkRed.opacity(0.5) : ChessDesign.surfaceLight,
+            lineWidth: 1
+          )
+      )
+
+      // Right column: black (top) · half-move + eval (middle) · white (bottom).
+      VStack(alignment: .leading, spacing: 0) {
+        if let event = state.eventName ?? state.roundName {
+          Text(event)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(ChessDesign.accent)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .allowsTightening(true)
+            .padding(.bottom, 3)
+        }
+
+        LockPlayerRow(
+          isWhite: false,
+          flag: state.blackFlag,
+          name: state.blackName,
+          title: state.blackTitle,
+          score: state.blackScore,
+          clock: state.clockState(isWhite: false),
+          isActiveTurn: !state.isWhiteToMove && !state.isGameOver,
+          followLive: state.followLive,
+          isGameOver: state.isGameOver
+        )
+
+        Spacer(minLength: 6)
+
+        HStack(spacing: 8) {
+          Text(state.lastMove.isEmpty ? "—" : state.lastMove)
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(state.isCheck ? ChessDesign.checkRed : ChessDesign.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .allowsTightening(true)
+          Spacer(minLength: 4)
+          Text(state.evalText)
+            .font(.system(size: 13, weight: .bold, design: .monospaced))
+            .foregroundStyle(ChessDesign.textSecondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+
+        Spacer(minLength: 6)
+
+        LockPlayerRow(
+          isWhite: true,
+          flag: state.whiteFlag,
+          name: state.whiteName,
+          title: state.whiteTitle,
+          score: state.whiteScore,
+          clock: state.clockState(isWhite: true),
+          isActiveTurn: state.isWhiteToMove && !state.isGameOver,
+          followLive: state.followLive,
+          isGameOver: state.isGameOver
+        )
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 12)
+  }
+}
+
+private struct LockPlayerRow: View {
+  let isWhite: Bool
+  let flag: String?
+  let name: String
+  let title: String?
+  let score: String?
+  let clock: ClockState?
+  var isActiveTurn: Bool = false
+  var followLive: Bool = false
+  var isGameOver: Bool = false
+
+  var body: some View {
+    HStack(spacing: 6) {
+      if let flag, !flag.isEmpty {
+        Text(flag)
+          .font(.system(size: 15))
+      }
+      if let title, !title.isEmpty {
+        Text(title)
+          .font(.system(size: 9, weight: .bold))
+          .foregroundStyle(ChessDesign.accent)
+      }
+      Text(name)
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(ChessDesign.white)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .allowsTightening(true)
+
+      Spacer(minLength: 6)
+
+      if isGameOver, let score {
+        Text(score)
+          .font(.system(size: 17, weight: .bold, design: .rounded))
+          .foregroundStyle(ChessDesign.white)
+          .monospacedDigit()
+      } else {
+        LiveClockPill(
+          clock: clock,
+          isWhite: isWhite,
+          isActiveTurn: isActiveTurn,
+          followLive: followLive
+        )
+      }
+    }
+  }
+}
+
 // MARK: - Lock Screen View (Premium Design)
 
 private struct LockScreenView: View {
@@ -619,7 +840,8 @@ private struct LockScreenView: View {
             clock: state.clockState(isWhite: false),
             title: state.blackTitle,
             fed: state.blackFed,
-            isActiveTurn: !state.isWhiteToMove && !state.isGameOver
+            isActiveTurn: !state.isWhiteToMove && !state.isGameOver,
+            followLive: state.followLive
           )
 
           // VS divider
@@ -644,7 +866,8 @@ private struct LockScreenView: View {
             clock: state.clockState(isWhite: true),
             title: state.whiteTitle,
             fed: state.whiteFed,
-            isActiveTurn: state.isWhiteToMove && !state.isGameOver
+            isActiveTurn: state.isWhiteToMove && !state.isGameOver,
+            followLive: state.followLive
           )
         }
         .padding(.bottom, 10)
@@ -713,6 +936,7 @@ private struct PlayerInfoRow: View {
   let title: String?
   let fed: String?
   var isActiveTurn: Bool = false
+  var followLive: Bool = false
 
   var body: some View {
     HStack(spacing: 8) {
@@ -742,7 +966,12 @@ private struct PlayerInfoRow: View {
 
       Spacer(minLength: 6)
 
-      LiveClockPill(clock: clock, isWhite: isWhite, isActiveTurn: isActiveTurn)
+      LiveClockPill(
+        clock: clock,
+        isWhite: isWhite,
+        isActiveTurn: isActiveTurn,
+        followLive: followLive
+      )
     }
   }
 
@@ -845,6 +1074,7 @@ private struct LiveClockPill: View {
   let isWhite: Bool
   var compact: Bool = false
   var isActiveTurn: Bool = false
+  var followLive: Bool = false
 
   var body: some View {
     let fontSize: CGFloat = compact ? 9 : 11
@@ -853,10 +1083,9 @@ private struct LiveClockPill: View {
 
     return Group {
       if let clock {
-        // Always use static text — Text(timerInterval:) crashes the widget extension.
         let displaySeconds = remainingSeconds(clock)
         let textColor = clockTextColor(seconds: displaySeconds)
-        Text(formatSeconds(displaySeconds))
+        clockLabel(clock: clock, displaySeconds: displaySeconds)
           .font(.system(size: fontSize, weight: .bold, design: .monospaced))
           .monospacedDigit()
           .foregroundStyle(textColor)
@@ -887,6 +1116,14 @@ private struct LiveClockPill: View {
       Capsule()
         .strokeBorder(pillBorder, lineWidth: isActiveTurn ? 1 : 0.5)
     )
+  }
+
+  @ViewBuilder
+  private func clockLabel(clock: ClockState, displaySeconds: Int) -> some View {
+    // Avoid Text(timerInterval:) here. It has rendered as a black rectangle in
+    // the Live Activity extension on device. The server refreshes content state
+    // every second, so a plain text clock still ticks without the timer view.
+    Text(formatSeconds(displaySeconds))
   }
 
   private var pillBackground: Color {
@@ -1184,10 +1421,23 @@ private struct MiniBoard: View {
                 }
 
                 if let piece = board.pieceAt(rank: rank, file: file) {
-                  // Text fallback to prevent Watchdog termination from sync file I/O
-                  Text(piece.displayLetter)
-                    .font(.system(size: sq * 0.48, weight: .bold, design: .rounded))
-                    .foregroundStyle(piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece)
+                  // Real piece images from the bundled set (cached in NSCache so
+                  // repeated piece types load once). Falls back to a letter glyph
+                  // only if the asset is missing.
+                  if let pieceImage = PieceImageProvider.image(
+                    for: piece,
+                    pieceSetDirectory: pieceSetDirectory
+                  ) {
+                    Image(uiImage: pieceImage)
+                      .resizable()
+                      .interpolation(.high)
+                      .aspectRatio(contentMode: .fit)
+                      .frame(width: sq, height: sq)
+                  } else {
+                    Text(piece.displayLetter)
+                      .font(.system(size: sq * 0.48, weight: .bold, design: .rounded))
+                      .foregroundStyle(piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece)
+                  }
                 }
               }
               .frame(width: sq, height: sq)

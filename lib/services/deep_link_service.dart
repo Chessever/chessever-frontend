@@ -238,6 +238,9 @@ class DeepLinkService {
         if (uri.queryParameters['stop_live'] == '1') {
           _stopLiveUpdates(gameId, ref);
         }
+        // Live Activity / pinned-game taps carry the focused move's FEN so the
+        // board opens on that exact move (not the live tail).
+        final initialFen = uri.queryParameters['fen'];
         _addBreadcrumb('routing to game', data: {'gameId': gameId});
         unawaited(
           _captureDeepLinkMessage(
@@ -246,7 +249,7 @@ class DeepLinkService {
             extras: {'gameId': gameId},
           ),
         );
-        _navigateToGame(gameId, navigatorKey, ref);
+        _navigateToGame(gameId, navigatorKey, ref, initialFen: initialFen);
       } else if (bookShareToken != null && bookShareToken.isNotEmpty) {
         _addBreadcrumb(
           'routing to shared book',
@@ -468,8 +471,9 @@ class DeepLinkService {
   Future<void> _navigateToGame(
     String gameId,
     GlobalKey<NavigatorState> navigatorKey,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    String? initialFen,
+  }) async {
     // Guard: Prevent concurrent navigation
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
@@ -621,6 +625,7 @@ class DeepLinkService {
                 (_) => _DeepLinkedChessBoardRoute(
                   initialGame: gameTourModel,
                   initialGameId: resolvedGameId,
+                  initialFen: initialFen,
                   roundGamesFuture: roundGamesFuture,
                   onRoundGamesError: (error, stackTrace) {
                     debugPrint(
@@ -731,6 +736,7 @@ class DeepLinkService {
       case 'game_started':
       case 'game_finished':
       case 'live_game_update':
+      case 'live_activity_update':
       case 'live_game_alert':
         if (gameId != null && gameId.isNotEmpty) {
           _navigateToGame(gameId, navigatorKey, ref);
@@ -1015,9 +1021,7 @@ class DeepLinkService {
             .getToursByIds([lookupId])
             .timeout(_fetchTimeout);
         if (tours.isNotEmpty) {
-          if (resolvedTourId == null) {
-            resolvedTourId = tours.first.id;
-          }
+          resolvedTourId ??= tours.first.id;
           final tourGroupId = _asNonEmptyString(tours.first.groupBroadcastId);
           if (tourGroupId != null) {
             resolvedGroupBroadcastId = tourGroupId;
@@ -1171,10 +1175,12 @@ class _DeepLinkedChessBoardRoute extends StatefulWidget {
     required this.initialGameId,
     required this.roundGamesFuture,
     required this.onRoundGamesError,
+    this.initialFen,
   });
 
   final GamesTourModel initialGame;
   final String initialGameId;
+  final String? initialFen;
   final Future<List<Games>> roundGamesFuture;
   final void Function(Object error, StackTrace stackTrace) onRoundGamesError;
 
@@ -1222,6 +1228,7 @@ class _DeepLinkedChessBoardRouteState
       key: ValueKey('deep-link-${widget.initialGameId}-${_games.length}'),
       games: _games,
       currentIndex: _currentIndex,
+      initialFen: widget.initialFen,
     );
   }
 }

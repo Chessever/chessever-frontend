@@ -44,6 +44,7 @@ import java.time.ZoneOffset
 
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
+  private var liveChannel: MethodChannel? = null
   private var pipPayload: MutableMap<String, Any?>? = null
   private var pipOverlay: ChessPipOverlayView? = null
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -106,6 +107,85 @@ class MainActivity : FlutterActivity() {
         }
         else -> result.notImplemented()
       }
+    }
+
+    // Live Activity (live-notification) channel — mirrors the iOS on-device
+    // Live Activity start so the widget appears immediately on background,
+    // including for finished games where no server push will arrive.
+    liveChannel = MethodChannel(
+      flutterEngine.dartExecutor.binaryMessenger,
+      "com.chessever/live_activities"
+    )
+    liveChannel?.setMethodCallHandler { call, result ->
+      when (call.method) {
+        "startLocalLiveActivity" -> {
+          @Suppress("UNCHECKED_CAST")
+          val content =
+            (call.arguments as? Map<String, Any?>)?.get("content") as? Map<String, Any?>
+          if (content != null) {
+            try {
+              val over = ((content["is_game_over"] as? Int) ?: 0) != 0
+              val live = buildLiveJson(content, if (over) "end" else "start")
+              NotificationServiceExtension().postLocalLiveNotification(
+                this@MainActivity,
+                live
+              )
+            } catch (e: Exception) {
+              Log.e("LiveActivity", "local start failed", e)
+            }
+          }
+          result.success(null)
+        }
+        "endLocalLiveActivity" -> {
+          @Suppress("UNCHECKED_CAST")
+          val gameId = (call.arguments as? Map<String, Any?>)?.get("gameId") as? String
+          if (gameId != null) {
+            NotificationServiceExtension().cancelLiveNotification(this@MainActivity, gameId)
+          }
+          result.success(null)
+        }
+        else -> result.notImplemented()
+      }
+    }
+  }
+
+  /** Reshape the flat Dart content map into the {event, event_attributes,
+   *  event_updates} JSON the shared notification builder expects. */
+  private fun buildLiveJson(content: Map<String, Any?>, event: String): JSONObject {
+    val attrs = JSONObject().apply {
+      put("game_id", content["game_id"] ?: "")
+      put("player_white", content["player_white"] ?: "White")
+      put("player_black", content["player_black"] ?: "Black")
+      put("white_title", content["white_title"] ?: "")
+      put("black_title", content["black_title"] ?: "")
+      put("white_fed", content["white_fed"] ?: "")
+      put("black_fed", content["black_fed"] ?: "")
+      put("white_flag", content["white_flag"] ?: "")
+      put("black_flag", content["black_flag"] ?: "")
+      put("event_name", content["event_name"] ?: "")
+      put("round_name", content["round_name"] ?: "")
+      content["board_theme_index"]?.let { put("board_theme_index", it) }
+      content["piece_style_index"]?.let { put("piece_style_index", it) }
+    }
+    val updates = JSONObject().apply {
+      put("fen", content["fen"] ?: "")
+      put("last_move", content["last_move"] ?: "")
+      put("last_move_uci", content["last_move_uci"] ?: "")
+      content["last_move_time"]?.let { put("last_move_time", it) }
+      content["white_clock_seconds"]?.let { put("white_clock_seconds", it) }
+      content["black_clock_seconds"]?.let { put("black_clock_seconds", it) }
+      content["eval_cp"]?.let { put("eval_cp", it) }
+      content["eval_mate"]?.let { put("eval_mate", it) }
+      put("status", content["status"] ?: "")
+      put("is_game_over", content["is_game_over"] ?: 0)
+      put("follow_live", content["follow_live"] ?: 1)
+      content["board_theme_index"]?.let { put("board_theme_index", it) }
+      content["piece_style_index"]?.let { put("piece_style_index", it) }
+    }
+    return JSONObject().apply {
+      put("event", event)
+      put("event_attributes", attrs)
+      put("event_updates", updates)
     }
   }
 

@@ -13,7 +13,11 @@ import OneSignalLiveActivities
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    OneSignal.LiveActivities.setupDefault()
+    // NOTE: OneSignal.LiveActivities.setupDefault() is intentionally NOT called here.
+    // It must run AFTER OneSignal.initialize() (which happens in Dart), otherwise the
+    // LiveActivities module has no appId/subscription and never registers the Live
+    // Activity push token (server updates then reach 0 recipients). It is invoked from
+    // Dart in LiveUpdatesService.setup(), immediately after OneSignal.initialize().
 
     // Forward deep link URL from launch options to app_links plugin.
     // On cold start (app killed), iOS puts the URL in launchOptions instead of
@@ -182,12 +186,80 @@ import OneSignalLiveActivities
   private func serializeDefaultLiveActivity(
     _ activity: Activity<DefaultLiveActivityAttributes>
   ) -> [String: Any] {
+    let contentData = activity.contentState.data
+    let attributesData = activity.attributes.data
+    let gameId: Any
+    if let contentGameId = contentData["game_id"]?.asString() {
+      gameId = contentGameId
+    } else if let attributeGameId = attributesData["game_id"]?.asString() {
+      gameId = attributeGameId
+    } else {
+      gameId = NSNull()
+    }
+
     return [
       "systemId": activity.id,
       "activityId": activity.attributes.onesignal.activityId,
       "state": String(describing: activity.activityState),
-      "gameId": activity.attributes.data["game_id"]?.asString() ?? NSNull(),
+      "gameId": gameId,
+      "content": liveActivityDataSnapshot(contentData),
+      "attributes": liveActivityDataSnapshot(attributesData),
     ]
+  }
+
+  private func liveActivityDataSnapshot(_ data: [String: AnyCodable]) -> [String: Any] {
+    let fen = data["fen"]?.asString()
+    let fenParts = fen?.split(separator: " ").map(String.init) ?? []
+
+    let keys = [
+      "game_id",
+      "fen",
+      "last_move",
+      "last_move_uci",
+      "last_move_san",
+      "last_move_numbered",
+      "last_move_time",
+      "white_clock_seconds",
+      "black_clock_seconds",
+      "clock_anchor_time",
+      "active_clock_color",
+      "active_clock_deadline",
+      "eval_cp",
+      "eval_mate",
+      "is_check",
+      "is_checkmate",
+      "is_game_over",
+      "follow_live",
+      "status",
+      "refresh_ts",
+      "board_theme_index",
+      "piece_style_index",
+    ]
+
+    let sideToMove: Any = fenParts.count > 1 ? fenParts[1] as Any : NSNull()
+    let fullmove: Any = fenParts.count > 5 ? fenParts[5] as Any : NSNull()
+    var snapshot: [String: Any] = [
+      "keys": data.keys.sorted(),
+      "side_to_move": sideToMove,
+      "fullmove": fullmove,
+    ]
+
+    for key in keys {
+      if let value = liveActivityCodableValue(data[key]) {
+        snapshot[key] = value
+      }
+    }
+
+    return snapshot
+  }
+
+  private func liveActivityCodableValue(_ value: AnyCodable?) -> Any? {
+    guard let value else { return nil }
+    if let boolValue = value.asBool() { return boolValue }
+    if let intValue = value.asInt() { return intValue }
+    if let doubleValue = value.asDouble() { return doubleValue }
+    if let stringValue = value.asString() { return stringValue }
+    return nil
   }
 
   /// Configure audio session for ambient mode - doesn't interrupt other audio

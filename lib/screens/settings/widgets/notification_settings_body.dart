@@ -1,8 +1,14 @@
+import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/live_activity_mode_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
+import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart'
     show TrackPersist;
+import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/notification_settings/notif_lead_time_control.dart';
 import 'package:chessever2/widgets/notification_settings/notif_push_card.dart';
@@ -26,6 +32,11 @@ class NotificationSettingsBody extends ConsumerWidget {
     final prefsLoading = prefsAsync.isLoading;
     final pushEnabled = pushSettings.enabled;
     final interactive = pushEnabled && !prefsLoading;
+
+    // Live game widgets (PiP + Live Activity) live with notifications now —
+    // they are how a live game stays visible outside the app.
+    final boardSettings = ref.watch(boardSettingsProviderNew).valueOrNull;
+    final boardNotifier = ref.read(boardSettingsProviderNew.notifier);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -118,6 +129,22 @@ class NotificationSettingsBody extends ConsumerWidget {
 
         SizedBox(height: 24.h),
 
+        if (boardSettings != null) ...[
+          const NotifSectionHeader(title: 'Live Game Widgets'),
+          SizedBox(height: 12.h),
+          _PipSettingCard(
+            selected: boardSettings.pipMode,
+            onSelected: (mode) => trackPersist(boardNotifier.setPipMode(mode)),
+          ),
+          SizedBox(height: 18.h),
+          _LiveActivitySettingCard(
+            selected: boardSettings.liveActivityMode,
+            onSelected: (mode) =>
+                trackPersist(boardNotifier.setLiveActivityMode(mode)),
+          ),
+          SizedBox(height: 24.h),
+        ],
+
         const NotifSectionHeader(title: 'Alerts'),
 
         Container(
@@ -206,6 +233,282 @@ class NotificationSettingsBody extends ConsumerWidget {
                 },
         ),
       ],
+    );
+  }
+}
+
+/// Picture in Picture mode card. PiP draws the board natively and refreshes in
+/// real time, so the note emphasizes its live, continuous nature.
+class _PipSettingCard extends StatelessWidget {
+  const _PipSettingCard({required this.selected, required this.onSelected});
+
+  final PipMode selected;
+  final ValueChanged<PipMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Picture in Picture',
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+              fontSize: 13.f,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            'A floating mini-board that stays on top of other apps and updates '
+            'in real time as the game is played. Choose which games can float.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+              fontSize: 11.f,
+            ),
+          ),
+          SizedBox(height: 14.h),
+          _PipModeSelector(
+            selected: selected,
+            // PiP is free for everyone — no paywall.
+            onSelected: onSelected,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Live Activity mode card. The lock-screen widget refreshes only when a new
+/// move arrives (not continuously), so the note frames it as a glanceable,
+/// time-to-time view rather than a real-time stream.
+class _LiveActivitySettingCard extends StatelessWidget {
+  const _LiveActivitySettingCard({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final LiveActivityMode selected;
+  final ValueChanged<LiveActivityMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Live Activity',
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+              fontSize: 13.f,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            'Keep an eye on a game from your lock screen with the board, clocks '
+            'and evaluation. It refreshes each time a new move arrives — not '
+            'continuously — so it is a glanceable, time-to-time view.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+              fontSize: 11.f,
+            ),
+          ),
+          SizedBox(height: 14.h),
+          _LiveActivityModeSelector(selected: selected, onSelected: onSelected),
+        ],
+      ),
+    );
+  }
+}
+
+class _PipModeSelector extends StatelessWidget {
+  const _PipModeSelector({required this.selected, required this.onSelected});
+
+  final PipMode selected;
+  final ValueChanged<PipMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(4.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Row(
+        children: [
+          _buildOption(context, mode: PipMode.off, icon: Icons.block_rounded),
+          SizedBox(width: 4.w),
+          _buildOption(context, mode: PipMode.live, icon: Icons.sensors_rounded),
+          SizedBox(width: 4.w),
+          _buildOption(
+            context,
+            mode: PipMode.all,
+            icon: Icons.all_inclusive_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOption(
+    BuildContext context, {
+    required PipMode mode,
+    required IconData icon,
+  }) {
+    final isSelected = selected == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onSelected(mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(vertical: 8.sp),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? kPrimaryColor.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color: isSelected ? kPrimaryColor : Colors.transparent,
+              width: isSelected ? 1.5 : 1.0,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.18),
+                      blurRadius: 8,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: isSelected
+                    ? context.colors.textPrimary
+                    : context.colors.textTertiary,
+                size: 20.ic,
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                mode.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isSelected
+                      ? context.colors.textPrimary
+                      : context.colors.textTertiary,
+                  fontSize: 10.f,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveActivityModeSelector extends StatelessWidget {
+  const _LiveActivityModeSelector({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final LiveActivityMode selected;
+  final ValueChanged<LiveActivityMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(4.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Row(
+        children: [
+          _buildOption(
+            context,
+            mode: LiveActivityMode.off,
+            icon: Icons.block_rounded,
+          ),
+          SizedBox(width: 4.w),
+          _buildOption(
+            context,
+            mode: LiveActivityMode.live,
+            icon: Icons.sensors_rounded,
+          ),
+          SizedBox(width: 4.w),
+          _buildOption(
+            context,
+            mode: LiveActivityMode.all,
+            icon: Icons.all_inclusive_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOption(
+    BuildContext context, {
+    required LiveActivityMode mode,
+    required IconData icon,
+  }) {
+    final isSelected = selected == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onSelected(mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(vertical: 8.sp),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? kPrimaryColor.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color: isSelected ? kPrimaryColor : Colors.transparent,
+              width: isSelected ? 1.5 : 1.0,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.18),
+                      blurRadius: 8,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: isSelected
+                    ? context.colors.textPrimary
+                    : context.colors.textTertiary,
+                size: 20.ic,
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                mode.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isSelected
+                      ? context.colors.textPrimary
+                      : context.colors.textTertiary,
+                  fontSize: 10.f,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

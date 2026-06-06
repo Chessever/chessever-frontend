@@ -1,6 +1,5 @@
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/screens/settings/widgets/settings_primitives.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -154,38 +153,6 @@ class BoardSettingsBody extends ConsumerWidget {
                 ),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleSound(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-
-        SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Picture in Picture',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Pop a mini board out when you leave the app. Choose which games can float.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textSecondary,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _PipModeSelector(
-                selected: boardSettings.pipMode,
-                onSelected: (mode) {
-                  // PiP is free for everyone — no paywall.
-                  trackPersist(boardNotifier.setPipMode(mode));
                 },
               ),
             ],
@@ -1277,96 +1244,6 @@ class _PieceSetGridItem extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PipModeSelector extends StatelessWidget {
-  const _PipModeSelector({required this.selected, required this.onSelected});
-
-  final PipMode selected;
-  final ValueChanged<PipMode> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(4.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceRecessed,
-        borderRadius: BorderRadius.circular(12.br),
-      ),
-      child: Row(
-        children: [
-          _buildOption(context, mode: PipMode.off, icon: Icons.block_rounded),
-          SizedBox(width: 4.w),
-          _buildOption(context, mode: PipMode.live, icon: Icons.sensors_rounded),
-          SizedBox(width: 4.w),
-          _buildOption(
-            context,
-            mode: PipMode.all,
-            icon: Icons.all_inclusive_rounded,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOption(
-    BuildContext context, {
-    required PipMode mode,
-    required IconData icon,
-  }) {
-    final isSelected = selected == mode;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onSelected(mode),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(vertical: 8.sp),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? kPrimaryColor.withValues(alpha: 0.08)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8.br),
-            border: Border.all(
-              color: isSelected ? kPrimaryColor : Colors.transparent,
-              width: isSelected ? 1.5 : 1.0,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: kPrimaryColor.withValues(alpha: 0.18),
-                      blurRadius: 8,
-                      spreadRadius: 0,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                color: isSelected
-                    ? context.colors.textPrimary
-                    : context.colors.textTertiary,
-                size: 20.ic,
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                mode.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected
-                      ? context.colors.textPrimary
-                      : context.colors.textTertiary,
-                  fontSize: 10.f,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

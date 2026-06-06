@@ -65,6 +65,24 @@ class NotificationServiceExtension : INotificationServiceExtension {
     event.preventDefault()
   }
 
+  /**
+   * Posts/updates a live-game notification locally (mirrors the iOS on-device
+   * Live Activity start). [live] uses the same {event, event_attributes,
+   * event_updates} shape as the OneSignal push payload, so rendering is shared
+   * with [onNotificationReceived]. Called from MainActivity's MethodChannel.
+   */
+  fun postLocalLiveNotification(context: Context, live: JSONObject) {
+    val notification = buildLiveNotification(context, live) ?: return
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    val gameId = live.optJSONObject("event_attributes")?.optString("game_id") ?: "game"
+    manager.notify(notificationId(gameId), notification)
+  }
+
+  fun cancelLiveNotification(context: Context, gameId: String) {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.cancel(notificationId(gameId))
+  }
+
   private fun buildLiveNotification(context: Context, live: JSONObject): Notification? {
     val attrs = live.optJSONObject("event_attributes") ?: return null
     val updates = live.optJSONObject("event_updates") ?: return null
@@ -101,6 +119,37 @@ class NotificationServiceExtension : INotificationServiceExtension {
     val blackClockSeconds = if (updates.has("black_clock_seconds") && !updates.isNull("black_clock_seconds")) updates.optInt("black_clock_seconds") else null
     val prettyEventName = formatEventName(eventName.ifEmpty { roundName })
 
+    // Live-clock + finished-state inputs.
+    val statusStr = updates.optString("status", "")
+    val isGameOver = (updates.optInt("is_game_over", 0) != 0) || eventType == "end"
+    // A server push always represents the live tail, so default to following.
+    val followLive = updates.optInt("follow_live", 1) != 0
+    val lastMoveTimeMillis = parseIsoMillis(updates.optString("last_move_time", ""))
+    val whiteToMove = fen.split(" ").let { if (it.size > 1) it[1] == "w" else true }
+    val sideToMoveRemainingSeconds = if (whiteToMove) whiteClockSeconds else blackClockSeconds
+    val resultText = when (statusStr) {
+      "1-0" -> "$white won · 1-0"
+      "0-1" -> "$black won · 0-1"
+      "1/2-1/2", "½-½", "0.5-0.5" -> "Draw · ½-½"
+      else -> "Final"
+    }
+    // Flag emojis (sent by the client/local-start; server pushes fall back to fed text).
+    val whiteFlag = attrs.optString("white_flag", "").ifEmpty { updates.optString("white_flag", "") }
+    val blackFlag = attrs.optString("black_flag", "").ifEmpty { updates.optString("black_flag", "") }
+    // Per-player score, shown next to the name on a finished game.
+    val whiteScore: String? = if (!isGameOver) null else when (statusStr) {
+      "1-0" -> "1"
+      "0-1" -> "0"
+      "1/2-1/2", "½-½", "0.5-0.5", "1/2" -> "½"
+      else -> null
+    }
+    val blackScore: String? = if (!isGameOver) null else when (statusStr) {
+      "1-0" -> "0"
+      "0-1" -> "1"
+      "1/2-1/2", "½-½", "0.5-0.5", "1/2" -> "½"
+      else -> null
+    }
+
     ensureChannel(context)
 
     // Create large icon (chess board)
@@ -128,13 +177,23 @@ class NotificationServiceExtension : INotificationServiceExtension {
       whiteTitle = whiteTitle,
       blackTitle = blackTitle,
       whiteFed = whiteFed,
-      blackFed = blackFed
+      blackFed = blackFed,
+      whiteFlag = whiteFlag,
+      blackFlag = blackFlag,
+      whiteScore = whiteScore,
+      blackScore = blackScore
     )
 
     // Intent to open the app
+    // Carry the focused move's FEN so tapping opens the app on that exact move
+    // (not the live tail). buildUpon().appendQueryParameter encodes the FEN.
+    val deepLinkUri = Uri.parse("https://chessever.com/games/$gameId")
+      .buildUpon()
+      .apply { if (fen.isNotEmpty()) appendQueryParameter("fen", fen) }
+      .build()
     val intent = Intent(
       Intent.ACTION_VIEW,
-      Uri.parse("https://chessever.com/games/$gameId")
+      deepLinkUri
     ).apply {
       setPackage(context.packageName)
       flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -152,7 +211,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
     // Build notification
     val builder = NotificationCompat.Builder(context, CHANNEL_ID)
       .setContentTitle("$white vs $black")
-      .setContentText("$lastMove  $evalText")
+      .setContentText(if (isGameOver) resultText else "$lastMove  $evalText")
       .setSubText(if (prettyEventName.isNotEmpty()) prettyEventName else null)
       .setSmallIcon(R.drawable.ic_notification)
       .setLargeIcon(boardBitmap)
@@ -169,6 +228,26 @@ class NotificationServiceExtension : INotificationServiceExtension {
     if (evalCp != null || evalMate != null) {
       val progress = evalToProgress(evalCp, evalMate)
       builder.setProgress(100, progress, false)
+    }
+
+    // Live, ticking countdown for the side to move — system-driven, so it ticks
+    // every second WITHOUT a per-second push (pushes only re-anchor on a move).
+    // Mirrors the iOS Live Activity clock. On game end the timer is dropped and
+    // the result shows instead. Guarded so a stale/flagged clock never shows a
+    // negative/past countdown.
+    if (!isGameOver && followLive && lastMoveTimeMillis != null &&
+        sideToMoveRemainingSeconds != null) {
+      val endMs = lastMoveTimeMillis + sideToMoveRemainingSeconds * 1000L
+      if (endMs > System.currentTimeMillis()) {
+        builder.setWhen(endMs)
+          .setUsesChronometer(true)
+          .setChronometerCountDown(true)
+          .setShowWhen(true)
+      } else {
+        builder.setShowWhen(false)
+      }
+    } else {
+      builder.setShowWhen(false)
     }
 
     if (Build.VERSION.SDK_INT >= 35) {
@@ -228,6 +307,18 @@ class NotificationServiceExtension : INotificationServiceExtension {
     }
 
     return builder.build()
+  }
+
+  /// Parse an ISO-8601 UTC timestamp (e.g. "2026-06-05T20:04:30.123Z") to epoch
+  /// millis. Returns null on empty/invalid input so the caller falls back to a
+  /// static clock instead of a bad countdown anchor.
+  private fun parseIsoMillis(value: String): Long? {
+    if (value.isEmpty()) return null
+    return try {
+      java.time.Instant.parse(value).toEpochMilli()
+    } catch (e: Exception) {
+      null
+    }
   }
 
   private fun ensureChannel(context: Context) {
@@ -339,7 +430,11 @@ class NotificationServiceExtension : INotificationServiceExtension {
     whiteTitle: String?,
     blackTitle: String?,
     whiteFed: String?,
-    blackFed: String?
+    blackFed: String?,
+    whiteFlag: String?,
+    blackFlag: String?,
+    whiteScore: String?,
+    blackScore: String?
   ): Bitmap? {
     val width = 600
     val height = 280
@@ -408,7 +503,9 @@ class NotificationServiceExtension : INotificationServiceExtension {
       blackPhoto,
       blackClockSeconds,
       blackTitle,
-      blackFed
+      blackFed,
+      blackFlag,
+      blackScore
     )
     // White player on bottom
     drawPlayerRow(
@@ -422,7 +519,9 @@ class NotificationServiceExtension : INotificationServiceExtension {
       whitePhoto,
       whiteClockSeconds,
       whiteTitle,
-      whiteFed
+      whiteFed,
+      whiteFlag,
+      whiteScore
     )
 
     // Last move
@@ -470,13 +569,22 @@ class NotificationServiceExtension : INotificationServiceExtension {
     photo: Bitmap?,
     clockSeconds: Int?,
     title: String?,
-    fed: String?
+    fed: String?,
+    flag: String?,
+    score: String?
   ) {
     val avatarRadius = 12f
     val avatarCx = x + avatarRadius
     val avatarCy = y - 9f
 
-    if (photo != null) {
+    if (!flag.isNullOrEmpty()) {
+      // Flag emoji in place of the avatar (what the user wants next to names).
+      val flagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 26f
+        textAlign = Paint.Align.CENTER
+      }
+      canvas.drawText(flag, avatarCx, avatarCy + 9f, flagPaint)
+    } else if (photo != null) {
       drawCircularImage(canvas, photo, avatarCx, avatarCy, avatarRadius)
     } else {
       val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -486,8 +594,8 @@ class NotificationServiceExtension : INotificationServiceExtension {
       canvas.drawCircle(avatarCx, avatarCy, avatarRadius, circlePaint)
     }
 
-    // Border for advantage
-    if (isAdvantage) {
+    // Border for advantage (only around the avatar circle, not the flag)
+    if (isAdvantage && flag.isNullOrEmpty()) {
       val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ACCENT_COLOR
         style = Paint.Style.STROKE
@@ -503,10 +611,12 @@ class NotificationServiceExtension : INotificationServiceExtension {
       typeface = if (isAdvantage) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
     }
     val nameX = x + avatarRadius * 2 + 8f
-    val clockText = clockSeconds?.let { formatClock(it) }
+    // A finished game shows the score on the right; otherwise the clock.
+    val clockText = if (score == null) clockSeconds?.let { formatClock(it) } else null
     val clockWidth = clockText?.let { clockPillWidth(it) } ?: 0f
     val baseAvailable = maxWidth - (nameX - x)
-    val availableWidth = if (clockWidth > 0f) baseAvailable - clockWidth - 8f else baseAvailable
+    val trailingWidth = if (score != null) 40f else clockWidth
+    val availableWidth = if (trailingWidth > 0f) baseAvailable - trailingWidth - 8f else baseAvailable
     drawFittedText(
       canvas,
       name,
@@ -538,7 +648,15 @@ class NotificationServiceExtension : INotificationServiceExtension {
       )
     }
 
-    if (clockText != null) {
+    if (score != null) {
+      val scorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = TEXT_PRIMARY_COLOR
+        textSize = 34f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = Paint.Align.RIGHT
+      }
+      canvas.drawText(score, x + maxWidth - 4f, y + 4f, scorePaint)
+    } else if (clockText != null) {
       drawClockPill(
         canvas,
         x + maxWidth - 4f,

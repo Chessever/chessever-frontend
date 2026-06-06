@@ -48,8 +48,11 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/services/pip_service.dart';
+import 'package:chessever2/providers/live_activity_mode_provider.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
@@ -105,7 +108,6 @@ import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
-import 'package:chessever2/providers/notifications_settings_provider.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
@@ -1663,8 +1665,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       debugPrint('Error refreshing Stockfish on resume: $e');
     }
 
-    // Stop Live Activity when user returns to the app
-    _stopLiveActivityIfActive(currentGame);
+    // Capture ActivityKit content before stopping so device logs can verify
+    // whether remote Live Activity updates reached the native activity.
+    unawaited(
+      LiveUpdatesService.instance.logLiveActivityDebugState(
+        'before_resume_stop',
+      ).whenComplete(() => _stopLiveActivityIfActive(currentGame)),
+    );
     unawaited(
       _syncPipState(
         ref.read(chessBoardScreenProviderNew(params)).valueOrNull ??
@@ -1675,17 +1682,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _stopLiveActivityIfActive(GamesTourModel game) {
     final liveService = LiveUpdatesService.instance;
-    final activeGameId = liveService.activeGameId;
-    if (activeGameId == null) return;
+    // Only stop THIS game's activity (the one the user returned to); other
+    // tracked games keep their live activities.
+    if (!liveService.activeGameIds.contains(game.gameId)) return;
 
     final user = ref.read(currentUserProvider);
     if (user == null) return;
 
-    // Stop the active live activity since user is back in the app
-    unawaited(liveService.stopForGame(activeGameId, user.id));
-    debugPrint(
-      '[ChessBoardScreen] Stopped Live Activity - user returned to app',
-    );
+    unawaited(liveService.stopForGame(game.gameId, user.id));
+    debugPrint('[ChessBoardScreen] Stopped Live Activity for resumed game');
   }
 
   void _handleLifecyclePaused() {
@@ -1700,8 +1705,69 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       debugPrint('Error pausing Stockfish on lifecycle change: $e');
     }
 
-    // Auto-start Live Activity for live games when app goes to background
-    unawaited(_startLiveActivityIfEligible(currentGame));
+    // Auto-start Live Activity when app goes to background. `isAtLiveTail`
+    // reports whether the viewer is on the latest move (following live), which
+    // gates whether the widget clock is allowed to tick.
+    final liveState = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    final followLive = liveState?.isAtLiveTail ?? true;
+    // Render the exact position the viewer is on (a frozen earlier move or the
+    // live tail), not the game's stored fen. The on-screen board renders from
+    // `analysisState.position` (mirrors _syncPipState), NOT `state.position`
+    // which always tracks the latest mainline position — using the latter is
+    // why a viewed earlier move showed the wrong board.
+    final analysis = liveState?.analysisState;
+    final viewedFen = analysis?.position.fen ?? liveState?.position?.fen;
+    final viewedUci = analysis?.lastMove?.uci ?? liveState?.lastMove?.uci;
+    final sans = analysis?.moveSans ?? liveState?.moveSans ?? const <String>[];
+    final idx = analysis?.currentMoveIndex ?? liveState?.currentMoveIndex ?? -1;
+    final viewedSan = (idx >= 0 && idx < sans.length) ? sans[idx] : null;
+    // Eval of the viewed position (same source PiP uses) so the bar + text are
+    // populated; the client has the eval even when no server push will arrive.
+    final eval = liveState?.evaluation;
+    final viewedEvalCp = eval != null ? (eval * 100).round() : null;
+    final viewedEvalMate = liveState?.mate;
+    // Clocks: on the live tail use the freshest live snapshot (so the side to
+    // move counts down from the right base); on an earlier move use that ply's
+    // PGN clock tag — mirrors player_first_row_detail_widget.dart `_PlayerClock`
+    // / `moveTime`. Passing the latest snapshot for every move is why the clocks
+    // looked random/wrong.
+    final moveTimes = liveState?.moveTimes ?? const <String>[];
+    int? clockAtViewed(bool isWhite) {
+      for (var i = idx; i >= 0; i--) {
+        final byThisSide = (i.isEven && isWhite) || (i.isOdd && !isWhite);
+        if (byThisSide && i < moveTimes.length) {
+          final secs = parsePgnClockToSeconds(moveTimes[i]);
+          if (secs != null) return secs;
+        }
+      }
+      return null;
+    }
+
+    final liveWhiteClock =
+        liveState?.game.whiteClockSeconds ?? currentGame.whiteClockSeconds;
+    final liveBlackClock =
+        liveState?.game.blackClockSeconds ?? currentGame.blackClockSeconds;
+    final viewedWhiteClock =
+        followLive ? liveWhiteClock : (clockAtViewed(true) ?? liveWhiteClock);
+    final viewedBlackClock =
+        followLive ? liveBlackClock : (clockAtViewed(false) ?? liveBlackClock);
+    // The countdown anchor must come from the same snapshot as the live clock.
+    final viewedLastMoveTime =
+        liveState?.game.lastMoveTime ?? currentGame.lastMoveTime;
+    unawaited(
+      _startLiveActivityIfEligible(
+        currentGame,
+        followLive: followLive,
+        viewedFen: viewedFen,
+        viewedSan: viewedSan,
+        viewedUci: viewedUci,
+        viewedWhiteClock: viewedWhiteClock,
+        viewedBlackClock: viewedBlackClock,
+        viewedLastMoveTime: viewedLastMoveTime,
+        viewedEvalCp: viewedEvalCp,
+        viewedEvalMate: viewedEvalMate,
+      ),
+    );
   }
 
   Future<void> _enterPipForCurrentGameIfEligible() async {
@@ -1720,30 +1786,44 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  Future<void> _startLiveActivityIfEligible(GamesTourModel game) async {
-    // Only start for ongoing games
-    if (!game.gameStatus.isOngoing) return;
+  Future<void> _startLiveActivityIfEligible(
+    GamesTourModel game, {
+    bool followLive = true,
+    String? viewedFen,
+    String? viewedSan,
+    String? viewedUci,
+    int? viewedWhiteClock,
+    int? viewedBlackClock,
+    DateTime? viewedLastMoveTime,
+    int? viewedEvalCp,
+    int? viewedEvalMate,
+  }) async {
+    // Live Activity mode gate (off / live / all), mirrors PiP.
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    final liveActivityMode =
+        boardSettings?.liveActivityMode ?? LiveActivityMode.off;
+    if (liveActivityMode == LiveActivityMode.off) return;
+
+    final isOngoing = game.gameStatus.isOngoing;
+    final isFinished = game.gameStatus.isFinished;
+    // "live" → ongoing only; "all" → ongoing or finished (skip unknown).
+    if (liveActivityMode == LiveActivityMode.live && !isOngoing) return;
+    if (liveActivityMode == LiveActivityMode.all && !isOngoing && !isFinished) {
+      return;
+    }
 
     // Check if user is authenticated
     final user = ref.read(currentUserProvider);
     if (user == null) return;
 
-    // Respect master push toggle
-    final pushEnabled = ref.read(notificationsSettingsProvider).enabled;
-    if (!pushEnabled) return;
+    // Backgrounding an active board is an explicit opt-in for Live Activity
+    // tracking. Do not gate this behind regular push notification settings.
 
-    // Backgrounding an active board is an explicit opt-in for live tracking,
-    // so don't re-gate it behind the broader live-updates category toggle.
-
-    // Don't start if already active for this game
+    // The service caps concurrent live activities at 3 and FIFO-evicts the
+    // oldest, so multiple games coexist — do NOT stop the previous one here.
+    // Skip only if THIS game already has a live activity.
     final liveService = LiveUpdatesService.instance;
-    if (liveService.activeGameId == game.gameId) return;
-
-    // Ensure newest game wins focus
-    final activeGameId = liveService.activeGameId;
-    if (activeGameId != null && activeGameId != game.gameId) {
-      unawaited(liveService.stopForGame(activeGameId, user.id));
-    }
+    if (liveService.activeGameIds.contains(game.gameId)) return;
 
     final whitePhoto = null;
     final blackPhoto = null;
@@ -1757,7 +1837,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             ? StringUtils.formatRoundLabel(game.roundSlug!)
             : null;
 
-    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final boardThemeIndex = boardSettings?.boardThemeIndex ?? 0;
     final pieceStyleIndex = boardSettings?.pieceStyleIndex ?? 0;
 
@@ -1782,17 +1861,36 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                 : null,
         whitePhoto: whitePhoto,
         blackPhoto: blackPhoto,
-        fen: game.fen,
-        lastMove: game.lastMove,
-        lastMoveTime: game.lastMoveTime,
-        whiteClockSeconds: game.whiteClockSeconds,
-        blackClockSeconds: game.blackClockSeconds,
+        fen: (viewedFen != null && viewedFen.isNotEmpty) ? viewedFen : game.fen,
+        lastMove:
+            (viewedSan != null && viewedSan.isNotEmpty)
+                ? viewedSan
+                : game.lastMove,
+        lastMoveUci:
+            (viewedUci != null && viewedUci.isNotEmpty)
+                ? viewedUci
+                : game.lastMove,
+        lastMoveTime: viewedLastMoveTime ?? game.lastMoveTime,
+        whiteClockSeconds: viewedWhiteClock ?? game.whiteClockSeconds,
+        blackClockSeconds: viewedBlackClock ?? game.blackClockSeconds,
         eventName: eventName,
         roundName: roundName,
         whiteFideId: game.whitePlayer.fideId,
         blackFideId: game.blackPlayer.fideId,
         boardThemeIndex: boardThemeIndex,
         pieceStyleIndex: pieceStyleIndex,
+        status:
+            game.gameStatus.displayText.isNotEmpty
+                ? game.gameStatus.displayText
+                : null,
+        isGameOver: isFinished,
+        evalCp: viewedEvalCp,
+        evalMate: viewedEvalMate,
+        whiteFlag: CountryUtils.toFlagEmoji(game.whitePlayer.federation),
+        blackFlag: CountryUtils.toFlagEmoji(game.blackPlayer.federation),
+        // The clock may only tick while the game is live AND the viewer was
+        // on the latest move when backgrounding.
+        followLive: followLive && isOngoing,
       ),
     );
 

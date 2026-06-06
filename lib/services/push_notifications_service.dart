@@ -32,8 +32,12 @@ class PushNotificationsService {
       OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
     }
 
-    await LiveUpdatesService.instance.setup();
+    // OneSignal.LiveActivities.setupDefault() MUST run AFTER OneSignal.initialize().
+    // Called before init, the LiveActivities module has no appId/subscription, so it
+    // never forwards the Live Activity push token to OneSignal → server-side updates
+    // reach 0 recipients and the iOS card never updates. Order is load-bearing.
     OneSignal.initialize(appId);
+    await LiveUpdatesService.instance.setup();
 
     // Apply opt-in state based on local preference and current OS permission.
     // This prevents release builds from forcing users into opt-out when iOS

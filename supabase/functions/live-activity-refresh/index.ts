@@ -108,6 +108,7 @@ type LiveUpdatePayload = {
 
 type RefreshStatus =
   | "updated"
+  | "throttled"
   | "ended"
   | "disabled_missing_game"
   | "disabled_not_live_status"
@@ -120,6 +121,19 @@ type RefreshResult = {
   gameId: string;
   userId: string;
   error?: string;
+  debug?: RefreshDebug;
+};
+
+type RefreshDebug = {
+  payload: Record<string, unknown>;
+  dryRun?: boolean;
+  oneSignal?: {
+    ok: boolean;
+    notFound: boolean;
+    status: number;
+    body?: string;
+  };
+  delivery?: unknown;
 };
 
 type OneSignalResult = {
@@ -127,6 +141,7 @@ type OneSignalResult = {
   notFound: boolean;
   status: number;
   errorText?: string;
+  responseText?: string;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -163,6 +178,17 @@ const FRESH_WINDOW_MS = readIntEnv(
   24 * 60 * 60 * 1000,
 );
 const CONCURRENCY = readIntEnv("LIVE_ACTIVITY_REFRESH_CONCURRENCY", 5, 1, 20);
+const UPDATE_PRIORITY = normalizeLiveActivityPriority(
+  readIntEnv("LIVE_ACTIVITY_UPDATE_PRIORITY", 10, 5, 10),
+);
+// Between moves, send at most one low-priority clock nudge per this interval.
+// Protects Apple's Live Activity update budget so moves are never throttled away.
+const CLOCK_NUDGE_INTERVAL_MS = readIntEnv(
+  "LIVE_ACTIVITY_CLOCK_NUDGE_INTERVAL_MS",
+  15000,
+  1000,
+  600000,
+);
 const LIVE_ACTIVITY_REFRESH_ALLOWED_KEYS = parseAllowedKeys(
   Deno.env.get("LIVE_ACTIVITY_REFRESH_ALLOWED_KEYS") ?? "",
 );
@@ -234,6 +260,8 @@ async function resolveRequestOptions(req: Request) {
     minIntervalMs,
     gameId,
     dryRun: body.dry_run === true,
+    debug: body.debug === true,
+    force: body.force === true,
     nowMs: Date.now(),
   };
 }
@@ -338,6 +366,8 @@ async function refreshSubscription(
   context: Awaited<ReturnType<typeof buildRefreshContext>>,
   options: {
     dryRun: boolean;
+    debug: boolean;
+    force?: boolean;
     nowMs: number;
   },
 ): Promise<RefreshResult> {
@@ -426,10 +456,36 @@ async function refreshSubscription(
   }
 
   if (options.dryRun) {
-    return { status: "updated", gameId: row.game_id, userId: row.user_id };
+    return {
+      status: "updated",
+      gameId: row.game_id,
+      userId: row.user_id,
+      ...(options.debug
+        ? { debug: { payload: debugPayloadSnapshot(payload), dryRun: true } }
+        : {}),
+    };
   }
 
-  const updateResult = await sendLiveActivityUpdate(activityId, payload);
+  // Deliverability guard (Apple's Live Activity update budget): send a high-priority
+  // push only on the FIRST refresh after a real move; between moves send at most one
+  // low-priority clock nudge per CLOCK_NUDGE_INTERVAL_MS. Blasting priority-10 every
+  // second makes iOS throttle and then DROP all updates (incl. moves) — the cause of
+  // "clock updated once then never; new moves never arrive".
+  const lastEventMs = parseDateMs(row.last_event_at);
+  const moved = lastEventMs === null || lastMoveMs > lastEventMs;
+  const sinceLastPushMs = lastEventMs === null
+    ? Number.POSITIVE_INFINITY
+    : options.nowMs - lastEventMs;
+  if (!moved && !options.force && sinceLastPushMs < CLOCK_NUDGE_INTERVAL_MS) {
+    return { status: "throttled", gameId: row.game_id, userId: row.user_id };
+  }
+  const updatePriority = moved ? 10 : 5;
+
+  const updateResult = await sendLiveActivityUpdate(
+    activityId,
+    payload,
+    updatePriority,
+  );
   if (updateResult.notFound) {
     await disableLiveSubscription(row);
     return { status: "not_found", gameId: row.game_id, userId: row.user_id };
@@ -439,7 +495,71 @@ async function refreshSubscription(
   }
 
   await markLiveSubscriptionEvent(row);
-  return { status: "updated", gameId: row.game_id, userId: row.user_id };
+  let delivery: unknown = undefined;
+  if (options.debug) {
+    const notifId = parseNotificationId(updateResult.responseText);
+    if (notifId) {
+      await sleep(2000);
+      delivery = await fetchLiveActivityDelivery(notifId);
+    }
+  }
+  return {
+    status: "updated",
+    gameId: row.game_id,
+    userId: row.user_id,
+    ...(options.debug
+      ? {
+        debug: {
+          payload: debugPayloadSnapshot(payload),
+          oneSignal: debugOneSignalResult(updateResult),
+          delivery,
+        },
+      }
+      : {}),
+  };
+}
+
+function parseNotificationId(text: string | undefined): string | null {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return typeof parsed?.id === "string" ? parsed.id : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchLiveActivityDelivery(notificationId: string) {
+  try {
+    const res = await fetch(
+      `https://api.onesignal.com/notifications/${notificationId}?app_id=${ONESIGNAL_APP_ID}`,
+      { headers: { Authorization: `Key ${ONESIGNAL_REST_API_KEY}` } },
+    );
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text);
+      return {
+        http: res.status,
+        successful: j.successful,
+        failed: j.failed,
+        errored: j.errored,
+        converted: j.converted,
+        remaining: j.remaining,
+        completed_at: j.completed_at,
+        platform_delivery_stats: j.platform_delivery_stats,
+        errors: j.errors,
+        throttle_rate_per_minute: j.throttle_rate_per_minute,
+      };
+    } catch (_) {
+      return { http: res.status, raw: text.slice(0, 500) };
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function buildLiveUpdatePayload(args: {
@@ -516,12 +636,16 @@ function buildLiveUpdatePayload(args: {
 async function sendLiveActivityUpdate(
   activityId: string,
   updateData: Record<string, unknown>,
+  priority: number = UPDATE_PRIORITY,
 ): Promise<OneSignalResult> {
   const payload = {
     event: "update",
     name: `live_activity_refresh:${activityId}`,
     event_updates: { data: updateData },
-    priority: 5,
+    // Priority is move-aware: 10 on a real move, 5 for clock nudges between moves.
+    // Apple throttles then drops sustained priority-10 bursts (Live Activity budget),
+    // so we reserve 10 for moves and nudge the clock at low priority.
+    priority,
     stale_date: Math.floor(Date.now() / 1000) + 60,
     ios_relevance_score: 1,
   };
@@ -563,11 +687,16 @@ async function sendLiveActivityEvent(
       },
     );
 
+    const text = await res.text();
     if (res.ok) {
-      return { ok: true, notFound: false, status: res.status };
+      return {
+        ok: true,
+        notFound: false,
+        status: res.status,
+        responseText: truncateForDebug(text),
+      };
     }
 
-    const text = await res.text();
     const lower = text.toLowerCase();
     return {
       ok: false,
@@ -773,6 +902,7 @@ function errorResult(
 function summarize(results: RefreshResult[]) {
   const counts: Record<RefreshStatus, number> = {
     updated: 0,
+    throttled: 0,
     ended: 0,
     disabled_missing_game: 0,
     disabled_not_live_status: 0,
@@ -781,19 +911,66 @@ function summarize(results: RefreshResult[]) {
     error: 0,
   };
   const errors: string[] = [];
+  const debugSamples: RefreshDebug[] = [];
 
   for (const result of results) {
     counts[result.status] += 1;
     if (result.status === "error" && result.error && errors.length < 10) {
       errors.push(`${result.gameId}:${result.error}`);
     }
+    if (result.debug && debugSamples.length < 5) {
+      debugSamples.push(result.debug);
+    }
   }
 
-  return { counts, errors };
+  return {
+    counts,
+    errors,
+    ...(debugSamples.length > 0 ? { debugSamples } : {}),
+  };
 }
 
 function buildLiveActivityId(gameId: string, userId: string) {
   return `live:${gameId}:${userId}`;
+}
+
+function debugPayloadSnapshot(payload: LiveUpdatePayload) {
+  const fenParts = typeof payload.fen === "string"
+    ? payload.fen.trim().split(/\s+/)
+    : [];
+
+  return {
+    game_id: payload.game_id,
+    status: payload.status,
+    side_to_move: fenParts.length > 1 ? fenParts[1] : null,
+    fullmove: fenParts.length > 5 ? fenParts[5] : null,
+    last_move: payload.last_move,
+    last_move_san: payload.last_move_san,
+    last_move_numbered: payload.last_move_numbered,
+    last_move_time: payload.last_move_time,
+    white_clock_seconds: payload.white_clock_seconds,
+    black_clock_seconds: payload.black_clock_seconds,
+    clock_anchor_time: payload.clock_anchor_time,
+    active_clock_color: payload.active_clock_color,
+    active_clock_deadline: payload.active_clock_deadline,
+    eval_cp: payload.eval_cp,
+    eval_mate: payload.eval_mate,
+    is_check: payload.is_check,
+    is_checkmate: payload.is_checkmate,
+    is_game_over: payload.is_game_over,
+    follow_live: payload.follow_live,
+    refresh_ts: payload.refresh_ts,
+    update_priority: UPDATE_PRIORITY,
+  };
+}
+
+function debugOneSignalResult(result: OneSignalResult) {
+  return {
+    ok: result.ok,
+    notFound: result.notFound,
+    status: result.status,
+    ...(result.responseText ? { body: result.responseText } : {}),
+  };
 }
 
 function isAuthorized(req: Request) {
@@ -1187,6 +1364,14 @@ function readIntEnv(
   max: number,
 ) {
   return clamp(parseFiniteInt(Deno.env.get(name)) ?? fallback, min, max);
+}
+
+function normalizeLiveActivityPriority(value: number) {
+  return value >= 10 ? 10 : 5;
+}
+
+function truncateForDebug(value: string) {
+  return value.length > 500 ? `${value.slice(0, 500)}…` : value;
 }
 
 function parseFiniteInt(value: unknown) {
