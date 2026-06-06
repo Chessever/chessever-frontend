@@ -48,6 +48,25 @@ type UserBoardSettings = {
   piece_style_index: number | null;
 };
 
+type PositionRow = {
+  id: number | string;
+  fen: string;
+};
+
+type EvalRow = {
+  position_id: number | string;
+  depth: number | null;
+  pvs: unknown;
+  multi_pv?: number | null;
+  pvs_count?: number | null;
+};
+
+type EvalSnapshot = {
+  cp: number | null;
+  mate: number | null;
+  depth: number | null;
+};
+
 type LiveUpdatePayload = {
   game_id: string;
   fen: string | null;
@@ -108,8 +127,7 @@ type OneSignalResult = {
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SERVICE_ROLE_KEY") ??
   "";
 const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
@@ -291,9 +309,25 @@ async function buildRefreshContext(rows: LiveSubscriptionRow[]) {
       .filter(isNonEmptyString),
   );
   const groupBroadcasts = await fetchGroupBroadcasts(groupBroadcastIds);
-  const boardSettings = await fetchBoardSettings(unique(rows.map((row) => row.user_id)));
+  const boardSettings = await fetchBoardSettings(
+    unique(rows.map((row) => row.user_id)),
+  );
+  const evalSnapshots = await fetchEvalSnapshots(
+    unique(
+      Array.from(games.values())
+        .map((game) => game.fen)
+        .filter(isNonEmptyString),
+    ),
+  );
 
-  return { games, rounds, tours, groupBroadcasts, boardSettings };
+  return {
+    games,
+    rounds,
+    tours,
+    groupBroadcasts,
+    boardSettings,
+    evalSnapshots,
+  };
 }
 
 async function refreshSubscription(
@@ -315,7 +349,9 @@ async function refreshSubscription(
   }
 
   const activityId = buildLiveActivityId(row.game_id, row.user_id);
-  const round = game.round_id ? context.rounds.get(game.round_id) ?? null : null;
+  const round = game.round_id
+    ? context.rounds.get(game.round_id) ?? null
+    : null;
   const tourId = game.tour_id ?? round?.tour_id ?? null;
   const tour = tourId ? context.tours.get(tourId) ?? null : null;
   const groupBroadcast = tour?.group_broadcast_id
@@ -328,6 +364,7 @@ async function refreshSubscription(
     tour,
     groupBroadcast,
     settings,
+    evalSnapshots: context.evalSnapshots,
     nowMs: options.nowMs,
   });
 
@@ -336,11 +373,27 @@ async function refreshSubscription(
       const updateResult = await sendLiveActivityUpdate(activityId, payload);
       if (updateResult.notFound) {
         await disableLiveSubscription(row);
-        return { status: "not_found", gameId: row.game_id, userId: row.user_id };
+        return {
+          status: "not_found",
+          gameId: row.game_id,
+          userId: row.user_id,
+        };
       }
-      const endResult = await sendLiveActivityEnd(activityId);
-      if (!updateResult.ok && !endResult.ok) {
-        return errorResult(row, updateResult, "end update failed");
+      if (!updateResult.ok) {
+        return errorResult(row, updateResult, "final update failed");
+      }
+
+      const endResult = await sendLiveActivityEnd(activityId, payload);
+      if (endResult.notFound) {
+        await disableLiveSubscription(row);
+        return {
+          status: "not_found",
+          gameId: row.game_id,
+          userId: row.user_id,
+        };
+      }
+      if (!endResult.ok) {
+        return errorResult(row, endResult, "end failed");
       }
       await disableLiveSubscription(row);
     }
@@ -362,7 +415,11 @@ async function refreshSubscription(
       await sendLiveActivityEnd(activityId);
       await disableLiveSubscription(row);
     }
-    return { status: "disabled_stale", gameId: row.game_id, userId: row.user_id };
+    return {
+      status: "disabled_stale",
+      gameId: row.game_id,
+      userId: row.user_id,
+    };
   }
 
   if (options.dryRun) {
@@ -388,6 +445,7 @@ function buildLiveUpdatePayload(args: {
   tour: TourRow | null;
   groupBroadcast: GroupBroadcastRow | null;
   settings: UserBoardSettings | null;
+  evalSnapshots: Map<string, EvalSnapshot>;
   nowMs: number;
 }): LiveUpdatePayload {
   const white = args.game.player_white ?? "White";
@@ -407,7 +465,9 @@ function buildLiveUpdatePayload(args: {
     whiteFide,
     blackFide,
   );
-  const evalSnapshot = fen ? estimateEvalSnapshotFromFen(fen) : null;
+  const evalSnapshot = fen
+    ? args.evalSnapshots.get(fen) ?? estimateEvalSnapshotFromFen(fen)
+    : null;
 
   return {
     game_id: args.game.id,
@@ -461,10 +521,12 @@ async function sendLiveActivityUpdate(
 
 async function sendLiveActivityEnd(
   activityId: string,
+  finalData?: Record<string, unknown>,
 ): Promise<OneSignalResult> {
   const payload = {
     event: "end",
     name: `live_activity_refresh:${activityId}`,
+    ...(finalData ? { event_updates: { data: finalData } } : {}),
   };
 
   return sendLiveActivityEvent(activityId, payload);
@@ -590,6 +652,72 @@ async function fetchBoardSettings(userIds: string[]) {
       piece_style_index: (row.piece_style_index as number | null) ?? 0,
     });
   }
+  return map;
+}
+
+async function fetchEvalSnapshots(fens: string[]) {
+  const map = new Map<string, EvalSnapshot>();
+  if (fens.length === 0) return map;
+
+  const { data: positions, error: positionsError } = await supabase
+    .from("positions")
+    .select("id,fen")
+    .in("fen", fens);
+
+  if (positionsError) throw positionsError;
+
+  const fenByPositionId = new Map<string, string>();
+  for (const row of (positions ?? []) as PositionRow[]) {
+    if (row.id != null && row.fen) {
+      fenByPositionId.set(String(row.id), row.fen);
+    }
+  }
+
+  const positionIds = Array.from(fenByPositionId.keys());
+  if (positionIds.length === 0) return map;
+
+  const { data: evals, error: evalsError } = await supabase
+    .from("evals")
+    .select("position_id,depth,pvs,multi_pv,pvs_count")
+    .in("position_id", positionIds);
+
+  if (evalsError) throw evalsError;
+
+  const bestByPositionId = new Map<
+    string,
+    { snapshot: EvalSnapshot; depth: number; multiPv: number }
+  >();
+
+  for (const row of (evals ?? []) as EvalRow[]) {
+    const positionId = String(row.position_id);
+    if (!fenByPositionId.has(positionId)) continue;
+
+    const snapshot = parseEvalSnapshot(row);
+    if (!snapshot) continue;
+
+    const depth = parseFiniteInt(row.depth) ?? 0;
+    const multiPv = parseFiniteInt(row.multi_pv) ??
+      parseFiniteInt(row.pvs_count) ??
+      countPvLines(row.pvs);
+    const existing = bestByPositionId.get(positionId);
+    if (
+      !existing ||
+      depth > existing.depth ||
+      (depth === existing.depth && multiPv > existing.multiPv)
+    ) {
+      bestByPositionId.set(positionId, {
+        snapshot: { ...snapshot, depth },
+        depth,
+        multiPv,
+      });
+    }
+  }
+
+  for (const [positionId, best] of bestByPositionId) {
+    const fen = fenByPositionId.get(positionId);
+    if (fen) map.set(fen, best.snapshot);
+  }
+
   return map;
 }
 
@@ -841,7 +969,8 @@ function extractPlayerMeta(
       const name = (raw?.name as string | undefined) ?? null;
       const fideId = parseFiniteInt(raw?.fideId);
       const title = toNonEmptyString(raw?.title);
-      const fed = toNonEmptyString(raw?.fed) ?? toNonEmptyString(raw?.federation);
+      const fed = toNonEmptyString(raw?.fed) ??
+        toNonEmptyString(raw?.federation);
 
       if (whiteFide && fideId === whiteFide) {
         whiteTitle = title;
@@ -898,6 +1027,44 @@ function estimateEvalSnapshotFromFen(fen: string) {
   return { cp: Math.max(-2500, Math.min(2500, cp)), mate: null };
 }
 
+function parseEvalSnapshot(row: EvalRow): EvalSnapshot | null {
+  const pv = firstPvLine(row.pvs);
+  if (!pv) return null;
+
+  const mate = parseFiniteInt(pv.mate);
+  if (mate !== null) {
+    return { cp: null, mate, depth: parseFiniteInt(row.depth) };
+  }
+
+  const score = isRecord(pv.score) ? pv.score : null;
+  const scoreMate = score ? parseFiniteInt(score.mate) : null;
+  if (scoreMate !== null) {
+    return { cp: null, mate: scoreMate, depth: parseFiniteInt(row.depth) };
+  }
+
+  const cp = parseFiniteInt(pv.cp);
+  if (cp !== null) {
+    return { cp, mate: null, depth: parseFiniteInt(row.depth) };
+  }
+
+  const scoreCp = score ? parseFiniteInt(score.cp) : null;
+  if (scoreCp !== null) {
+    return { cp: scoreCp, mate: null, depth: parseFiniteInt(row.depth) };
+  }
+
+  return null;
+}
+
+function firstPvLine(pvs: unknown): Record<string, unknown> | null {
+  if (!Array.isArray(pvs)) return null;
+  const first = pvs[0];
+  return isRecord(first) ? first : null;
+}
+
+function countPvLines(pvs: unknown) {
+  return Array.isArray(pvs) ? pvs.length : 0;
+}
+
 function parseSideToMove(fen: string) {
   const side = fen.split(" ")[1];
   return side === "w" || side === "b" ? side : null;
@@ -905,7 +1072,9 @@ function parseSideToMove(fen: string) {
 
 function publicFidePhotoUrl(fideId: number | null) {
   if (!fideId || fideId <= 0) return null;
-  return `${SUPABASE_URL}/storage/v1/object/public/player-photos/fide/${encodeURIComponent(String(fideId))}.jpg`;
+  return `${SUPABASE_URL}/storage/v1/object/public/player-photos/fide/${
+    encodeURIComponent(String(fideId))
+  }.jpg`;
 }
 
 function fedToFlagEmoji(fed: string | null) {
@@ -974,7 +1143,9 @@ function readIntEnv(
 }
 
 function parseFiniteInt(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
   if (typeof value !== "string") return null;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
@@ -996,6 +1167,10 @@ function toNonEmptyString(value: unknown) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeFed(value: string | null) {
