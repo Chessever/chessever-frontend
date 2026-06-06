@@ -913,7 +913,10 @@ Future<void> openSeededCalendarEvent(PatrolTester $, E2eSeedData seed) async {
   if (event == null) {
     throw TestFailure('No calendar event available for E2E detail route');
   }
-  await pushWidgetRoute($, CalendarEventDetailScreen(event: event));
+  await pushWidgetRoute(
+    $,
+    CalendarEventDetailScreen(events: [event], initialIndex: 0),
+  );
   await expectVisible($, E2eIds.calendarEventDetailRoot);
 }
 

@@ -24,6 +24,11 @@ live-data routes with stable selectors.
 - `patrol_test/signed_in_smoke_test.dart`
   Fast PR coverage for major roots, detail pages, search, filters, and a core
   board flow.
+- `patrol_test/vasif_regression_smoke_test.dart`
+  Regular bug-report regression coverage for the flows that have been most
+  fragile in manual QA: signed-in startup, tab switching, search/filter reset,
+  Library buttons, Favorites/Player Games search, saved-library detail routes,
+  and board engine/navigation stability.
 - `patrol_test/signed_in_deep_test.dart`
   Exhaustive route traversal, board-entry permutations, notation taps, move
   traversal, game swipes, route jumping, and repeated search/filter mutation.
@@ -162,6 +167,12 @@ Run the PR smoke suite:
 ./tool/patrol_smoke.sh
 ```
 
+Run the bug-report regression suite regularly (recommended after bug fixes and before release QA):
+
+```bash
+./tool/patrol_regression.sh
+```
+
 Run the deep suite:
 
 ```bash
@@ -216,6 +227,12 @@ patrol test \
 - runs signed-in smoke with `E2E_RESET_ONBOARDING=false`
 - is intended for PR validation and fast local confidence checks
 
+`tool/patrol_regression.sh`
+
+- runs `vasif_regression_smoke_test.dart` with onboarding already completed
+- is intended for regular bug-fix verification, pre-release QA, and catching
+  regressions from repeated manual bug-report patterns
+
 `tool/patrol_deep.sh`
 
 - runs the deep signed-in suite with onboarding already completed
@@ -231,7 +248,8 @@ Codemagic setup is:
 2. Add the required env vars in Codemagic variables or an environment group.
 3. Provide the E2E account credentials there as secrets.
 4. Run the smoke suite in a scripted step.
-5. Run the deep suite on a nightly or manual workflow.
+5. Run the regression suite after bug-fix PRs and on pre-release QA builds.
+6. Run the deep suite on a nightly or manual workflow.
 
 Recommended Codemagic variables:
 
@@ -247,6 +265,15 @@ flutter pub get
 dart pub global activate patrol_cli
 export PATH="$PATH:$HOME/.pub-cache/bin"
 ./tool/patrol_smoke.sh
+```
+
+Suggested regression step:
+
+```bash
+flutter pub get
+dart pub global activate patrol_cli
+export PATH="$PATH:$HOME/.pub-cache/bin"
+./tool/patrol_regression.sh
 ```
 
 Suggested deep step:
@@ -279,6 +306,8 @@ Recommended workflow split:
 
 - PR workflow:
   run `./tool/patrol_smoke.sh`
+- Bug-fix and pre-release QA workflow:
+  run `./tool/patrol_regression.sh`
 - Nightly or manual workflow:
   run `./tool/patrol_deep.sh`
 

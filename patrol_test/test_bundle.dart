@@ -10,6 +10,9 @@ import 'package:test_api/src/backend/invoker.dart';
 
 // START: GENERATED TEST IMPORTS
 import 'onboarding_smoke_test.dart' as onboarding_smoke_test;
+import 'signed_in_smoke_test.dart' as signed_in_smoke_test;
+import 'signed_in_deep_test.dart' as signed_in_deep_test;
+import 'vasif_regression_smoke_test.dart' as vasif_regression_smoke_test;
 // END: GENERATED TEST IMPORTS
 
 Future<void> main() async {
@@ -73,6 +76,9 @@ Future<void> main() async {
 
 // START: GENERATED TEST GROUPS
   group('onboarding_smoke_test', onboarding_smoke_test.main);
+  group('signed_in_smoke_test', signed_in_smoke_test.main);
+  group('vasif_regression_smoke_test', vasif_regression_smoke_test.main);
+  group('signed_in_deep_test', signed_in_deep_test.main);
 // END: GENERATED TEST GROUPS
 
   final dartTestGroup = await testExplorationCompleter.future;
