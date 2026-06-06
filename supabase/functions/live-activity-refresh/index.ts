@@ -77,6 +77,9 @@ type LiveUpdatePayload = {
   last_move_time: string | null;
   white_clock_seconds: number | null;
   black_clock_seconds: number | null;
+  clock_anchor_time: string | null;
+  active_clock_color: "white" | "black" | null;
+  active_clock_deadline: string | null;
   eval_cp: number | null;
   eval_mate: number | null;
   board_theme_index: number | null;
@@ -468,6 +471,7 @@ function buildLiveUpdatePayload(args: {
   const evalSnapshot = fen
     ? args.evalSnapshots.get(fen) ?? estimateEvalSnapshotFromFen(fen)
     : null;
+  const clockTiming = buildClockTiming(args.game, fen);
 
   return {
     game_id: args.game.id,
@@ -479,6 +483,9 @@ function buildLiveUpdatePayload(args: {
     last_move_time: args.game.last_move_time ?? null,
     white_clock_seconds: args.game.last_clock_white ?? null,
     black_clock_seconds: args.game.last_clock_black ?? null,
+    clock_anchor_time: clockTiming.anchorTime,
+    active_clock_color: clockTiming.activeColor,
+    active_clock_deadline: clockTiming.deadline,
     eval_cp: evalSnapshot?.cp ?? null,
     eval_mate: evalSnapshot?.mate ?? null,
     board_theme_index: args.settings?.board_theme_index ?? 0,
@@ -514,6 +521,9 @@ async function sendLiveActivityUpdate(
     event: "update",
     name: `live_activity_refresh:${activityId}`,
     event_updates: { data: updateData },
+    priority: 5,
+    stale_date: Math.floor(Date.now() / 1000) + 60,
+    ios_relevance_score: 1,
   };
 
   return sendLiveActivityEvent(activityId, payload);
@@ -527,6 +537,8 @@ async function sendLiveActivityEnd(
     event: "end",
     name: `live_activity_refresh:${activityId}`,
     ...(finalData ? { event_updates: { data: finalData } } : {}),
+    priority: 10,
+    dismissal_date: Math.floor(Date.now() / 1000),
   };
 
   return sendLiveActivityEvent(activityId, payload);
@@ -1025,6 +1037,41 @@ function estimateEvalSnapshotFromFen(fen: string) {
     }
   }
   return { cp: Math.max(-2500, Math.min(2500, cp)), mate: null };
+}
+
+function buildClockTiming(game: GameRow, fen: string | null) {
+  const activeColor = activeClockColorFromFen(fen);
+  const anchorTime = game.last_move_time ?? null;
+  const anchorMs = parseDateMs(anchorTime);
+  const activeSeconds = activeColor === "white"
+    ? parseFiniteInt(game.last_clock_white)
+    : activeColor === "black"
+    ? parseFiniteInt(game.last_clock_black)
+    : null;
+
+  if (
+    !activeColor ||
+    anchorMs === null ||
+    activeSeconds === null ||
+    isGameOverStatus(game.status)
+  ) {
+    return { anchorTime, activeColor, deadline: null };
+  }
+
+  const deadlineMs = anchorMs + Math.max(0, activeSeconds) * 1000;
+  return {
+    anchorTime,
+    activeColor,
+    deadline: new Date(deadlineMs).toISOString(),
+  };
+}
+
+function activeClockColorFromFen(fen: string | null): "white" | "black" | null {
+  if (!fen) return null;
+  const side = parseSideToMove(fen);
+  if (side === "w") return "white";
+  if (side === "b") return "black";
+  return null;
 }
 
 function parseEvalSnapshot(row: EvalRow): EvalSnapshot | null {
