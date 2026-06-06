@@ -104,7 +104,9 @@ Future<void> launchAppAndReachSignedInShell(PatrolTester $) async {
   _trace('[E2E] launchAppAndReachSignedInShell: initial settle');
   await $.pumpAndTrySettle(timeout: const Duration(seconds: 30));
 
-  _trace('[E2E] launchAppAndReachSignedInShell: waiting for home or onboarding');
+  _trace(
+    '[E2E] launchAppAndReachSignedInShell: waiting for home or onboarding',
+  );
   await pumpUntil(
     $,
     () =>
@@ -177,9 +179,7 @@ Future<void> completePlayerSelectionIfVisible(PatrolTester $) async {
   }
 
   if (_isButtonEnabled($, E2eIds.playerSelectionContinueButton)) {
-    _trace(
-      '[E2E] completePlayerSelectionIfVisible: continue already enabled',
-    );
+    _trace('[E2E] completePlayerSelectionIfVisible: continue already enabled');
     await byId($, E2eIds.playerSelectionContinueButton).tap();
     await _pumpAfterOnboardingInteraction($);
     return;
@@ -677,7 +677,9 @@ Future<void> swipeBoardBetweenGames(
   await assertBoardEngineReady($);
 
   if (expectedVisibleToken != null) {
-    await expectAnyTextVisible($, [expectedVisibleToken], timeout: _engineTimeout);
+    await expectAnyTextVisible($, [
+      expectedVisibleToken,
+    ], timeout: _engineTimeout);
   }
 }
 

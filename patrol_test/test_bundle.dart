@@ -74,12 +74,12 @@ Future<void> main() async {
     reportGroupStructure(dartTestGroup);
   });
 
-// START: GENERATED TEST GROUPS
+  // START: GENERATED TEST GROUPS
   group('onboarding_smoke_test', onboarding_smoke_test.main);
   group('signed_in_smoke_test', signed_in_smoke_test.main);
   group('vasif_regression_smoke_test', vasif_regression_smoke_test.main);
   group('signed_in_deep_test', signed_in_deep_test.main);
-// END: GENERATED TEST GROUPS
+  // END: GENERATED TEST GROUPS
 
   final dartTestGroup = await testExplorationCompleter.future;
   final appService = PatrolAppService(topLevelDartTestGroup: dartTestGroup);
