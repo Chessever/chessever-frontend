@@ -32,6 +32,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tutorial_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/pip_intro_dialog.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
@@ -937,6 +938,43 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
       await prefs.setInt(_kWalkthroughShownDateKey, now.millisecondsSinceEpoch);
     }
+  }
+
+  /// One-time intro for the live-game widgets (PiP + Live Activity). Shown only
+  /// after all three board walkthroughs are done/opted-out, so the dialog never
+  /// stacks on top of a teaching overlay.
+  Future<void> _maybeShowLiveWidgetsIntro(BuildContext context) async {
+    if (!mounted || _showTutorialOverlay || _showLikeTutorial) return;
+
+    final prefs = ref.read(sharedPreferencesRepository);
+    if (await prefs.getBool(kLiveWidgetsIntroSeenKey) ?? false) return;
+
+    final swipeSeen =
+        (await prefs.getBool(_kWalkthroughDontShowKey) ?? false) ||
+        (await prefs.getInt(_kWalkthroughShownDateKey)) != null;
+    final switchSeen =
+        (await prefs.getBool(kSwitchViewsWalkthroughDontShowKey) ?? false) ||
+        (await prefs.getInt(kSwitchViewsWalkthroughShownDateKey)) != null;
+    final likeSeen =
+        (await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false) ||
+        (await prefs.getInt(kLikeWalkthroughShownDateKey)) != null;
+    if (!(swipeSeen && switchSeen && likeSeen)) return;
+
+    if (!mounted || _showTutorialOverlay || _showLikeTutorial) return;
+
+    await prefs.setBool(kLiveWidgetsIntroSeenKey, true);
+    if (!mounted || !context.mounted) return;
+    await showLiveWidgetsIntroDialog(
+      context,
+      onOpenSettings: () {
+        if (!context.mounted) return;
+        Navigator.of(context).push(
+          SettingsPage.route(
+            initiallyExpanded: SettingsSection.notification,
+          ),
+        );
+      },
+    );
   }
 
   void _onWalkthroughFinished() {
@@ -2215,8 +2253,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           builder: (context) {
             if (!_hasCheckedWalkthrough) {
               _hasCheckedWalkthrough = true;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _checkAndShowWalkthrough(context);
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                await _checkAndShowWalkthrough(context);
+                if (mounted && context.mounted) {
+                  await _maybeShowLiveWidgetsIntro(context);
+                }
               });
             }
             return Builder(
