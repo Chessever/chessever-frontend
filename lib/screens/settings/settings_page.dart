@@ -34,10 +34,33 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   final Set<Future<void>> _pendingPersists = {};
   SettingsSection? _expanded;
 
+  // Used to scroll the Live Game Widgets (PiP + Live Activity) cards into view
+  // when the page is opened straight to the notification section.
+  final GlobalKey _liveWidgetsKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _expanded = widget.initiallyExpanded;
+    if (widget.initiallyExpanded == SettingsSection.notification) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToLiveWidgets();
+      });
+    }
+  }
+
+  Future<void> _scrollToLiveWidgets() async {
+    // Let the page lay out, then centre the Live Game Widgets cards so PiP +
+    // Live Activity are immediately in view (they sit below a tall push card).
+    await Future<void>.delayed(const Duration(milliseconds: 280));
+    final ctx = _liveWidgetsKey.currentContext;
+    if (!mounted || ctx == null || !ctx.mounted) return;
+    await Scrollable.ensureVisible(
+      ctx,
+      alignment: 0.5,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _trackPersist(Future<void> future) {
@@ -138,7 +161,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   expanded: _expanded == SettingsSection.notification,
                   onTap: () => _toggle(SettingsSection.notification),
-                  child: NotificationSettingsBody(trackPersist: _trackPersist),
+                  child: NotificationSettingsBody(
+                    trackPersist: _trackPersist,
+                    liveWidgetsKey: _liveWidgetsKey,
+                  ),
                 ),
                 SizedBox(height: 24.h),
                 _DeleteAccountRow(

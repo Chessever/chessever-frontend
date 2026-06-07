@@ -20,9 +20,17 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Notification preferences as a non-scaffolded body widget.
 /// Persist futures are reported via [trackPersist] for the host to await.
 class NotificationSettingsBody extends ConsumerWidget {
-  const NotificationSettingsBody({super.key, required this.trackPersist});
+  const NotificationSettingsBody({
+    super.key,
+    required this.trackPersist,
+    this.liveWidgetsKey,
+  });
 
   final TrackPersist trackPersist;
+
+  /// Optional anchor on the Live Game Widgets group so the host can scroll the
+  /// PiP + Live Activity cards into view (used when opening straight here).
+  final Key? liveWidgetsKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -130,17 +138,26 @@ class NotificationSettingsBody extends ConsumerWidget {
         SizedBox(height: 24.h),
 
         if (boardSettings != null) ...[
-          const NotifSectionHeader(title: 'Live Game Widgets'),
-          SizedBox(height: 12.h),
-          _PipSettingCard(
-            selected: boardSettings.pipMode,
-            onSelected: (mode) => trackPersist(boardNotifier.setPipMode(mode)),
-          ),
-          SizedBox(height: 18.h),
-          _LiveActivitySettingCard(
-            selected: boardSettings.liveActivityMode,
-            onSelected: (mode) =>
-                trackPersist(boardNotifier.setLiveActivityMode(mode)),
+          KeyedSubtree(
+            key: liveWidgetsKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const NotifSectionHeader(title: 'Live Game Widgets'),
+                SizedBox(height: 12.h),
+                _PipSettingCard(
+                  selected: boardSettings.pipMode,
+                  onSelected: (mode) =>
+                      trackPersist(boardNotifier.setPipMode(mode)),
+                ),
+                SizedBox(height: 18.h),
+                _LiveActivitySettingCard(
+                  selected: boardSettings.liveActivityMode,
+                  onSelected: (mode) =>
+                      trackPersist(boardNotifier.setLiveActivityMode(mode)),
+                ),
+              ],
+            ),
           ),
           SizedBox(height: 24.h),
         ],

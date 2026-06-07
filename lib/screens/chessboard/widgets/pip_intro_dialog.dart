@@ -76,7 +76,10 @@ Future<void> showLiveWidgetsIntroDialog(
                   ],
                 ),
               ),
-              Divider(height: 1, color: colors.textPrimary.withValues(alpha: 0.08)),
+              Divider(
+                height: 1,
+                color: colors.textPrimary.withValues(alpha: 0.08),
+              ),
 
               // ---- Scrollable body: the two features ----
               Flexible(
@@ -99,7 +102,7 @@ Future<void> showLiveWidgetsIntroDialog(
                         ],
                         mockup: const _PhoneFrame(child: _PipScreen()),
                       ),
-                      SizedBox(height: 24.h),
+                      SizedBox(height: 26.h),
                       _FeatureBlock(
                         icon: Icons.lock_clock_outlined,
                         title: 'Live Activity',
@@ -120,7 +123,10 @@ Future<void> showLiveWidgetsIntroDialog(
               ),
 
               // ---- Footer actions ----
-              Divider(height: 1, color: colors.textPrimary.withValues(alpha: 0.08)),
+              Divider(
+                height: 1,
+                color: colors.textPrimary.withValues(alpha: 0.08),
+              ),
               Padding(
                 padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 14.h),
                 child: Row(
@@ -285,7 +291,8 @@ class _Step extends StatelessWidget {
 // Mockups (pure widgets, no assets)
 // ---------------------------------------------------------------------------
 
-/// A phone bezel + notch wrapping a [child] "screen".
+/// A phone bezel with a Dynamic-Island notch, home indicator and subtle screen
+/// depth, wrapping a [child] "screen".
 class _PhoneFrame extends StatelessWidget {
   const _PhoneFrame({required this.child});
 
@@ -294,35 +301,68 @@ class _PhoneFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 124.w,
-      height: 232.h,
-      padding: EdgeInsets.all(5.sp),
+      width: 138.w,
+      height: 262.h,
+      padding: EdgeInsets.all(4.sp),
       decoration: BoxDecoration(
-        color: const Color(0xFF18181B),
-        borderRadius: BorderRadius.circular(26.br),
-        border: Border.all(color: const Color(0xFF34343A), width: 2),
+        color: const Color(0xFF101013),
+        borderRadius: BorderRadius.circular(30.br),
+        border: Border.all(color: const Color(0xFF3B3B43), width: 2.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(21.br),
+        borderRadius: BorderRadius.circular(26.br),
         child: Stack(
           children: [
             Positioned.fill(child: child),
+            // Screen depth: faint top highlight + bottom shade.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.05),
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.20),
+                      ],
+                      stops: const [0.0, 0.22, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Dynamic-Island notch.
             Align(
               alignment: Alignment.topCenter,
               child: Container(
-                margin: EdgeInsets.only(top: 5.h),
-                width: 40.w,
-                height: 8.h,
+                margin: EdgeInsets.only(top: 6.h),
+                width: 42.w,
+                height: 12.h,
                 decoration: BoxDecoration(
                   color: Colors.black,
-                  borderRadius: BorderRadius.circular(6.br),
+                  borderRadius: BorderRadius.circular(7.br),
+                ),
+              ),
+            ),
+            // Home indicator.
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                margin: EdgeInsets.only(bottom: 6.h),
+                width: 46.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2.br),
                 ),
               ),
             ),
@@ -333,34 +373,94 @@ class _PhoneFrame extends StatelessWidget {
   }
 }
 
-/// "Another app" with the ChessEver board floating in the corner (PiP).
+/// "Another app" (a media/article screen) with the ChessEver board floating in
+/// the corner — i.e. what Picture-in-Picture looks like.
 class _PipScreen extends StatelessWidget {
   const _PipScreen();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF0C0C0E),
+      color: const Color(0xFF0E0F12),
       child: Stack(
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(11.w, 22.h, 11.w, 11.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _bar(54.w, 9.h, 0.10),
-                SizedBox(height: 11.h),
-                _bar(96.w, 6.h, 0.06),
-                SizedBox(height: 6.h),
-                _bar(86.w, 6.h, 0.06),
-                SizedBox(height: 6.h),
-                _bar(92.w, 6.h, 0.06),
-              ],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: 24.h),
+              // App bar: back chevron + title.
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 11.w),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 9.ic,
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                    SizedBox(width: 7.w),
+                    Container(
+                      width: 56.w,
+                      height: 7.h,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(3.br),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 11.h),
+              // Hero media block with a play button.
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 11.w),
+                child: Container(
+                  height: 62.h,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1C2532), Color(0xFF12161D)],
+                    ),
+                    borderRadius: BorderRadius.circular(8.br),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 26.w,
+                      height: 26.w,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white.withValues(alpha: 0.85),
+                        size: 16.ic,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: 11.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 11.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _bar(98.w, 6.h, 0.12),
+                    SizedBox(height: 6.h),
+                    _bar(84.w, 5.h, 0.07),
+                    SizedBox(height: 5.h),
+                    _bar(92.w, 5.h, 0.07),
+                  ],
+                ),
+              ),
+            ],
           ),
+          // The floating PiP window.
           Positioned(
-            right: 7.w,
-            bottom: 10.h,
+            right: 8.w,
+            bottom: 14.h,
             child: const _FloatingBoardCard(),
           ),
         ],
@@ -378,7 +478,62 @@ class _PipScreen extends StatelessWidget {
       );
 }
 
-/// A lock screen with the Live Activity card on it.
+/// The floating PiP window: a drag grabber, a thin eval bar + a mini board,
+/// shadowed with a soft accent glow.
+class _FloatingBoardCard extends StatelessWidget {
+  const _FloatingBoardCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(4.sp, 3.sp, 4.sp, 4.sp),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161618),
+        borderRadius: BorderRadius.circular(9.br),
+        border: Border.all(
+          color: kPrimaryColor.withValues(alpha: 0.25),
+          width: 0.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.6),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: kPrimaryColor.withValues(alpha: 0.12),
+            blurRadius: 10,
+            spreadRadius: -2,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 14.w,
+            height: 2.5.h,
+            margin: EdgeInsets.only(bottom: 3.h),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(2.br),
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              _EvalBar(boardSize: 44, whiteFlex: 58),
+              _GapW(3),
+              _MiniBoard(size: 44),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A lock screen (wallpaper + clock) with the Live Activity card on it.
 class _LiveActivityScreen extends StatelessWidget {
   const _LiveActivityScreen();
 
@@ -389,30 +544,39 @@ class _LiveActivityScreen extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF11161F), Color(0xFF0B0D12)],
+          colors: [Color(0xFF16213C), Color(0xFF0C1018), Color(0xFF080A0E)],
+          stops: [0.0, 0.55, 1.0],
         ),
       ),
-      padding: EdgeInsets.fromLTRB(8.w, 26.h, 8.w, 10.h),
+      padding: EdgeInsets.fromLTRB(8.w, 24.h, 8.w, 12.h),
       child: Column(
         children: [
+          Icon(
+            Icons.lock_rounded,
+            size: 11.ic,
+            color: Colors.white.withValues(alpha: 0.7),
+          ),
+          SizedBox(height: 8.h),
           Text(
             '9:41',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
-              fontSize: 30.f,
-              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.95),
+              fontSize: 34.f,
+              fontWeight: FontWeight.w700,
               height: 1,
+              letterSpacing: 0.5,
             ),
           ),
           SizedBox(height: 2.h),
           Text(
             'Monday, June 8',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.55),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 9.f,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          SizedBox(height: 14.h),
+          SizedBox(height: 16.h),
           const _LiveActivityCard(),
         ],
       ),
@@ -420,82 +584,126 @@ class _LiveActivityScreen extends StatelessWidget {
   }
 }
 
-/// The Live Activity card: eval bar + board + players + last move/eval.
+/// The Live Activity card: an app row, then the eval bar + board + players.
 class _LiveActivityCard extends StatelessWidget {
   const _LiveActivityCard();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(6.sp),
+      padding: EdgeInsets.all(7.sp),
       decoration: BoxDecoration(
-        color: const Color(0xFF141416),
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 0.5),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 4.w,
-            height: 46.w,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(2.br)),
-            child: Column(
-              children: [
-                Expanded(flex: 38, child: Container(color: const Color(0xFF2A2A2A))),
-                Expanded(flex: 62, child: Container(color: Colors.white)),
-              ],
-            ),
+        color: const Color(0xFF161618),
+        borderRadius: BorderRadius.circular(13.br),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 0.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
-          SizedBox(width: 5.w),
-          const _MiniBoard(size: 46),
-          SizedBox(width: 8.w),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _nameRow(dim: false),
-                SizedBox(height: 5.h),
-                _nameRow(dim: true),
-                SizedBox(height: 7.h),
-                Row(
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // App row: logo + name + "now".
+          Row(
+            children: [
+              Container(
+                width: 13.w,
+                height: 13.w,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: kPrimaryColor,
+                  borderRadius: BorderRadius.circular(3.br),
+                ),
+                child: Text(
+                  '♞',
+                  style: TextStyle(fontSize: 9.f, height: 1, color: Colors.black),
+                ),
+              ),
+              SizedBox(width: 5.w),
+              Container(
+                width: 48.w,
+                height: 5.h,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(3.br),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'now',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 7.f,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const _EvalBar(boardSize: 42, whiteFlex: 62),
+              const _GapW(5),
+              const _MiniBoard(size: 42),
+              const _GapW(8),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Nf3',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.f,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1F1F22),
-                        borderRadius: BorderRadius.circular(8.br),
-                        border: Border.all(
-                          color: kPrimaryColor.withValues(alpha: 0.6),
-                          width: 0.5,
+                    _nameRow(dim: false),
+                    SizedBox(height: 5.h),
+                    _nameRow(dim: true),
+                    SizedBox(height: 7.h),
+                    Row(
+                      children: [
+                        Text(
+                          'Nf3',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11.f,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'monospace',
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        '+1.2',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 8.f,
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'monospace',
+                        const Spacer(),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 5.w,
+                            vertical: 2.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1F1F22),
+                            borderRadius: BorderRadius.circular(8.br),
+                            border: Border.all(
+                              color: kPrimaryColor.withValues(alpha: 0.6),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Text(
+                            '+1.2',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 8.f,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -511,23 +719,60 @@ class _LiveActivityCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: dim ? const Color(0xFF3A3A3D) : Colors.white,
             shape: BoxShape.circle,
-            border: dim
-                ? null
-                : Border.all(color: kPrimaryColor, width: 1),
+            border: dim ? null : Border.all(color: kPrimaryColor, width: 1),
           ),
         ),
         SizedBox(width: 5.w),
-        Container(
-          width: dim ? 42.w : 54.w,
-          height: 6.h,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: dim ? 0.22 : 0.85),
-            borderRadius: BorderRadius.circular(3.br),
+        Flexible(
+          child: Container(
+            height: 6.h,
+            constraints: BoxConstraints(maxWidth: dim ? 40.w : 52.w),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: dim ? 0.22 : 0.85),
+              borderRadius: BorderRadius.circular(3.br),
+            ),
           ),
         ),
       ],
     );
   }
+}
+
+/// A vertical eval bar matching a board of [boardSize]; white fills [whiteFlex]%.
+class _EvalBar extends StatelessWidget {
+  const _EvalBar({required this.boardSize, this.whiteFlex = 58});
+
+  final double boardSize;
+  final int whiteFlex;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 3.5.w,
+      height: boardSize.w,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(2.br)),
+      child: Column(
+        children: [
+          Expanded(
+            flex: 100 - whiteFlex,
+            child: Container(color: const Color(0xFF2A2A2A)),
+          ),
+          Expanded(flex: whiteFlex, child: Container(color: Colors.white)),
+        ],
+      ),
+    );
+  }
+}
+
+/// A const horizontal gap (so the mockup rows can stay `const`).
+class _GapW extends StatelessWidget {
+  const _GapW(this.width);
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(width: width.w);
 }
 
 /// A tiny checkerboard with a few pieces, just enough to read as chess.
@@ -599,49 +844,6 @@ class _MiniBoard extends StatelessWidget {
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// The floating PiP window: a thin eval bar + a mini board, shadowed.
-class _FloatingBoardCard extends StatelessWidget {
-  const _FloatingBoardCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(3.sp),
-      decoration: BoxDecoration(
-        color: const Color(0xFF141416),
-        borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10), width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.55),
-            blurRadius: 9,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 3.w,
-            height: 44.w,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(2.br)),
-            child: Column(
-              children: [
-                Expanded(flex: 42, child: Container(color: const Color(0xFF2A2A2A))),
-                Expanded(flex: 58, child: Container(color: Colors.white)),
-              ],
-            ),
-          ),
-          SizedBox(width: 3.w),
-          const _MiniBoard(size: 44),
-        ],
       ),
     );
   }
