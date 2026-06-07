@@ -735,9 +735,15 @@ private struct LockPlayerRow: View {
 
   var body: some View {
     HStack(spacing: 6) {
+      // Leading avatar slot — flag emoji if we have one, else the initials circle
+      // (mirrors Android's flag-or-avatar slot). No remote photos on iOS: network
+      // image loads black-card the extension, so the fallback is initials, which
+      // also distinguishes the two players better than a single shared logo would.
       if let flag, !flag.isEmpty {
         Text(flag)
           .font(.system(size: 15))
+      } else {
+        PlayerAvatar(name: name, photoUrl: nil, isWhite: isWhite, size: 20)
       }
       if let title, !title.isEmpty {
         Text(title)

@@ -24,6 +24,7 @@ type GameRow = {
   last_move_time: string | null;
   last_clock_white: number | null;
   last_clock_black: number | null;
+  pgn: string | null;
 };
 
 type RoundRow = {
@@ -790,9 +791,14 @@ function buildLiveUpdatePayload(args: {
     whiteFide,
     blackFide,
   );
-  const evalSnapshot = fen
-    ? args.evalSnapshots.get(fen) ?? estimateEvalSnapshotFromFen(fen)
-    : null;
+  // Eval priority: the broadcast PGN's own engine eval for the last move (a real
+  // Stockfish score, present on ~25% of live games and always matching the current
+  // position) → the positions/evals cache by exact FEN → a crude material count as
+  // a last resort. The first two are real engine evals; the estimate is the fallback.
+  const evalSnapshot = parseEvalFromPgn(args.game.pgn) ??
+    (fen
+      ? args.evalSnapshots.get(fen) ?? estimateEvalSnapshotFromFen(fen)
+      : null);
   const clockTiming = buildClockTiming(args.game, fen);
 
   return {
@@ -920,7 +926,7 @@ async function fetchGames(gameIds: string[]) {
   const { data, error } = await supabase
     .from("games")
     .select(
-      "id,tour_id,round_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black",
+      "id,tour_id,round_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black,pgn",
     )
     .in("id", gameIds);
 
@@ -1388,6 +1394,34 @@ function extractPlayerMeta(
     whiteFed: normalizeFed(whiteFed),
     blackFed: normalizeFed(blackFed),
   };
+}
+
+/**
+ * Pull the REAL engine evaluation out of the broadcast PGN. Lichess broadcasts
+ * embed per-move comments like `{ [%eval 4.15] [%clk 0:21:54] }` (pawns, from
+ * White's POV) or `{ [%eval #15] }` (mate; positive = White mates, negative =
+ * Black). The LAST `[%eval ...]` in the PGN is the current position's score.
+ * Returns null when the broadcast carries no eval (caller falls back).
+ */
+function parseEvalFromPgn(pgn: string | null): EvalSnapshot | null {
+  if (!pgn) return null;
+  const matches = pgn.match(/\[%eval\s+([^\]\s]+)\s*\]/g);
+  if (!matches || matches.length === 0) return null;
+  const last = matches[matches.length - 1];
+  const valueMatch = last.match(/\[%eval\s+([^\]\s]+)\s*\]/);
+  if (!valueMatch) return null;
+  const raw = valueMatch[1].trim();
+
+  if (raw.startsWith("#")) {
+    const mate = parseInt(raw.slice(1), 10);
+    if (!Number.isFinite(mate) || mate === 0) return null;
+    return { cp: null, mate, depth: null };
+  }
+
+  const pawns = parseFloat(raw);
+  if (!Number.isFinite(pawns)) return null;
+  const cp = Math.round(pawns * 100);
+  return { cp: Math.max(-10000, Math.min(10000, cp)), mate: null, depth: null };
 }
 
 function estimateEvalSnapshotFromFen(fen: string) {

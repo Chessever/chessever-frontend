@@ -260,8 +260,8 @@ class _PipSettingCard extends StatelessWidget {
           ),
           SizedBox(height: 4.h),
           Text(
-            'A floating mini-board that stays on top of other apps and updates '
-            'in real time as the game is played. Choose which games can float.',
+            'A floating mini-board that stays on top of other apps and follows '
+            'the game live. Pick which games can float.',
             style: AppTypography.textSmRegular.copyWith(
               color: context.colors.textSecondary,
               fontSize: 11.f,
@@ -279,10 +279,8 @@ class _PipSettingCard extends StatelessWidget {
   }
 }
 
-/// Live Activity mode card. iOS only repaints the locked widget when a push
-/// arrives, and between-move clock pushes are low-priority (the system defers
-/// them until screen-on), so the note frames it as a lower-frequency glanceable
-/// view that catches up when you wake the phone — not a real-time stream.
+/// Live Activity mode card. A move-only lock-screen card (board, players, last
+/// move, evaluation — no clocks); iOS repaints it on each move push.
 class _LiveActivitySettingCard extends StatelessWidget {
   const _LiveActivitySettingCard({
     required this.selected,
@@ -307,10 +305,8 @@ class _LiveActivitySettingCard extends StatelessWidget {
           ),
           SizedBox(height: 4.h),
           Text(
-            'A glanceable lock-screen view of the board, clocks and '
-            'evaluation. It refreshes at a lower frequency than the live app and '
-            'catches up when you wake your phone — a quick look, not a live '
-            'stream.',
+            'A lock-screen card with the board, players and evaluation, '
+            'updated on every move. A quick glance, not a live stream.',
             style: AppTypography.textSmRegular.copyWith(
               color: context.colors.textSecondary,
               fontSize: 11.f,

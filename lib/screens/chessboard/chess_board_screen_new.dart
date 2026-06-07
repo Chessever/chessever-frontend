@@ -2119,6 +2119,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
         onGameChanged: (index) {},
         lastViewedIndex: _lastViewedIndex,
+        isActivePage: true,
       );
     }
 
@@ -2154,6 +2155,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
         onGameChanged: (index) {},
         lastViewedIndex: _lastViewedIndex,
+        isActivePage: true,
       );
     }
 
@@ -2299,6 +2301,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                           onGameChanged: _navigateToGame,
                                           lastViewedIndex: _lastViewedIndex,
                                           hideEventInfo: widget.hideEventInfo,
+                                          isActivePage:
+                                              index == _currentPageIndex,
                                         ),
                                     error: (e, _) => ErrorWidget(e),
                                   );
@@ -2310,6 +2314,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                     onGameChanged: _navigateToGame,
                                     lastViewedIndex: _lastViewedIndex,
                                     hideEventInfo: widget.hideEventInfo,
+                                    isActivePage: index == _currentPageIndex,
                                   );
                                 }
                               },
@@ -2846,6 +2851,7 @@ class _GamePage extends StatelessWidget {
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
         savedAnalysisData: savedAnalysisData,
+        isActivePage: currentGameIndex == currentPageIndex,
       ),
       body: _GameBody(
         index: currentGameIndex,
@@ -2871,6 +2877,7 @@ class _LoadingScreen extends StatelessWidget {
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
+  final bool isActivePage;
 
   const _LoadingScreen({
     required this.games,
@@ -2878,6 +2885,7 @@ class _LoadingScreen extends StatelessWidget {
     required this.onGameChanged,
     this.lastViewedIndex,
     this.hideEventInfo = false,
+    this.isActivePage = false,
   });
 
   @override
@@ -2914,6 +2922,7 @@ class _LoadingScreen extends StatelessWidget {
         isLoading: true,
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
+        isActivePage: isActivePage,
       ),
       body: Center(
         child: ConstrainedBox(
@@ -3115,6 +3124,13 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final bool hideEventInfo;
   final SavedAnalysisData? savedAnalysisData;
 
+  /// Whether this app bar belongs to the currently-visible PageView page.
+  /// Only the active page attaches the shared [LikeFlightAnchor] GlobalKeys
+  /// (heart badge + save button); adjacent pre-built pages must not, or the
+  /// same GlobalKey would appear in the tree multiple times (duplicate-key
+  /// crash) and the flying-heart would dock onto the wrong page.
+  final bool isActivePage;
+
   const _AppBar({
     required this.game,
     required this.games,
@@ -3124,6 +3140,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
     this.lastViewedIndex,
     this.hideEventInfo = false,
     this.savedAnalysisData,
+    this.isActivePage = false,
   });
 
   @override
@@ -3559,7 +3576,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
               // flight a wrong dock target. Measuring the un-transformed box
               // here yields the badge's true rect even while it's invisible.
               child: KeyedSubtree(
-                key: anchor.heartBadgeKey,
+                key: widget.isActivePage ? anchor.heartBadgeKey : null,
                 child: heartBadge,
               ),
             ),
@@ -3587,7 +3604,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // like is represented only by the small red badge above. The
         // flight phase still uses the keyed slot as its target.
         return IconButton(
-          icon: KeyedSubtree(key: anchor.saveButtonKey, child: pulsing),
+          icon: KeyedSubtree(
+            key: widget.isActivePage ? anchor.saveButtonKey : null,
+            child: pulsing,
+          ),
           tooltip: 'Save analysis',
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         );

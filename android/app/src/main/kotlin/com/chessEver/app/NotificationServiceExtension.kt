@@ -205,13 +205,13 @@ class NotificationServiceExtension : INotificationServiceExtension {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    // Format eval text
-    val evalText = formatEval(evalCp, evalMate)
-
     // Build notification
     val builder = NotificationCompat.Builder(context, CHANNEL_ID)
       .setContentTitle("$white vs $black")
-      .setContentText(if (isGameOver) resultText else "$lastMove  $evalText")
+      // Collapsed text only — and only for a finished game (a terminal one-shot
+      // result line). A live game shows nothing here: the move + eval already live
+      // inside the rich card, so a duplicate "b2b3  +0.0" line above it is removed.
+      .setContentText(if (isGameOver) resultText else null)
       .setSubText(if (prettyEventName.isNotEmpty()) prettyEventName else null)
       .setSmallIcon(R.drawable.ic_notification)
       .setLargeIcon(boardBitmap)
@@ -224,11 +224,8 @@ class NotificationServiceExtension : INotificationServiceExtension {
       .setGroup("live_games")
       .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
 
-    // Set progress bar for eval
-    if (evalCp != null || evalMate != null) {
-      val progress = evalToProgress(evalCp, evalMate)
-      builder.setProgress(100, progress, false)
-    }
+    // No progress bar: it duplicated the eval bar that already lives inside the
+    // rich card. Removed so the embedded card carries the evaluation alone.
 
     // Clocks removed from the live card — no chronometer. The notification updates
     // the board, last move and evaluation on each move only.
@@ -239,11 +236,13 @@ class NotificationServiceExtension : INotificationServiceExtension {
     // format stripped it to title + event name + a progress bar (no board, no eval
     // bar) — so we use the bitmap on EVERY version to match the iOS card.
     if (bigPictureBitmap != null) {
+      // No summary text: when expanded, BigPictureStyle would show "b2b3  +0.0"
+      // above the picture, duplicating what's inside the card. Omitted so the
+      // card takes the whole expanded space under the title.
       builder.setStyle(
         NotificationCompat.BigPictureStyle()
           .bigPicture(bigPictureBitmap)
           .bigLargeIcon(null as Bitmap?)
-          .setSummaryText("$lastMove  $evalText")
       )
     }
 
@@ -341,7 +340,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
           canvas.drawRect(left, top, left + squareSize, top + squareSize, highlightToPaint)
         }
 
-        board?.get(rank)?.get(file)?.let { piece ->
+        board?.get(rank)?.get(file)?.takeIf { it != '\u0000' }?.let { piece ->
           val pieceBitmap = loadPieceBitmap(context, piece, pieceStyleIndex)
           if (pieceBitmap != null) {
             val inset = squareSize * 0.08f
@@ -406,115 +405,89 @@ class NotificationServiceExtension : INotificationServiceExtension {
     val bgPaint = Paint().apply { color = BACKGROUND_COLOR }
     canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
 
-    // Eval bar on left
-    val evalBarWidth = 16f
-    val evalBarMargin = 16f
-    renderEvalBar(canvas, evalBarMargin, 16f, evalBarWidth, height - 32f, evalCp, evalMate)
+    val padding = 20f
 
-    // Chess board
-    val boardSize = 180
-    val boardX = evalBarMargin + evalBarWidth + 16f
-    val boardY = (height - boardSize) / 2f
+    // --- Left zone: eval bar + board share one vertical band (40..240) ---
+    // The board is the anchor; the eval bar matches its exact top + height so the
+    // two read as one unit instead of the bar over-running top and bottom.
+    val boardSize = 200
+    val boardTop = (height - boardSize) / 2f               // 40
+    val evalBarWidth = 14f
+    val evalBarX = padding                                  // 20
+    renderEvalBar(canvas, evalBarX, boardTop, evalBarWidth, boardSize.toFloat(), evalCp, evalMate)
+
+    val boardX = evalBarX + evalBarWidth + 14f             // 48
     val boardBitmap = renderBoardBitmap(context, fen, boardSize, lastMoveUci, boardThemeIndex, pieceStyleIndex)
-    canvas.drawBitmap(boardBitmap, boardX, boardY, null)
+    canvas.drawBitmap(boardBitmap, boardX, boardTop, null)
 
-    // Text area
-    val textX = boardX + boardSize + 20f
-    val textWidth = width - textX - 16f
+    // Logo avatar fallback for players without a profile photo (loaded once).
+    val logo = loadLogoBitmap(context)
 
-    // Event name
-    val eventPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = ACCENT_COLOR
-      textSize = 24f
-      typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-    }
-    if (eventName.isNotEmpty()) {
-      drawFittedText(
-        canvas,
-        eventName,
-        textX,
-        40f,
-        textWidth,
-        eventPaint,
-        minScale = 0.6f
-      )
-    }
+    // --- Right zone: player pair + result, balanced across the board's band ---
+    // NO event eyebrow: the event name already shows in the notification's native
+    // sub-text line above this card, so it's dropped here. The reclaimed top space
+    // goes to the names, which become the hero of the column.
+    val textX = boardX + boardSize + 24f                   // 272
+    val textRight = width - padding                        // 580
+    val textWidth = textRight - textX                      // 308
 
-    // Player names
-    val playerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = TEXT_PRIMARY_COLOR
-      textSize = 28f
-      typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-    }
-    val secondaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = TEXT_SECONDARY_COLOR
-      textSize = 28f
-      typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-    }
-
-    // Black player on top
+    // Players — 58px row pitch (black on top, white below). The wide pitch keeps
+    // black's meta line clear of white's avatar (the old overlap bug).
+    val blackBaseline = boardTop + 40f                     // 80
+    val whiteBaseline = boardTop + 98f                     // 138
     drawPlayerRow(
-      canvas,
-      textX,
-      85f,
-      black,
-      false,
-      !isWhiteAdvantage(evalCp, evalMate),
-      textWidth,
-      blackPhoto,
-      blackClockSeconds,
-      blackTitle,
-      blackFed,
-      blackFlag,
-      blackScore
+      canvas, textX, blackBaseline, black, false,
+      !isWhiteAdvantage(evalCp, evalMate), textWidth, blackPhoto, blackClockSeconds,
+      blackTitle, blackFed, blackFlag, blackScore, logo
     )
-    // White player on bottom
     drawPlayerRow(
-      canvas,
-      textX,
-      125f,
-      white,
-      true,
-      isWhiteAdvantage(evalCp, evalMate),
-      textWidth,
-      whitePhoto,
-      whiteClockSeconds,
-      whiteTitle,
-      whiteFed,
-      whiteFlag,
-      whiteScore
+      canvas, textX, whiteBaseline, white, true,
+      isWhiteAdvantage(evalCp, evalMate), textWidth, whitePhoto, whiteClockSeconds,
+      whiteTitle, whiteFed, whiteFlag, whiteScore, logo
     )
 
-    // Last move
-    val movePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = TEXT_PRIMARY_COLOR
-      textSize = 40f
-      typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+    // Hairline divider — the single, faint separator before the result.
+    val dividerY = boardTop + 142f                         // 182
+    val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = DIVIDER_COLOR
+      strokeWidth = 1f
     }
-    drawFittedText(
-      canvas,
-      lastMove,
-      textX,
-      195f,
-      textWidth,
-      movePaint,
-      minScale = 0.6f
-    )
+    canvas.drawLine(textX, dividerY, textRight, dividerY, dividerPaint)
 
-    // Eval pill
+    // Result band — last move (left, the hero glyph) + eval chip (right) on one
+    // shared optical centre via the (descent + ascent)/2 baseline trick.
+    val resultCenterY = boardTop + 172f                    // 212
     val evalText = formatEval(evalCp, evalMate)
     val evalPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = TEXT_PRIMARY_COLOR
-      textSize = 28f
+      textSize = 23f
       typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     }
-    val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = SURFACE_COLOR
+    val pillHeight = evalPaint.textSize + 15f              // 38
+    val pillWidth = evalPaint.measureText(evalText) + 28f
+    val pillLeft = textRight - pillWidth
+    val pillTop = resultCenterY - pillHeight / 2f
+    val pillRect = RectF(pillLeft, pillTop, textRight, pillTop + pillHeight)
+    val pillFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SURFACE_COLOR }
+    canvas.drawRoundRect(pillRect, pillHeight / 2f, pillHeight / 2f, pillFill)
+    // A 1px accent hairline gives the eval chip a crisp, deliberate edge.
+    val pillStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = ACCENT_COLOR
+      style = Paint.Style.STROKE
+      strokeWidth = 1f
     }
-    val pillWidth = evalPaint.measureText(evalText) + 24f
-    val pillRect = RectF(textX, 215f, textX + pillWidth, 250f)
-    canvas.drawRoundRect(pillRect, 17.5f, 17.5f, pillPaint)
-    canvas.drawText(evalText, textX + 12f, 242f, evalPaint)
+    canvas.drawRoundRect(pillRect, pillHeight / 2f, pillHeight / 2f, pillStroke)
+    val evalTextY = resultCenterY - (evalPaint.descent() + evalPaint.ascent()) / 2f
+    canvas.drawText(evalText, pillLeft + 14f, evalTextY, evalPaint)
+
+    val movePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = TEXT_PRIMARY_COLOR
+      textSize = 32f
+      typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+    }
+    val moveAvailable = (pillLeft - 14f) - textX
+    val moveBaseline = resultCenterY - (movePaint.descent() + movePaint.ascent()) / 2f
+    drawFittedText(canvas, lastMove, textX, moveBaseline, moveAvailable, movePaint, minScale = 0.5f)
 
     return bitmap
   }
@@ -532,63 +505,61 @@ class NotificationServiceExtension : INotificationServiceExtension {
     title: String?,
     fed: String?,
     flag: String?,
-    score: String?
+    score: String?,
+    logo: Bitmap?
   ) {
-    val avatarRadius = 12f
+    val avatarRadius = 13f
     val avatarCx = x + avatarRadius
-    val avatarCy = y - 9f
+    // Centre the avatar on the optical middle of the 26px name cap, not the baseline.
+    val avatarCy = y - 8f
 
     if (!flag.isNullOrEmpty()) {
-      // Flag emoji in place of the avatar (what the user wants next to names).
+      // Flag emoji in place of the avatar (next to the name).
       val flagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 26f
+        textSize = 28f
         textAlign = Paint.Align.CENTER
       }
-      canvas.drawText(flag, avatarCx, avatarCy + 9f, flagPaint)
+      canvas.drawText(flag, avatarCx, avatarCy + 10f, flagPaint)
     } else if (photo != null) {
       drawCircularImage(canvas, photo, avatarCx, avatarCy, avatarRadius)
+    } else if (logo != null) {
+      // No profile photo → the ChessEver logo, not a blank circle.
+      drawCircularImage(canvas, logo, avatarCx, avatarCy, avatarRadius)
     } else {
       val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (isWhite) Color.WHITE else Color.parseColor("#262626")
+        color = if (isWhite) Color.WHITE else Color.parseColor("#3A3A3D")
         style = Paint.Style.FILL
       }
       canvas.drawCircle(avatarCx, avatarCy, avatarRadius, circlePaint)
     }
 
-    // Border for advantage (only around the avatar circle, not the flag)
+    // Accent ring on the side with the advantage (only around a circular avatar, not a flag).
     if (isAdvantage && flag.isNullOrEmpty()) {
       val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ACCENT_COLOR
         style = Paint.Style.STROKE
         strokeWidth = 2f
       }
-      canvas.drawCircle(avatarCx, avatarCy, avatarRadius + 1f, borderPaint)
+      canvas.drawCircle(avatarCx, avatarCy, avatarRadius + 1.5f, borderPaint)
     }
 
-    // Name
-    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = if (isAdvantage) TEXT_PRIMARY_COLOR else TEXT_SECONDARY_COLOR
-      textSize = 26f
-      typeface = if (isAdvantage) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
-    }
-    val nameX = x + avatarRadius * 2 + 8f
-    // Clocks removed: a finished game shows the score on the right; a live game
-    // shows nothing on the right (the board + last move carry the state).
-    val clockText: String? = null
-    val clockWidth = clockText?.let { clockPillWidth(it) } ?: 0f
+    val nameX = x + avatarRadius * 2 + 12f
+    // Reserve room on the right only for a finished-game score; live games give the
+    // name the full column width.
     val baseAvailable = maxWidth - (nameX - x)
-    val trailingWidth = if (score != null) 40f else clockWidth
-    val availableWidth = if (trailingWidth > 0f) baseAvailable - trailingWidth - 8f else baseAvailable
-    drawFittedText(
-      canvas,
-      name,
-      nameX,
-      y,
-      availableWidth,
-      namePaint,
-      minScale = 0.65f
-    )
+    val trailingWidth = if (score != null) 36f else 0f
+    val availableWidth = if (trailingWidth > 0f) baseAvailable - trailingWidth - 10f else baseAvailable
 
+    // Name — the hero. The winning side is bold + bright, the other dimmed (mirrors the eval bar).
+    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = if (isAdvantage) TEXT_PRIMARY_COLOR else NAME_DIM_COLOR
+      textSize = 26f
+      typeface = if (isAdvantage) Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                 else Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+    }
+    drawFittedText(canvas, name, nameX, y, availableWidth, namePaint, minScale = 0.65f)
+
+    // Supporting line: TITLE • FED, tracked out a touch for a clean broadcast feel.
     val meta = listOfNotNull(
       title?.takeIf { it.isNotBlank() },
       fed?.takeIf { it.isNotBlank() }?.uppercase()
@@ -596,35 +567,24 @@ class NotificationServiceExtension : INotificationServiceExtension {
     if (meta.isNotEmpty()) {
       val metaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = TEXT_SECONDARY_COLOR
-        textSize = 18f
+        textSize = 15f
+        letterSpacing = 0.06f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
       }
-      drawFittedText(
-        canvas,
-        meta,
-        nameX,
-        y + 20f,
-        availableWidth,
-        metaPaint,
-        minScale = 0.65f
-      )
+      drawFittedText(canvas, meta, nameX, y + 22f, availableWidth, metaPaint, minScale = 0.65f)
     }
 
+    // Finished-game score — right-aligned, vertically centred on the name+meta block.
     if (score != null) {
       val scorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = TEXT_PRIMARY_COLOR
-        textSize = 34f
+        textSize = 28f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = Paint.Align.RIGHT
       }
-      canvas.drawText(score, x + maxWidth - 4f, y + 4f, scorePaint)
-    } else if (clockText != null) {
-      drawClockPill(
-        canvas,
-        x + maxWidth - 4f,
-        y - 20f,
-        clockText
-      )
+      val rowCenterY = y + 11f
+      val scoreBaseline = rowCenterY - (scorePaint.descent() + scorePaint.ascent()) / 2f
+      canvas.drawText(score, x + maxWidth, scoreBaseline, scorePaint)
     }
   }
 
@@ -746,11 +706,6 @@ class NotificationServiceExtension : INotificationServiceExtension {
       }
   }
 
-  private fun evalToProgress(evalCp: Double?, evalMate: Int?): Int {
-    val ratio = evalToRatio(evalCp, evalMate)
-    return (ratio * 100).toInt().coerceIn(0, 100)
-  }
-
   private fun evalToRatio(evalCp: Double?, evalMate: Int?): Float {
     val eval = if (evalMate != null && evalMate != 0) {
       if (evalMate > 0) 10.0 else -10.0
@@ -810,65 +765,6 @@ class NotificationServiceExtension : INotificationServiceExtension {
     return output
   }
 
-  private fun clockPillWidth(text: String): Float {
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      textSize = 20f
-      typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-    }
-    val paddingX = 8f
-    return textPaint.measureText(text) + paddingX * 2
-  }
-
-  private fun drawClockPill(canvas: Canvas, rightX: Float, topY: Float, text: String) {
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = TEXT_PRIMARY_COLOR
-      textSize = 20f
-      typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-    }
-    val paddingX = 8f
-    val paddingY = 5f
-    val textWidth = textPaint.measureText(text)
-    val height = textPaint.textSize + paddingY * 2
-    val width = textWidth + paddingX * 2
-    val left = rightX - width
-    val rect = RectF(left, topY, rightX, topY + height)
-
-    val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SURFACE_COLOR }
-    canvas.drawRoundRect(rect, height / 2, height / 2, pillPaint)
-
-    val textY = topY + paddingY + textPaint.textSize - 4f
-    val textX = left + (width - textWidth) / 2f
-    canvas.drawText(text, textX, textY, textPaint)
-  }
-
-  private fun formatClock(seconds: Int): String {
-    val clamped = max(0, seconds)
-    val hours = clamped / 3600
-    val minutes = (clamped % 3600) / 60
-    val secs = clamped % 60
-    return if (hours > 0) {
-      String.format("%d:%02d:%02d", hours, minutes, secs)
-    } else {
-      String.format("%d:%02d", minutes, secs)
-    }
-  }
-
-  private fun buildPromotedBigText(
-    eventName: String,
-    lastMove: String,
-    evalText: String,
-    whiteClockSeconds: Int?,
-    blackClockSeconds: Int?
-  ): String {
-    val parts = mutableListOf<String>()
-    if (eventName.isNotBlank()) {
-      parts += eventName
-    }
-    parts += "$lastMove  $evalText"
-
-    return parts.joinToString("\n")
-  }
-
   private fun fetchBitmap(url: String): Bitmap? {
     if (url.isBlank()) return null
     synchronized(photoCache) {
@@ -895,6 +791,43 @@ class NotificationServiceExtension : INotificationServiceExtension {
         photoCache[url] = null
       }
       null
+    }
+  }
+
+  /**
+   * The ChessEver logo, used as the avatar when a player has no profile photo
+   * (nicer than a blank circle). Loaded once from the bundled Flutter asset and
+   * cached; falls back to the launcher icon, then null (caller draws a plain
+   * circle if even that fails).
+   */
+  private fun loadLogoBitmap(context: Context): Bitmap? {
+    synchronized(logoLock) {
+      if (logoLoaded) return logoBitmap
+      logoLoaded = true
+      val assetCandidates = listOf(
+        "flutter_assets/assets/pngs/new_app_logo_circle.webp",
+        "flutter_assets/assets/pngs/new_app_logo.webp"
+      )
+      for (path in assetCandidates) {
+        val bmp = try {
+          context.assets.open(path).use { BitmapFactory.decodeStream(it) }
+        } catch (_: Exception) {
+          null
+        }
+        if (bmp != null) {
+          logoBitmap = bmp
+          return logoBitmap
+        }
+      }
+      val resId = context.resources.getIdentifier("ic_launcher", "mipmap", context.packageName)
+      if (resId != 0) {
+        logoBitmap = try {
+          BitmapFactory.decodeResource(context.resources, resId)
+        } catch (_: Exception) {
+          null
+        }
+      }
+      return logoBitmap
     }
   }
 
@@ -1004,6 +937,10 @@ class NotificationServiceExtension : INotificationServiceExtension {
     private const val CHANNEL_ID = "live_updates"
     private val photoCache = mutableMapOf<String, Bitmap?>()
     private val pieceBitmapCache = mutableMapOf<String, Bitmap?>()
+    // ChessEver logo avatar fallback — loaded once, reused for every card.
+    private val logoLock = Any()
+    private var logoLoaded = false
+    private var logoBitmap: Bitmap? = null
 
     // Must match PieceSet.values order in chessground:
     // /Users/berkay/.pub-cache/hosted/pub.dev/chessground-7.3.0/lib/src/piece_set.dart
@@ -1059,6 +996,11 @@ class NotificationServiceExtension : INotificationServiceExtension {
     private val ACCENT_COLOR = Color.parseColor("#0FB4E5")
     private val TEXT_PRIMARY_COLOR = Color.WHITE
     private val TEXT_SECONDARY_COLOR = Color.parseColor("#999999")
+    // Dimmed name for the side that isn't ahead — brighter than secondary so the
+    // name stays legible while still reading as "not the leader".
+    private val NAME_DIM_COLOR = Color.parseColor("#B0B0B0")
+    // Hairline rule (white ~15%) between the players and the result band.
+    private val DIVIDER_COLOR = Color.parseColor("#26FFFFFF")
     private val HIGHLIGHT_FROM_COLOR = Color.parseColor("#4D0FB4E5")
     private val HIGHLIGHT_TO_COLOR = Color.parseColor("#800FB4E5")
 

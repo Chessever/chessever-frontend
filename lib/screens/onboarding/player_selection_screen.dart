@@ -159,10 +159,14 @@ class PlayerSelectionContent extends HookConsumerWidget {
     final existingFavoriteIdsKey = existingFavoriteIds.toList()..sort();
     useEffect(() {
       if (existingFavoriteIds.isEmpty) return null;
-      final notifier = ref.read(onboardingSelectedFideIdsProvider.notifier);
-      if (notifier.state.isEmpty) {
-        notifier.state = {...existingFavoriteIds};
-      }
+      // useEffect runs synchronously during build, so defer the provider write
+      // past the build-lock to avoid "modify a provider while building".
+      Future.microtask(() {
+        final notifier = ref.read(onboardingSelectedFideIdsProvider.notifier);
+        if (notifier.state.isEmpty) {
+          notifier.state = {...existingFavoriteIds};
+        }
+      });
       return null;
     }, [existingFavoriteIdsKey.join(',')]);
 
