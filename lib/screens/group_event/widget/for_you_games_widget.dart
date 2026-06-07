@@ -6,6 +6,8 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/smart_level_event.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -159,6 +161,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
     final state = ref.watch(forYouEventsProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final levelTier = SmartLevelTier.fromFilter(
+      ref.watch(forYouAppliedFilterProvider),
+    );
     final events = state.events;
 
     if (state.isLoading && events.isEmpty) {
@@ -189,6 +194,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         viewMode: viewMode,
         isScrolling: _isScrolling,
         showLoadingMore: state.hasMore && !state.isLoading,
+        levelTier: levelTier,
       ),
     );
   }
@@ -258,6 +264,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     required GamesListViewMode viewMode,
     required bool isScrolling,
     bool showLoadingMore = false,
+    SmartLevelTier? levelTier,
   }) {
     // On tablet, use a beautiful grid layout
     if (ResponsiveHelper.isTablet) {
@@ -266,14 +273,18 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         viewMode: viewMode,
         isScrolling: isScrolling,
         showLoadingMore: showLoadingMore,
+        levelTier: levelTier,
       );
     }
 
     // Phone: vertical list layout
     final horizontalPadding = 16.sp;
 
-    // +1 for premium cards, +1 for loading indicator if showing
-    final itemCount = events.length + 1 + (showLoadingMore ? 1 : 0);
+    // +1 for premium cards, +1 for smart level card if selected,
+    // +1 for loading indicator if showing
+    final smartCardCount = levelTier != null ? 1 : 0;
+    final itemCount =
+        events.length + 1 + smartCardCount + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_list'),
@@ -295,16 +306,22 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
+        // Smart level event goes above the current event list when a level is selected.
+        if (levelTier != null && index == 1) {
+          return SmartLevelEventCard(tier: levelTier);
+        }
+
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final event = events[index - 1];
+        final eventIndex = index - 1 - smartCardCount;
+        final event = events[eventIndex];
         return _ForYouEventSection(
           key: ValueKey('event_${event.id}'),
           event: event,
-          isFirst: index == 1,
+          isFirst: eventIndex == 0,
           animatedEventIds: _animatedEventIds,
           animatedGameIds: _animatedGameIds,
           isScrolling: isScrolling,
@@ -337,14 +354,17 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     required GamesListViewMode viewMode,
     required bool isScrolling,
     bool showLoadingMore = false,
+    SmartLevelTier? levelTier,
   }) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
 
     // Number of event-pair rows (ceil division)
     final rowCount = (events.length + 1) ~/ 2;
-    // +1 for premium cards at top, +1 for loading indicator if showing
-    final itemCount = rowCount + 1 + (showLoadingMore ? 1 : 0);
+    final smartCardCount = levelTier != null ? 1 : 0;
+    // +1 for premium cards at top, +1 for smart level card if selected,
+    // +1 for loading indicator if showing
+    final itemCount = rowCount + 1 + smartCardCount + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_tablet_grid'),
@@ -366,12 +386,20 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
+        // Smart level event card spans the full tablet width above real events.
+        if (levelTier != null && index == 1) {
+          return SmartLevelEventCard(
+            tier: levelTier,
+            margin: EdgeInsets.only(bottom: 20.sp),
+          );
+        }
+
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final rowIndex = index - 1;
+        final rowIndex = index - 1 - smartCardCount;
         final i = rowIndex * 2;
         final event1 = events[i];
         final event2 = i + 1 < events.length ? events[i + 1] : null;

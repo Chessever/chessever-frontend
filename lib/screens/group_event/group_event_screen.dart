@@ -517,6 +517,9 @@ class GroupEventScreen extends HookConsumerWidget {
                                         ),
                                 isLoadingMore: isLoadingMore,
                                 scrollController: scrollController,
+                                showSmartLevelEvent:
+                                    currentCategory ==
+                                    GroupEventCategory.current,
                               ),
                             );
                           },
