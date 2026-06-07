@@ -234,23 +234,11 @@ class NotificationServiceExtension : INotificationServiceExtension {
     // the board, last move and evaluation on each move only.
     builder.setShowWhen(false)
 
-    if (Build.VERSION.SDK_INT >= 35) {
-      builder.setStyle(
-        NotificationCompat.BigTextStyle()
-          .bigText(
-            buildPromotedBigText(
-              eventName = prettyEventName,
-              lastMove = lastMove,
-              evalText = evalText,
-              whiteClockSeconds = whiteClockSeconds,
-              blackClockSeconds = blackClockSeconds,
-            )
-          )
-          .setSummaryText("$lastMove  $evalText")
-      )
-    } else if (bigPictureBitmap != null) {
-      // BigPictureStyle is visually richer on older Android versions, but it
-      // does not qualify for Android 15 promoted ongoing notifications.
+    // Always show the rich expanded card from renderExpandedView (eval bar, names
+    // + titles, score, last move, eval pill). The Android 15+ promoted "BigText"
+    // format stripped it to title + event name + a progress bar (no board, no eval
+    // bar) — so we use the bitmap on EVERY version to match the iOS card.
+    if (bigPictureBitmap != null) {
       builder.setStyle(
         NotificationCompat.BigPictureStyle()
           .bigPicture(bigPictureBitmap)
@@ -259,21 +247,10 @@ class NotificationServiceExtension : INotificationServiceExtension {
       )
     }
 
-    // Android 16 (API 36) "Live Updates": promote this ongoing notification so it
-    // surfaces as a live activity on the lock screen / status-bar chip.
-    //
-    // We set the raw EXTRA_REQUEST_PROMOTED_ONGOING key
-    // ("android.requestPromotedOngoing") rather than
-    // NotificationCompat.Builder#setRequestPromotedOngoing(true): that helper only
-    // exists in androidx.core 1.17+, while the extra works on every version and is
-    // simply ignored on older OS levels. Requires the POST_PROMOTED_NOTIFICATIONS
-    // permission (declared in the manifest) and a promotable style — we use
-    // BigTextStyle above on API 35+ (BigPictureStyle does NOT qualify for promotion).
-    if (eventType != "end" && Build.VERSION.SDK_INT >= 35) {
-      builder.addExtras(Bundle().apply {
-        putBoolean("android.requestPromotedOngoing", true)
-      })
-    }
+    // NOTE: we intentionally do NOT request Android 15+ "promoted ongoing" here.
+    // That format strips the card to title + text + a progress bar and cannot show
+    // our rich BigPicture (eval bar / board / players + titles / score). The rich
+    // expanded card is the goal, so this stays a normal ongoing notification.
 
     // Add action to end updates
     if (eventType != "end") {
