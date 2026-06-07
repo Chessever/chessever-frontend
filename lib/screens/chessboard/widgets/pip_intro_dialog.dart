@@ -665,13 +665,17 @@ class _LiveActivityCard extends StatelessWidget {
                     SizedBox(height: 7.h),
                     Row(
                       children: [
-                        Text(
-                          'Nf3',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11.f,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'monospace',
+                        Flexible(
+                          child: Text(
+                            'Nf3',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.f,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'monospace',
+                            ),
                           ),
                         ),
                         const Spacer(),

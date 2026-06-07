@@ -1,0 +1,2 @@
+#include "../Pods/Target Support Files/Pods-ChessEverLiveActivity/Pods-ChessEverLiveActivity.release.xcconfig"
+#include "Generated.xcconfig"

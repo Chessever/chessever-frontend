@@ -9,6 +9,8 @@ import OneSignalLiveActivities
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private var liveActivityTokenObserverTasks: [String: Task<Void, Never>] = [:]
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -160,9 +162,16 @@ import OneSignalLiveActivities
         if let activity = Activity<DefaultLiveActivityAttributes>.activities.first(
           where: { $0.attributes.onesignal.activityId == activityId }
         ) {
+          let pushTokenHex = await waitForLiveActivityUpdateToken(activity)
+          if let pushTokenHex {
+            OneSignalLiveActivitiesManagerImpl.enter(activityId, withToken: pushTokenHex)
+          }
+          observeLiveActivityUpdateToken(activity, activityId: activityId)
           result([
             "ok": true,
             "enabled": ActivityAuthorizationInfo().areActivitiesEnabled,
+            "pushTokenPresent": pushTokenHex != nil,
+            "pushTokenPrefix": pushTokenHex.map { String($0.prefix(12)) } ?? NSNull(),
             "activity": serializeDefaultLiveActivity(activity),
           ])
           return
@@ -183,11 +192,59 @@ import OneSignalLiveActivities
   }
 
   @available(iOS 16.1, *)
+  private func waitForLiveActivityUpdateToken(
+    _ activity: Activity<DefaultLiveActivityAttributes>
+  ) async -> String? {
+    if let token = activity.pushToken?.hexEncodedString() {
+      return token
+    }
+
+    return await withTaskGroup(of: String?.self) { group in
+      group.addTask {
+        for await tokenData in activity.pushTokenUpdates {
+          return tokenData.hexEncodedString()
+        }
+        return nil
+      }
+      group.addTask {
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        return nil
+      }
+
+      let token = await group.next() ?? nil
+      group.cancelAll()
+      return token
+    }
+  }
+
+  @available(iOS 16.1, *)
+  private func observeLiveActivityUpdateToken(
+    _ activity: Activity<DefaultLiveActivityAttributes>,
+    activityId: String
+  ) {
+    liveActivityTokenObserverTasks[activityId]?.cancel()
+    liveActivityTokenObserverTasks[activityId] = Task {
+      if let token = activity.pushToken?.hexEncodedString() {
+        OneSignalLiveActivitiesManagerImpl.enter(activityId, withToken: token)
+      }
+
+      for await tokenData in activity.pushTokenUpdates {
+        guard !Task.isCancelled else { return }
+        OneSignalLiveActivitiesManagerImpl.enter(
+          activityId,
+          withToken: tokenData.hexEncodedString()
+        )
+      }
+    }
+  }
+
+  @available(iOS 16.1, *)
   private func serializeDefaultLiveActivity(
     _ activity: Activity<DefaultLiveActivityAttributes>
   ) -> [String: Any] {
     let contentData = activity.contentState.data
     let attributesData = activity.attributes.data
+    let pushTokenHex = activity.pushToken?.hexEncodedString()
     let gameId: Any
     if let contentGameId = contentData["game_id"]?.asString() {
       gameId = contentGameId
@@ -202,6 +259,8 @@ import OneSignalLiveActivities
       "activityId": activity.attributes.onesignal.activityId,
       "state": String(describing: activity.activityState),
       "gameId": gameId,
+      "pushTokenPresent": pushTokenHex != nil,
+      "pushTokenPrefix": pushTokenHex.map { String($0.prefix(12)) } ?? NSNull(),
       "content": liveActivityDataSnapshot(contentData),
       "attributes": liveActivityDataSnapshot(attributesData),
     ]
@@ -282,5 +341,11 @@ import OneSignalLiveActivities
                          message: "Failed to configure audio session",
                          details: error.localizedDescription))
     }
+  }
+}
+
+private extension Data {
+  func hexEncodedString() -> String {
+    map { String(format: "%02x", $0) }.joined()
   }
 }

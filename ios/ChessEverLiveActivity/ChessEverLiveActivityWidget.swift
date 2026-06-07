@@ -482,6 +482,8 @@ struct ChessEverLiveActivityWidget: Widget {
       ChessLockScreenView(state: state)
         .activityBackgroundTint(ChessDesign.background)
         .widgetURL(state.widgetURL)
+        .privacySensitive(false)
+        .unredacted()
     } dynamicIsland: { context in
       let state = LiveGameState(context: context)
       return DynamicIsland {

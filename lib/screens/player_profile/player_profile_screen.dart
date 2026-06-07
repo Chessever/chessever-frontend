@@ -63,7 +63,6 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
     this.title,
     this.federation,
     this.rating,
-    this.dataSource = PlayerProfileDataSource.twic,
     this.gamebasePlayerId,
   });
 
@@ -73,7 +72,6 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
   final String? title;
   final String? federation;
   final int? rating;
-  final PlayerProfileDataSource dataSource;
   final String? gamebasePlayerId;
 
   /// Create from SearchPlayer model
@@ -84,7 +82,6 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
       title: player.title,
       federation: player.fed,
       rating: player.rating,
-      dataSource: PlayerProfileDataSource.supabase,
     );
   }
 
@@ -101,7 +98,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   late PageController _pageController;
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
-  late PlayerProfileDataSource _currentDataSource;
+  /// Games/events are now sourced exclusively from TWIC. The old
+  /// ChessEver/TWIC source selector was removed after the two databases were
+  /// merged backend-side, so TWIC is the single source of truth.
+  static const _source = PlayerProfileDataSource.twic;
   String? _currentGamebasePlayerId;
   bool _didPrefetchExplorerRoot = false;
   int? _gamesTabCueCount;
@@ -140,7 +140,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   @override
   void initState() {
     super.initState();
-    _currentDataSource = widget.dataSource;
     _currentGamebasePlayerId = _normalizePlayerId(widget.gamebasePlayerId);
     final initialTab = ref.read(selectedPlayerProfileTabProvider);
     _pageController = PageController(
@@ -169,22 +168,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   String? _normalizePlayerId(String? raw) {
     final id = raw?.trim();
     return (id == null || id.isEmpty) ? null : id;
-  }
-
-  void _setDataSource(
-    PlayerProfileDataSource source, {
-    String? gamebasePlayerId,
-  }) {
-    if (_currentDataSource == source) return;
-    HapticFeedbackService.light();
-    setState(() {
-      final normalizedId = _normalizePlayerId(gamebasePlayerId);
-      if (normalizedId != null && normalizedId.isNotEmpty) {
-        _currentGamebasePlayerId = normalizedId;
-      }
-      _currentDataSource = source;
-      _gamesTabCueCount = null;
-    });
   }
 
   void _handleTabSelection(int index) {
@@ -235,7 +218,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final playerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
-      source: _currentDataSource,
+      source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
     final currentState = ref.read(playerProfileGamesKeyProvider(playerKey));
@@ -319,7 +302,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final activePlayerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
-      source: _currentDataSource,
+      source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
     final activeProfile =
@@ -380,7 +363,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final playerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
-      source: _currentDataSource,
+      source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
     final gameFilter =
@@ -488,7 +471,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final activePlayerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
-      source: _currentDataSource,
+      source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
     final activeProfileAsync = ref.watch(
@@ -529,7 +512,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       source: PlayerProfileDataSource.twic,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
-    // Always watch so the source selector stays visible in both modes.
+    // TWIC summary feeds the games-tab total count and the study-opening row.
     final twicSummaryAsync = ref.watch(
       twicProfileSummaryProvider(twicLookupKey),
     );
@@ -546,15 +529,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final playerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
-      source: _currentDataSource,
+      source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
     final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
     final hasActiveFilter = gamesState.hasActiveFilters;
-    final isTwicSource = _currentDataSource == PlayerProfileDataSource.twic;
 
     var isTwicStatsLoading = false;
-    if (isTwicSource && selectedTab == PlayerProfileTab.about) {
+    if (selectedTab == PlayerProfileTab.about) {
       final allGamesStats = ref.watch(
         twicPlayerStatsProvider(
           TwicPlayerStatsRequest(
@@ -584,36 +566,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           openingStats.isLoading ||
           filteredStats.isLoading;
     }
-    final isTwicLoading =
-        isTwicSource && (gamesState.isLoading || isTwicStatsLoading);
-
-    // Always watch supabase games state for ChessEver game count
-    final supabaseKey = PlayerProfileKey(
-      fideId: widget.fideId,
-      playerName: widget.playerName,
-      source: PlayerProfileDataSource.supabase,
-      gamebasePlayerId: _currentGamebasePlayerId,
-    );
-    final supabaseGamesState = ref.watch(
-      playerProfileGamesKeyProvider(supabaseKey),
-    );
-    final chesseverGameCount =
-        supabaseGamesState.totalCount ?? supabaseGamesState.allGames.length;
-
-    // On the Events tab the banner shows event totals; otherwise game totals.
-    final showEventCounts = selectedTab == PlayerProfileTab.events;
-    final supabaseEventsAsync = ref.watch(
-      playerEventsKeyProvider(supabaseKey),
-    );
-    final chesseverEventCount = supabaseEventsAsync.valueOrNull?.length;
-    final isChesseverLoading =
-        showEventCounts
-            ? supabaseEventsAsync.isLoading
-            : supabaseGamesState.isLoading;
-    final chesseverBannerCount =
-        showEventCounts
-            ? (chesseverEventCount ?? 0)
-            : chesseverGameCount;
+    final isTwicLoading = gamesState.isLoading || isTwicStatsLoading;
 
     return Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
@@ -668,27 +621,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildDataSourceSelector(
-                      twicSummaryAsync,
-                      chesseverCount: chesseverBannerCount,
-                      isChesseverLoading: isChesseverLoading,
-                      showEventCounts: showEventCounts,
-                    ),
                     if (hasPlayerExplorer &&
-                        _currentDataSource == PlayerProfileDataSource.twic &&
                         selectedTab == PlayerProfileTab.about)
                       _buildStudyOpeningRow(),
                     if (selectedTab == PlayerProfileTab.games)
                       _buildGamesActionButtons(
-                        showStudyOpening:
-                            hasPlayerExplorer &&
-                            _currentDataSource == PlayerProfileDataSource.twic,
+                        showStudyOpening: hasPlayerExplorer,
                         playerKey: activePlayerKey,
                         hasActiveFilter: hasActiveFilter,
                         knownTotalCount:
-                            _currentDataSource == PlayerProfileDataSource.twic
-                                ? twicSummaryAsync.valueOrNull?.totalGames
-                                : null,
+                            twicSummaryAsync.valueOrNull?.totalGames,
                       ),
                   ],
                 ),
@@ -927,7 +869,7 @@ countryCode,
               title: effectiveTitle,
               federation: effectiveFederation,
               fallbackRating: widget.rating,
-              dataSource: _currentDataSource,
+              dataSource: _source,
               gamebasePlayerId: _currentGamebasePlayerId,
               onOpenGames: _openGames,
             );
@@ -935,14 +877,14 @@ countryCode,
             return PlayerGamesTab(
               fideId: widget.fideId,
               playerName: widget.playerName,
-              dataSource: _currentDataSource,
+              dataSource: _source,
               gamebasePlayerId: _currentGamebasePlayerId,
             );
           case PlayerProfileTab.events:
             return PlayerEventsTab(
               fideId: widget.fideId,
               playerName: widget.playerName,
-              dataSource: _currentDataSource,
+              dataSource: _source,
               gamebasePlayerId: _currentGamebasePlayerId,
             );
         }
@@ -1088,239 +1030,6 @@ countryCode,
     return displayName;
   }
 
-  Widget _buildDataSourceSelector(
-    AsyncValue<TwicProfileSummary?> twicSummaryAsync, {
-    required int chesseverCount,
-    required bool isChesseverLoading,
-    required bool showEventCounts,
-  }) {
-    final summary = twicSummaryAsync.valueOrNull;
-    final isLoading = twicSummaryAsync.isLoading;
-    final isTwic = _currentDataSource == PlayerProfileDataSource.twic;
-
-    if (summary == null && !isLoading && !isTwic) {
-      return const SizedBox.shrink();
-    }
-
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
-    final twicTotal =
-        showEventCounts ? summary?.totalEvents : summary?.totalGames;
-    final twicGameCount =
-        twicTotal != null ? formatCompactCount(twicTotal) : '--';
-    final chesseverFormatted =
-        isChesseverLoading ? null : formatCompactCount(chesseverCount);
-
-    return SingleMotionBuilder(
-      motion: const CupertinoMotion.bouncy(),
-      value: 1.0,
-      builder: (context, progress, _) {
-        return Opacity(
-          opacity: progress.clamp(0.0, 1.0),
-          child: Transform.translate(
-            offset: Offset(0, (1.0 - progress) * -6),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                4.h,
-                horizontalPadding,
-                0,
-              ),
-              child: _DataSourceBanner(
-                isTwic: isTwic,
-                isLoading: isLoading,
-                twicGameCount: twicGameCount,
-                chesseverGameCount: chesseverFormatted,
-                twicEnabled: summary != null || isTwic,
-                onSelectRegular:
-                    () => _setDataSource(PlayerProfileDataSource.supabase),
-                onSelectTwic:
-                    summary == null
-                        ? null
-                        : () => _setDataSource(
-                          PlayerProfileDataSource.twic,
-                          gamebasePlayerId: summary.gamebasePlayerId,
-                        ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Segmented toggle for switching between ChessEver and TWIC data sources.
-class _DataSourceBanner extends StatelessWidget {
-  const _DataSourceBanner({
-    required this.isTwic,
-    required this.isLoading,
-    required this.twicGameCount,
-    this.chesseverGameCount,
-    required this.twicEnabled,
-    required this.onSelectRegular,
-    required this.onSelectTwic,
-  });
-
-  final bool isTwic;
-  final bool isLoading;
-  final String twicGameCount;
-  final String? chesseverGameCount;
-  final bool twicEnabled;
-  final VoidCallback onSelectRegular;
-  final VoidCallback? onSelectTwic;
-
-  @override
-  Widget build(BuildContext context) {
-    final canSwitchToTwic = twicEnabled && onSelectTwic != null && !isLoading;
-
-    final chesseverLabel =
-        chesseverGameCount != null
-            ? 'ChessEver · $chesseverGameCount'
-            : 'ChessEver';
-
-    return Container(
-      padding: EdgeInsets.all(3.sp),
-      decoration: BoxDecoration(
-        color: context.colors.textPrimary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10.br),
-      ),
-      child: Row(
-        children: [
-          // ChessEver tab
-          Expanded(
-            child: _SourceTab(
-              label: chesseverLabel,
-              isActive: !isTwic,
-              onTap: isTwic ? onSelectRegular : null,
-            ),
-          ),
-          SizedBox(width: 3.w),
-          // TWIC tab
-          Expanded(
-            child: _SourceTab(
-              label: isLoading ? 'TWIC' : 'TWIC · $twicGameCount',
-              isActive: isTwic,
-              isLoading: isLoading && !isTwic,
-              onTap: !isTwic && canSwitchToTwic ? onSelectTwic : null,
-              accentColor: kPrimaryColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SourceTab extends StatefulWidget {
-  const _SourceTab({
-    required this.label,
-    required this.isActive,
-    this.isLoading = false,
-    this.onTap,
-    this.accentColor,
-  });
-
-  final String label;
-  final bool isActive;
-  final bool isLoading;
-  final VoidCallback? onTap;
-  final Color? accentColor;
-
-  @override
-  State<_SourceTab> createState() => _SourceTabState();
-}
-
-class _SourceTabState extends State<_SourceTab> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final activeColor = widget.accentColor ?? context.colors.textPrimary;
-
-    return GestureDetector(
-      onTapDown:
-          widget.onTap != null ? (_) => setState(() => _pressed = true) : null,
-      onTapUp:
-          widget.onTap != null
-              ? (_) {
-                setState(() => _pressed = false);
-                HapticFeedbackService.light();
-                widget.onTap!();
-              }
-              : null,
-      onTapCancel:
-          widget.onTap != null ? () => setState(() => _pressed = false) : null,
-      child: SingleMotionBuilder(
-        motion: const CupertinoMotion.snappy(),
-        value: _pressed ? 1.0 : 0.0,
-        builder: (context, pressProgress, _) {
-          return Transform.scale(
-            scale: 1.0 - 0.02 * pressProgress,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
-              decoration: BoxDecoration(
-                color:
-                    widget.isActive
-                        ? (widget.accentColor != null
-                            ? activeColor.withValues(alpha: 0.12)
-                            : context.colors.textPrimary.withValues(alpha: 0.10))
-                        : Colors.transparent,
-                borderRadius: BorderRadius.circular(8.br),
-                border: Border.all(
-                  color:
-                      widget.isActive
-                          ? (widget.accentColor != null
-                              ? activeColor.withValues(alpha: 0.30)
-                              : context.colors.textPrimary.withValues(alpha: 0.12))
-                          : Colors.transparent,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (widget.isLoading) ...[
-                    SizedBox(
-                      width: 10.w,
-                      height: 10.h,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          kPrimaryColor.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 6.w),
-                  ],
-                  Flexible(
-                    child: Text(
-                      widget.label,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color:
-                            widget.isActive
-                                ? (widget.accentColor != null
-                                    ? activeColor.withValues(alpha: 0.95)
-                                    : context.colors.textPrimary.withValues(alpha: 0.95))
-                                : context.colors.textPrimary.withValues(alpha: 0.40),
-                        fontWeight:
-                            widget.isActive ? FontWeight.w600 : FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
 }
 
 /// Compact pill-style button for study opening on the About tab.

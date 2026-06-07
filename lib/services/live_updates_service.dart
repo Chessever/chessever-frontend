@@ -12,6 +12,7 @@ class LiveUpdatesService {
   );
 
   bool _setupDone = false;
+  bool _oneSignalReady = false;
 
   /// Game IDs with an active Live Activity, OLDEST first. Capped at
   /// [_maxActive]; starting one beyond the cap evicts the oldest (FIFO).
@@ -52,29 +53,53 @@ class LiveUpdatesService {
     }
   }
 
-  Future<void> setup() async {
-    if (_setupDone) return;
-    if (kIsWeb) return;
-    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+  void markOneSignalReady() {
+    _oneSignalReady = true;
+  }
+
+  Future<bool> setup() async {
+    if (kIsWeb) return false;
+    if (defaultTargetPlatform != TargetPlatform.iOS) return true;
+    if (_setupDone) return true;
+    if (!_oneSignalReady) {
+      debugPrint(
+        '[LiveUpdates] OneSignal is not initialized; skipping iOS Live Activity setup.',
+      );
+      return false;
+    }
 
     try {
-      OneSignal.LiveActivities.setupDefault();
+      await OneSignal.LiveActivities.setupDefault(
+        options: LiveActivitySetupOptions(
+          enablePushToStart: true,
+          enablePushToUpdate: true,
+        ),
+      );
       _setupDone = true;
+      return true;
     } catch (_) {
       // Live Activities not available on this device/OS.
+      return false;
     }
   }
 
-  Future<void> startLiveActivity({
+  Future<bool> startLiveActivity({
     required String activityId,
     required Map<String, dynamic> attributes,
     required Map<String, dynamic> content,
   }) async {
-    await setup();
-    if (kIsWeb) return;
+    if (kIsWeb) return false;
 
     final gameId = attributes['game_id'] as String?;
-    if (gameId == null || gameId.isEmpty) return;
+    if (gameId == null || gameId.isEmpty) return false;
+
+    final liveActivitiesReady = await setup();
+    if (defaultTargetPlatform == TargetPlatform.iOS && !liveActivitiesReady) {
+      debugPrint(
+        '[LiveUpdates] iOS Live Activity was not started because ActivityKit push setup is not ready.',
+      );
+      return false;
+    }
 
     // Cap concurrent Live Activities at [_maxActive]; evict the oldest first.
     await _evictOldestIfNeeded(gameId);
@@ -97,6 +122,9 @@ class LiveUpdatesService {
           started = true;
           debugPrint(
             '[LiveUpdates] iOS Live Activity persisted for game: $gameId',
+          );
+          debugPrint(
+            '[LiveUpdates] iOS Live Activity update token present: ${response?['pushTokenPresent'] == true}',
           );
           debugPrint('[LiveUpdates] Native state: ${response?['activity']}');
         } else {
@@ -132,6 +160,7 @@ class LiveUpdatesService {
     if (started) {
       await _registerSubscription(gameId, enabled: true);
     }
+    return started;
   }
 
   Future<void> endLiveActivity(String activityId) async {
@@ -340,13 +369,11 @@ class LiveUpdatesService {
             'game_id': gameId,
             'platform': platform,
             'enabled': enabled,
-            if (enabled) 'started_at': null,
-            // Reset last_event_at on (re)enable so the move-only refresh edge fn
-            // pushes the CURRENT board immediately on its next poll — otherwise a
-            // re-enabled sub whose last_event_at is already past the game's last
-            // move would wait for the NEXT move, leaving a stale/blank card when
-            // you background a slow or stalled game.
+            if (enabled) 'started_at': DateTime.now().toUtc().toIso8601String(),
+            // Reset refresh markers on (re)enable so the edge fn pushes the
+            // current board immediately on its next poll.
             if (enabled) 'last_event_at': null,
+            if (enabled) 'last_payload_signature': null,
           }, onConflict: 'user_id,game_id,platform');
     } catch (e) {
       debugPrint('[LiveUpdates] Failed to register subscription: $e');

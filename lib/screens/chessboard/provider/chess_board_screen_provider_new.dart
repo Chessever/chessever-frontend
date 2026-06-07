@@ -149,6 +149,15 @@ class ChessBoardScreenNotifierNew
   bool _resumeVariantAutoPlay = false;
   bool _isPlayingVariant = false;
   final Map<String, DateTime> _failedEvalTimestamps = {};
+  // Circuit-breaker for the eval retry paths (post-cancellation / post-Stockfish
+  // -failure). Those retries call `_evaluatePosition(force: true)`, which
+  // bypasses coalescing, so a position that keeps failing (e.g. Stockfish
+  // disabled in debug) or whose cloud PVs keep getting rejected would re-fire
+  // with no delay forever and freeze the UI isolate. Cap consecutive same-FEN
+  // retries; reset on a new position, a user-driven (re)eval, or a resolved one.
+  String? _evalRetryFen;
+  int _evalRetryCount = 0;
+  static const int _maxConsecutiveEvalRetries = 3;
   int _evalRequestCounter = 0;
   int? _activeEvalRequestId;
   String? _activeEvalKey;
@@ -599,7 +608,38 @@ class ChessBoardScreenNotifierNew
       _cancelEvalWatchdog();
       // Reset consecutive watchdog timeouts on successful evaluation
       _consecutiveWatchdogTimeouts = 0;
+      // A genuinely resolved evaluation clears the retry circuit-breaker.
+      _evalRetryCount = 0;
+      _evalRetryFen = null;
     }
+  }
+
+  /// Re-run the evaluation for [fen] after a cancellation/failure, but cap the
+  /// number of consecutive same-position retries. The retry sites use
+  /// `_evaluatePosition(force: true)`, which bypasses coalescing; without a cap
+  /// a position that keeps failing (e.g. Stockfish disabled in debug) or whose
+  /// PVs keep getting rejected would re-fire with no delay forever and freeze
+  /// the UI isolate. After the cap we stop and clear the loading flag instead.
+  void _retryEvaluationForFen(String fen, {required String reason}) {
+    final normalizedFen = _normalizeFen(fen);
+    if (_evalRetryFen == normalizedFen) {
+      _evalRetryCount++;
+    } else {
+      _evalRetryFen = normalizedFen;
+      _evalRetryCount = 1;
+    }
+    if (_evalRetryCount > _maxConsecutiveEvalRetries) {
+      _releaseLog(
+        '🛑 EVAL: Aborting retry loop for $normalizedFen after '
+        '$_evalRetryCount attempts ($reason) to avoid freezing the UI',
+      );
+      final snapshot = state.value;
+      if (snapshot != null && snapshot.isEvaluating) {
+        state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
+      }
+      return;
+    }
+    _evaluatePosition(force: true);
   }
 
   void _cancelEvalWatchdog({bool resetPending = false}) {
@@ -5146,8 +5186,20 @@ class ChessBoardScreenNotifierNew
     final isExtensionUpdate =
         previousVariantPointer.isEmpty && shouldResumeAutoPlay;
 
+    // Only reject (preserve the locked variant base) while the user is ACTIVELY
+    // exploring a variant subline — i.e. variantMovePointer is non-empty. When a
+    // variant is merely selected at its base and the board then advances on the
+    // mainline, the pointer is empty: the board is now one (or more) plies past
+    // the selection, so every freshly-evaluated cloud PV for the CURRENT position
+    // would be rejected here and never applied. That dead-ends the eval, and the
+    // failure/cancellation retry paths (_evaluatePosition force:true) then
+    // re-fire forever → UI freeze. In the not-exploring case we fall through to
+    // the logic below (≈"Not in variant exploration - safe to update base"),
+    // which re-anchors variantBaseFen to the new position (or clears an invalid
+    // selection) and applies the PVs.
     if (previousSelection != null &&
         previousBaseFen != null &&
+        previousVariantPointer.isNotEmpty &&
         !isExtensionUpdate) {
       // Only validate if NOT an extension update
       final baseFenCompare = previousBaseFen.split(' ').take(3).join(' ');
@@ -6112,7 +6164,7 @@ class ChessBoardScreenNotifierNew
                   _normalizeFen(latestFen) == _normalizeFen(fen)) {
                 // Silenced — per-eval spam.
                 // _releaseLog('🎯 EVAL: Retrying evaluation after cancellation');
-                _evaluatePosition(force: true);
+                _retryEvaluationForFen(fen, reason: 'post-cancellation');
               }
             });
           }
@@ -6240,7 +6292,7 @@ class ChessBoardScreenNotifierNew
           if (latestFen != null &&
               _normalizeFen(latestFen) == _normalizeFen(fen)) {
             _releaseLog('🎯 EVAL: Retrying evaluation after Stockfish failure');
-            _evaluatePosition(force: true);
+            _retryEvaluationForFen(fen, reason: 'stockfish-failure');
           }
         });
       }
@@ -7188,6 +7240,10 @@ class ChessBoardScreenNotifierNew
             ? '🎯 EVAL: Forcing evaluation for current position'
             : '🎯 EVAL: Scheduling evaluation for current position',
       );
+      // A user/navigation-driven evaluation is a clean slate: reset the retry
+      // circuit-breaker so a previously capped position can be evaluated again.
+      _evalRetryCount = 0;
+      _evalRetryFen = null;
       final visibleIndex = ref.read(currentlyVisiblePageIndexProvider);
       final shouldForce = force || (visibleIndex == index);
       _evaluatePosition(

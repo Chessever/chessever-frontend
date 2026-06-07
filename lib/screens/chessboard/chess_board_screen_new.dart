@@ -1551,9 +1551,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         return false;
       case PipMode.live:
         return GameFilterHelper.isLiveNow(game);
-      case PipMode.all:
-        return GameFilterHelper.isLiveNow(game) ||
-            game.effectiveGameStatus.isFinished;
     }
   }
 
@@ -1887,11 +1884,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     final isOngoing = game.gameStatus.isOngoing;
     final isFinished = game.gameStatus.isFinished;
-    // "live" → ongoing only; "all" → ongoing or finished (skip unknown).
+    // "live" → ongoing only.
     if (liveActivityMode == LiveActivityMode.live && !isOngoing) return;
-    if (liveActivityMode == LiveActivityMode.all && !isOngoing && !isFinished) {
-      return;
-    }
 
     // Check if user is authenticated
     final user = ref.read(currentUserProvider);

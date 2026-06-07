@@ -356,12 +356,6 @@ class _PipModeSelector extends StatelessWidget {
           _buildOption(context, mode: PipMode.off, icon: Icons.block_rounded),
           SizedBox(width: 4.w),
           _buildOption(context, mode: PipMode.live, icon: Icons.sensors_rounded),
-          SizedBox(width: 4.w),
-          _buildOption(
-            context,
-            mode: PipMode.all,
-            icon: Icons.all_inclusive_rounded,
-          ),
         ],
       ),
     );
@@ -456,12 +450,6 @@ class _LiveActivityModeSelector extends StatelessWidget {
             context,
             mode: LiveActivityMode.live,
             icon: Icons.sensors_rounded,
-          ),
-          SizedBox(width: 4.w),
-          _buildOption(
-            context,
-            mode: LiveActivityMode.all,
-            icon: Icons.all_inclusive_rounded,
           ),
         ],
       ),

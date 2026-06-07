@@ -135,6 +135,13 @@ class AudioPlayerService with WidgetsBindingObserver {
   Future<void> _playWithRecovery(SfxType type) async {
     try {
       await initializeAndLoadAllAssets();
+      // The engine can die during the await gap above (Android backgrounding,
+      // iOS route change). Calling play() then throws SoLoudNotInitializedException
+      // — the 1169-user "MA" crash, surfaced to Sentry via SoLoud's logger.
+      // Re-check and funnel into recovery instead of letting play() throw.
+      if (!player.isInitialized) {
+        throw StateError('SoLoud not initialized after init; forcing recovery');
+      }
       // soloud 4.x: play() is sync — no await.
       player.play(_resolve(type));
     } catch (e, s) {
@@ -143,8 +150,12 @@ class AudioPlayerService with WidgetsBindingObserver {
       try {
         await Future<void>.delayed(const Duration(milliseconds: 50));
         await initializeAndLoadAllAssets(force: true);
-        // _resolve reads the freshly-loaded field — no stale handles.
-        player.play(_resolve(type));
+        // Only play if recovery actually brought the engine back, so a failed
+        // recovery can't throw a second SoLoudNotInitializedException.
+        if (player.isInitialized) {
+          // _resolve reads the freshly-loaded field — no stale handles.
+          player.play(_resolve(type));
+        }
       } catch (err, st) {
         debugPrint('⚠️ Audio playback failed after recovery: $err\n$st');
       }

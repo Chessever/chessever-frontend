@@ -8,6 +8,7 @@ type LiveSubscriptionRow = {
   platform: "ios" | "android";
   started_at: string | null;
   last_event_at: string | null;
+  last_payload_signature: string | null;
 };
 
 type GameRow = {
@@ -115,6 +116,7 @@ type RefreshStatus =
   | "disabled_not_live_status"
   | "disabled_stale"
   | "not_found"
+  | "token_pending"
   | "error";
 
 type RefreshResult = {
@@ -172,11 +174,36 @@ const MIN_INTERVAL_MS = readIntEnv(
   0,
   60_000,
 );
+// How long a game can sit between moves before we treat its subscription as
+// stale and disable it. Chess games run up to ~3h; this gives a comfortable
+// buffer so a full-length game (or a long think near the end) never gets its
+// Live Activity killed mid-game. The card itself can live ~8h on iOS, so 6h is
+// safely under that while covering every real game length. Env-tunable.
 const FRESH_WINDOW_MS = readIntEnv(
   "LIVE_ACTIVITY_FRESH_WINDOW_MS",
-  3 * 60 * 60 * 1000,
+  6 * 60 * 60 * 1000,
   60_000,
   24 * 60 * 60 * 1000,
+);
+// iOS staleDate window: how long the CURRENT card content stays "fresh" before
+// iOS dims it as outdated. We push per move, so this only matters during a gap
+// (a long classical think, or a brief pipeline hiccup). Generous on purpose so
+// the card never reads "not updating" during a normal game; capped under the
+// ~8h Live Activity lifetime. Env-tunable without a redeploy.
+const STALE_AFTER_MS = readIntEnv(
+  "LIVE_ACTIVITY_STALE_AFTER_MS",
+  4 * 60 * 60 * 1000,
+  60_000,
+  8 * 60 * 60 * 1000,
+);
+// OneSignal can briefly return "not found" while a just-started iOS ActivityKit
+// push-to-update token is still being associated with the activity id. Do not
+// permanently disable the subscription during that startup window.
+const LIVE_ACTIVITY_TOKEN_GRACE_MS = readIntEnv(
+  "LIVE_ACTIVITY_TOKEN_GRACE_MS",
+  2 * 60 * 1000,
+  0,
+  15 * 60 * 1000,
 );
 const CONCURRENCY = readIntEnv("LIVE_ACTIVITY_REFRESH_CONCURRENCY", 5, 1, 20);
 const UPDATE_PRIORITY = normalizeLiveActivityPriority(
@@ -285,7 +312,9 @@ async function selectSubscriptions(options: {
   const platforms = ANDROID_ENABLED ? ["ios", "android"] : ["ios"];
   let query = supabase
     .from("user_live_game_subscriptions")
-    .select("user_id,game_id,platform,started_at,last_event_at")
+    .select(
+      "user_id,game_id,platform,started_at,last_event_at,last_payload_signature",
+    )
     .eq("enabled", true)
     .in("platform", platforms);
 
@@ -421,6 +450,9 @@ async function refreshSubscription(
     if (!options.dryRun) {
       const updateResult = await sendLiveActivityUpdate(activityId, payload);
       if (updateResult.notFound) {
+        if (isWithinLiveActivityTokenGrace(row, options.nowMs)) {
+          return tokenPendingResult(row);
+        }
         await disableLiveSubscription(row);
         return {
           status: "not_found",
@@ -434,6 +466,9 @@ async function refreshSubscription(
 
       const endResult = await sendLiveActivityEnd(activityId, payload);
       if (endResult.notFound) {
+        if (isWithinLiveActivityTokenGrace(row, options.nowMs)) {
+          return tokenPendingResult(row);
+        }
         await disableLiveSubscription(row);
         return {
           status: "not_found",
@@ -482,13 +517,14 @@ async function refreshSubscription(
     };
   }
 
-  // Move-only, full priority: push ONLY when a new move landed, ALWAYS at
-  // priority 10 (immediate + guaranteed delivery). No between-move clock nudges —
-  // interim updates were removed (clocks are gone from the widget; the nudges just
-  // burned Apple's budget and delayed real moves).
-  const lastEventMs = parseDateMs(row.last_event_at);
-  const moved = lastEventMs === null || lastMoveMs > lastEventMs;
-  if (!moved && !options.force) {
+  // Move-only, full priority: push when the rendered content state changes.
+  // Do not compare broadcast last_move_time against server wall-clock time:
+  // feeds can be delayed/rounded, and an initial refresh sets last_event_at to
+  // "now", which can incorrectly suppress every later position update.
+  const payloadSignature = buildPayloadSignature(payload);
+  const changed = row.last_event_at === null ||
+    row.last_payload_signature !== payloadSignature;
+  if (!changed && !options.force) {
     return { status: "throttled", gameId: row.game_id, userId: row.user_id };
   }
 
@@ -498,6 +534,9 @@ async function refreshSubscription(
     10,
   );
   if (updateResult.notFound) {
+    if (isWithinLiveActivityTokenGrace(row, options.nowMs)) {
+      return tokenPendingResult(row);
+    }
     await disableLiveSubscription(row);
     return { status: "not_found", gameId: row.game_id, userId: row.user_id };
   }
@@ -505,7 +544,7 @@ async function refreshSubscription(
     return errorResult(row, updateResult, "update failed");
   }
 
-  await markLiveSubscriptionEvent(row);
+  await markLiveSubscriptionEvent(row, payloadSignature);
   let delivery: unknown = undefined;
   if (options.debug) {
     const notifId = parseNotificationId(updateResult.responseText);
@@ -577,12 +616,12 @@ async function refreshAndroidSubscription(
   }
 
   // Android's clock ticks LOCALLY via the notification chronometer, so — unlike
-  // iOS — we never send between-move clock nudges. Push ONLY on a real move (it
-  // redraws the board and re-anchors the clock). Keeps Android push volume to
-  // roughly one per move.
-  const lastEventMs = parseDateMs(row.last_event_at);
-  const moved = lastEventMs === null || lastMoveMs > lastEventMs;
-  if (!moved && !options.force) {
+  // iOS — we never send between-move clock nudges. Push only when the rendered
+  // content state changes.
+  const payloadSignature = buildPayloadSignature(payload);
+  const changed = row.last_event_at === null ||
+    row.last_payload_signature !== payloadSignature;
+  if (!changed && !options.force) {
     return { status: "throttled", gameId: row.game_id, userId: row.user_id };
   }
 
@@ -601,7 +640,7 @@ async function refreshAndroidSubscription(
   if (!result.ok) {
     return errorResult(row, result, "android update failed");
   }
-  await markLiveSubscriptionEvent(row);
+  await markLiveSubscriptionEvent(row, payloadSignature);
   return {
     status: "updated",
     gameId: row.game_id,
@@ -700,6 +739,16 @@ async function sendOneSignalCreateMessage(
     });
     const text = await res.text();
     if (res.ok) {
+      const acceptedError = oneSignalAcceptedError(text);
+      if (acceptedError) {
+        return {
+          ok: false,
+          notFound: acceptedError.notFound,
+          status: res.status,
+          errorText: acceptedError.errorText,
+          responseText: truncateForDebug(text),
+        };
+      }
       return {
         ok: true,
         notFound: false,
@@ -710,9 +759,7 @@ async function sendOneSignalCreateMessage(
     const lower = text.toLowerCase();
     return {
       ok: false,
-      notFound: res.status === 404 || lower.includes("not found") ||
-        lower.includes("no subscribers") ||
-        lower.includes("included players"),
+      notFound: res.status === 404 || isOneSignalNotFoundText(lower),
       status: res.status,
       errorText: text,
     };
@@ -852,9 +899,9 @@ async function sendLiveActivityUpdate(
     event_updates: { data: updateData },
     // Always priority 10 — we only ever push on a real move now.
     priority,
-    // Move-only cards sit between moves; keep them "fresh" for an hour so iOS
-    // doesn't dim the card as stale during a normal think.
-    stale_date: Math.floor(Date.now() / 1000) + 3600,
+    // Move-only cards sit between moves; keep them "fresh" for the whole game so
+    // iOS never dims the card as stale during a long think or a brief gap.
+    stale_date: Math.floor((Date.now() + STALE_AFTER_MS) / 1000),
     ios_relevance_score: 1,
   };
 
@@ -897,6 +944,16 @@ async function sendLiveActivityEvent(
 
     const text = await res.text();
     if (res.ok) {
+      const acceptedError = oneSignalAcceptedError(text);
+      if (acceptedError) {
+        return {
+          ok: false,
+          notFound: acceptedError.notFound,
+          status: res.status,
+          errorText: acceptedError.errorText,
+          responseText: truncateForDebug(text),
+        };
+      }
       return {
         ok: true,
         notFound: false,
@@ -909,7 +966,7 @@ async function sendLiveActivityEvent(
     return {
       ok: false,
       notFound: res.status === 404 || res.status === 410 ||
-        lower.includes("not found"),
+        isOneSignalNotFoundText(lower),
       status: res.status,
       errorText: text,
     };
@@ -1070,10 +1127,16 @@ async function fetchEvalSnapshots(fens: string[]) {
   return map;
 }
 
-async function markLiveSubscriptionEvent(row: LiveSubscriptionRow) {
+async function markLiveSubscriptionEvent(
+  row: LiveSubscriptionRow,
+  payloadSignature: string,
+) {
   await supabase
     .from("user_live_game_subscriptions")
-    .update({ last_event_at: new Date().toISOString() })
+    .update({
+      last_event_at: new Date().toISOString(),
+      last_payload_signature: payloadSignature,
+    })
     .eq("game_id", row.game_id)
     .eq("platform", row.platform)
     .eq("user_id", row.user_id);
@@ -1085,6 +1148,7 @@ async function disableLiveSubscription(row: LiveSubscriptionRow) {
     .update({
       enabled: false,
       last_event_at: new Date().toISOString(),
+      last_payload_signature: null,
     })
     .eq("game_id", row.game_id)
     .eq("platform", row.platform)
@@ -1107,6 +1171,21 @@ function errorResult(
   };
 }
 
+function isWithinLiveActivityTokenGrace(row: LiveSubscriptionRow, nowMs: number) {
+  const startedMs = parseDateMs(row.started_at);
+  return startedMs !== null &&
+    nowMs >= startedMs &&
+    nowMs - startedMs <= LIVE_ACTIVITY_TOKEN_GRACE_MS;
+}
+
+function tokenPendingResult(row: LiveSubscriptionRow): RefreshResult {
+  return {
+    status: "token_pending",
+    gameId: row.game_id,
+    userId: row.user_id,
+  };
+}
+
 function summarize(results: RefreshResult[]) {
   const counts: Record<RefreshStatus, number> = {
     updated: 0,
@@ -1116,6 +1195,7 @@ function summarize(results: RefreshResult[]) {
     disabled_not_live_status: 0,
     disabled_stale: 0,
     not_found: 0,
+    token_pending: 0,
     error: 0,
   };
   const errors: string[] = [];
@@ -1138,8 +1218,100 @@ function summarize(results: RefreshResult[]) {
   };
 }
 
+function oneSignalAcceptedError(text: string) {
+  if (!text.trim()) return null;
+  try {
+    const parsed = JSON.parse(text);
+    const details = oneSignalErrorDetails(parsed);
+    if (details.length > 0) {
+      const errorText = details.join("; ");
+      return {
+        notFound: isOneSignalNotFoundText(errorText),
+        errorText,
+      };
+    }
+
+    const recipients = parsed?.recipients;
+    if (typeof recipients === "number" && recipients <= 0) {
+      return {
+        notFound: true,
+        errorText: `OneSignal accepted the request but targeted 0 recipients: ${
+          truncateForDebug(text)
+        }`,
+      };
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
+}
+
+function oneSignalErrorDetails(value: unknown): string[] {
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  return [
+    ...oneSignalErrorValueDetails(record.errors),
+    ...oneSignalErrorValueDetails(record.error),
+  ];
+}
+
+function oneSignalErrorValueDetails(value: unknown): string[] {
+  if (value == null) return [];
+  if (typeof value === "string") return value.trim() ? [value] : [];
+  if (Array.isArray(value)) {
+    return value.flatMap(oneSignalErrorValueDetails);
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(
+      ([key, nested]) =>
+        oneSignalErrorValueDetails(nested).map((detail) => `${key}: ${detail}`),
+    );
+  }
+  return [String(value)];
+}
+
+function isOneSignalNotFoundText(text: string) {
+  const lower = text.toLowerCase();
+  return lower.includes("not found") ||
+    lower.includes("no subscribers") ||
+    lower.includes("included players") ||
+    lower.includes("recipients") && lower.includes("0");
+}
+
 function buildLiveActivityId(gameId: string, userId: string) {
   return `live:${gameId}:${userId}`;
+}
+
+function buildPayloadSignature(payload: LiveUpdatePayload) {
+  return JSON.stringify({
+    game_id: payload.game_id,
+    fen: payload.fen,
+    last_move: payload.last_move,
+    last_move_uci: payload.last_move_uci,
+    last_move_san: payload.last_move_san,
+    last_move_numbered: payload.last_move_numbered,
+    last_move_time: payload.last_move_time,
+    eval_cp: payload.eval_cp,
+    eval_mate: payload.eval_mate,
+    status: payload.status,
+    is_check: payload.is_check,
+    is_checkmate: payload.is_checkmate,
+    is_game_over: payload.is_game_over,
+    player_white: payload.player_white,
+    player_black: payload.player_black,
+    event_name: payload.event_name,
+    round_name: payload.round_name,
+    white_title: payload.white_title,
+    black_title: payload.black_title,
+    white_fed: payload.white_fed,
+    black_fed: payload.black_fed,
+    white_photo: payload.white_photo,
+    black_photo: payload.black_photo,
+    white_flag: payload.white_flag,
+    black_flag: payload.black_flag,
+    board_theme_index: payload.board_theme_index,
+    piece_style_index: payload.piece_style_index,
+  });
 }
 
 function debugPayloadSnapshot(payload: LiveUpdatePayload) {

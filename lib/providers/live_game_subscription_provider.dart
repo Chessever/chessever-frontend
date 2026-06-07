@@ -48,6 +48,7 @@ class LiveGameSubscriptionNotifier
 
     state = const AsyncLoading();
 
+    var started = false;
     if (enabled) {
       final granted =
           await PushNotificationsService.instance.requestPermissionWithDialog();
@@ -63,11 +64,15 @@ class LiveGameSubscriptionNotifier
         game.blackPlayer.fideId?.toString(),
       );
 
-      await LiveUpdatesService.instance.startLiveActivity(
+      started = await LiveUpdatesService.instance.startLiveActivity(
         activityId: _activityId(game.gameId, user.id),
         attributes: {'game_id': game.gameId},
         content: _buildLiveContent(game, whitePhoto, blackPhoto),
       );
+      if (!started) {
+        state = const AsyncData(false);
+        return;
+      }
     } else {
       await LiveUpdatesService.instance.endLiveActivity(
         _activityId(game.gameId, user.id),
@@ -82,7 +87,9 @@ class LiveGameSubscriptionNotifier
             'game_id': game.gameId,
             'platform': platform,
             'enabled': enabled,
-            if (enabled) 'started_at': null,
+            if (enabled) 'started_at': DateTime.now().toUtc().toIso8601String(),
+            if (enabled) 'last_event_at': null,
+            if (enabled) 'last_payload_signature': null,
           }, onConflict: 'user_id,game_id,platform');
     } catch (_) {
       // Ignore server errors for now; Live Activity is still local.
