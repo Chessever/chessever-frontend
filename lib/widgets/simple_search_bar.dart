@@ -16,6 +16,7 @@ class SimpleSearchBar extends StatefulWidget {
     required this.focusNode,
     required this.onCloseTap,
     required this.onOpenFilter,
+    this.onSubmitted,
     this.hintText = '',
     this.autofocus = false,
     this.onChanged,
@@ -30,6 +31,7 @@ class SimpleSearchBar extends StatefulWidget {
   final FocusNode focusNode;
   final VoidCallback onCloseTap;
   final VoidCallback? onOpenFilter;
+  final ValueChanged<String>? onSubmitted;
   final String hintText;
   final bool autofocus;
   final ValueChanged<String>? onChanged;
@@ -158,19 +160,14 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     if (hints == null || hints.isEmpty) return null;
     // Empty string during fade-out lets SpringHintWord spring the last word
     // away instead of popping it off in a single frame.
-    final word =
-        _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
+    final word = _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
     final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (prefix.isNotEmpty)
-          Text(prefix, style: AppTypography.textMdRegular),
+        if (prefix.isNotEmpty) Text(prefix, style: AppTypography.textMdRegular),
         Flexible(
-          child: SpringHintWord(
-            word: word,
-            style: AppTypography.textMdRegular,
-          ),
+          child: SpringHintWord(word: word, style: AppTypography.textMdRegular),
         ),
       ],
     );
@@ -205,6 +202,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
               focusNode: widget.focusNode,
               autofocus: widget.autofocus,
               onChanged: widget.onChanged,
+              onSubmitted: widget.onSubmitted,
               style: AppTypography.textMdRegular,
               decoration: InputDecoration(
                 hintText: rotatingHint == null ? widget.hintText : null,
@@ -220,12 +218,10 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
           // contains text. Scoped to a ListenableBuilder so toggling it
           // doesn't rebuild the TextField and cause IME / focus churn.
           ListenableBuilder(
-            listenable: Listenable.merge([
-              widget.controller,
-              widget.focusNode,
-            ]),
+            listenable: Listenable.merge([widget.controller, widget.focusNode]),
             builder: (context, _) {
-              final visible = widget.focusNode.hasFocus ||
+              final visible =
+                  widget.focusNode.hasFocus ||
                   widget.controller.text.isNotEmpty;
               if (!visible) return const SizedBox.shrink();
               return GestureDetector(

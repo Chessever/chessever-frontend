@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
+import 'package:chessever2/screens/group_event/smart_opening_event.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
@@ -67,7 +68,10 @@ class SearchResultsWidget extends HookConsumerWidget {
           tournaments = _applySearchFilter(tournaments, searchFilter);
         }
 
-        if (tournaments.isEmpty && results.playerResults.isEmpty) {
+        final openingQuery = SmartOpeningQuery.parse(searchQuery);
+        if (tournaments.isEmpty &&
+            results.playerResults.isEmpty &&
+            openingQuery == null) {
           return _buildEmptyState(context, searchQuery);
         }
 
@@ -75,6 +79,7 @@ class SearchResultsWidget extends HookConsumerWidget {
           scrollController: scrollController,
           tournaments: tournaments,
           searchQuery: searchQuery,
+          openingQuery: openingQuery,
         );
       },
       loading: () => _buildLoadingState(),
@@ -111,9 +116,9 @@ class SearchResultsWidget extends HookConsumerWidget {
                   'No events match "$query"',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                fontSize: 14.sp,
-                color: context.colors.textSecondary,
-              ),
+                    fontSize: 14.sp,
+                    color: context.colors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -213,11 +218,13 @@ class _SearchResultsListView extends ConsumerWidget {
     required this.scrollController,
     required this.tournaments,
     required this.searchQuery,
+    this.openingQuery,
   });
 
   final ScrollController scrollController;
   final List<GroupEventCardModel> tournaments;
   final String searchQuery;
+  final SmartOpeningQuery? openingQuery;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -274,10 +281,22 @@ class _SearchResultsListView extends ConsumerWidget {
               child: PlayerSearchCards(searchQuery: searchQuery),
             ),
           ),
+        if (openingQuery != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                hasPlayerCards ? 0 : 16.sp,
+                horizontalPadding,
+                0,
+              ),
+              child: SmartOpeningEventCard(query: openingQuery!),
+            ),
+          ),
         SliverPadding(
           padding: EdgeInsets.symmetric(
             horizontal: horizontalPadding,
-            vertical: hasPlayerCards ? 0 : 16.sp,
+            vertical: hasPlayerCards || openingQuery != null ? 0 : 16.sp,
           ),
           sliver: SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -309,8 +328,11 @@ class _SearchResultsListView extends ConsumerWidget {
         horizontal: horizontalPadding,
         vertical: 16.sp,
       ),
-      // Add 1 to item count if we have player cards to show
-      itemCount: tournaments.length + (hasPlayerCards ? 1 : 0),
+      // Add rows for player cards and the opening smart database card.
+      itemCount:
+          tournaments.length +
+          (hasPlayerCards ? 1 : 0) +
+          (openingQuery != null ? 1 : 0),
       addAutomaticKeepAlives: true,
       addRepaintBoundaries: true,
       cacheExtent: 2000,
@@ -323,8 +345,14 @@ class _SearchResultsListView extends ConsumerWidget {
           return PlayerSearchCards(searchQuery: searchQuery);
         }
 
-        // Adjust index if player cards are present
-        final adjustedIndex = hasPlayerCards ? index - 1 : index;
+        final openingIndex = hasPlayerCards ? 1 : 0;
+        if (openingQuery != null && index == openingIndex) {
+          return SmartOpeningEventCard(query: openingQuery!);
+        }
+
+        // Adjust index if player/opening cards are present
+        final adjustedIndex =
+            index - (hasPlayerCards ? 1 : 0) - (openingQuery != null ? 1 : 0);
         if (adjustedIndex < 0 || adjustedIndex >= tournaments.length) {
           return const SizedBox.shrink();
         }
