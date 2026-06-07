@@ -341,6 +341,12 @@ class LiveUpdatesService {
             'platform': platform,
             'enabled': enabled,
             if (enabled) 'started_at': null,
+            // Reset last_event_at on (re)enable so the move-only refresh edge fn
+            // pushes the CURRENT board immediately on its next poll — otherwise a
+            // re-enabled sub whose last_event_at is already past the game's last
+            // move would wait for the NEXT move, leaving a stale/blank card when
+            // you background a slow or stalled game.
+            if (enabled) 'last_event_at': null,
           }, onConflict: 'user_id,game_id,platform');
     } catch (e) {
       debugPrint('[LiveUpdates] Failed to register subscription: $e');
