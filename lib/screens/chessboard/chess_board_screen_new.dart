@@ -788,6 +788,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
+  // Step 4/4 ("live game widgets" intro) — shown once per session at most, after
+  // the three board walkthroughs. Guards against a double-show across its two
+  // trigger points (chained off the like step, and the on-open fallback).
+  bool _liveWidgetsIntroShown = false;
   late AnimationController _swipeController;
   late Animation<double> _swipeFadeAnimation;
   late Animation<double> _swipeScaleAnimation;
@@ -944,7 +948,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// after all three board walkthroughs are done/opted-out, so the dialog never
   /// stacks on top of a teaching overlay.
   Future<void> _maybeShowLiveWidgetsIntro(BuildContext context) async {
-    if (!mounted || _showTutorialOverlay || _showLikeTutorial) return;
+    if (!mounted ||
+        _liveWidgetsIntroShown ||
+        _showTutorialOverlay ||
+        _showLikeTutorial) {
+      return;
+    }
 
     final prefs = ref.read(sharedPreferencesRepository);
     if (await prefs.getBool(kLiveWidgetsIntroSeenKey) ?? false) return;
@@ -960,8 +969,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         (await prefs.getInt(kLikeWalkthroughShownDateKey)) != null;
     if (!(swipeSeen && switchSeen && likeSeen)) return;
 
-    if (!mounted || _showTutorialOverlay || _showLikeTutorial) return;
+    if (!mounted ||
+        _liveWidgetsIntroShown ||
+        _showTutorialOverlay ||
+        _showLikeTutorial) {
+      return;
+    }
 
+    _liveWidgetsIntroShown = true;
     await prefs.setBool(kLiveWidgetsIntroSeenKey, true);
     if (!mounted || !context.mounted) return;
     await showLiveWidgetsIntroDialog(
@@ -1059,6 +1074,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void _onLikeTutorialFinished() {
     _removeLikeTutorialOverlay();
     _showLikeTutorial = false;
+    // Step 4/4: chain the live-game-widgets intro right after the like teaching
+    // (next frame, so it never paints atop the dismissing overlay). For users
+    // who already finished 1–3 in a past session, the on-open fallback in
+    // _checkAndShowWalkthrough's caller handles it instead. The seen-key + the
+    // in-memory guard keep it to a single show.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_maybeShowLiveWidgetsIntro(context));
+    });
   }
 
   GamesTourModel _preferFresherGameSnapshot({
