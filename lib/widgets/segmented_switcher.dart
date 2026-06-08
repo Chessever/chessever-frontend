@@ -1,7 +1,6 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 import '../utils/app_typography.dart';
 
 class SegmentedSwitcher extends StatefulWidget {
@@ -17,6 +16,7 @@ class SegmentedSwitcher extends StatefulWidget {
   final TextStyle? textStyle;
   final TextStyle? selectedTextStyle;
   final List<Widget>? optionLabels;
+  final bool notifyOnReselect;
 
   const SegmentedSwitcher({
     super.key,
@@ -32,6 +32,7 @@ class SegmentedSwitcher extends StatefulWidget {
     this.textStyle,
     this.selectedTextStyle,
     this.optionLabels,
+    this.notifyOnReselect = false,
   }) : assert(
          initialSelection >= 0 && initialSelection < options.length,
          'initialSelection must be within options range',
@@ -65,15 +66,18 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
   }
 
   void _onSelectionChanged(int index, {bool fromExternal = false}) {
-    if (index == _selectedIndex || !mounted) return;
+    if (!mounted) return;
+    final isReselect = index == _selectedIndex;
 
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    if (!fromExternal) {
-      widget.onSelectionChanged(index);
+    if (!isReselect) {
+      setState(() {
+        _selectedIndex = index;
+      });
     }
+
+    if (fromExternal) return;
+    if (isReselect && !widget.notifyOnReselect) return;
+    widget.onSelectionChanged(index);
   }
 
   @override
@@ -82,7 +86,8 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
     final selectedBackgroundColor =
         widget.selectedBackgroundColor ?? context.colors.background;
     final textColor = widget.textColor ?? context.colors.tabInactive;
-    final selectedTextColor = widget.selectedTextColor ?? context.colors.textPrimary;
+    final selectedTextColor =
+        widget.selectedTextColor ?? context.colors.textPrimary;
     final borderRadius = widget.borderRadius ?? 8.br;
 
     final defaultTextStyle =
@@ -137,7 +142,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
                       : defaultTextStyle)
                   .copyWith(
                     color: (isSelected ? selectedTextColor : textColor)
-                        .withOpacity(textOpacity),
+                        .withValues(alpha: textOpacity),
                   );
 
               return Expanded(
