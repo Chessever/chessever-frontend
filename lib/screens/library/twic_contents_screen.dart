@@ -258,7 +258,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           Opacity(
             opacity: 0.8,
             child: Text(
-              'TWIC Database',
+              'ChessEver Database',
               style: AppTypography.textMdMedium.copyWith(
                 fontWeight: FontWeight.w600,
                 color: context.colors.textPrimary,

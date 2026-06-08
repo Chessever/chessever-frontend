@@ -962,7 +962,7 @@ class _LibraryFolderLoadingCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  isFeatured ? 'TWIC Database' : 'Opening Preparation',
+                  isFeatured ? 'ChessEver Database' : 'Opening Preparation',
                   style: AppTypography.textSmMedium.copyWith(
                     color: context.colors.textPrimary,
                   ),
