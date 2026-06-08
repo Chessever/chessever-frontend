@@ -213,12 +213,17 @@ class AudioPlayerService with WidgetsBindingObserver {
         "assets/sfx/piece_takeover.wav",
       ];
 
-      final results = <AudioSource>[];
-
-      for (final path in paths) {
-        final source = await _loadAssetWithFrameDelay(path);
-        results.add(source);
-      }
+      // Load all SFX into memory in PARALLEL. The previous version loaded them
+      // serially with a 200ms delay between each (~1.4s of dead time), which
+      // delayed sound and — on a forced reinit after backgrounding — piled work
+      // onto the foregrounding burst that was already contended. loadAsset with
+      // LoadMode.memory is cheap for these short WAVs and is safe to run
+      // concurrently; the awaits still yield the UI between native calls.
+      final results = await Future.wait(
+        paths.map(
+          (path) => SoLoud.instance.loadAsset(path, mode: LoadMode.memory),
+        ),
+      );
 
       // Assign in declared order
       pieceMoveSfx = results[0];
@@ -234,15 +239,6 @@ class AudioPlayerService with WidgetsBindingObserver {
 
     _initialized = true;
     debugPrint('🎧 AudioPlayerService initialized successfully');
-  }
-
-  Future<AudioSource> _loadAssetWithFrameDelay(String path) async {
-    final source = await SoLoud.instance.loadAsset(path, mode: LoadMode.memory);
-
-    // Small delay between each load to yield UI.
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    return source;
   }
 
   /// Tear down the native engine only during explicit recovery.

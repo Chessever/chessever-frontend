@@ -323,23 +323,26 @@ import OneSignalLiveActivities
 
   /// Configure audio session for ambient mode - doesn't interrupt other audio
   private func configureAmbientAudioSession(result: @escaping FlutterResult) {
-    do {
-      let audioSession = AVAudioSession.sharedInstance()
-
-      // Use .ambient category which:
-      // - Mixes with other audio (won't stop music/podcasts)
-      // - Respects the silent switch
-      // - Doesn't request audio focus
-      // Added .mixWithOthers just to be explicit
-      try audioSession.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-      try audioSession.setActive(true)
-
-      result(true)
-    } catch {
-      print("Failed to configure audio session: \(error)")
-      result(FlutterError(code: "AUDIO_SESSION_ERROR",
-                         message: "Failed to configure audio session",
-                         details: error.localizedDescription))
+    // AVAudioSession.setCategory/setActive can block for hundreds of ms (or more)
+    // while reacquiring the audio route — especially right after a long
+    // background, when this is invoked from the resume audio reinit. Run it OFF
+    // the platform/main thread so the resume frame isn't stalled, then reply on
+    // main. Use .ambient: mixes with other audio, respects the silent switch,
+    // doesn't request audio focus.
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        try audioSession.setActive(true)
+        DispatchQueue.main.async { result(true) }
+      } catch {
+        print("Failed to configure audio session: \(error)")
+        DispatchQueue.main.async {
+          result(FlutterError(code: "AUDIO_SESSION_ERROR",
+                              message: "Failed to configure audio session",
+                              details: error.localizedDescription))
+        }
+      }
     }
   }
 }

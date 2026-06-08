@@ -4637,15 +4637,21 @@ class ChessBoardScreenNotifierNew
     await stockfish.cancelEvaluationsForOwner(_stockfishOwnerId);
 
     // Recover engine when lifecycle transitions leave it in a bad state.
+    // Do NOT await: engine dispose+reinit is heavy native work, and this runs on
+    // the resume path. Awaiting it here stalls foregrounding. Kick it off in the
+    // background; the cloud-first cascade serves evals until the engine is back,
+    // and the eval retry circuit-breaker prevents any stuck-engine loop.
     if (stockfish.requiresRecovery) {
       _releaseLog(
-        '🔧 LIFECYCLE: Recovering Stockfish (state: ${stockfish.engineStateDebug})',
+        '🔧 LIFECYCLE: Recovering Stockfish in background (state: ${stockfish.engineStateDebug})',
       );
-      try {
-        await stockfish.forceRecovery();
-      } catch (e) {
-        _releaseLog('⚠️ LIFECYCLE: Stockfish recovery failed: $e');
-      }
+      unawaited(() async {
+        try {
+          await stockfish.forceRecovery();
+        } catch (e) {
+          _releaseLog('⚠️ LIFECYCLE: Stockfish recovery failed: $e');
+        }
+      }());
     }
 
     _cancelEvaluation = false;

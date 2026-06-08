@@ -231,10 +231,15 @@ final class ChessPipController: NSObject {
   }
 
   private func restoreAmbientAudioSession() {
-    do {
-      try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-    } catch {
-      print("[PiP] Failed to restore ambient audio session: \(error)")
+    // Runs on resume (via clear()) when no game is PiP-eligible. setCategory can
+    // block when the route is contended right after foregrounding, so hand the
+    // session back OFF the main thread to keep the resume frame responsive.
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+      } catch {
+        print("[PiP] Failed to restore ambient audio session: \(error)")
+      }
     }
   }
 

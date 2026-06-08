@@ -1743,13 +1743,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       debugPrint('Error refreshing Stockfish on resume: $e');
     }
 
-    // Capture ActivityKit content before stopping so device logs can verify
-    // whether remote Live Activity updates reached the native activity.
-    unawaited(
-      LiveUpdatesService.instance.logLiveActivityDebugState(
-        'before_resume_stop',
-      ).whenComplete(() => _stopLiveActivityIfActive(currentGame)),
-    );
+    // Stop THIS game's Live Activity now that the user is back in the app.
+    // (Previously this awaited a logLiveActivityDebugState native round-trip
+    // first — a diagnostic that added a method-channel hop to the resume burst.)
+    _stopLiveActivityIfActive(currentGame);
     unawaited(
       _syncPipState(
         ref.read(chessBoardScreenProviderNew(params)).valueOrNull ??
