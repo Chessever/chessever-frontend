@@ -107,9 +107,9 @@ class LibraryRepository extends BaseRepository {
 
     if ((existing as List).isNotEmpty) return;
 
-    final rootFolder = await createFolder(name: 'My Database');
+    final rootFolder = await createFolder(name: 'My Folder');
     await createFolder(
-      name: 'My Folder',
+      name: 'My Database',
       parentId: rootFolder.id,
       nodeType: LibraryFolder.nodeTypeDatabase,
     );

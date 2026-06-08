@@ -1274,7 +1274,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                       ),
                       SizedBox(width: 6.w),
                       Text(
-                        _isCreatingNewFolder ? 'Choose Existing' : 'New Folder',
+                        _isCreatingNewFolder ? 'Choose Existing' : 'New Database',
                         style: AppTypography.textXsMedium.copyWith(
                           color:
                               _isCreatingNewFolder
@@ -1587,7 +1587,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     Icon(Icons.add_rounded, size: 16.sp, color: kPrimaryColor),
                     SizedBox(width: 6.w),
                     Text(
-                      'Create Folder',
+                      'Create Database',
                       style: AppTypography.textSmMedium.copyWith(
                         color: kPrimaryColor,
                       ),

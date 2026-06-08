@@ -222,17 +222,20 @@ private struct LiveGameState {
     )
     shortWhiteName = LiveGameState.shortDisplayName(whiteName)
     shortBlackName = LiveGameState.shortDisplayName(blackName)
-    lastMove = data.asNonEmptyString("last_move_numbered") ??
-      data.asNonEmptyString("last_move_san") ??
-      data.asNonEmptyString("last_move") ??
-      "—"
-    lastMoveUci =
-      data.asNonEmptyString("last_move_uci") ??
-      data.asNonEmptyString("last_move")
     fen =
       data.asNonEmptyString("fen") ??
       attrData.asNonEmptyString("fen") ??
       "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    // Prefer a server-numbered move; otherwise derive the move number from the
+    // FEN (which reflects the position AFTER the move) and prepend it.
+    let rawLastMove = data.asNonEmptyString("last_move_numbered") ??
+      data.asNonEmptyString("last_move_san") ??
+      data.asNonEmptyString("last_move") ??
+      "—"
+    lastMove = LiveGameState.numberedMove(san: rawLastMove, fen: fen)
+    lastMoveUci =
+      data.asNonEmptyString("last_move_uci") ??
+      data.asNonEmptyString("last_move")
     evalCp = data.asDoubleValue("eval_cp")
     evalMate = data.asIntValue("eval_mate")
     whitePhoto = data.asNonEmptyString("white_photo")
@@ -373,6 +376,24 @@ private struct LiveGameState {
     let parts = fen.split(separator: " ")
     guard parts.count > 1 else { return true }
     return parts[1] == "w"
+  }
+
+  /// Prepends the chess move number to a bare SAN ("Ne3" -> "38.Ne3" /
+  /// "38...Ne3"). The FEN is the position AFTER the move, so the side to move is
+  /// the opponent: black-to-move means White just moved ("N."), white-to-move
+  /// means Black just moved ("(N-1)...", since the fullmove counter increments
+  /// after Black's move). Mirrors the in-app game card's numbering. Returns the
+  /// SAN unchanged if it is the placeholder, already numbered, the FEN lacks a
+  /// usable fullmove field, or the derived number is non-positive.
+  private static func numberedMove(san: String, fen: String) -> String {
+    guard san != "—", !san.isEmpty else { return san }
+    if let first = san.first, first.isNumber { return san }
+    let parts = fen.split(separator: " ")
+    guard parts.count >= 6, let fullmove = Int(parts[5]) else { return san }
+    let whiteJustMoved = parts[1] == "b"
+    let number = whiteJustMoved ? fullmove : fullmove - 1
+    guard number > 0 else { return san }
+    return whiteJustMoved ? "\(number).\(san)" : "\(number)...\(san)"
   }
 
   private static func parseDate(_ value: String?) -> Date? {

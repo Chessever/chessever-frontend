@@ -693,15 +693,15 @@ class FolderCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(16.br),
                 ),
                 title: Text(
-                  'Delete ${folder.isFolder ? 'database' : 'folder'}?',
+                  'Delete ${folder.isFolder ? 'folder' : 'database'}?',
                   style: AppTypography.textSmBold.copyWith(
                     color: context.colors.textPrimary,
                   ),
                 ),
                 content: Text(
                   folder.isFolder
-                      ? 'This permanently deletes the database and everything inside it. This cannot be undone.'
-                      : 'This permanently deletes the folder and every game inside it. This cannot be undone.',
+                      ? 'This permanently deletes the folder and every database inside it. This cannot be undone.'
+                      : 'This permanently deletes the database and every game inside it. This cannot be undone.',
                   style: AppTypography.textXsRegular.copyWith(
                     color: context.colors.textPrimary.withValues(alpha: 0.7),
                   ),
@@ -747,7 +747,7 @@ class FolderCard extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${folder.isFolder ? 'Database' : 'Folder'} deleted',
+            '${folder.isFolder ? 'Folder' : 'Database'} deleted',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),

@@ -207,7 +207,7 @@ class _ImportPgnToFolderPageState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Database' : 'Folder'} "${data.name}" created',
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -552,7 +552,7 @@ class _ImportPgnToFolderPageState
                               ),
                               SizedBox(width: 8.w),
                               Text(
-                                'New Folder',
+                                'New Database',
                                 style: AppTypography.textSmMedium.copyWith(
                                   color: context.colors.textPrimary,
                                 ),

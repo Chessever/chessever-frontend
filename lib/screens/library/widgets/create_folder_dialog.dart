@@ -28,7 +28,7 @@ Future<LibraryFolderCreationData?> showCreateFolderDialog(
     barrierColor: Colors.black.withValues(alpha: 0.8),
     builder:
         (context) => _FolderNameDialog(
-          title: initialParentId != null ? 'Add to Database' : 'New Library Item',
+          title: initialParentId != null ? 'Add to Folder' : 'New Library Item',
           confirmLabel: 'Create',
           initialParentId: initialParentId,
           isLocked: lockToParent,
@@ -173,8 +173,8 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                         widget.isRename
                             ? Icons.edit_rounded
                             : (_isDatabase
-                                ? Icons.folder_rounded
-                                : Icons.storage_rounded),
+                                ? Icons.storage_rounded
+                                : Icons.folder_rounded),
                         color: kPrimaryColor,
                         size: 22.sp,
                       ),
@@ -241,9 +241,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           Expanded(
             child: _TypeButton(
               label: 'Database',
-              isSelected: !_isDatabase,
+              isSelected: _isDatabase,
               onTap: () {
-                setState(() => _isDatabase = false);
+                setState(() => _isDatabase = true);
                 HapticFeedbackService.light();
               },
             ),
@@ -251,10 +251,10 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           Expanded(
             child: _TypeButton(
               label: 'Folder',
-              isSelected: _isDatabase,
+              isSelected: !_isDatabase,
               onTap: () {
                 setState(() {
-                  _isDatabase = true;
+                  _isDatabase = false;
                 });
                 HapticFeedbackService.light();
               },
@@ -268,7 +268,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   Widget _buildParentSelector(List<LibraryFolder> parents) {
     if (parents.isEmpty) {
       return Text(
-        'Create a database first to organize folders inside it.',
+        'Create a folder first to organize databases inside it.',
         style: AppTypography.textXsRegular.copyWith(color: kRedColor),
       ).animate().fadeIn();
     }
@@ -277,7 +277,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'PARENT DATABASE',
+          'PARENT FOLDER',
           style: AppTypography.textXsBold.copyWith(
             color: context.colors.textPrimary.withValues(alpha: 0.4),
             letterSpacing: 1.0,
@@ -344,7 +344,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Inside database "${parent.name}"',
+              'Inside folder "${parent.name}"',
               style: AppTypography.textXsMedium.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),

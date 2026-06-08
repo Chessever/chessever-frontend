@@ -103,6 +103,15 @@ class NotificationServiceExtension : INotificationServiceExtension {
     val lastMove = updates.optString("last_move", "—")
     val lastMoveUci = updates.optString("last_move_uci", lastMove)
     val fen = updates.optString("fen", "")
+    // Display SAN with its move number. Prefer a server-numbered move; otherwise
+    // derive the number from the FEN. Keep `lastMove` raw above for the UCI
+    // highlight fallback — only the rendered label gets the number.
+    val lastMoveDisplay = numberMove(
+      updates.optString("last_move_numbered", "")
+        .ifEmpty { updates.optString("last_move_san", "") }
+        .ifEmpty { lastMove },
+      fen,
+    )
     val themeIndex = when {
       updates.has("board_theme_index") -> updates.optInt("board_theme_index", 0)
       attrs.has("board_theme_index") -> attrs.optInt("board_theme_index", 0)
@@ -163,7 +172,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
       fen = fen,
       white = white,
       black = black,
-      lastMove = lastMove,
+      lastMove = lastMoveDisplay,
       evalCp = evalCp,
       evalMate = evalMate,
       eventName = prettyEventName,
@@ -611,6 +620,26 @@ class NotificationServiceExtension : INotificationServiceExtension {
   }
 
   // MARK: - Utilities
+
+  /**
+   * Prepends the chess move number to a bare SAN ("Ne3" -> "38.Ne3" /
+   * "38...Ne3"). The FEN is the position AFTER the move, so the side to move is
+   * the opponent: black-to-move means White just moved ("N."), white-to-move
+   * means Black just moved ("(N-1)...", since the fullmove counter increments
+   * after Black's move). Returns the SAN unchanged when it is the placeholder,
+   * already numbered, or the FEN lacks a usable fullmove field.
+   */
+  private fun numberMove(san: String, fen: String): String {
+    if (san.isBlank() || san == "—") return san
+    if (san.first().isDigit()) return san
+    val parts = fen.split(" ")
+    if (parts.size < 6) return san
+    val fullmove = parts[5].toIntOrNull() ?: return san
+    val whiteJustMoved = parts[1] == "b"
+    val number = if (whiteJustMoved) fullmove else fullmove - 1
+    if (number <= 0) return san
+    return if (whiteJustMoved) "$number.$san" else "$number...$san"
+  }
 
   private fun parseFenBoard(fen: String): Array<CharArray>? {
     if (fen.isBlank()) return defaultBoard()

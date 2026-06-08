@@ -268,8 +268,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       context,
       title: 'Add to "$_currentFolderName"',
       showCreateDatabase: _isFolder,
-      createDatabaseTitle: 'Create Folder or Database',
-      createDatabaseSubtitle: 'Organize another database or game folder here',
+      createDatabaseTitle: 'Create Database',
+      createDatabaseSubtitle: 'Add a database to hold games here',
       showImports: _isDatabase,
     );
     if (choice == null || !mounted) return;
@@ -406,7 +406,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Database' : 'Folder'} "${data.name}" created',
+            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -944,7 +944,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           ),
           SizedBox(height: 16.h),
           Text(
-            isFolder ? 'This database is empty' : 'This folder is empty',
+            isFolder ? 'This folder is empty' : 'This database is empty',
             style: AppTypography.textMdMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -953,7 +953,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             SizedBox(height: 8.h),
             Text(
               isFolder
-                  ? 'Create a folder or database here.'
+                  ? 'Create a database here.'
                   : 'Save your first game here!',
               style: AppTypography.textSmRegular.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.5),
