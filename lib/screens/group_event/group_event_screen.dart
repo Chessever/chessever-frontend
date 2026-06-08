@@ -7,6 +7,7 @@ import 'package:chessever2/screens/group_event/widget/search_results_widget.dart
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -498,6 +499,14 @@ class GroupEventScreen extends HookConsumerWidget {
                                           favoriteTimestamps:
                                               favoriteTimestamps,
                                         );
+                            final smartData =
+                                isCurrent
+                                    ? SmartEventCardData.fromState(
+                                      filter: appliedFilterState,
+                                      events: finalEvents,
+                                      source: SmartEventSource.current,
+                                    )
+                                    : null;
 
                             return RefreshIndicator(
                               onRefresh:
@@ -508,6 +517,7 @@ class GroupEventScreen extends HookConsumerWidget {
                               strokeWidth: 3.w,
                               child: AllEventsTabWidget(
                                 filteredEvents: finalEvents,
+                                smartData: smartData,
                                 onSelect:
                                     (tourEventCardModel) => ref
                                         .read(groupEventScreenProvider.notifier)

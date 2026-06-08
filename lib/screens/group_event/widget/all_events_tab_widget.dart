@@ -1,8 +1,11 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -13,11 +16,13 @@ class AllEventsTabWidget extends ConsumerStatefulWidget {
     super.key,
     this.isLoadingMore = false,
     this.scrollController,
+    this.smartData,
   });
   final List<GroupEventCardModel> filteredEvents;
   final ValueChanged<GroupEventCardModel> onSelect;
   final bool isLoadingMore;
   final ScrollController? scrollController;
+  final SmartEventCardData? smartData;
 
   @override
   ConsumerState<AllEventsTabWidget> createState() => _AllEventsTabWidgetState();
@@ -95,6 +100,26 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
     );
   }
 
+  Widget _buildSmartCard(SmartEventCardData smartData) {
+    return SmartEventCard(
+      tierLabel: smartData.request.tierLabel,
+      minElo: smartData.request.minElo,
+      liveCount: smartData.eventCount,
+      avgElo: smartData.avgElo,
+      titleSuffix: smartData.request.titleSuffix,
+      caption: smartData.request.caption,
+      countSingular: smartData.request.countSingular,
+      countPlural: smartData.request.countPlural,
+      accentColor: smartEventAccentColor(smartData.request.scopeId),
+      onTap:
+          () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => SmartEventScreen(request: smartData.request),
+            ),
+          ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.filteredEvents.isEmpty) {
@@ -129,6 +154,17 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
     return CustomScrollView(
       controller: widget.scrollController,
       slivers: [
+        if (widget.smartData != null)
+          SliverPadding(
+            padding: EdgeInsets.only(
+              left: horizontalPadding,
+              right: horizontalPadding,
+              bottom: 16.sp,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: _buildSmartCard(widget.smartData!),
+            ),
+          ),
         SliverPadding(
           padding: EdgeInsets.only(
             left: horizontalPadding,
@@ -155,7 +191,8 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
               padding: EdgeInsets.only(bottom: bottomPadding + 20),
               child: Center(
                 child: CircularProgressIndicator(
-                  color: context.isLightTheme ? kPrimaryColor : kBoardLightDefault,
+                  color:
+                      context.isLightTheme ? kPrimaryColor : kBoardLightDefault,
                 ),
               ),
             ),
@@ -165,6 +202,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
   }
 
   Widget _buildPhoneListLayout(double bottomPadding) {
+    final smartOffset = widget.smartData != null ? 1 : 0;
     return ListView.builder(
       controller: widget.scrollController,
       padding: EdgeInsets.only(
@@ -172,9 +210,19 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
         right: 20.sp,
         bottom: bottomPadding + 12.sp,
       ),
-      itemCount: widget.filteredEvents.length + (widget.isLoadingMore ? 1 : 0),
+      itemCount:
+          widget.filteredEvents.length +
+          smartOffset +
+          (widget.isLoadingMore ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == widget.filteredEvents.length) {
+        if (widget.smartData != null && index == 0) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: 12.sp),
+            child: _buildSmartCard(widget.smartData!),
+          );
+        }
+
+        if (index == widget.filteredEvents.length + smartOffset) {
           return Padding(
             padding: EdgeInsets.only(bottom: bottomPadding + 20),
             child: const Center(
@@ -182,7 +230,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
             ),
           );
         }
-        final tourEventCardModel = widget.filteredEvents[index];
+        final tourEventCardModel = widget.filteredEvents[index - smartOffset];
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
           child: _buildEventCard(tourEventCardModel, index),

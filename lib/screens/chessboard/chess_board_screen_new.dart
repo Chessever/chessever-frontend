@@ -785,6 +785,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _pipSub;
   ChessBoardProviderParams? _pipParams;
   bool _didInitialBoardBootstrap = false;
+  bool _isLifecycleBackgrounded = false;
 
   bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
@@ -1891,9 +1892,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Backgrounding an active board is an explicit opt-in for Live Activity
     // tracking. Do not gate this behind regular push notification settings.
 
-    // The service caps concurrent live activities at 3 and FIFO-evicts the
-    // oldest, so multiple games coexist — do NOT stop the previous one here.
-    // Skip only if THIS game already has a live activity.
+    // The service caps concurrent live activities at one and FIFO-evicts the
+    // previous one. Skip only if THIS game already has a live activity.
     final liveService = LiveUpdatesService.instance;
     if (liveService.activeGameIds.contains(game.gameId)) return;
 
@@ -1912,63 +1912,62 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final boardThemeIndex = boardSettings?.boardThemeIndex ?? 0;
     final pieceStyleIndex = boardSettings?.pieceStyleIndex ?? 0;
 
-    // Start Live Activity
-    unawaited(
-      liveService.startForGame(
-        gameId: game.gameId,
-        userId: user.id,
-        playerWhite: game.whitePlayer.name,
-        playerBlack: game.blackPlayer.name,
-        whiteTitle:
-            game.whitePlayer.title.isNotEmpty ? game.whitePlayer.title : null,
-        blackTitle:
-            game.blackPlayer.title.isNotEmpty ? game.blackPlayer.title : null,
-        whiteFed:
-            game.whitePlayer.federation.isNotEmpty
-                ? game.whitePlayer.federation
-                : null,
-        blackFed:
-            game.blackPlayer.federation.isNotEmpty
-                ? game.blackPlayer.federation
-                : null,
-        whitePhoto: whitePhoto,
-        blackPhoto: blackPhoto,
-        fen: (viewedFen != null && viewedFen.isNotEmpty) ? viewedFen : game.fen,
-        lastMove:
-            (viewedSan != null && viewedSan.isNotEmpty)
-                ? viewedSan
-                : game.lastMove,
-        lastMoveUci:
-            (viewedUci != null && viewedUci.isNotEmpty)
-                ? viewedUci
-                : game.lastMove,
-        lastMoveTime: viewedLastMoveTime ?? game.lastMoveTime,
-        whiteClockSeconds: viewedWhiteClock ?? game.whiteClockSeconds,
-        blackClockSeconds: viewedBlackClock ?? game.blackClockSeconds,
-        eventName: eventName,
-        roundName: roundName,
-        whiteFideId: game.whitePlayer.fideId,
-        blackFideId: game.blackPlayer.fideId,
-        boardThemeIndex: boardThemeIndex,
-        pieceStyleIndex: pieceStyleIndex,
-        status:
-            game.gameStatus.displayText.isNotEmpty
-                ? game.gameStatus.displayText
-                : null,
-        isGameOver: isFinished,
-        evalCp: viewedEvalCp,
-        evalMate: viewedEvalMate,
-        whiteFlag: CountryUtils.toFlagEmoji(game.whitePlayer.federation),
-        blackFlag: CountryUtils.toFlagEmoji(game.blackPlayer.federation),
-        // The clock may only tick while the game is live AND the viewer was
-        // on the latest move when backgrounding.
-        followLive: followLive && isOngoing,
-      ),
+    final started = await liveService.startForGame(
+      gameId: game.gameId,
+      userId: user.id,
+      playerWhite: game.whitePlayer.name,
+      playerBlack: game.blackPlayer.name,
+      whiteTitle:
+          game.whitePlayer.title.isNotEmpty ? game.whitePlayer.title : null,
+      blackTitle:
+          game.blackPlayer.title.isNotEmpty ? game.blackPlayer.title : null,
+      whiteFed:
+          game.whitePlayer.federation.isNotEmpty
+              ? game.whitePlayer.federation
+              : null,
+      blackFed:
+          game.blackPlayer.federation.isNotEmpty
+              ? game.blackPlayer.federation
+              : null,
+      whitePhoto: whitePhoto,
+      blackPhoto: blackPhoto,
+      fen: (viewedFen != null && viewedFen.isNotEmpty) ? viewedFen : game.fen,
+      lastMove:
+          (viewedSan != null && viewedSan.isNotEmpty)
+              ? viewedSan
+              : game.lastMove,
+      lastMoveUci:
+          (viewedUci != null && viewedUci.isNotEmpty)
+              ? viewedUci
+              : game.lastMove,
+      lastMoveTime: viewedLastMoveTime ?? game.lastMoveTime,
+      whiteClockSeconds: viewedWhiteClock ?? game.whiteClockSeconds,
+      blackClockSeconds: viewedBlackClock ?? game.blackClockSeconds,
+      eventName: eventName,
+      roundName: roundName,
+      whiteFideId: game.whitePlayer.fideId,
+      blackFideId: game.blackPlayer.fideId,
+      boardThemeIndex: boardThemeIndex,
+      pieceStyleIndex: pieceStyleIndex,
+      status:
+          game.gameStatus.displayText.isNotEmpty
+              ? game.gameStatus.displayText
+              : null,
+      isGameOver: isFinished,
+      evalCp: viewedEvalCp,
+      evalMate: viewedEvalMate,
+      whiteFlag: CountryUtils.toFlagEmoji(game.whitePlayer.federation),
+      blackFlag: CountryUtils.toFlagEmoji(game.blackPlayer.federation),
+      // The clock may only tick while the game is live AND the viewer was
+      // on the latest move when backgrounding.
+      followLive: followLive && isOngoing,
     );
 
-    debugPrint(
-      '[ChessBoardScreen] Auto-started Live Activity for game: ${game.gameId}',
-    );
+    if (started) {
+      debugPrint(
+        '[ChessBoardScreen] Auto-started Live Activity for game: ${game.gameId}',
+      );
+    }
   }
 
   @override
@@ -2003,15 +2002,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     super.didChangeAppLifecycleState(state);
     if (!mounted) return;
     if (state == AppLifecycleState.resumed) {
-      _scheduleLifecycleResume();
+      final wasBackgrounded = _isLifecycleBackgrounded;
+      _isLifecycleBackgrounded = false;
+      if (wasBackgrounded) {
+        _scheduleLifecycleResume();
+      }
     } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
+      if (_isLifecycleBackgrounded) return;
+      _isLifecycleBackgrounded = true;
       unawaited(_enterPipForCurrentGameIfEligible());
       _handleLifecyclePaused();
     } else {
+      // inactive/hidden are transient focus or visibility states. Flutter also
+      // synthesizes hidden before paused on mobile, so doing background work here
+      // duplicates the real paused path.
       ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
     }
   }

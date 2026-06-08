@@ -14,6 +14,7 @@ class Games {
   final String? status;
   final String? pgn;
   final List<String>? search;
+  final String? lichessId;
   final int? boardNr;
   final DateTime? lastMoveTime;
   final DateTime? gameDay;
@@ -40,6 +41,7 @@ class Games {
     this.status,
     this.pgn,
     this.search,
+    this.lichessId,
     this.boardNr,
     this.lastMoveTime,
     this.gameDay,
@@ -66,6 +68,7 @@ class Games {
     String? status,
     String? pgn,
     List<String>? search,
+    String? lichessId,
     int? boardNr,
     DateTime? lastMoveTime,
     DateTime? gameDay,
@@ -91,6 +94,7 @@ class Games {
       status: status ?? this.status,
       pgn: pgn ?? this.pgn,
       search: search ?? this.search,
+      lichessId: lichessId ?? this.lichessId,
       boardNr: boardNr ?? this.boardNr,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
       gameDay: gameDay ?? this.gameDay,
@@ -151,6 +155,7 @@ class Games {
             json['search'] != null
                 ? (json['search'] as List).map((e) => e as String).toList()
                 : null,
+        lichessId: json['lichess_id'] as String?,
         boardNr:
             json['board_nr'] != null ? (json['board_nr'] as num).toInt() : null,
         lastMoveTime:
@@ -198,6 +203,7 @@ class Games {
       if (status != null) 'status': status,
       if (pgn != null) 'pgn': pgn,
       if (search != null) 'search': search!.map((s) => s).toList(),
+      if (lichessId != null) 'lichess_id': lichessId,
       if (boardNr != null) 'board_nr': boardNr,
       if (lastMoveTime != null)
         'last_move_time': lastMoveTime!.toIso8601String(),

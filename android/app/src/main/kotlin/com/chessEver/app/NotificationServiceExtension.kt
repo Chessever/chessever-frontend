@@ -48,6 +48,13 @@ class NotificationServiceExtension : INotificationServiceExtension {
     }
 
     val context = event.context
+    val eventType = liveEventType(live)
+    if (eventType == "dismiss") {
+      liveGameId(live)?.let { cancelLiveNotification(context, it) }
+      event.preventDefault()
+      return
+    }
+
     val updated = buildLiveNotification(context, live)
 
     if (updated == null) {
@@ -72,6 +79,11 @@ class NotificationServiceExtension : INotificationServiceExtension {
    * with [onNotificationReceived]. Called from MainActivity's MethodChannel.
    */
   fun postLocalLiveNotification(context: Context, live: JSONObject) {
+    if (liveEventType(live) == "dismiss") {
+      liveGameId(live)?.let { cancelLiveNotification(context, it) }
+      return
+    }
+
     val notification = buildLiveNotification(context, live) ?: return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     val gameId = live.optJSONObject("event_attributes")?.optString("game_id") ?: "game"
@@ -86,7 +98,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
   private fun buildLiveNotification(context: Context, live: JSONObject): Notification? {
     val attrs = live.optJSONObject("event_attributes") ?: return null
     val updates = live.optJSONObject("event_updates") ?: return null
-    val eventType = live.optString("event", "update")
+    val eventType = liveEventType(live)
 
     val white = attrs.optString("player_white", "White")
     val black = attrs.optString("player_black", "Black")
@@ -276,6 +288,21 @@ class NotificationServiceExtension : INotificationServiceExtension {
     }
 
     return builder.build()
+  }
+
+  private fun liveEventType(live: JSONObject): String {
+    return live.optString("event", "update").trim().lowercase()
+  }
+
+  private fun liveGameId(live: JSONObject): String? {
+    return live.optJSONObject("event_attributes")
+      ?.optString("game_id")
+      ?.takeIf { it.isNotBlank() }
+      ?: live.optJSONObject("event_updates")
+        ?.optString("game_id")
+        ?.takeIf { it.isNotBlank() }
+      ?: live.optString("key")
+        .takeIf { it.isNotBlank() }
   }
 
   /// Parse an ISO-8601 UTC timestamp (e.g. "2026-06-05T20:04:30.123Z") to epoch

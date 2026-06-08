@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -18,10 +21,15 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -160,6 +168,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final state = ref.watch(forYouEventsProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
     final events = state.events;
+    final favoriteEvents = ref.watch(favoriteEventsProvider).valueOrNull ?? [];
+    final liveIds =
+        ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ??
+        const <String>[];
+    final savedSmartData = _savedSmartCards(favoriteEvents, liveIds);
 
     if (state.isLoading && events.isEmpty) {
       return _buildLoadingState();
@@ -174,9 +187,28 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       );
     }
 
-    if (events.isEmpty) {
+    if (events.isEmpty && savedSmartData.isEmpty) {
       return _buildEmptyState();
     }
+
+    // The smart "Convergence" event only materialises when an ELO/tier filter
+    // is applied — it gathers the strongest live games across every broadcast
+    // into one card, pinned top-most.
+    final smartData = SmartEventCardData.fromState(
+      filter: ref.watch(forYouAppliedFilterProvider),
+      events: events,
+      source: SmartEventSource.forYou,
+    );
+    final visibleSavedSmartData =
+        smartData == null
+            ? savedSmartData
+            : savedSmartData
+                .where(
+                  (saved) =>
+                      saved.request.favoriteEventId !=
+                      smartData.request.favoriteEventId,
+                )
+                .toList(growable: false);
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -189,8 +221,53 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         viewMode: viewMode,
         isScrolling: _isScrolling,
         showLoadingMore: state.hasMore && !state.isLoading,
+        smartData: smartData,
+        savedSmartData: visibleSavedSmartData,
       ),
     );
+  }
+
+  List<SmartEventCardData> _savedSmartCards(
+    List<FavoriteEvent> favoriteEvents,
+    List<String> liveIds,
+  ) {
+    final cards = <SmartEventCardData>[];
+    for (final favorite in favoriteEvents) {
+      if (!isSmartFavoriteEvent(favorite)) continue;
+      final request = SmartEventRequest.fromFavoriteEvent(favorite);
+      if (request.events.isEmpty) continue;
+      if (!smartEventHasUnfinishedEvents(request, liveIds)) {
+        unawaited(
+          Future.microtask(
+            () => ref
+                .read(favoriteEventsProvider.notifier)
+                .removeFavorite(request.favoriteEventId),
+          ),
+        );
+        continue;
+      }
+      final elos =
+          request.events
+              .map((event) => event.maxAvgElo)
+              .where((elo) => elo > 0)
+              .toList();
+      cards.add(
+        SmartEventCardData(
+          request: request,
+          eventCount: request.events.length,
+          avgElo:
+              elos.isEmpty
+                  ? 0
+                  : (elos.reduce((a, b) => a + b) / elos.length).round(),
+        ),
+      );
+    }
+    cards.sort((a, b) {
+      final ad = a.request.savedAt ?? DateTime(0);
+      final bd = b.request.savedAt ?? DateTime(0);
+      return bd.compareTo(ad);
+    });
+    return cards;
   }
 
   Widget _buildLoadingState() {
@@ -258,6 +335,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     required GamesListViewMode viewMode,
     required bool isScrolling,
     bool showLoadingMore = false,
+    SmartEventCardData? smartData,
+    List<SmartEventCardData> savedSmartData = const [],
   }) {
     // On tablet, use a beautiful grid layout
     if (ResponsiveHelper.isTablet) {
@@ -266,14 +345,24 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         viewMode: viewMode,
         isScrolling: isScrolling,
         showLoadingMore: showLoadingMore,
+        smartData: smartData,
+        savedSmartData: savedSmartData,
       );
     }
 
     // Phone: vertical list layout
     final horizontalPadding = 16.sp;
 
-    // +1 for premium cards, +1 for loading indicator if showing
-    final itemCount = events.length + 1 + (showLoadingMore ? 1 : 0);
+    // Pinned right under the premium cards, above the first event.
+    final smartCards = <SmartEventCardData>[
+      ...savedSmartData,
+      if (smartData != null) smartData,
+    ];
+    final smartOffset = smartCards.length;
+
+    // +1 for premium cards, +smartOffset for the smart card, +1 for loading.
+    final itemCount =
+        events.length + 1 + smartOffset + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_list'),
@@ -283,7 +372,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: _forYouCacheExtentForMode(viewMode),
+      scrollCacheExtent: ScrollCacheExtent.pixels(
+        _forYouCacheExtentForMode(viewMode),
+      ),
       addAutomaticKeepAlives: false,
       addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
@@ -295,21 +386,49 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
+        if (index > 0 && index <= smartCards.length) {
+          final cardData = smartCards[index - 1];
+          return Padding(
+            padding: EdgeInsets.only(bottom: 16.sp),
+            child: _buildSmartEventCard(cardData),
+          );
+        }
+
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final event = events[index - 1];
+        final event = events[index - 1 - smartOffset];
         return _ForYouEventSection(
           key: ValueKey('event_${event.id}'),
           event: event,
-          isFirst: index == 1,
+          isFirst: index == 1 + smartOffset,
           animatedEventIds: _animatedEventIds,
           animatedGameIds: _animatedGameIds,
           isScrolling: isScrolling,
         );
       },
+    );
+  }
+
+  Widget _buildSmartEventCard(SmartEventCardData smartData) {
+    return SmartEventCard(
+      tierLabel: smartData.request.tierLabel,
+      minElo: smartData.request.minElo,
+      liveCount: smartData.eventCount,
+      avgElo: smartData.avgElo,
+      titleSuffix: smartData.request.titleSuffix,
+      caption: smartData.request.caption,
+      countSingular: smartData.request.countSingular,
+      countPlural: smartData.request.countPlural,
+      accentColor: smartEventAccentColor(smartData.request.scopeId),
+      onTap:
+          () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => SmartEventScreen(request: smartData.request),
+            ),
+          ),
     );
   }
 
@@ -337,14 +456,22 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     required GamesListViewMode viewMode,
     required bool isScrolling,
     bool showLoadingMore = false,
+    SmartEventCardData? smartData,
+    List<SmartEventCardData> savedSmartData = const [],
   }) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
+    final smartCards = <SmartEventCardData>[
+      ...savedSmartData,
+      if (smartData != null) smartData,
+    ];
+    final smartOffset = smartCards.length;
 
     // Number of event-pair rows (ceil division)
     final rowCount = (events.length + 1) ~/ 2;
-    // +1 for premium cards at top, +1 for loading indicator if showing
-    final itemCount = rowCount + 1 + (showLoadingMore ? 1 : 0);
+    // +1 for premium cards at top, +smartOffset for the smart card,
+    // +1 for loading indicator if showing.
+    final itemCount = rowCount + 1 + smartOffset + (showLoadingMore ? 1 : 0);
 
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_tablet_grid'),
@@ -354,7 +481,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: _forYouCacheExtentForMode(viewMode),
+      scrollCacheExtent: ScrollCacheExtent.pixels(
+        _forYouCacheExtentForMode(viewMode),
+      ),
       addAutomaticKeepAlives: false,
       addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
@@ -366,12 +495,20 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           return const PremiumCollectionCards();
         }
 
+        if (index > 0 && index <= smartCards.length) {
+          final cardData = smartCards[index - 1];
+          return Padding(
+            padding: EdgeInsets.only(bottom: 16.sp),
+            child: _buildSmartEventCard(cardData),
+          );
+        }
+
         // Loading indicator at bottom
         if (showLoadingMore && index == itemCount - 1) {
           return _buildLoadingMoreIndicator();
         }
 
-        final rowIndex = index - 1;
+        final rowIndex = index - 1 - smartOffset;
         final i = rowIndex * 2;
         final event1 = events[i];
         final event2 = i + 1 < events.length ? events[i + 1] : null;

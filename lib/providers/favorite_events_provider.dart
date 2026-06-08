@@ -109,6 +109,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     String? timeControl,
     int? maxAvgElo,
     String? dates,
+    Map<String, dynamic>? extraMetadata,
   }) async {
     final userId = _getCurrentUserId();
     if (userId == null) {
@@ -119,6 +120,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       if (timeControl != null) 'timeControl': timeControl,
       if (maxAvgElo != null) 'maxAvgElo': maxAvgElo,
       if (dates != null) 'dates': dates,
+      ...?extraMetadata,
     };
 
     // Create optimistic event
@@ -220,6 +222,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     String? timeControl,
     int? maxAvgElo,
     String? dates,
+    Map<String, dynamic>? extraMetadata,
   }) async {
     final currentState = state.valueOrNull ?? [];
     final isFavorited = currentState.any((e) => e.eventId == eventId);
@@ -234,6 +237,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
         timeControl: timeControl,
         maxAvgElo: maxAvgElo,
         dates: dates,
+        extraMetadata: extraMetadata,
       );
       return true;
     }

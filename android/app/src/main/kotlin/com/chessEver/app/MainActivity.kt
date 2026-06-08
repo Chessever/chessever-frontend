@@ -2,6 +2,7 @@ package com.chessEver.app
 
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -41,6 +42,8 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
@@ -49,9 +52,12 @@ class MainActivity : FlutterActivity() {
   private var pipOverlay: ChessPipOverlayView? = null
   private val mainHandler = Handler(Looper.getMainLooper())
   private val httpClient = OkHttpClient()
+  private val liveNotificationExecutor: ExecutorService =
+    Executors.newSingleThreadExecutor()
   private var pollRunnable: Runnable? = null
   private var clockRunnable: Runnable? = null
   private var activePollCall: Call? = null
+  private var isEnteringPip = false
   // Native move SFX for PiP (mirrors iOS). Flutter SFX is suppressed while in PiP
   // so these don't double up; capture vs move chosen by FEN piece-count drop.
   private var soundPool: SoundPool? = null
@@ -126,10 +132,17 @@ class MainActivity : FlutterActivity() {
             try {
               val over = ((content["is_game_over"] as? Int) ?: 0) != 0
               val live = buildLiveJson(content, if (over) "end" else "start")
-              NotificationServiceExtension().postLocalLiveNotification(
-                this@MainActivity,
-                live
-              )
+              val appContext = applicationContext
+              liveNotificationExecutor.execute {
+                try {
+                  NotificationServiceExtension().postLocalLiveNotification(
+                    appContext,
+                    live
+                  )
+                } catch (e: Exception) {
+                  Log.e("LiveActivity", "local notification render failed", e)
+                }
+              }
             } catch (e: Exception) {
               Log.e("LiveActivity", "local start failed", e)
             }
@@ -249,6 +262,7 @@ class MainActivity : FlutterActivity() {
     newConfig: Configuration
   ) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    isEnteringPip = false
     pipOverlay?.visibility = if (isInPictureInPictureMode) View.VISIBLE else View.GONE
     if (isInPictureInPictureMode) {
       startClockTicker()
@@ -267,6 +281,9 @@ class MainActivity : FlutterActivity() {
   override fun onDestroy() {
     stopClockTicker()
     stopNativePolling()
+    liveNotificationExecutor.shutdownNow()
+    pipChannel?.setMethodCallHandler(null)
+    liveChannel?.setMethodCallHandler(null)
     soundPool?.release()
     soundPool = null
     super.onDestroy()
@@ -278,20 +295,31 @@ class MainActivity : FlutterActivity() {
 
   private fun enterPipIfEligible(): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+    if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+      return false
+    }
     val payload = pipPayload ?: return false
     if (payload["eligible"] != true) return false
     if (isInPictureInPictureMode) return true
+    if (isEnteringPip) return true
 
     ensurePipOverlay(payload)
     val paramsBuilder = PictureInPictureParams.Builder()
       .setAspectRatio(Rational(1, 1))
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      paramsBuilder.setSeamlessResizeEnabled(true)
+      paramsBuilder.setSeamlessResizeEnabled(false)
     }
+    isEnteringPip = true
     return try {
-      enterPictureInPictureMode(paramsBuilder.build())
+      val entered = enterPictureInPictureMode(paramsBuilder.build())
+      if (!entered) {
+        isEnteringPip = false
+        removePipOverlay()
+      }
+      entered
     } catch (e: Exception) {
       Log.w("ChessPiP", "Failed to enter picture-in-picture", e)
+      isEnteringPip = false
       removePipOverlay()
       false
     }
@@ -321,6 +349,7 @@ class MainActivity : FlutterActivity() {
 
   private fun clearPipState() {
     pipPayload = null
+    isEnteringPip = false
     stopClockTicker()
     stopNativePolling()
     removePipOverlay()
