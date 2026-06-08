@@ -2,6 +2,7 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 // ignore_for_file: type=lint
+// ignore_for_file: invalid_use_of_protected_member
 // ignore_for_file: unused_element, unnecessary_cast, override_on_non_overriding_member
 // ignore_for_file: strict_raw_type, inference_failure_on_untyped_parameter
 
@@ -339,7 +340,7 @@ extension FilterConditionValueCopy<$R, $Out>
 
 abstract class FilterConditionCopyWith<$R, $In extends FilterCondition, $Out>
     implements ClassCopyWith<$R, $In, $Out> {
-  ListCopyWith<$R, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>? get values;
+  ListCopyWith<$R, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>? get values;
   $R call({
     String? field,
     FilterOperator? op,
@@ -360,8 +361,8 @@ class _FilterConditionCopyWithImpl<$R, $Out>
   late final ClassMapperBase<FilterCondition> $mapper =
       FilterConditionMapper.ensureInitialized();
   @override
-  ListCopyWith<$R, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>? get values =>
-      $value.values != null
+  ListCopyWith<$R, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>?
+  get values => $value.values != null
       ? ListCopyWith(
           $value.values!,
           (v, t) => ObjectCopyWith(v, $identity, t),
@@ -1951,7 +1952,7 @@ extension SearchResultItemValueCopy<$R, $Out>
 
 abstract class SearchResultItemCopyWith<$R, $In extends SearchResultItem, $Out>
     implements ClassCopyWith<$R, $In, $Out> {
-  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>
+  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>
   get data;
   $R call({Map<String, dynamic>? data});
   SearchResultItemCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(
@@ -1968,7 +1969,7 @@ class _SearchResultItemCopyWithImpl<$R, $Out>
   late final ClassMapperBase<SearchResultItem> $mapper =
       SearchResultItemMapper.ensureInitialized();
   @override
-  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>
+  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>
   get data => MapCopyWith(
     $value.data,
     (v, t) => ObjectCopyWith(v, $identity, t),
