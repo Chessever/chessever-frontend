@@ -1551,6 +1551,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       payload['fen'],
       payload['lastMoveUci'],
       payload['lastMove'],
+      payload['lastMoveSan'],
+      payload['soundEnabled'],
       payload['status'],
       payload['whiteName'],
       payload['blackName'],
@@ -1598,6 +1600,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         state?.lastMove?.uci ??
         game.lastMove ??
         '';
+    final moveSans =
+        analysisState?.moveSans ?? state?.moveSans ?? const <String>[];
+    final lastMoveSan = moveSans.isNotEmpty ? moveSans.last : '';
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final evaluation = state?.evaluation;
     // Whether the viewed position is the live mainline tail. When the user has
@@ -1626,6 +1631,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       'fen': fen,
       'lastMoveUci': lastMoveUci,
       'lastMove': game.lastMove ?? '',
+      'lastMoveSan': lastMoveSan,
+      'soundEnabled': boardSettings?.soundEnabled == true,
       'status': game.gameStatus.name,
       if (game.lastMoveTime != null)
         'lastMoveTime': game.lastMoveTime!.toUtc().toIso8601String(),

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.os.Build
 
 class ChessEverApplication : Application() {
   override fun onCreate() {
@@ -14,6 +15,8 @@ class ChessEverApplication : Application() {
   }
 
   private fun createNotificationChannels() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     val silentAttrs = AudioAttributes.Builder()

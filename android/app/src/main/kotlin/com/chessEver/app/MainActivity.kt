@@ -12,8 +12,6 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.media.AudioAttributes
-import android.media.SoundPool
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -36,14 +34,11 @@ import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -51,37 +46,19 @@ import kotlin.math.roundToInt
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
   private var liveChannel: MethodChannel? = null
-  private var audioChannel: MethodChannel? = null
   private var pipPayload: MutableMap<String, Any?>? = null
   private var pipOverlay: ChessPipOverlayView? = null
   private val mainHandler = Handler(Looper.getMainLooper())
   private val httpClient = OkHttpClient()
   private val liveNotificationExecutor: ExecutorService =
     Executors.newSingleThreadExecutor()
-  private val sfxExecutor: ExecutorService = Executors.newSingleThreadExecutor()
   private var pollRunnable: Runnable? = null
   private var clockRunnable: Runnable? = null
   private var activePollCall: Call? = null
   private var isEnteringPip = false
   private var lastReportedPipMode = false
   private var pipLayoutListener: View.OnLayoutChangeListener? = null
-  // Native short SFX. Android foreground playback deliberately bypasses
-  // flutter_soloud; PiP also reuses this path while Dart is suspended.
-  private var soundPool: SoundPool? = null
-  private val sfxSoundIds = ConcurrentHashMap<String, Int>()
-  private val sfxLock = Any()
-  @Volatile private var sfxLoadStarted = false
-  @Volatile private var sfxShuttingDown = false
   private var lastSoundedMove: String? = null
-  private val sfxAssets = mapOf(
-    "move" to Pair("flutter_assets/assets/sfx/piece_move.wav", "sfx_piece_move.wav"),
-    "castling" to Pair("flutter_assets/assets/sfx/piece_castling.wav", "sfx_piece_castling.wav"),
-    "check" to Pair("flutter_assets/assets/sfx/piece_check.wav", "sfx_piece_check.wav"),
-    "checkmate" to Pair("flutter_assets/assets/sfx/piece_checkmate.wav", "sfx_piece_checkmate.wav"),
-    "draw" to Pair("flutter_assets/assets/sfx/piece_draw.wav", "sfx_piece_draw.wav"),
-    "promotion" to Pair("flutter_assets/assets/sfx/piece_promotion.wav", "sfx_piece_promotion.wav"),
-    "takeover" to Pair("flutter_assets/assets/sfx/piece_takeover.wav", "sfx_piece_takeover.wav")
-  )
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -95,8 +72,7 @@ class MainActivity : FlutterActivity() {
             clearPipState()
           } else {
             pipPayload = args.toMutableMap()
-            // Foreground baseline so the first PiP poll doesn't replay this move.
-            if (!isCurrentlyInPip()) lastSoundedMove = args["lastMoveUci"] as? String
+            lastSoundedMove = args["lastMoveUci"] as? String
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
             if (isCurrentlyInPip()) {
@@ -113,8 +89,7 @@ class MainActivity : FlutterActivity() {
             clearPipState()
           } else {
             mergePayload(args)
-            // Foreground pushes update the baseline; Flutter handles foreground SFX.
-            if (!isCurrentlyInPip()) lastSoundedMove = args["lastMoveUci"] as? String
+            lastSoundedMove = args["lastMoveUci"] as? String
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
             if (isCurrentlyInPip()) {
@@ -127,26 +102,6 @@ class MainActivity : FlutterActivity() {
         "enterIfEligible" -> result.success(enterPipIfEligible())
         "clearActiveGame" -> {
           clearPipState()
-          result.success(null)
-        }
-        else -> result.notImplemented()
-      }
-    }
-
-    audioChannel = MethodChannel(
-      flutterEngine.dartExecutor.binaryMessenger,
-      "com.chessever/audio_sfx"
-    )
-    audioChannel?.setMethodCallHandler { call, result ->
-      when (call.method) {
-        "prepare" -> {
-          initSounds()
-          result.success(soundPool != null)
-        }
-        "play" -> {
-          @Suppress("UNCHECKED_CAST")
-          val args = call.arguments as? Map<String, Any?>
-          playNativeSfx(args?.get("type") as? String ?: "move")
           result.success(null)
         }
         else -> result.notImplemented()
@@ -252,70 +207,6 @@ class MainActivity : FlutterActivity() {
     }
   }
 
-  private fun initSounds() {
-    val pool = synchronized(sfxLock) {
-      soundPool ?: run {
-        val attrs = AudioAttributes.Builder()
-          .setUsage(AudioAttributes.USAGE_MEDIA)
-          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-          .build()
-        SoundPool.Builder().setMaxStreams(4).setAudioAttributes(attrs).build().also {
-          soundPool = it
-        }
-      }
-    }
-
-    if (sfxLoadStarted) return
-    sfxLoadStarted = true
-    sfxExecutor.execute {
-      for ((type, asset) in sfxAssets) {
-        if (sfxShuttingDown || Thread.currentThread().isInterrupted) return@execute
-        if (sfxSoundIds.containsKey(type)) continue
-        val path = extractAsset(asset.first, asset.second) ?: continue
-        val soundId = synchronized(sfxLock) {
-          if (sfxShuttingDown || soundPool !== pool) 0 else pool.load(path, 1)
-        }
-        if (soundId != 0 && !sfxShuttingDown) {
-          sfxSoundIds[type] = soundId
-        }
-      }
-    }
-  }
-
-  // .wav assets in flutter_assets may be stored compressed, so SoundPool can't
-  // open them via AssetFileDescriptor — copy to cache once and load from file.
-  private fun extractAsset(assetPath: String, outName: String): String? {
-    return try {
-      val outFile = File(cacheDir, outName)
-      if (!outFile.exists() || outFile.length() == 0L) {
-        assets.open(assetPath).use { input ->
-          FileOutputStream(outFile).use { output -> input.copyTo(output) }
-        }
-      }
-      outFile.absolutePath
-    } catch (e: Exception) {
-      Log.w("ChessSfx", "Failed to extract $assetPath: $e")
-      null
-    }
-  }
-
-  private fun playNativeSfx(type: String) {
-    initSounds()
-    val pool = soundPool ?: return
-    val id = sfxSoundIds[type] ?: sfxSoundIds["move"] ?: return
-    if (id == 0) return
-    pool.play(id, 1f, 1f, 1, 0, 1f)
-  }
-
-  private fun playPipMoveSound(captured: Boolean) {
-    playNativeSfx(if (captured) "takeover" else "move")
-  }
-
-  private fun fenPieceCount(fen: String?): Int {
-    val placement = fen?.substringBefore(' ') ?: return 0
-    return placement.count { it.isLetter() }
-  }
-
   override fun onUserLeaveHint() {
     enterPipIfEligible()
     super.onUserLeaveHint()
@@ -343,17 +234,8 @@ class MainActivity : FlutterActivity() {
     stopNativePolling()
     removePipOverlay()
     liveNotificationExecutor.shutdownNow()
-    sfxShuttingDown = true
-    sfxExecutor.shutdownNow()
     pipChannel?.setMethodCallHandler(null)
     liveChannel?.setMethodCallHandler(null)
-    audioChannel?.setMethodCallHandler(null)
-    synchronized(sfxLock) {
-      soundPool?.release()
-      soundPool = null
-      sfxSoundIds.clear()
-      sfxLoadStarted = false
-    }
     super.onDestroy()
   }
 
@@ -376,7 +258,7 @@ class MainActivity : FlutterActivity() {
     updatePipParamsForOverlay(overlay)
     isEnteringPip = true
     return try {
-      val entered = enterPictureInPictureMode(buildPipParams(overlay))
+      val entered = PipApi26.enter(this, pipSourceRectHint(overlay))
       if (!entered) {
         isEnteringPip = false
         removePipOverlay()
@@ -455,16 +337,6 @@ class MainActivity : FlutterActivity() {
     )
   }
 
-  private fun buildPipParams(overlay: ChessPipOverlayView?): PictureInPictureParams {
-    val builder = PictureInPictureParams.Builder()
-      .setAspectRatio(Rational(1, 1))
-    pipSourceRectHint(overlay)?.let { builder.setSourceRectHint(it) }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      builder.setSeamlessResizeEnabled(false)
-    }
-    return builder.build()
-  }
-
   private fun pipSourceRectHint(overlay: ChessPipOverlayView?): Rect? {
     overlay?.sourceRectHint()?.let { return it }
     val content = findViewById<View>(android.R.id.content) ?: return null
@@ -475,7 +347,7 @@ class MainActivity : FlutterActivity() {
   private fun updatePipParamsForOverlay(overlay: ChessPipOverlayView?) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     try {
-      setPictureInPictureParams(buildPipParams(overlay))
+      PipApi26.update(this, pipSourceRectHint(overlay))
     } catch (e: Exception) {
       Log.w("ChessPiP", "Failed to update PiP params", e)
     }
@@ -621,7 +493,6 @@ class MainActivity : FlutterActivity() {
     val payload = pipPayload ?: return
     // Frozen on an earlier move: keep the viewed position, ignore newer live data.
     if (payload["followLive"] == false) return
-
     val previousMove = (payload["lastMoveUci"] ?: payload["lastMove"]) as? String
     val previousFen = payload["fen"] as? String
 
@@ -632,6 +503,7 @@ class MainActivity : FlutterActivity() {
       row.optString("last_move").takeIf { it.isNotBlank() }?.let {
         payload["lastMoveUci"] = it
         payload["lastMove"] = it
+        payload.remove("lastMoveSan")
       }
     }
     if (row.has("last_move_time") && !row.isNull("last_move_time")) {
@@ -656,13 +528,29 @@ class MainActivity : FlutterActivity() {
     pipOverlay?.payload = payload
     pipOverlay?.invalidate()
 
-    // Native move SFX while in PiP (Flutter SFX is suppressed during PiP).
     val newMove = payload["lastMoveUci"] as? String
-    if (isCurrentlyInPip() && !newMove.isNullOrBlank() &&
-        newMove != previousMove && newMove != lastSoundedMove) {
+    if (isCurrentlyInPip() &&
+        payload["soundEnabled"] == true &&
+        !newMove.isNullOrBlank() &&
+        newMove != previousMove &&
+        newMove != lastSoundedMove) {
       lastSoundedMove = newMove
-      playPipMoveSound(fenPieceCount(payload["fen"] as? String) < fenPieceCount(previousFen))
+      val captured = fenPieceCount(payload["fen"] as? String) < fenPieceCount(previousFen)
+      requestDartSfx(if (captured) "takeover" else "move")
     }
+  }
+
+  private fun requestDartSfx(type: String) {
+    try {
+      pipChannel?.invokeMethod("playSfx", mapOf("type" to type))
+    } catch (e: Exception) {
+      Log.w("ChessPiP", "Failed to request Dart SFX", e)
+    }
+  }
+
+  private fun fenPieceCount(fen: String?): Int {
+    val placement = fen?.substringBefore(' ') ?: return 0
+    return placement.count { it.isLetter() }
   }
 
   private fun formatClock(seconds: Int): String {
@@ -675,6 +563,26 @@ class MainActivity : FlutterActivity() {
     } else {
       "%02d:%02d".format(minutes, secs)
     }
+  }
+}
+
+private object PipApi26 {
+  fun enter(activity: MainActivity, sourceRectHint: Rect?): Boolean {
+    return activity.enterPictureInPictureMode(buildParams(sourceRectHint))
+  }
+
+  fun update(activity: MainActivity, sourceRectHint: Rect?) {
+    activity.setPictureInPictureParams(buildParams(sourceRectHint))
+  }
+
+  private fun buildParams(sourceRectHint: Rect?): PictureInPictureParams {
+    val builder = PictureInPictureParams.Builder()
+      .setAspectRatio(Rational(1, 1))
+    sourceRectHint?.let { builder.setSourceRectHint(it) }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      builder.setSeamlessResizeEnabled(false)
+    }
+    return builder.build()
   }
 }
 
