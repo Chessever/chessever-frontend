@@ -22,6 +22,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
   final LiveGamesBatchKey? liveBatchKey;
+  final Future<bool> Function()? onBeforeOpen;
 
   const GameCardWrapperWidget({
     super.key,
@@ -35,6 +36,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.fixedBottomSide,
     this.allowStockfishFallback = true,
     this.liveBatchKey,
+    this.onBeforeOpen,
   });
 
   @override
@@ -67,20 +69,25 @@ class GameCardWrapperWidget extends ConsumerWidget {
           .togglePinGame(game.gameId, sourceTourId: game.tourId);
     }
 
+    Future<void> navigateToGame() async {
+      final allowed = await (onBeforeOpen?.call() ?? Future<bool>.value(true));
+      if (!allowed || !context.mounted) return;
+      ref
+          .read(gameCardWrapperProvider)
+          .navigateToChessBoard(
+            context: context,
+            orderedGames: getUpdatedGamesList(),
+            gameIndex: gameIndex,
+            onReturnFromChessboard: onReturnFromChessboard,
+            viewSource: viewSource,
+          );
+    }
+
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
           key: ValueKey(keyValue),
           gamesTourModel: liveGame,
-          onChanged:
-              () => ref
-                  .read(gameCardWrapperProvider)
-                  .navigateToChessBoard(
-                    context: context,
-                    orderedGames: getUpdatedGamesList(),
-                    gameIndex: gameIndex,
-                    onReturnFromChessboard: onReturnFromChessboard,
-                    viewSource: viewSource,
-                  ),
+          onChanged: navigateToGame,
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle: handlePinToggle,
           fixedBottomSide: fixedBottomSide,
@@ -96,16 +103,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle: handlePinToggle,
           allowStockfishFallback: allowStockfishFallback,
-          onTap:
-              () => ref
-                  .read(gameCardWrapperProvider)
-                  .navigateToChessBoard(
-                    context: context,
-                    orderedGames: getUpdatedGamesList(),
-                    gameIndex: gameIndex,
-                    onReturnFromChessboard: onReturnFromChessboard,
-                    viewSource: viewSource,
-                  ),
+          onTap: navigateToGame,
         );
   }
 }
