@@ -25,6 +25,7 @@ import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Full event view for generated level games. Renders the familiar
@@ -926,55 +927,80 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    void restore() {
+      final notifier = ref.read(
+        smartEventDismissedEventIdsProvider(scopeId).notifier,
+      );
+      notifier.state = {...notifier.state}..remove(event.id);
+    }
+
     void dismiss() {
       final notifier = ref.read(
         smartEventDismissedEventIdsProvider(scopeId).notifier,
       );
       notifier.state = {...notifier.state, event.id};
+
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('Tournament hidden from this view'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: kPrimaryColor,
+            onPressed: restore,
+          ),
+        ),
+      );
     }
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Dismissible(
-          key: ValueKey('smart_about_dismiss_${scopeId}_${event.id}'),
-          direction: DismissDirection.startToEnd,
-          background: Container(
-            alignment: Alignment.centerLeft,
-            padding: EdgeInsets.only(left: 18.w),
-            decoration: BoxDecoration(
-              color: kRedColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10.br),
-              border: Border.all(color: kRedColor.withValues(alpha: 0.28)),
-            ),
-            child: Icon(Icons.close_rounded, size: 20.sp, color: kRedColor),
-          ),
-          onDismissed: (_) => dismiss(),
-          child: EventCard(
-            tourEventCardModel: event,
-            forceCompactLayout: true,
-            heroTagSuffix: 'smart_about_$scopeId',
-          ),
+    return Dismissible(
+      key: ValueKey('smart_about_dismiss_${scopeId}_${event.id}'),
+      direction: DismissDirection.endToStart,
+      dismissThresholds: const {DismissDirection.endToStart: 0.35},
+      secondaryBackground: const _IncludedEventDismissBackground(),
+      onDismissed: (_) => dismiss(),
+      child: Semantics(
+        customSemanticsActions: {
+          const CustomSemanticsAction(label: 'Hide from this view'): dismiss,
+        },
+        child: EventCard(
+          tourEventCardModel: event,
+          forceCompactLayout: true,
+          heroTagSuffix: 'smart_about_$scopeId',
         ),
-        Positioned(
-          top: 0,
-          right: 0,
-          child: Material(
-            color: context.colors.surface,
-            shape: const CircleBorder(),
-            elevation: 2,
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: dismiss,
-              child: SizedBox(
-                width: 28.sp,
-                height: 28.sp,
-                child: Icon(Icons.close_rounded, size: 17.sp, color: kRedColor),
-              ),
-            ),
+      ),
+    );
+  }
+}
+
+class _IncludedEventDismissBackground extends StatelessWidget {
+  const _IncludedEventDismissBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: EdgeInsets.only(right: 18.w),
+      decoration: BoxDecoration(
+        color: kRedColor.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8.br),
+        border: Border.all(color: kRedColor.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.visibility_off_outlined, size: 18.sp, color: kRedColor),
+          SizedBox(width: 6.w),
+          Text(
+            'Hide',
+            style: AppTypography.textXsMedium.copyWith(color: kRedColor),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
