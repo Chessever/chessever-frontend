@@ -94,6 +94,21 @@ void main() {
       expect(source, contains('playNativeSfx'));
     });
 
+    test('Android SoundPool is not eagerly loaded during Activity startup', () {
+      final source = File(
+        'android/app/src/main/kotlin/com/chessEver/app/MainActivity.kt',
+      ).readAsStringSync();
+      final onCreate = _methodBody(source, 'override fun onCreate');
+
+      expect(
+        onCreate,
+        isNot(contains('initSounds()')),
+        reason:
+            'SFX should lazy-prepare through Dart startup/play paths, not '
+            'during Activity.onCreate.',
+      );
+    });
+
     test('pubspec keeps .env commented out', () {
       final lines = File('pubspec.yaml').readAsLinesSync();
       final uncommentedEnvAssets = lines.where(
@@ -126,4 +141,26 @@ void _expectBefore(
   expect(firstIndex, isNonNegative, reason: 'Missing guard "$first". $reason');
   expect(secondIndex, isNonNegative, reason: 'Missing target "$second".');
   expect(firstIndex, lessThan(secondIndex), reason: reason);
+}
+
+String _methodBody(String source, String signature) {
+  final start = source.indexOf(signature);
+  expect(start, isNonNegative, reason: 'Missing method "$signature".');
+
+  final openBrace = source.indexOf('{', start);
+  expect(openBrace, isNonNegative, reason: 'Missing body for "$signature".');
+
+  var depth = 0;
+  for (var i = openBrace; i < source.length; i++) {
+    final char = source[i];
+    if (char == '{') depth++;
+    if (char == '}') {
+      depth--;
+      if (depth == 0) {
+        return source.substring(openBrace + 1, i);
+      }
+    }
+  }
+
+  fail('Could not find end of method "$signature".');
 }

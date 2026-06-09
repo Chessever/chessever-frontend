@@ -242,7 +242,6 @@ class MainActivity : FlutterActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    initSounds()
   }
 
   override fun onResume() {
