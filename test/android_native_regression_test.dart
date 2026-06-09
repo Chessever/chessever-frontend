@@ -75,13 +75,14 @@ void main() {
       expect(source, contains('invokeMethod("playSfx"'));
     });
 
-    test('pubspec includes .env asset', () {
+    test('pubspec keeps .env commented out', () {
       final lines = File('pubspec.yaml').readAsLinesSync();
-      final uncommentedEnvAssets = lines.where(
-        (line) => line.trimLeft().startsWith('- .env'),
+      final envAssetLines = lines.where(
+        (line) => line.trimLeft().contains('- .env'),
       );
 
-      expect(uncommentedEnvAssets, hasLength(1));
+      expect(envAssetLines, hasLength(1));
+      expect(envAssetLines.single.trimLeft().startsWith('#'), isTrue);
     });
   });
 }
