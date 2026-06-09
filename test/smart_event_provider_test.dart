@@ -16,9 +16,15 @@ PlayerCard _player(String name, int rating, {int? fideId}) {
   );
 }
 
-GamesTourModel _game({required int whiteRating, required int blackRating}) {
+GamesTourModel _game({
+  String gameId = 'game-1',
+  required int whiteRating,
+  required int blackRating,
+  int? boardNr,
+  DateTime? gameDay,
+}) {
   return GamesTourModel(
-    gameId: 'game-1',
+    gameId: gameId,
     whitePlayer: _player('White', whiteRating),
     blackPlayer: _player('Black', blackRating),
     whiteTimeDisplay: '--:--',
@@ -28,6 +34,8 @@ GamesTourModel _game({required int whiteRating, required int blackRating}) {
     gameStatus: GameStatus.ongoing,
     roundId: 'round-1',
     tourId: 'tour-1',
+    boardNr: boardNr,
+    gameDay: gameDay,
   );
 }
 
@@ -35,12 +43,13 @@ GroupEventCardModel _event({
   required String id,
   required DateTime start,
   required DateTime end,
+  int maxAvgElo = 2600,
 }) {
   return GroupEventCardModel(
     id: id,
     title: 'Event $id',
     dates: 'Jun 1 - 2, 2026',
-    maxAvgElo: 2600,
+    maxAvgElo: maxAvgElo,
     timeUntilStart: '',
     tourEventCategory: TourEventCategory.ongoing,
     timeControl: 'Standard',
@@ -63,6 +72,64 @@ void main() {
         smartGameAverageElo(_game(whiteRating: 2600, blackRating: 0)),
         2600,
       );
+    });
+  });
+
+  group('smart event game ordering', () {
+    test('combined events group by day, event average, then board', () {
+      final day = DateTime.utc(2026, 6, 6);
+      final eventA = _event(
+        id: 'event-a',
+        start: day,
+        end: day,
+        maxAvgElo: 2600,
+      );
+      final eventB = _event(
+        id: 'event-b',
+        start: day,
+        end: day,
+        maxAvgElo: 2400,
+      );
+
+      final ordered = sortSmartGames(
+        [
+          _game(
+            gameId: 'b-board-1',
+            whiteRating: 2450,
+            blackRating: 2400,
+            boardNr: 1,
+            gameDay: day,
+          ),
+          _game(
+            gameId: 'a-board-2',
+            whiteRating: 2500,
+            blackRating: 2450,
+            boardNr: 2,
+            gameDay: day,
+          ),
+          _game(
+            gameId: 'a-board-1',
+            whiteRating: 2500,
+            blackRating: 2450,
+            boardNr: 1,
+            gameDay: day,
+          ),
+        ],
+        pinnedIds: const <String>[],
+        gameEventIds: const {
+          'a-board-1': 'event-a',
+          'a-board-2': 'event-a',
+          'b-board-1': 'event-b',
+        },
+        eventById: {'event-a': eventA, 'event-b': eventB},
+        groupBySourceEvent: true,
+      );
+
+      expect(ordered.map((game) => game.gameId), [
+        'a-board-1',
+        'a-board-2',
+        'b-board-1',
+      ]);
     });
   });
 

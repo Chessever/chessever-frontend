@@ -1,6 +1,11 @@
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -13,7 +18,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Actions available from the event card long-press context menu.
-enum EventContextAction { share, copyPgn }
+enum EventContextAction { share, copyPgn, combineEvents }
 
 /// Builds the canonical shareable URL for an event, mirroring
 /// `lichess.org/broadcast/<tour.slug>/<tour.id>` on chessever.com.
@@ -81,6 +86,9 @@ Future<void> showEventContextMenu({
     case EventContextAction.copyPgn:
       await _copyEventPgn(context: context, ref: ref, model: model);
       break;
+    case EventContextAction.combineEvents:
+      await _openCombinedEvent(context: context, ref: ref, model: model);
+      break;
   }
 }
 
@@ -101,6 +109,11 @@ List<PopupMenuEntry<EventContextAction>> _buildMenuItems() {
       value: EventContextAction.copyPgn,
       label: 'Copy PGN',
       icon: Icons.copy,
+    ),
+    _menuItem(
+      value: EventContextAction.combineEvents,
+      label: 'Combine events',
+      icon: Icons.merge_type_rounded,
     ),
   ];
 }
@@ -144,10 +157,9 @@ Future<void> _shareEvent({
   );
   if (!context.mounted) return;
   final box = context.findRenderObject() as RenderBox?;
-  final origin =
-      box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : const Rect.fromLTWH(0, 0, 1, 1);
+  final origin = box != null
+      ? box.localToGlobal(Offset.zero) & box.size
+      : const Rect.fromLTWH(0, 0, 1, 1);
 
   AnalyticsService.instance.trackEventDetached(
     'Event Shared',
@@ -155,6 +167,84 @@ Future<void> _shareEvent({
   );
 
   await Share.share(url, sharePositionOrigin: origin);
+}
+
+Future<void> _openCombinedEvent({
+  required BuildContext context,
+  required WidgetRef ref,
+  required GroupEventCardModel model,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final textColor = context.colors.textPrimary;
+  final bgColor = context.colors.surface.withValues(alpha: 0.95);
+
+  try {
+    final tours = await ref
+        .read(tourRepositoryProvider)
+        .getTourByGroupId(model.id);
+    final childEvents = tours
+        .where((tour) => tour.groupBroadcastId == model.id || tours.length == 1)
+        .map((tour) => _eventFromTour(tour, model))
+        .toList(growable: false);
+
+    if (childEvents.length < 2) {
+      _showPgnSnackBar(
+        messenger,
+        'No grouped events to combine',
+        textColor,
+        bgColor,
+      );
+      return;
+    }
+
+    final request = SmartEventRequest(
+      source: SmartEventSource.eventGroup,
+      tierLabel: 'Combined',
+      titleSuffix: 'Event',
+      minElo: kFilterMinElo.round(),
+      maxElo: kFilterMaxElo.round(),
+      caption: model.title,
+      countSingular: 'event',
+      countPlural: 'events',
+      events: childEvents,
+    );
+
+    AnalyticsService.instance.trackEventDetached(
+      'Event Groups Combined',
+      properties: {
+        'event_id': model.id,
+        'event_name': model.title,
+        'child_event_count': childEvents.length,
+      },
+    );
+
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SmartEventScreen(request: request)),
+    );
+  } catch (_) {
+    _showPgnSnackBar(messenger, 'Failed to combine events', textColor, bgColor);
+  }
+}
+
+GroupEventCardModel _eventFromTour(Tour tour, GroupEventCardModel parent) {
+  final dates = tour.dates.toList(growable: false)..sort();
+  final start = dates.isEmpty ? parent.startDate : dates.first;
+  final end = dates.isEmpty ? parent.endDate : dates.last;
+  return GroupEventCardModel(
+    id: tour.id,
+    title: tour.name,
+    dates: parent.dates,
+    maxAvgElo: tour.avgElo ?? parent.maxAvgElo,
+    timeUntilStart: parent.timeUntilStart,
+    tourEventCategory: parent.tourEventCategory,
+    timeControl: parent.timeControl,
+    endDate: end,
+    startDate: start,
+    location: parent.location,
+    searchTerms: tour.search ?? parent.searchTerms,
+    eventSource: EventSource.lichessBroadcast,
+  );
 }
 
 Future<void> _copyEventPgn({
@@ -260,7 +350,7 @@ class _EventMenuRow extends StatelessWidget {
       width: double.infinity,
       height: 40.h,
       padding: EdgeInsets.symmetric(horizontal: 14.w),
-      decoration:  BoxDecoration(color: context.colors.surface),
+      decoration: BoxDecoration(color: context.colors.surface),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

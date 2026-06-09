@@ -13,7 +13,7 @@ import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-enum SmartEventSource { forYou, current }
+enum SmartEventSource { forYou, current, eventGroup }
 
 bool isSmartFavoriteEvent(FavoriteEvent favorite) {
   return favorite.metadata['type'] == 'smart_event' ||
@@ -122,10 +122,9 @@ class SmartEventRequest {
       (value) => value.name == sourceName,
       orElse: () => SmartEventSource.forYou,
     );
-    final eventRows =
-        metadata['events'] is List
-            ? metadata['events'] as List
-            : const <dynamic>[];
+    final eventRows = metadata['events'] is List
+        ? metadata['events'] as List
+        : const <dynamic>[];
     final events = eventRows
         .whereType<Map>()
         .map((row) => _eventFromMetadata(row.cast<String, dynamic>()))
@@ -208,16 +207,17 @@ class SmartEventCardData {
 
     final minElo = filter.minElo ?? kFilterMinElo.round();
     final maxElo = filter.maxElo ?? kFilterMaxElo.round();
-    final fullLabel =
-        filter.hasEloFilter ? RatingTierFilter.labelForMinRating(minElo) : null;
-    final tierLabel =
-        fullLabel != null
-            ? fullLabel.split(' ').first
-            : _labelForNonEloFilters(filter);
+    final fullLabel = filter.hasEloFilter
+        ? RatingTierFilter.labelForMinRating(minElo)
+        : null;
+    final tierLabel = fullLabel != null
+        ? fullLabel.split(' ').first
+        : _labelForNonEloFilters(filter);
 
     final elos = events.map((e) => e.maxAvgElo).where((e) => e > 0).toList();
-    final avgElo =
-        elos.isEmpty ? 0 : (elos.reduce((a, b) => a + b) / elos.length).round();
+    final avgElo = elos.isEmpty
+        ? 0
+        : (elos.reduce((a, b) => a + b) / elos.length).round();
 
     return SmartEventCardData(
       request: SmartEventRequest(
@@ -226,10 +226,9 @@ class SmartEventCardData {
         titleSuffix: 'Games',
         minElo: minElo,
         maxElo: maxElo,
-        caption:
-            filter.hasEloFilter
-                ? 'From your $minElo+ filter'
-                : 'From your filters',
+        caption: filter.hasEloFilter
+            ? 'From your $minElo+ filter'
+            : 'From your filters',
         countSingular: 'event',
         countPlural: 'events',
         events: events,
@@ -240,11 +239,10 @@ class SmartEventCardData {
   }
 
   static String _labelForNonEloFilters(FilterPopupState filter) {
-    final values =
-        filter.formatsAndStates
-            .map((value) => value.trim().toLowerCase())
-            .where((value) => value.isNotEmpty)
-            .toSet();
+    final values = filter.formatsAndStates
+        .map((value) => value.trim().toLowerCase())
+        .where((value) => value.isNotEmpty)
+        .toSet();
     if (values.length == 1) {
       final only = values.first;
       if (only == 'live') return 'Live';
@@ -294,10 +292,11 @@ class SmartCurrentEventIdsQuery {
   SmartCurrentEventIdsQuery(Iterable<String> eventIds)
     : eventIds = List<String>.unmodifiable(
         eventIds
-          .map((id) => id.trim())
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList(growable: false)..sort(),
+            .map((id) => id.trim())
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList(growable: false)
+          ..sort(),
       );
 
   final List<String> eventIds;
@@ -393,43 +392,46 @@ final smartAggregateEventRepositoryProvider = FutureProvider.autoDispose
       );
     });
 
-final smartFilteredAggregateEventProvider = Provider.autoDispose.family<
-  AsyncValue<SmartAggregateEvent>,
-  SmartEventGamesQuery
->((ref, query) {
-  final directAsync = ref.watch(smartAggregateEventRepositoryProvider(query));
-  final baseAsync = ref.watch(smartAggregateEventProvider(query.request));
+final smartFilteredAggregateEventProvider = Provider.autoDispose
+    .family<AsyncValue<SmartAggregateEvent>, SmartEventGamesQuery>((
+      ref,
+      query,
+    ) {
+      final directAsync = ref.watch(
+        smartAggregateEventRepositoryProvider(query),
+      );
+      final baseAsync = ref.watch(smartAggregateEventProvider(query.request));
 
-  return directAsync.when(
-    data: (direct) {
-      if (direct.events.isEmpty) {
-        return AsyncValue.data(direct);
-      }
-      if (direct.games.isNotEmpty) {
-        return AsyncValue.data(direct);
-      }
-      final fallback = baseAsync.valueOrNull;
-      if (fallback != null && fallback.games.isNotEmpty) {
-        return AsyncValue.data(fallback);
-      }
-      return AsyncValue.data(direct);
-    },
-    loading: () {
-      final fallback = baseAsync.valueOrNull;
-      if (fallback != null && fallback.games.isNotEmpty) {
-        return AsyncValue.data(fallback);
-      }
-      return const AsyncValue.loading();
-    },
-    error: (error, stackTrace) {
-      final fallback = baseAsync.valueOrNull;
-      if (fallback != null) {
-        return AsyncValue.data(fallback);
-      }
-      return AsyncValue.error(error, stackTrace);
-    },
-  );
-});
+      return directAsync.when(
+        data: (direct) {
+          if (direct.events.isEmpty) {
+            return AsyncValue.data(direct);
+          }
+          if (direct.games.isNotEmpty) {
+            return AsyncValue.data(direct);
+          }
+          final fallback = baseAsync.valueOrNull;
+          if (fallback != null && fallback.games.isNotEmpty) {
+            return AsyncValue.data(fallback);
+          }
+          return AsyncValue.data(direct);
+        },
+        loading: () {
+          final fallback = baseAsync.valueOrNull;
+          if (fallback != null && fallback.games.isNotEmpty) {
+            return AsyncValue.data(fallback);
+          }
+          return const AsyncValue.loading();
+        },
+        error: (error, stackTrace) {
+          final fallback = baseAsync.valueOrNull;
+          if (fallback != null) {
+            return AsyncValue.data(fallback);
+          }
+          return AsyncValue.error(error, stackTrace);
+        },
+      );
+    });
 
 final smartAggregateEventProvider = Provider.autoDispose
     .family<AsyncValue<SmartAggregateEvent>, SmartEventRequest>((ref, request) {
@@ -519,6 +521,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
 
   final currentEvents = await _currentSmartEvents(
     ref: ref,
+    request: request,
     events: activeEvents,
   );
   if (currentEvents.isEmpty) return SmartAggregateEvent.empty;
@@ -531,18 +534,18 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
     eventIds,
   );
 
-  final missingEventIds =
-      eventIds.where((id) => (toursByEvent[id] ?? const []).isEmpty).toList();
+  final missingEventIds = eventIds
+      .where((id) => (toursByEvent[id] ?? const []).isEmpty)
+      .toList();
   if (missingEventIds.isNotEmpty) {
     final fallbackTours = await tourRepository.getToursByIds(missingEventIds);
     for (final tour in fallbackTours) {
-      final eventId =
-          missingEventIds.contains(tour.id)
-              ? tour.id
-              : tour.groupBroadcastId != null &&
-                  missingEventIds.contains(tour.groupBroadcastId)
-              ? tour.groupBroadcastId!
-              : null;
+      final eventId = missingEventIds.contains(tour.id)
+          ? tour.id
+          : tour.groupBroadcastId != null &&
+                missingEventIds.contains(tour.groupBroadcastId)
+          ? tour.groupBroadcastId!
+          : null;
       if (eventId == null) continue;
       toursByEvent.putIfAbsent(eventId, () => []).add(tour);
     }
@@ -579,8 +582,9 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
         tourIds: tourIds,
         filter: query.filter,
         query: query.normalizedSearchQuery,
-        minAverageEloForPrefilter:
-            minAverageElo > GameFilter.defaultMinRating ? minAverageElo : null,
+        minAverageEloForPrefilter: minAverageElo > GameFilter.defaultMinRating
+            ? minAverageElo
+            : null,
         limit: 1000,
       );
 
@@ -596,9 +600,17 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
 
 Future<List<GroupEventCardModel>> _currentSmartEvents({
   required Ref ref,
+  required SmartEventRequest request,
   required List<GroupEventCardModel> events,
 }) async {
   if (events.isEmpty) return const <GroupEventCardModel>[];
+
+  // Event-card "Combine events" uses child tour IDs as the smart-event
+  // members. Those IDs do not exist in `group_broadcasts_current`, so keep the
+  // explicit child set instead of dropping the combined event as "not current".
+  if (request.source == SmartEventSource.eventGroup) {
+    return events;
+  }
 
   final currentEventIds = await ref.read(
     smartCurrentEventIdsProvider(
@@ -623,6 +635,7 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
   final eventById = {for (final event in events) event.id: event};
   final gamesById = <String, GamesTourModel>{};
   final gameEventNames = <String, String>{};
+  final gameEventIds = <String, String>{};
   final eventIdsWithGames = <String>{};
 
   for (final game in games) {
@@ -645,20 +658,23 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
     }
 
     gamesById.putIfAbsent(gameModel.gameId, () => gameModel);
+    gameEventIds[gameModel.gameId] = eventId;
     gameEventNames[gameModel.gameId] = eventById[eventId]?.title ?? eventId;
     eventIdsWithGames.add(eventId);
   }
 
-  final orderedGames = _sortSmartGames(
+  final orderedGames = sortSmartGames(
     gamesById.values.toList(growable: false),
     pinnedIds: const <String>[],
+    gameEventIds: gameEventIds,
+    eventById: eventById,
+    groupBySourceEvent: request.source == SmartEventSource.eventGroup,
   );
-  final participatingEvents =
-      eventIdsWithGames.isEmpty
-          ? events
-          : events
-              .where((event) => eventIdsWithGames.contains(event.id))
-              .toList(growable: false);
+  final participatingEvents = eventIdsWithGames.isEmpty
+      ? events
+      : events
+            .where((event) => eventIdsWithGames.contains(event.id))
+            .toList(growable: false);
 
   return _createSmartAggregateEvent(
     request: request,
@@ -681,6 +697,7 @@ SmartAggregateEvent _buildAggregateEvent(
   final gameEventNames = <String, String>{};
   final pinnedIds = <String>[];
   final seenPinnedIds = <String>{};
+  final gameEventIds = <String, String>{};
   final eventIdsWithGames = <String>{};
 
   for (final snapshot in snapshots) {
@@ -691,22 +708,25 @@ SmartAggregateEvent _buildAggregateEvent(
     for (final game in snapshot.visibleGames) {
       if (!_matchesRequestEloRange(game, request)) continue;
       gamesById.putIfAbsent(game.gameId, () => game);
+      gameEventIds[game.gameId] = snapshot.eventId;
       gameEventNames[game.gameId] =
           eventById[snapshot.eventId]?.title ?? snapshot.eventId;
     }
   }
 
-  final orderedGames = _sortSmartGames(
+  final orderedGames = sortSmartGames(
     gamesById.values.toList(growable: false),
     pinnedIds: pinnedIds,
+    gameEventIds: gameEventIds,
+    eventById: eventById,
+    groupBySourceEvent: request.source == SmartEventSource.eventGroup,
   );
 
-  final participatingEvents =
-      eventIdsWithGames.isEmpty
-          ? activeEvents
-          : activeEvents
-              .where((event) => eventIdsWithGames.contains(event.id))
-              .toList(growable: false);
+  final participatingEvents = eventIdsWithGames.isEmpty
+      ? activeEvents
+      : activeEvents
+            .where((event) => eventIdsWithGames.contains(event.id))
+            .toList(growable: false);
 
   return _createSmartAggregateEvent(
     request: request,
@@ -724,13 +744,13 @@ SmartAggregateEvent _createSmartAggregateEvent({
   required Map<String, String> gameEventNames,
   required List<String> pinnedIds,
 }) {
-  final elos =
-      participatingEvents
-          .map((event) => event.maxAvgElo)
-          .where((elo) => elo > 0)
-          .toList();
-  final avgElo =
-      elos.isEmpty ? 0 : (elos.reduce((a, b) => a + b) / elos.length).round();
+  final elos = participatingEvents
+      .map((event) => event.maxAvgElo)
+      .where((elo) => elo > 0)
+      .toList();
+  final avgElo = elos.isEmpty
+      ? 0
+      : (elos.reduce((a, b) => a + b) / elos.length).round();
 
   final dates =
       participatingEvents
@@ -739,12 +759,11 @@ SmartAggregateEvent _createSmartAggregateEvent({
           .toList()
         ..sort();
 
-  final timeControls =
-      participatingEvents
-          .map((event) => event.timeControl.trim())
-          .where((timeControl) => timeControl.isNotEmpty)
-          .toSet()
-          .toList();
+  final timeControls = participatingEvents
+      .map((event) => event.timeControl.trim())
+      .where((timeControl) => timeControl.isNotEmpty)
+      .toSet()
+      .toList();
 
   return SmartAggregateEvent(
     games: orderedGames,
@@ -786,16 +805,18 @@ bool _matchesAverageEloRange(
 }
 
 int _effectiveMinAverageElo(SmartEventRequest request, GameFilter? filter) {
-  var value =
-      request.hasEloRange ? request.minElo : GameFilter.defaultMinRating;
+  var value = request.hasEloRange
+      ? request.minElo
+      : GameFilter.defaultMinRating;
   final filterMin = filter?.minRating ?? GameFilter.defaultMinRating;
   if (filterMin > value) value = filterMin;
   return value;
 }
 
 int _effectiveMaxAverageElo(SmartEventRequest request, GameFilter? filter) {
-  var value =
-      request.hasEloRange ? request.maxElo : GameFilter.absoluteMaxRating;
+  var value = request.hasEloRange
+      ? request.maxElo
+      : GameFilter.absoluteMaxRating;
   final filterMax = filter?.maxRating ?? GameFilter.absoluteMaxRating;
   if (filterMax < value) value = filterMax;
   return value;
@@ -810,9 +831,13 @@ int smartGameAverageElo(GamesTourModel game) {
   return (ratings.reduce((a, b) => a + b) / ratings.length).round();
 }
 
-List<GamesTourModel> _sortSmartGames(
+List<GamesTourModel> sortSmartGames(
   List<GamesTourModel> games, {
   required List<String> pinnedIds,
+  Map<String, String> gameEventIds = const <String, String>{},
+  Map<String, GroupEventCardModel> eventById =
+      const <String, GroupEventCardModel>{},
+  bool groupBySourceEvent = false,
 }) {
   final pinned = pinnedIds.toSet();
   final sorted = List<GamesTourModel>.from(games);
@@ -822,15 +847,27 @@ List<GamesTourModel> _sortSmartGames(
     final byDay = bd.compareTo(ad);
     if (byDay != 0) return byDay;
 
-    final aPinned = pinned.contains(a.gameId) ? 1 : 0;
-    final bPinned = pinned.contains(b.gameId) ? 1 : 0;
-    if (aPinned != bPinned) return bPinned.compareTo(aPinned);
+    if (groupBySourceEvent) {
+      final aEvent = eventById[gameEventIds[a.gameId]];
+      final bEvent = eventById[gameEventIds[b.gameId]];
+      final byEventElo = (bEvent?.maxAvgElo ?? 0).compareTo(
+        aEvent?.maxAvgElo ?? 0,
+      );
+      if (byEventElo != 0) return byEventElo;
 
-    final byAvgElo = smartGameAverageElo(b).compareTo(smartGameAverageElo(a));
-    if (byAvgElo != 0) return byAvgElo;
+      final byEventTitle = (aEvent?.title ?? '').compareTo(bEvent?.title ?? '');
+      if (byEventTitle != 0) return byEventTitle;
+    } else {
+      final aPinned = pinned.contains(a.gameId) ? 1 : 0;
+      final bPinned = pinned.contains(b.gameId) ? 1 : 0;
+      if (aPinned != bPinned) return bPinned.compareTo(aPinned);
 
-    final byTopElo = b.cardElo.compareTo(a.cardElo);
-    if (byTopElo != 0) return byTopElo;
+      final byAvgElo = smartGameAverageElo(b).compareTo(smartGameAverageElo(a));
+      if (byAvgElo != 0) return byAvgElo;
+
+      final byTopElo = b.cardElo.compareTo(a.cardElo);
+      if (byTopElo != 0) return byTopElo;
+    }
 
     final aBoard = a.boardNr;
     final bBoard = b.boardNr;
@@ -893,12 +930,11 @@ GroupEventCardModel? _eventFromMetadata(Map<String, dynamic> json) {
     endDate: _dateFromMetadata(json['endDate']),
     startDate: _dateFromMetadata(json['startDate']),
     location: json['location']?.toString(),
-    searchTerms:
-        json['searchTerms'] is List
-            ? (json['searchTerms'] as List)
-                .map((value) => value.toString())
-                .toList(growable: false)
-            : const <String>[],
+    searchTerms: json['searchTerms'] is List
+        ? (json['searchTerms'] as List)
+              .map((value) => value.toString())
+              .toList(growable: false)
+        : const <String>[],
     eventSource: eventSource,
   );
 }
