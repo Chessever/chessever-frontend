@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:chessever2/services/pip_service.dart';
 
 /// Sound effect types used by both the native Android SoundPool path and the
@@ -44,6 +45,8 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _audioSessionConfigured = false;
   bool _androidSfxPrepared = false;
   bool _androidSfxUnavailable = false;
+  bool _androidSfxPrepareBreadcrumbLogged = false;
+  bool _androidSfxFirstPlayBreadcrumbLogged = false;
 
   /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
   Future<void> _configureAudioSession() async {
@@ -170,11 +173,23 @@ class AudioPlayerService with WidgetsBindingObserver {
     try {
       final prepared = await _androidSfxChannel.invokeMethod<bool>('prepare');
       _androidSfxPrepared = prepared == true;
+      if (!_androidSfxPrepareBreadcrumbLogged) {
+        _androidSfxPrepareBreadcrumbLogged = true;
+        _addAndroidSfxBreadcrumb(
+          'native SoundPool prepare completed',
+          data: {'prepared': _androidSfxPrepared},
+        );
+      }
       if (!_androidSfxPrepared) {
         _markAndroidSfxUnavailable('native SoundPool prepare returned false');
       }
     } catch (e, s) {
       debugPrint('⚠️ Android native SFX prepare failed: $e\n$s');
+      _addAndroidSfxBreadcrumb(
+        'native SoundPool prepare failed',
+        data: {'error': e.toString()},
+        level: SentryLevel.warning,
+      );
       _markAndroidSfxUnavailable('native SoundPool prepare threw');
     }
   }
@@ -184,9 +199,21 @@ class AudioPlayerService with WidgetsBindingObserver {
     try {
       await _prepareAndroidSfx();
       if (_androidSfxUnavailable) return;
+      if (!_androidSfxFirstPlayBreadcrumbLogged) {
+        _androidSfxFirstPlayBreadcrumbLogged = true;
+        _addAndroidSfxBreadcrumb(
+          'native SoundPool first play',
+          data: {'type': type.name},
+        );
+      }
       await _androidSfxChannel.invokeMethod<void>('play', {'type': type.name});
     } catch (e, s) {
       debugPrint('⚠️ Android native SFX playback failed: $e\n$s');
+      _addAndroidSfxBreadcrumb(
+        'native SoundPool playback failed',
+        data: {'type': type.name, 'error': e.toString()},
+        level: SentryLevel.warning,
+      );
       _markAndroidSfxUnavailable('native SoundPool playback threw');
     }
   }
@@ -337,9 +364,35 @@ class AudioPlayerService with WidgetsBindingObserver {
     if (_androidSfxUnavailable) return;
     _androidSfxUnavailable = true;
     _androidSfxPrepared = false;
+    _addAndroidSfxBreadcrumb(
+      'native SoundPool disabled',
+      data: {'reason': reason},
+      level: SentryLevel.warning,
+    );
     debugPrint(
       '⚠️ AudioPlayerService: Android native SFX disabled until next app start: $reason',
     );
+  }
+
+  void _addAndroidSfxBreadcrumb(
+    String message, {
+    Map<String, dynamic>? data,
+    SentryLevel level = SentryLevel.info,
+  }) {
+    if (!Platform.isAndroid) return;
+    try {
+      Sentry.addBreadcrumb(
+        Breadcrumb(
+          category: 'android_audio_sfx',
+          message: message,
+          type: 'debug',
+          data: <String, dynamic>{'backend': 'soundpool', ...?data},
+          level: level,
+        ),
+      );
+    } catch (_) {
+      // Diagnostics must never affect audio.
+    }
   }
 
   @override
