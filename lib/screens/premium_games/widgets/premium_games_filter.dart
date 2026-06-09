@@ -4,7 +4,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -15,12 +15,10 @@ Future<PremiumGamesFilter?> showPremiumGamesFilterDialog({
   required PremiumGamesType type,
   required PremiumGamesFilter currentFilter,
 }) async {
-  return showDialog<PremiumGamesFilter>(
+  return showAlertModal<PremiumGamesFilter>(
     context: context,
-    barrierColor: Colors.transparent,
-    builder:
-        (_) =>
-            PremiumGamesFilterDialog(type: type, initialFilter: currentFilter),
+    horizontalPadding: 0,
+    child: PremiumGamesFilterDialog(type: type, initialFilter: currentFilter),
   );
 }
 
@@ -62,167 +60,154 @@ class _PremiumGamesFilterDialogState
     final horizontalPadding = 20.w;
     final verticalPadding = 16.h;
 
-    return GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
-      child: Stack(
-        children: [
-          const Positioned.fill(child: BackDropFilterWidget()),
-          GestureDetector(
-            onTap: () {},
-            child: Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding: EdgeInsets.zero,
-              child: Container(
-                width: dialogWidth,
-                constraints: BoxConstraints(maxHeight: 520.h),
-                decoration: BoxDecoration(
-                  color: context.colors.surface,
-                  borderRadius: BorderRadius.circular(12.br),
-                  border: Border.all(
-                    color: context.colors.divider,
-                    width: 1,
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      width: dialogWidth,
+      constraints: BoxConstraints(maxHeight: 520.h),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.1),
+          width: 1,
+        ),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.only(
+                left: horizontalPadding,
+                right: horizontalPadding,
+                top: verticalPadding,
+                bottom: 0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Padding(
-                        padding: EdgeInsets.only(
-                          left: horizontalPadding,
-                          right: horizontalPadding,
-                          top: verticalPadding,
-                          bottom: 0,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Header
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Filters',
-                                  style: AppTypography.textMdBold.copyWith(
-                                    color: context.colors.textPrimary,
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => Navigator.pop(context),
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    color: context.colors.textPrimary.withValues(alpha: 0.6),
-                                    size: 20.ic,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 20.h),
-
-                            // Date Range
-                            _SectionTitle(title: 'Date Range'),
-                            SizedBox(height: 8.h),
-                            _ChipGrid(
-                              items: PremiumGamesDateRange.values,
-                              selectedItem: _dateRange,
-                              getLabel: (item) => item.displayText,
-                              onSelected: (item) {
-                                HapticFeedbackService.selection();
-                                setState(() => _dateRange = item);
-                              },
-                            ),
-                            SizedBox(height: 20.h),
-
-                            // Result
-                            _SectionTitle(title: 'Result'),
-                            SizedBox(height: 8.h),
-                            _ChipGrid(
-                              items: PremiumGamesResult.values,
-                              selectedItem: _result,
-                              getLabel: (item) => item.displayText,
-                              onSelected: (item) {
-                                HapticFeedbackService.selection();
-                                setState(() => _result = item);
-                              },
-                            ),
-                            SizedBox(height: 20.h),
-
-                            _SectionTitle(title: 'Level'),
-                            SizedBox(height: 8.h),
-                            RatingTierFilter(
-                              selectedMinRating: _selectedMinElo,
-                              onChanged: (value) {
-                                HapticFeedbackService.selection();
-                                setState(() => _selectedMinElo = value);
-                              },
-                            ),
-                            SizedBox(height: 16.h),
-                          ],
+                      Text(
+                        'Filters',
+                        style: AppTypography.textMdBold.copyWith(
+                          color: context.colors.textPrimary,
                         ),
                       ),
-
-                      // Buttons
-                      Padding(
-                        padding: EdgeInsets.all(20.sp),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: SizedBox(
-                                height: 44.h,
-                                child: OutlinedButton(
-                                  onPressed: _resetFilters,
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: context.colors.textPrimary,
-                                    backgroundColor: context.colors.surface,
-                                    side: BorderSide.none,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8.br),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'Reset',
-                                    style: AppTypography.textSmMedium.copyWith(
-                                      color: context.colors.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 12.sp),
-                            Expanded(
-                              child: SizedBox(
-                                height: 44.h,
-                                child: ElevatedButton(
-                                  onPressed: _applyFilters,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: kPrimaryColor,
-                                    foregroundColor: kBlackColor,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8.br),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'Apply',
-                                    style: AppTypography.textSmMedium.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Icon(
+                          Icons.close_rounded,
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.6,
+                          ),
+                          size: 20.ic,
                         ),
                       ),
                     ],
                   ),
-                ),
+                  SizedBox(height: 20.h),
+
+                  // Date Range
+                  _SectionTitle(title: 'Date Range'),
+                  SizedBox(height: 8.h),
+                  _ChipGrid(
+                    items: PremiumGamesDateRange.values,
+                    selectedItem: _dateRange,
+                    getLabel: (item) => item.displayText,
+                    onSelected: (item) {
+                      HapticFeedbackService.selection();
+                      setState(() => _dateRange = item);
+                    },
+                  ),
+                  SizedBox(height: 20.h),
+
+                  // Result
+                  _SectionTitle(title: 'Result'),
+                  SizedBox(height: 8.h),
+                  _ChipGrid(
+                    items: PremiumGamesResult.values,
+                    selectedItem: _result,
+                    getLabel: (item) => item.displayText,
+                    onSelected: (item) {
+                      HapticFeedbackService.selection();
+                      setState(() => _result = item);
+                    },
+                  ),
+                  SizedBox(height: 20.h),
+
+                  _SectionTitle(title: 'Level'),
+                  SizedBox(height: 8.h),
+                  RatingTierFilter(
+                    selectedMinRating: _selectedMinElo,
+                    onChanged: (value) {
+                      HapticFeedbackService.selection();
+                      setState(() => _selectedMinElo = value);
+                    },
+                  ),
+                  SizedBox(height: 16.h),
+                ],
               ),
             ),
-          ),
-        ],
+
+            // Buttons
+            Padding(
+              padding: EdgeInsets.all(20.sp),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 44.h,
+                      child: OutlinedButton(
+                        onPressed: _resetFilters,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: context.colors.textPrimary,
+                          backgroundColor: context.colors.surface,
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.br),
+                          ),
+                        ),
+                        child: Text(
+                          'Reset',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 12.sp),
+                  Expanded(
+                    child: SizedBox(
+                      height: 44.h,
+                      child: ElevatedButton(
+                        onPressed: _applyFilters,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kPrimaryColor,
+                          foregroundColor: kBlackColor,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.br),
+                          ),
+                        ),
+                        child: Text(
+                          'Apply',
+                          style: AppTypography.textSmMedium.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

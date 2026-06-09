@@ -5,6 +5,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -23,16 +24,14 @@ Future<LibraryFolderCreationData?> showCreateFolderDialog(
   String? initialParentId,
   bool lockToParent = false,
 }) async {
-  return showDialog<LibraryFolderCreationData>(
+  return showAlertModal<LibraryFolderCreationData>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.8),
-    builder:
-        (context) => _FolderNameDialog(
-          title: initialParentId != null ? 'Add to Folder' : 'New Library Item',
-          confirmLabel: 'Create',
-          initialParentId: initialParentId,
-          isLocked: lockToParent,
-        ),
+    child: _FolderNameDialog(
+      title: initialParentId != null ? 'Add to Folder' : 'New Library Item',
+      confirmLabel: 'Create',
+      initialParentId: initialParentId,
+      isLocked: lockToParent,
+    ),
   );
 }
 
@@ -41,16 +40,14 @@ Future<String?> showRenameFolderDialog(
   BuildContext context, {
   required String currentName,
 }) async {
-  return showDialog<String>(
+  return showAlertModal<String>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.8),
-    builder:
-        (context) => _FolderNameDialog(
-          title: 'Rename',
-          confirmLabel: 'Save',
-          initialValue: currentName,
-          isRename: true,
-        ),
+    child: _FolderNameDialog(
+      title: 'Rename',
+      confirmLabel: 'Save',
+      initialValue: currentName,
+      isRename: true,
+    ),
   );
 }
 
@@ -134,95 +131,91 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     final availableParents =
         allFolders.where((f) => f.id != kTwicBookId && f.isFolder).toList();
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.isTablet ? 420 : double.infinity,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: context.colors.surface,
-            borderRadius: BorderRadius.circular(24.br),
-            border: Border.all(color: context.colors.divider),
-            boxShadow: [
-              BoxShadow(
-                color: context.colors.shadow,
-                blurRadius: 40,
-                offset: const Offset(0, 20),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(28.sp),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                Row(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(10.sp),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12.br),
-                      ),
-                      child: Icon(
-                        widget.isRename
-                            ? Icons.edit_rounded
-                            : (_isDatabase
-                                ? Icons.storage_rounded
-                                : Icons.folder_rounded),
-                        color: kPrimaryColor,
-                        size: 22.sp,
-                      ),
-                    ),
-                    SizedBox(width: 16.w),
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        style: AppTypography.textLgBold.copyWith(
-                          color: context.colors.textPrimary,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                SizedBox(height: 24.h),
-
-                // Type Selection (only if not renaming and not locked)
-                if (!widget.isRename && !widget.isLocked) ...[
-                  _buildTypeSelector(),
-                  SizedBox(height: 20.h),
-                ],
-
-                // Parent selection (if a parent folder is being selected)
-                if (_selectedParentId != null &&
-                    !widget.isLocked &&
-                    !widget.isRename) ...[
-                  _buildParentSelector(availableParents),
-                  SizedBox(height: 20.h),
-                ],
-
-                // Context message for a locked parent folder
-                if (widget.isLocked && _selectedParentId != null) ...[
-                  _buildLockedContext(availableParents),
-                  SizedBox(height: 20.h),
-                ],
-
-                // Input Field
-                _buildTextField(),
-
-                SizedBox(height: 32.h),
-
-                // Actions
-                _buildActions(),
-              ],
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: ResponsiveHelper.isTablet ? 420 : double.infinity,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(24.br),
+          border: Border.all(color: context.colors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: context.colors.shadow,
+              blurRadius: 40,
+              offset: const Offset(0, 20),
             ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(28.sp),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(10.sp),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12.br),
+                    ),
+                    child: Icon(
+                      widget.isRename
+                          ? Icons.edit_rounded
+                          : (_isDatabase
+                              ? Icons.storage_rounded
+                              : Icons.folder_rounded),
+                      color: kPrimaryColor,
+                      size: 22.sp,
+                    ),
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: context.colors.textPrimary,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              SizedBox(height: 24.h),
+
+              // Type Selection (only if not renaming and not locked)
+              if (!widget.isRename && !widget.isLocked) ...[
+                _buildTypeSelector(),
+                SizedBox(height: 20.h),
+              ],
+
+              // Parent selection (if a parent folder is being selected)
+              if (_selectedParentId != null &&
+                  !widget.isLocked &&
+                  !widget.isRename) ...[
+                _buildParentSelector(availableParents),
+                SizedBox(height: 20.h),
+              ],
+
+              // Context message for a locked parent folder
+              if (widget.isLocked && _selectedParentId != null) ...[
+                _buildLockedContext(availableParents),
+                SizedBox(height: 20.h),
+              ],
+
+              // Input Field
+              _buildTextField(),
+
+              SizedBox(height: 32.h),
+
+              // Actions
+              _buildActions(),
+            ],
           ),
         ),
       ),

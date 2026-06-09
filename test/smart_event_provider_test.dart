@@ -131,5 +131,36 @@ void main() {
         );
       },
     );
+
+    test('reports saved smart event inactive when no event is current', () {
+      final now = DateTime.now();
+      final request = SmartEventRequest(
+        source: SmartEventSource.current,
+        tierLabel: 'GM',
+        titleSuffix: 'Live Games',
+        minElo: 2500,
+        maxElo: 3200,
+        caption: 'Saved',
+        countSingular: 'event',
+        countPlural: 'events',
+        events: [
+          _event(
+            id: 'old-current-event',
+            start: now.subtract(const Duration(days: 1)),
+            end: now.add(const Duration(days: 1)),
+          ),
+        ],
+      );
+
+      expect(smartEventHasCurrentEvents(request, const <String>{}), isFalse);
+      expect(
+        smartEventHasCurrentEvents(request, {'different-current-event'}),
+        isFalse,
+      );
+      expect(
+        smartEventHasCurrentEvents(request, {'old-current-event'}),
+        isTrue,
+      );
+    });
   });
 }

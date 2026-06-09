@@ -2,6 +2,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 
 /// One-time flag: the live-game-widgets intro (PiP + Live Activity) was shown.
@@ -15,165 +16,176 @@ Future<void> showLiveWidgetsIntroDialog(
   BuildContext context, {
   required VoidCallback onOpenSettings,
 }) {
-  return showDialog<void>(
+  return showAlertModal<void>(
     context: context,
-    builder: (dialogContext) {
-      final colors = dialogContext.colors;
-      final mq = MediaQuery.of(dialogContext);
+    horizontalPadding: 16,
+    verticalPadding: 24,
+    child: Builder(
+      builder: (dialogContext) {
+        final colors = dialogContext.colors;
+        final mq = MediaQuery.of(dialogContext);
 
-      return Dialog(
-        backgroundColor: colors.surface,
-        insetPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 24.h),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22.br),
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 460.w,
-            maxHeight: mq.size.height * 0.88,
+        return Container(
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(22.br),
+            border: Border.all(
+              color: colors.textPrimary.withValues(alpha: 0.08),
+              width: 1,
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ---- Header ----
-              Padding(
-                padding: EdgeInsets.fromLTRB(20.w, 20.h, 12.w, 12.h),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Follow games without the app open',
-                            style: AppTypography.textLgBold.copyWith(
-                              color: colors.textPrimary,
-                              fontSize: 18.f,
-                            ),
-                          ),
-                          SizedBox(height: 4.h),
-                          Text(
-                            'Two ways to keep watching a live game while you '
-                            'do other things.',
-                            style: AppTypography.textSmRegular.copyWith(
-                              color: colors.textPrimary.withValues(alpha: 0.6),
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      icon: Icon(
-                        Icons.close_rounded,
-                        color: colors.textPrimary.withValues(alpha: 0.5),
-                        size: 22.ic,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(
-                height: 1,
-                color: colors.textPrimary.withValues(alpha: 0.08),
-              ),
-
-              // ---- Scrollable body: the two features ----
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 18.h),
-                  child: Column(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 460.w,
+              maxHeight: mq.size.height * 0.88,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ---- Header ----
+                Padding(
+                  padding: EdgeInsets.fromLTRB(20.w, 20.h, 12.w, 12.h),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _FeatureBlock(
-                        icon: Icons.picture_in_picture_alt_rounded,
-                        title: 'Picture-in-Picture',
-                        description:
-                            'A floating mini-board that stays on top of other '
-                            'apps and follows the game live.',
-                        steps: const [
-                          'Turn it on in Settings → Notifications → '
-                              'Picture in Picture.',
-                          'Open a live game, then leave the app — the board '
-                              'keeps playing in a floating window.',
-                        ],
-                        mockup: const _PhoneFrame(child: _PipScreen()),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Follow games without the app open',
+                              style: AppTypography.textLgBold.copyWith(
+                                color: colors.textPrimary,
+                                fontSize: 18.f,
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(
+                              'Two ways to keep watching a live game while you '
+                              'do other things.',
+                              style: AppTypography.textSmRegular.copyWith(
+                                color: colors.textPrimary.withValues(
+                                  alpha: 0.6,
+                                ),
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      SizedBox(height: 26.h),
-                      _FeatureBlock(
-                        icon: Icons.lock_clock_outlined,
-                        title: 'Live Activity',
-                        description:
-                            'A lock-screen card with the board, players and '
-                            'evaluation, updated on every move.',
-                        steps: const [
-                          'Turn it on in Settings → Notifications → '
-                              'Live Activity.',
-                          'Open a live game and lock your phone — the card '
-                              'sits right on your lock screen.',
-                        ],
-                        mockup: const _PhoneFrame(child: _LiveActivityScreen()),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: colors.textPrimary.withValues(alpha: 0.5),
+                          size: 22.ic,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-
-              // ---- Footer actions ----
-              Divider(
-                height: 1,
-                color: colors.textPrimary.withValues(alpha: 0.08),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 14.h),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: Text(
-                          'Got it',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: colors.textPrimary.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      flex: 2,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: kPrimaryColor,
-                          foregroundColor: Colors.black,
-                          padding: EdgeInsets.symmetric(vertical: 12.h),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12.br),
-                          ),
-                        ),
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                          onOpenSettings();
-                        },
-                        child: Text(
-                          'Open Settings',
-                          style: AppTypography.textSmBold.copyWith(
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                Divider(
+                  height: 1,
+                  color: colors.textPrimary.withValues(alpha: 0.08),
                 ),
-              ),
-            ],
+
+                // ---- Scrollable body: the two features ----
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 18.h),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _FeatureBlock(
+                          icon: Icons.picture_in_picture_alt_rounded,
+                          title: 'Picture-in-Picture',
+                          description:
+                              'A floating mini-board that stays on top of other '
+                              'apps and follows the game live.',
+                          steps: const [
+                            'Turn it on in Settings → Notifications → '
+                                'Picture in Picture.',
+                            'Open a live game, then leave the app — the board '
+                                'keeps playing in a floating window.',
+                          ],
+                          mockup: const _PhoneFrame(child: _PipScreen()),
+                        ),
+                        SizedBox(height: 26.h),
+                        _FeatureBlock(
+                          icon: Icons.lock_clock_outlined,
+                          title: 'Live Activity',
+                          description:
+                              'A lock-screen card with the board, players and '
+                              'evaluation, updated on every move.',
+                          steps: const [
+                            'Turn it on in Settings → Notifications → '
+                                'Live Activity.',
+                            'Open a live game and lock your phone — the card '
+                                'sits right on your lock screen.',
+                          ],
+                          mockup: const _PhoneFrame(
+                            child: _LiveActivityScreen(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ---- Footer actions ----
+                Divider(
+                  height: 1,
+                  color: colors.textPrimary.withValues(alpha: 0.08),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 14.h),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: Text(
+                            'Got it',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: colors.textPrimary.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: kPrimaryColor,
+                            foregroundColor: Colors.black,
+                            padding: EdgeInsets.symmetric(vertical: 12.h),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12.br),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.of(dialogContext).pop();
+                            onOpenSettings();
+                          },
+                          child: Text(
+                            'Open Settings',
+                            style: AppTypography.textSmBold.copyWith(
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    },
+        );
+      },
+    ),
   );
 }
 
@@ -469,13 +481,13 @@ class _PipScreen extends StatelessWidget {
   }
 
   Widget _bar(double w, double h, double alpha) => Container(
-        width: w,
-        height: h,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: alpha),
-          borderRadius: BorderRadius.circular(3.br),
-        ),
-      );
+    width: w,
+    height: h,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: alpha),
+      borderRadius: BorderRadius.circular(3.br),
+    ),
+  );
 }
 
 /// The floating PiP window: a drag grabber, a thin eval bar + a mini board,
@@ -624,7 +636,11 @@ class _LiveActivityCard extends StatelessWidget {
                 ),
                 child: Text(
                   '♞',
-                  style: TextStyle(fontSize: 9.f, height: 1, color: Colors.black),
+                  style: TextStyle(
+                    fontSize: 9.f,
+                    height: 1,
+                    color: Colors.black,
+                  ),
                 ),
               ),
               SizedBox(width: 5.w),
@@ -839,9 +855,10 @@ class _MiniBoard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: cell * 0.84,
                       height: 1,
-                      color: (p[3] as bool)
-                          ? const Color(0xFFF6F6F6)
-                          : const Color(0xFF1E1E1E),
+                      color:
+                          (p[3] as bool)
+                              ? const Color(0xFFF6F6F6)
+                              : const Color(0xFF1E1E1E),
                     ),
                   ),
                 ),

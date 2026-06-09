@@ -16,8 +16,8 @@ import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
@@ -55,10 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // Safety net: fire system ATT dialog without explainer sheet for users
       // already past onboarding. Onboarding triggers it with the sheet.
       if (mounted) {
-        AttPromptService.instance.ensurePrompted(
-          context,
-          showExplainer: false,
-        );
+        AttPromptService.instance.ensurePrompted(context, showExplainer: false);
       }
       if (!E2eConfig.suppressInterruptivePrompts) {
         // Plan B: request notification permission if not already granted.
@@ -97,10 +94,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (status == UpdateStatus.outdated ||
           status == UpdateStatus.restartRequired) {
         if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => ShorebirdUpdateDialog(initialStatus: status),
+          unawaited(
+            showAlertModal<void>(
+              context: context,
+              barrierDismissible: false,
+              child: ShorebirdUpdateDialog(initialStatus: status),
+            ),
           );
         }
       }
@@ -206,27 +205,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
 
       // Fully authenticated users: show logout confirmation
-      await showDialog<void>(
+      final confirmed = await showSmoothConfirmDialog(
         context: context,
-        builder:
-            (dialogContext) => AlertDialog(
-              title: const Text('Logout'),
-              content: const Text('Are you sure you want to log out?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    Navigator.of(dialogContext).pop();
-                    await ref.read(authStateProvider.notifier).signOut();
-                  },
-                  child: const Text('Logout'),
-                ),
-              ],
-            ),
+        title: 'Logout',
+        message: 'Are you sure you want to log out?',
+        confirmText: 'Logout',
       );
+      if (confirmed == true) {
+        await ref.read(authStateProvider.notifier).signOut();
+      }
     },
   );
 

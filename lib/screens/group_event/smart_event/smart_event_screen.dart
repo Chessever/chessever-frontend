@@ -2,7 +2,10 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -11,7 +14,9 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
@@ -98,6 +103,23 @@ class _AppBar extends ConsumerWidget {
   const _AppBar({required this.request});
 
   final SmartEventRequest request;
+
+  Future<bool> _confirmFavoriteChange(
+    BuildContext context, {
+    required bool isSaved,
+  }) async {
+    final confirmed = await showSmoothConfirmDialog(
+      context: context,
+      title: isSaved ? 'Remove smart event?' : 'Save smart event?',
+      message:
+          isSaved
+              ? 'This will remove ${request.displayName} from your For You and Current tabs.'
+              : 'This will add ${request.displayName} to your For You and Current tabs while its events are active.',
+      confirmText: isSaved ? 'Remove' : 'Save',
+      isDangerous: isSaved,
+    );
+    return confirmed == true;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -192,6 +214,11 @@ class _AppBar extends ConsumerWidget {
             onPressed: () async {
               final allowed = await requireFullAuthGuard(context);
               if (!allowed || !context.mounted) return;
+              final confirmed = await _confirmFavoriteChange(
+                context,
+                isSaved: isSaved,
+              );
+              if (!confirmed || !context.mounted) return;
 
               final notifier = ref.read(favoriteEventsProvider.notifier);
               if (isSaved) {
@@ -598,44 +625,9 @@ class _AboutTab extends ConsumerWidget {
             ...event.events.map(
               (includedEvent) => Padding(
                 padding: EdgeInsets.only(bottom: 8.h),
-                child: Stack(
-                  children: [
-                    EventCard(
-                      tourEventCardModel: includedEvent,
-                      forceCompactLayout: true,
-                      heroTagSuffix: 'smart_about_${request.scopeId}',
-                    ),
-                    Positioned(
-                      top: 6.h,
-                      right: 6.w,
-                      child: Material(
-                        color: context.colors.surface.withValues(alpha: 0.92),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () {
-                            final notifier = ref.read(
-                              smartEventDismissedEventIdsProvider(
-                                request.scopeId,
-                              ).notifier,
-                            );
-                            notifier.state = {
-                              ...notifier.state,
-                              includedEvent.id,
-                            };
-                          },
-                          child: Padding(
-                            padding: EdgeInsets.all(6.sp),
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 16.sp,
-                              color: context.colors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                child: _DismissibleIncludedEventCard(
+                  event: includedEvent,
+                  scopeId: request.scopeId,
                 ),
               ),
             ),
@@ -719,16 +711,62 @@ class _PlayersTab extends ConsumerWidget {
         if (rows.isEmpty) {
           return _EmptyState();
         }
-        return ListView.builder(
-          padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
-          itemCount: rows.length + 1,
-          itemBuilder: (context, i) {
-            if (i == 0) return const _PlayersHeader();
-            final row = rows[i - 1];
-            return _PlayerRow(rank: i, row: row);
-          },
+        final horizontalPadding = ResponsiveHelper.adaptive(
+          phone: 16.sp,
+          tablet: 24.sp,
+        );
+        return Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              child: Column(
+                children: [
+                  const FigmaStandingsHeader(showScore: true),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: EdgeInsets.only(top: 8.sp, bottom: 24.sp),
+                      itemCount: rows.length,
+                      itemBuilder: (context, i) {
+                        final row = rows[i];
+                        return FigmaPlayerCard(
+                          key: ValueKey(
+                            'smart_player_${row.fideId ?? row.name}_${row.rank}',
+                          ),
+                          player: row.toStandingModel(),
+                          rank: row.rank,
+                          isFavorite: false,
+                          showFavoriteButton: false,
+                          onTap: () => _openPlayerProfile(context, row),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         );
       },
+    );
+  }
+
+  void _openPlayerProfile(BuildContext context, _SmartPlayerRow row) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => PlayerProfileScreen(
+              fideId: row.fideId,
+              playerName: row.name,
+              title: row.title.isEmpty ? null : row.title,
+              federation: row.countryCode.isEmpty ? null : row.countryCode,
+              rating: row.rating > 0 ? row.rating : null,
+              gamebasePlayerId: row.gamebasePlayerId,
+            ),
+      ),
     );
   }
 
@@ -744,7 +782,14 @@ class _PlayersTab extends ConsumerWidget {
       final key = fideId != null ? 'f$fideId' : 'n${name.toLowerCase().trim()}';
       return table.putIfAbsent(
         key,
-        () => _SmartPlayerRow(name: name, rating: player.rating),
+        () => _SmartPlayerRow(
+          name: name,
+          rating: player.rating,
+          title: player.title,
+          countryCode: player.countryCode,
+          fideId: player.fideId,
+          gamebasePlayerId: player.gamebasePlayerId,
+        ),
       );
     }
 
@@ -756,6 +801,12 @@ class _PlayersTab extends ConsumerWidget {
         row.games++;
         row.events.add(eventName);
         if (player.rating > row.rating) row.rating = player.rating;
+        if (row.title.isEmpty && player.title.isNotEmpty) {
+          row.title = player.title;
+        }
+        if (row.countryCode.isEmpty && player.countryCode.isNotEmpty) {
+          row.countryCode = player.countryCode;
+        }
       }
     }
 
@@ -765,122 +816,110 @@ class _PlayersTab extends ConsumerWidget {
           if (byRating != 0) return byRating;
           return a.name.compareTo(b.name);
         });
+    for (var i = 0; i < list.length; i++) {
+      list[i].rank = i + 1;
+    }
     return list;
   }
 }
 
 class _SmartPlayerRow {
-  _SmartPlayerRow({required this.name, required this.rating});
+  _SmartPlayerRow({
+    required this.name,
+    required this.rating,
+    required this.title,
+    required this.countryCode,
+    this.fideId,
+    this.gamebasePlayerId,
+  });
 
   final String name;
+  String title;
+  String countryCode;
+  final int? fideId;
+  final String? gamebasePlayerId;
   int rating;
   int games = 0;
+  int rank = 0;
   final Set<String> events = <String>{};
-}
 
-class _PlayersHeader extends StatelessWidget {
-  const _PlayersHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final style = AppTypography.textXsMedium.copyWith(
-      color: context.colors.textPrimaryMuted,
-    );
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8.h),
-      child: Row(
-        children: [
-          SizedBox(width: 28.w, child: Text('#', style: style)),
-          SizedBox(width: 8.w),
-          Expanded(child: Text('Player', style: style)),
-          SizedBox(width: 56.w, child: Text('Elo', style: style)),
-          SizedBox(width: 42.w, child: Text('Games', style: style)),
-        ],
-      ),
+  PlayerStandingModel toStandingModel() {
+    final eventCount = events.length;
+    final gameText = games == 1 ? '1 game' : '$games games';
+    return PlayerStandingModel(
+      countryCode: countryCode,
+      title: title.isEmpty ? null : title,
+      name: name,
+      score: rating,
+      scoreChange: 0,
+      matchScore: eventCount > 1 ? '$gameText / $eventCount events' : gameText,
+      fideId: fideId,
+      gamebasePlayerId: gamebasePlayerId,
+      overallRank: rank,
     );
   }
 }
 
-class _PlayerRow extends StatelessWidget {
-  const _PlayerRow({required this.rank, required this.row});
+class _DismissibleIncludedEventCard extends ConsumerWidget {
+  const _DismissibleIncludedEventCard({
+    required this.event,
+    required this.scopeId,
+  });
 
-  final int rank;
-  final _SmartPlayerRow row;
+  final GroupEventCardModel event;
+  final String scopeId;
 
   @override
-  Widget build(BuildContext context) {
-    final eventText = row.events.take(3).join(' · ');
+  Widget build(BuildContext context, WidgetRef ref) {
+    void dismiss() {
+      final notifier = ref.read(
+        smartEventDismissedEventIdsProvider(scopeId).notifier,
+      );
+      notifier.state = {...notifier.state, event.id};
+    }
 
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: 12.h),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: context.colors.divider.withValues(alpha: 0.4),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Dismissible(
+          key: ValueKey('smart_about_dismiss_${scopeId}_${event.id}'),
+          direction: DismissDirection.startToEnd,
+          background: Container(
+            alignment: Alignment.centerLeft,
+            padding: EdgeInsets.only(left: 18.w),
+            decoration: BoxDecoration(
+              color: kRedColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10.br),
+              border: Border.all(color: kRedColor.withValues(alpha: 0.28)),
+            ),
+            child: Icon(Icons.close_rounded, size: 20.sp, color: kRedColor),
+          ),
+          onDismissed: (_) => dismiss(),
+          child: EventCard(
+            tourEventCardModel: event,
+            forceCompactLayout: true,
+            heroTagSuffix: 'smart_about_$scopeId',
           ),
         ),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 28.w,
-            child: Text(
-              '$rank',
-              style: AppTypography.textSmMedium.copyWith(
-                color:
-                    rank <= 3 ? kPrimaryColor : context.colors.textPrimaryMuted,
-                fontWeight: rank <= 3 ? FontWeight.w700 : FontWeight.w500,
+        Positioned(
+          top: 0,
+          right: 0,
+          child: Material(
+            color: context.colors.surface,
+            shape: const CircleBorder(),
+            elevation: 2,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: dismiss,
+              child: SizedBox(
+                width: 28.sp,
+                height: 28.sp,
+                child: Icon(Icons.close_rounded, size: 17.sp, color: kRedColor),
               ),
             ),
           ),
-          SizedBox(width: 8.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  row.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textSmBold.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
-                ),
-                if (eventText.isNotEmpty) ...[
-                  SizedBox(height: 2.h),
-                  Text(
-                    eventText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textXxsMedium.copyWith(
-                      color: context.colors.textPrimaryMuted,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 56.w,
-            child: Text(
-              row.rating > 0 ? '${row.rating}' : '-',
-              style: AppTypography.textSmBold.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 42.w,
-            child: Text(
-              '${row.games}',
-              textAlign: TextAlign.right,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimaryMuted,
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

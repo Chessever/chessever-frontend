@@ -3,13 +3,12 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
-import 'package:motor/motor.dart';
 
 /// Filter model for Gamebase library search.
 /// Supports only filters available in the Gamebase API:
@@ -66,11 +65,14 @@ class GamebaseFilter {
     if (timeControl != GameTimeControlFilter.all) count++;
     if (isOnline != GameOnlineFilter.all) count++;
     if (!eco.isAll) count++;
-    if (minYear != GameFilter.defaultMinYear || maxYear != DateTime.now().year)
+    if (minYear != GameFilter.defaultMinYear ||
+        maxYear != DateTime.now().year) {
       count++;
+    }
     if (minRating != GameFilter.defaultMinRating ||
-        maxRating != GameFilter.absoluteMaxRating)
+        maxRating != GameFilter.absoluteMaxRating) {
       count++;
+    }
     return count;
   }
 
@@ -188,10 +190,10 @@ Future<GamebaseFilter?> showLibraryGamebaseFilterDialog({
   required BuildContext context,
   required GamebaseFilter currentFilter,
 }) {
-  return showDialog<GamebaseFilter>(
+  return showAlertModal<GamebaseFilter>(
     context: context,
-    barrierColor: Colors.transparent,
-    builder: (_) => LibraryGamebaseFilterDialog(initialFilter: currentFilter),
+    horizontalPadding: 0,
+    child: LibraryGamebaseFilterDialog(initialFilter: currentFilter),
   );
 }
 
@@ -217,7 +219,6 @@ class _LibraryGamebaseFilterDialogState
   late int? _selectedMinRating;
 
   final ScrollController _scrollController = ScrollController();
-  double _targetValue = 0.0;
 
   @override
   void initState() {
@@ -235,12 +236,6 @@ class _LibraryGamebaseFilterDialogState
     _selectedMinRating = RatingTierFilter.normalizeMinRating(
       widget.initialFilter.minRating,
     );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() => _targetValue = 1.0);
-      }
-    });
   }
 
   @override
@@ -252,167 +247,141 @@ class _LibraryGamebaseFilterDialogState
   @override
   Widget build(BuildContext context) {
     final dialogWidth = 320.w;
-
-    return GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
-      child: Stack(
-        children: [
-          const Positioned.fill(child: BackDropFilterWidget()),
-          Center(
-            child: GestureDetector(
-              onTap: () {},
-              child: SingleMotionBuilder(
-                motion: const CupertinoMotion.smooth(),
-                value: _targetValue,
-                builder: (context, value, _) {
-                  final scale = 0.95 + (0.05 * value);
-                  final opacity = value.clamp(0.0, 1.0).toDouble();
-                  return Opacity(
-                    opacity: opacity,
-                    child: Transform.scale(
-                      scale: scale,
-                      child: _buildDialogCard(context, dialogWidth),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return _buildDialogCard(context, dialogWidth);
   }
 
   Widget _buildDialogCard(BuildContext context, double dialogWidth) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.zero,
-      child: Container(
-        width: dialogWidth,
-        constraints: BoxConstraints(maxHeight: 560.h),
-        decoration: BoxDecoration(
-          color: context.colors.background,
-          borderRadius: BorderRadius.circular(4.br),
+    return Container(
+      width: dialogWidth,
+      constraints: BoxConstraints(maxHeight: 560.h),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.1),
+          width: 1,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: Scrollbar(
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: Scrollbar(
+              controller: _scrollController,
+              thumbVisibility: true,
+              radius: Radius.circular(4.br),
+              child: SingleChildScrollView(
                 controller: _scrollController,
-                thumbVisibility: true,
-                radius: Radius.circular(4.br),
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 20.w,
-                    vertical: 8.h,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Result filter
-                      _sectionLabel('Result'),
-                      SizedBox(height: 8.h),
-                      _chipGrid<GameResultFilter>(
-                        values: GameResultFilter.values,
-                        selected: _result,
-                        label: (v) =>
-                            v == GameResultFilter.all ? 'All' : v.displayText,
-                        onTap: (v) {
-                          HapticFeedbackService.selection();
-                          setState(() => _result = v);
-                        },
-                      ),
-                      SizedBox(height: 20.h),
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Result filter
+                    _sectionLabel('Result'),
+                    SizedBox(height: 8.h),
+                    _chipGrid<GameResultFilter>(
+                      values: GameResultFilter.values,
+                      selected: _result,
+                      label:
+                          (v) =>
+                              v == GameResultFilter.all ? 'All' : v.displayText,
+                      onTap: (v) {
+                        HapticFeedbackService.selection();
+                        setState(() => _result = v);
+                      },
+                    ),
+                    SizedBox(height: 20.h),
 
-                      // Color filter
-                      _sectionLabel('Color'),
-                      SizedBox(height: 8.h),
-                      _chipGrid<GameColorFilter>(
-                        values: GameColorFilter.values,
-                        selected: _color,
-                        label: (v) =>
-                            v == GameColorFilter.all ? 'All' : v.displayText,
-                        onTap: (v) {
-                          HapticFeedbackService.selection();
-                          setState(() => _color = v);
-                        },
-                      ),
-                      SizedBox(height: 20.h),
+                    // Color filter
+                    _sectionLabel('Color'),
+                    SizedBox(height: 8.h),
+                    _chipGrid<GameColorFilter>(
+                      values: GameColorFilter.values,
+                      selected: _color,
+                      label:
+                          (v) =>
+                              v == GameColorFilter.all ? 'All' : v.displayText,
+                      onTap: (v) {
+                        HapticFeedbackService.selection();
+                        setState(() => _color = v);
+                      },
+                    ),
+                    SizedBox(height: 20.h),
 
-                      // Time Control filter
-                      _sectionLabel('Time Control'),
-                      SizedBox(height: 8.h),
-                      _chipGrid<GameTimeControlFilter>(
-                        values: GameTimeControlFilter.values,
-                        selected: _timeControl,
-                        label: (v) => v == GameTimeControlFilter.all
-                            ? 'All'
-                            : v.displayText,
-                        onTap: (v) {
-                          HapticFeedbackService.selection();
-                          setState(() => _timeControl = v);
-                        },
-                      ),
-                      SizedBox(height: 20.h),
+                    // Time Control filter
+                    _sectionLabel('Time Control'),
+                    SizedBox(height: 8.h),
+                    _chipGrid<GameTimeControlFilter>(
+                      values: GameTimeControlFilter.values,
+                      selected: _timeControl,
+                      label:
+                          (v) =>
+                              v == GameTimeControlFilter.all
+                                  ? 'All'
+                                  : v.displayText,
+                      onTap: (v) {
+                        HapticFeedbackService.selection();
+                        setState(() => _timeControl = v);
+                      },
+                    ),
+                    SizedBox(height: 20.h),
 
-                      // Online filter
-                      _sectionLabel('Format'),
-                      SizedBox(height: 8.h),
-                      _chipGrid<GameOnlineFilter>(
-                        values: GameOnlineFilter.values,
-                        selected: _isOnline,
-                        label: (v) =>
-                            v == GameOnlineFilter.all ? 'All' : v.displayText,
-                        onTap: (v) {
-                          HapticFeedbackService.selection();
-                          setState(() => _isOnline = v);
-                        },
-                      ),
-                      SizedBox(height: 20.h),
+                    // Online filter
+                    _sectionLabel('Format'),
+                    SizedBox(height: 8.h),
+                    _chipGrid<GameOnlineFilter>(
+                      values: GameOnlineFilter.values,
+                      selected: _isOnline,
+                      label:
+                          (v) =>
+                              v == GameOnlineFilter.all ? 'All' : v.displayText,
+                      onTap: (v) {
+                        HapticFeedbackService.selection();
+                        setState(() => _isOnline = v);
+                      },
+                    ),
+                    SizedBox(height: 20.h),
 
-                      // ECO filter
-                      _sectionLabel('Opening'),
-                      SizedBox(height: 8.h),
-                      EcoFilterDropdown(
-                        value: _eco,
-                        onChanged: (v) => setState(() => _eco = v),
-                      ),
-                      SizedBox(height: 20.h),
+                    // ECO filter
+                    _sectionLabel('Opening'),
+                    SizedBox(height: 8.h),
+                    EcoFilterDropdown(
+                      value: _eco,
+                      onChanged: (v) => setState(() => _eco = v),
+                    ),
+                    SizedBox(height: 20.h),
 
-                      // Year range slider
-                      _sectionLabel('Year'),
-                      SizedBox(height: 8.h),
-                      _rangeSliderCard(
-                        values: _yearRange,
-                        min: GameFilter.absoluteMinYear.toDouble(),
-                        max: DateTime.now().year.toDouble(),
-                        divisions:
-                            DateTime.now().year - GameFilter.absoluteMinYear,
-                        onChanged: (v) => setState(() => _yearRange = v),
-                      ),
-                      SizedBox(height: 20.h),
+                    // Year range slider
+                    _sectionLabel('Year'),
+                    SizedBox(height: 8.h),
+                    _rangeSliderCard(
+                      values: _yearRange,
+                      min: GameFilter.absoluteMinYear.toDouble(),
+                      max: DateTime.now().year.toDouble(),
+                      divisions:
+                          DateTime.now().year - GameFilter.absoluteMinYear,
+                      onChanged: (v) => setState(() => _yearRange = v),
+                    ),
+                    SizedBox(height: 20.h),
 
-                      _sectionLabel('Level'),
-                      SizedBox(height: 8.h),
-                      RatingTierFilter(
-                        selectedMinRating: _selectedMinRating,
-                        onChanged: (value) {
-                          HapticFeedbackService.selection();
-                          setState(() => _selectedMinRating = value);
-                        },
-                      ),
-                      SizedBox(height: 12.h),
-                    ],
-                  ),
+                    _sectionLabel('Level'),
+                    SizedBox(height: 8.h),
+                    RatingTierFilter(
+                      selectedMinRating: _selectedMinRating,
+                      onChanged: (value) {
+                        HapticFeedbackService.selection();
+                        setState(() => _selectedMinRating = value);
+                      },
+                    ),
+                    SizedBox(height: 12.h),
+                  ],
                 ),
               ),
             ),
-            _buildButtons(),
-          ],
-        ),
+          ),
+          _buildButtons(),
+        ],
       ),
     );
   }
@@ -521,7 +490,9 @@ class _LibraryGamebaseFilterDialogState
             children: [
               Text(
                 'Filters',
-                style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textMdBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
               IconButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -561,7 +532,9 @@ class _LibraryGamebaseFilterDialogState
                 alignment: Alignment.center,
                 child: Text(
                   'Reset',
-                  style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
               ),
             ),
@@ -634,28 +607,31 @@ class _LibraryGamebaseFilterDialogState
     return Wrap(
       spacing: 8.w,
       runSpacing: 8.h,
-      children: values.map((v) {
-        final isSelected = v == selected;
-        return GestureDetector(
-          onTap: () => onTap(v),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? kPrimaryColor
-                  : context.colors.surfaceRecessed,
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-            child: Text(
-              label(v),
-              style: AppTypography.textXsMedium.copyWith(
-                color: isSelected ? kBlackColor : context.colors.textPrimary,
+      children:
+          values.map((v) {
+            final isSelected = v == selected;
+            return GestureDetector(
+              onTap: () => onTap(v),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+                decoration: BoxDecoration(
+                  color:
+                      isSelected
+                          ? kPrimaryColor
+                          : context.colors.surfaceRecessed,
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+                child: Text(
+                  label(v),
+                  style: AppTypography.textXsMedium.copyWith(
+                    color:
+                        isSelected ? kBlackColor : context.colors.textPrimary,
+                  ),
+                ),
               ),
-            ),
-          ),
-        );
-      }).toList(),
+            );
+          }).toList(),
     );
   }
 

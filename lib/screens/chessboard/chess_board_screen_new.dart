@@ -3,7 +3,6 @@ import 'dart:developer' as developer;
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -71,6 +70,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
@@ -130,7 +130,14 @@ final boardSelectionClearRequestProvider = StateProvider.family<int, String>(
   (_, _) => 0,
 );
 
+final _androidPipBoardRecoveryEpochProvider = StateProvider.family<int, String>(
+  (_, _) => 0,
+);
+
 String _boardSelectionClearKey(GamesTourModel game, int index) =>
+    '${game.gameId}#$index';
+
+String _androidPipBoardRecoveryKey(GamesTourModel game, int index) =>
     '${game.gameId}#$index';
 
 /// Spring-based curve that mimics iOS snappy motion
@@ -660,50 +667,12 @@ Future<bool?> _showAnalysisConfirmationDialog({
   required String confirmLabel,
   Color? confirmColor,
 }) {
-  return showDialog<bool>(
+  return showSmoothConfirmDialog(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        backgroundColor: context.colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        title: Text(
-          title,
-          style: AppTypography.textMdBold.copyWith(
-            color: context.colors.textPrimary,
-          ),
-        ),
-        content: Text(
-          message,
-          style: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.7),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.7),
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(true);
-            },
-            child: Text(
-              confirmLabel,
-              style: AppTypography.textSmMedium.copyWith(
-                color: confirmColor ?? kPrimaryColor,
-              ),
-            ),
-          ),
-        ],
-      );
-    },
+    title: title,
+    message: message,
+    confirmText: confirmLabel,
+    confirmColor: confirmColor,
   );
 }
 
@@ -786,6 +755,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ChessBoardProviderParams? _pipParams;
   bool _didInitialBoardBootstrap = false;
   bool _isLifecycleBackgrounded = false;
+  bool _pipSessionMayNeedRecovery = false;
+  int _pipRecoveryGeneration = 0;
 
   bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
@@ -985,9 +956,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       onOpenSettings: () {
         if (!context.mounted) return;
         Navigator.of(context).push(
-          SettingsPage.route(
-            initiallyExpanded: SettingsSection.notification,
-          ),
+          SettingsPage.route(initiallyExpanded: SettingsSection.notification),
         );
       },
     );
@@ -1053,16 +1022,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _insertLikeTutorialOverlay() {
     _likeTutorialEntry = OverlayEntry(
-      builder: (_) => LikeTutorialOverlay(
-        currentStep: 3,
-        totalSteps: 3,
-        onDismiss: _onLikeTutorialFinished,
-        onDontShowAgain: () async {
-          final prefs = ref.read(sharedPreferencesRepository);
-          await prefs.setBool(kLikeWalkthroughDontShowKey, true);
-          _onLikeTutorialFinished();
-        },
-      ),
+      builder:
+          (_) => LikeTutorialOverlay(
+            currentStep: 3,
+            totalSteps: 3,
+            onDismiss: _onLikeTutorialFinished,
+            onDontShowAgain: () async {
+              final prefs = ref.read(sharedPreferencesRepository);
+              await prefs.setBool(kLikeWalkthroughDontShowKey, true);
+              _onLikeTutorialFinished();
+            },
+          ),
     );
     Overlay.of(context, rootOverlay: true).insert(_likeTutorialEntry!);
   }
@@ -1489,9 +1459,39 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   void _handlePipModeChanged(bool isInPip) {
-    if (!isInPip && mounted) {
-      unawaited(_syncCurrentPipState());
+    if (isInPip) {
+      _pipSessionMayNeedRecovery = true;
+      return;
     }
+
+    if (!mounted) return;
+    _scheduleAndroidPipBoardRecovery();
+    unawaited(_syncCurrentPipState());
+  }
+
+  void _scheduleAndroidPipBoardRecovery() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    _pipSessionMayNeedRecovery = false;
+    final generation = ++_pipRecoveryGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_runAndroidPipBoardRecovery(generation));
+    });
+  }
+
+  Future<void> _runAndroidPipBoardRecovery(int generation) async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || generation != _pipRecoveryGeneration) return;
+    if (PipService.instance.isInPip) return;
+    final route = ModalRoute.of(context);
+    if (route?.isCurrent != true) return;
+    if (widget.games.isEmpty) return;
+    final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final game = _resolveGameForIndex(safeIndex);
+    final key = _androidPipBoardRecoveryKey(game, safeIndex);
+    final notifier = ref.read(
+      _androidPipBoardRecoveryEpochProvider(key).notifier,
+    );
+    notifier.state = notifier.state + 1;
   }
 
   Future<void> _syncCurrentPipState() async {
@@ -1731,6 +1731,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _handleLifecycleResume() {
     if (!mounted || widget.games.isEmpty) return;
+    if (_pipSessionMayNeedRecovery && !PipService.instance.isInPip) {
+      _scheduleAndroidPipBoardRecovery();
+    }
     ref.invalidate(gameUpdatesStreamProvider);
     ref.invalidate(liveGameUpdateStreamProvider);
     ref.invalidate(gameUpdatesBatchStreamProvider);
@@ -1858,7 +1861,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       await _syncPipGameSnapshot(currentGame);
     }
     if (_isPipEligible(state?.game ?? currentGame)) {
-      await PipService.instance.enterIfEligible();
+      final entered = await PipService.instance.enterIfEligible();
+      if (entered) {
+        _pipSessionMayNeedRecovery = true;
+      }
     }
   }
 
@@ -2028,6 +2034,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     WidgetsBinding.instance.removeObserver(this);
     PipService.instance.removeListener(_handlePipModeChanged);
     ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
+    _pipRecoveryGeneration++;
     _boardKeepAliveSub?.close();
     _audioSub?.close();
     _pipSub?.close();
@@ -3290,6 +3297,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
   Future<void> _showSaveAnalysisDialog() async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
+    if (!mounted) return;
 
     final params = ChessBoardProviderParams(
       game: widget.game,
@@ -3601,7 +3609,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // (same glyph, same size, same spot). The optimistic `isLiked` flips
         // true early, so gating on phase is what keeps the badge hidden until
         // the flying heart actually arrives.
-        final inFlight = phase == LikeFlightPhase.bursting ||
+        final inFlight =
+            phase == LikeFlightPhase.bursting ||
             phase == LikeFlightPhase.flying;
         final justLanded = phase == LikeFlightPhase.landed;
         final showBadge = isLiked && !inFlight;
@@ -3650,16 +3659,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // Animate state alive across rebuilds inside the same `landed`
         // window so the pulse runs once, not on every rebuild.
         final landed = phase == LikeFlightPhase.landed;
-        final pulsing = landed
-            ? stack
-                .animate(key: const ValueKey('save-button-landed-pulse'))
-                .scaleXY(
-                  begin: 1.28,
-                  end: 1.0,
-                  duration: 360.ms,
-                  curve: Curves.easeOutBack,
-                )
-            : stack;
+        final pulsing =
+            landed
+                ? stack
+                    .animate(key: const ValueKey('save-button-landed-pulse'))
+                    .scaleXY(
+                      begin: 1.28,
+                      end: 1.0,
+                      duration: 360.ms,
+                      curve: Curves.easeOutBack,
+                    )
+                : stack;
 
         // Header action stays the save icon at all times — a double-tap
         // like is represented only by the small red badge above. The
@@ -4058,7 +4068,7 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
     _openedAt = DateTime.now();
     _ChessBoardPopupState.markOpen();
 
-    debugPrint('📂 TABLET POPUP OPENED: time=${_openedAt}');
+    debugPrint('📂 TABLET POPUP OPENED: time=$_openedAt');
 
     setState(() => _isOpen = true);
     _showOverlay();
@@ -4311,19 +4321,18 @@ class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
 
         // Schedule cleanup after a delay - gives time for popup to actually open
         Future.delayed(const Duration(milliseconds: 1500), () {
-          if (mounted && _wasPopupOpen) {
-            // Check if there's still an open popup route
-            final navigator = Navigator.of(context, rootNavigator: true);
-            final hasPopupRoute = navigator.canPop();
-            debugPrint(
-              '🕐 TABLET WRAPPER CLEANUP: hasPopupRoute=$hasPopupRoute, isAnyPopupOpen=${_ChessBoardPopupState.isAnyPopupOpen}',
-            );
-            if (!hasPopupRoute && !_ChessBoardPopupState.isAnyPopupOpen) {
-              debugPrint('🕐 TABLET WRAPPER: Resetting popup state');
-              _wasPopupOpen = false;
-              // Don't reset global state here - let the dropdown/popup handle it
-              // _ChessBoardPopupState.markClosed();
-            }
+          if (!context.mounted || !_wasPopupOpen) return;
+          // Check if there's still an open popup route
+          final navigator = Navigator.of(context, rootNavigator: true);
+          final hasPopupRoute = navigator.canPop();
+          debugPrint(
+            '🕐 TABLET WRAPPER CLEANUP: hasPopupRoute=$hasPopupRoute, isAnyPopupOpen=${_ChessBoardPopupState.isAnyPopupOpen}',
+          );
+          if (!hasPopupRoute && !_ChessBoardPopupState.isAnyPopupOpen) {
+            debugPrint('🕐 TABLET WRAPPER: Resetting popup state');
+            _wasPopupOpen = false;
+            // Don't reset global state here - let the dropdown/popup handle it
+            // _ChessBoardPopupState.markClosed();
           }
         });
       },
@@ -4444,6 +4453,7 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     return canDismiss;
   }
 
+  // ignore: unused_element
   String _formatName(String fullName, {double? maxWidth}) {
     List<String> nameParts =
         fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
@@ -4523,7 +4533,7 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
 
     if (ResponsiveHelper.isTablet) {
       debugPrint(
-        '📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=${_openedAt}',
+        '📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=$_openedAt',
       );
     }
 
@@ -4890,7 +4900,7 @@ class _GameDropdownOverlay extends StatelessWidget {
           onHorizontalDragUpdate: (_) {},
           onHorizontalDragEnd: (_) {},
           child: Container(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
           ), // Slightly visible for hit testing
         );
       }
@@ -5711,6 +5721,7 @@ class _GameSelectorPainter extends CustomPainter {
 }
 
 /// Subtle round separator - appears between game groups
+// ignore: unused_element
 class _RoundSeparator extends StatelessWidget {
   final String roundSlug;
   final bool isFirst;
@@ -5789,6 +5800,7 @@ class _RoundSeparator extends StatelessWidget {
 }
 
 /// Staggered animated game item wrapper
+// ignore: unused_element
 class _AnimatedGameItem extends StatelessWidget {
   final int index;
   final Animation<double> animation;
@@ -6724,6 +6736,7 @@ class _TabletPlayerCard extends StatelessWidget {
     required this.isFlipped,
     required this.blackPlayer,
     required this.state,
+    // ignore: unused_element_parameter
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showClock = true,
     this.onEditName,
@@ -7365,9 +7378,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       final gameId = widget.game.gameId;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ref
-            .read(eventNoSpoilersRevealedGamesProvider.notifier)
-            .reveal(gameId);
+        ref.read(eventNoSpoilersRevealedGamesProvider.notifier).reveal(gameId);
       });
     }
 
@@ -8111,8 +8122,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         _clearBoardSelectionForFrame
             ? PlayerSide.none
             : (sideToMove == Side.white ? PlayerSide.white : PlayerSide.black);
+    final androidPipRecoveryEpoch = ref.watch(
+      _androidPipBoardRecoveryEpochProvider(
+        _androidPipBoardRecoveryKey(widget.game, widget.index),
+      ),
+    );
 
     final chessboard = Chessboard(
+      key: ValueKey(
+        'analysis-board-${widget.game.gameId}-${widget.index}-$androidPipRecoveryEpoch',
+      ),
       size: widget.size,
       settings: ChessboardSettings(
         enableCoordinates: showCoordinates,
@@ -9089,13 +9108,21 @@ class _FenPositionGamesTableState
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
 
-    showDialog(
+    showAlertModal<void>(
       context: context,
       barrierDismissible: false,
-      builder:
-          (ctx) => Center(
-            child: CircularProgressIndicator(color: context.colors.textPrimary),
+      child: Container(
+        padding: EdgeInsets.all(20.sp),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+            width: 1,
           ),
+        ),
+        child: CircularProgressIndicator(color: context.colors.textPrimary),
+      ),
     );
 
     try {
@@ -10455,82 +10482,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
                                         // Confirm before promoting
                                         final confirmed =
-                                            await showDialog<bool>(
+                                            await showSmoothConfirmDialog(
                                               context: context,
-                                              builder:
-                                                  (
-                                                    dialogContext,
-                                                  ) => AlertDialog(
-                                                    backgroundColor:
-                                                        context.colors.surface,
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            12.br,
-                                                          ),
-                                                    ),
-                                                    title: Text(
-                                                      'Promote to main variant?',
-                                                      style: AppTypography
-                                                          .textMdBold
-                                                          .copyWith(
-                                                            color:
-                                                                context
-                                                                    .colors
-                                                                    .textPrimary,
-                                                          ),
-                                                    ),
-                                                    content: Text(
-                                                      'This will replace the main variant with this preview line.',
-                                                      style: AppTypography
-                                                          .textSmRegular
-                                                          .copyWith(
-                                                            color: context
-                                                                .colors
-                                                                .textPrimary
-                                                                .withValues(
-                                                                  alpha: 0.7,
-                                                                ),
-                                                          ),
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed:
-                                                            () => Navigator.of(
-                                                              dialogContext,
-                                                            ).pop(false),
-                                                        child: Text(
-                                                          'Cancel',
-                                                          style: AppTypography
-                                                              .textSmMedium
-                                                              .copyWith(
-                                                                color: context
-                                                                    .colors
-                                                                    .textPrimary
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.7,
-                                                                    ),
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      TextButton(
-                                                        onPressed:
-                                                            () => Navigator.of(
-                                                              dialogContext,
-                                                            ).pop(true),
-                                                        child: Text(
-                                                          'Promote',
-                                                          style: AppTypography
-                                                              .textSmMedium
-                                                              .copyWith(
-                                                                color:
-                                                                    kPrimaryColor,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
+                                              title: 'Promote to main variant?',
+                                              message:
+                                                  'This will replace the main variant with this preview line.',
+                                              confirmText: 'Promote',
                                             ) ??
                                             false;
 
@@ -11919,8 +11876,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             await notifier.deleteVariationAtPointer(
               List<Number>.of(variantHeadPointer),
             );
-            if (!mounted) return;
-            final currentContext = this.context;
+            if (!context.mounted) return;
+            final currentContext = context;
             if (snapshot != null) {
               _showUndoSnackBar(
                 currentContext,
@@ -12032,8 +11989,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         onSelected: (_) async {
           final snapshot = notifier.navigatorStateSnapshot();
           await notifier.deleteVariationAtPointer(List<Number>.of(headPointer));
-          if (!mounted) return;
-          final currentContext = this.context;
+          if (!context.mounted) return;
+          final currentContext = context;
           if (snapshot != null) {
             _showUndoSnackBar(
               currentContext,
@@ -12471,7 +12428,7 @@ class _PrincipalVariationListState
         newSelectedIndex != null &&
         newSelectedIndex <= maxIndex) {
       // If position just changed, prefer the user's last selection to avoid flicker
-      if (ignoreSelectedChangeAfterPosition && userSelected != null) {
+      if (ignoreSelectedChangeAfterPosition) {
         targetIndex = userSelected;
       } else {
         // User explicitly selected a variant (selectedVariantIndex changed) - honor that selection
@@ -14461,7 +14418,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                                   '',
                                 ),
                               );
-                              if (!mounted) return;
+                              if (!context.mounted) return;
                               Navigator.of(context, rootNavigator: true).pop();
                             } catch (error, stackTrace) {
                               setState(() => _isSaving = false);

@@ -3,6 +3,7 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
@@ -27,6 +28,14 @@ bool smartEventHasUnfinishedEvents(
     return event.withLiveIds(liveIds).tourEventCategory !=
         TourEventCategory.completed;
   });
+}
+
+bool smartEventHasCurrentEvents(
+  SmartEventRequest request,
+  Set<String> currentEventIds,
+) {
+  if (request.events.isEmpty || currentEventIds.isEmpty) return false;
+  return request.events.any((event) => currentEventIds.contains(event.id));
 }
 
 @immutable
@@ -279,6 +288,42 @@ class SmartEventGamesQuery {
   int get hashCode => Object.hash(request, filter, normalizedSearchQuery);
 }
 
+@immutable
+class SmartCurrentEventIdsQuery {
+  SmartCurrentEventIdsQuery(Iterable<String> eventIds)
+    : eventIds = List<String>.unmodifiable(
+        eventIds
+          .map((id) => id.trim())
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false)..sort(),
+      );
+
+  final List<String> eventIds;
+
+  bool get isEmpty => eventIds.isEmpty;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is SmartCurrentEventIdsQuery &&
+            listEquals(eventIds, other.eventIds);
+  }
+
+  @override
+  int get hashCode => Object.hashAll(eventIds);
+}
+
+final smartCurrentEventIdsProvider = FutureProvider.autoDispose
+    .family<Set<String>, SmartCurrentEventIdsQuery>((ref, query) async {
+      if (query.isEmpty) return const <String>{};
+
+      final broadcasts = await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getCurrentGroupBroadcastsByIds(query.eventIds);
+      return broadcasts.map((broadcast) => broadcast.id).toSet();
+    });
+
 /// The synthetic "smart event": live games gathered from every currently-live
 /// broadcast (optionally narrowed by the applied ELO tier) into one place, plus
 /// the aggregate metadata the event view needs for its About header.
@@ -356,6 +401,9 @@ final smartFilteredAggregateEventProvider = Provider.autoDispose.family<
 
   return directAsync.when(
     data: (direct) {
+      if (direct.events.isEmpty) {
+        return AsyncValue.data(direct);
+      }
       if (direct.games.isNotEmpty) {
         return AsyncValue.data(direct);
       }
@@ -395,6 +443,9 @@ final smartAggregateEventProvider = Provider.autoDispose
       );
       final directAggregate = directAsync.valueOrNull;
       if (directAggregate != null && directAggregate.games.isNotEmpty) {
+        return AsyncValue.data(directAggregate);
+      }
+      if (directAggregate != null && directAggregate.events.isEmpty) {
         return AsyncValue.data(directAggregate);
       }
 
@@ -465,7 +516,13 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
       .toList(growable: false);
   if (activeEvents.isEmpty) return SmartAggregateEvent.empty;
 
-  final eventIds = activeEvents
+  final currentEvents = await _currentSmartEvents(
+    ref: ref,
+    events: activeEvents,
+  );
+  if (currentEvents.isEmpty) return SmartAggregateEvent.empty;
+
+  final eventIds = currentEvents
       .map((event) => event.id)
       .toList(growable: false);
   final tourRepository = ref.read(tourRepositoryProvider);
@@ -493,7 +550,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
   final tourIds = <String>[];
   final seenTourIds = <String>{};
   final tourIdToEventId = <String, String>{};
-  for (final event in activeEvents) {
+  for (final event in currentEvents) {
     for (final tour in toursByEvent[event.id] ?? const []) {
       if (seenTourIds.add(tour.id)) {
         tourIds.add(tour.id);
@@ -505,7 +562,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
   if (tourIds.isEmpty) {
     return _buildAggregateEventFromGameRows(
       request: request,
-      events: activeEvents,
+      events: currentEvents,
       games: const <Games>[],
       tourIdToEventId: tourIdToEventId,
       minAverageElo: _effectiveMinAverageElo(request, query.filter),
@@ -528,12 +585,30 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
 
   return _buildAggregateEventFromGameRows(
     request: request,
-    events: activeEvents,
+    events: currentEvents,
     games: games,
     tourIdToEventId: tourIdToEventId,
     minAverageElo: minAverageElo,
     maxAverageElo: maxAverageElo,
   );
+}
+
+Future<List<GroupEventCardModel>> _currentSmartEvents({
+  required Ref ref,
+  required List<GroupEventCardModel> events,
+}) async {
+  if (events.isEmpty) return const <GroupEventCardModel>[];
+
+  final currentEventIds = await ref.read(
+    smartCurrentEventIdsProvider(
+      SmartCurrentEventIdsQuery(events.map((event) => event.id)),
+    ).future,
+  );
+  if (currentEventIds.isEmpty) return const <GroupEventCardModel>[];
+
+  return events
+      .where((event) => currentEventIds.contains(event.id))
+      .toList(growable: false);
 }
 
 SmartAggregateEvent _buildAggregateEventFromGameRows({

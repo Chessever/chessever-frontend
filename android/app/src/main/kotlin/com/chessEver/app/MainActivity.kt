@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.media.AudioAttributes
@@ -44,6 +45,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
@@ -58,6 +60,8 @@ class MainActivity : FlutterActivity() {
   private var clockRunnable: Runnable? = null
   private var activePollCall: Call? = null
   private var isEnteringPip = false
+  private var lastReportedPipMode = false
+  private var pipLayoutListener: View.OnLayoutChangeListener? = null
   // Native move SFX for PiP (mirrors iOS). Flutter SFX is suppressed while in PiP
   // so these don't double up; capture vs move chosen by FEN piece-count drop.
   private var soundPool: SoundPool? = null
@@ -207,6 +211,14 @@ class MainActivity : FlutterActivity() {
     initSounds()
   }
 
+  override fun onResume() {
+    super.onResume()
+    if (!isCurrentlyInPip() && (lastReportedPipMode || isEnteringPip || pipOverlay != null)) {
+      cleanupExitedPip()
+      notifyPipModeChanged(false)
+    }
+  }
+
   private fun initSounds() {
     if (soundPool != null) return
     val attrs = AudioAttributes.Builder()
@@ -265,22 +277,19 @@ class MainActivity : FlutterActivity() {
     isEnteringPip = false
     pipOverlay?.visibility = if (isInPictureInPictureMode) View.VISIBLE else View.GONE
     if (isInPictureInPictureMode) {
+      pipPayload?.let { ensurePipOverlay(it) }
       startClockTicker()
       startNativePollingIfPossible()
     } else {
-      stopClockTicker()
-      stopNativePolling()
-      removePipOverlay()
+      cleanupExitedPip()
     }
-    pipChannel?.invokeMethod(
-      "onPipModeChanged",
-      mapOf("isInPip" to isInPictureInPictureMode)
-    )
+    notifyPipModeChanged(isInPictureInPictureMode)
   }
 
   override fun onDestroy() {
     stopClockTicker()
     stopNativePolling()
+    removePipOverlay()
     liveNotificationExecutor.shutdownNow()
     pipChannel?.setMethodCallHandler(null)
     liveChannel?.setMethodCallHandler(null)
@@ -303,15 +312,12 @@ class MainActivity : FlutterActivity() {
     if (isInPictureInPictureMode) return true
     if (isEnteringPip) return true
 
-    ensurePipOverlay(payload)
-    val paramsBuilder = PictureInPictureParams.Builder()
-      .setAspectRatio(Rational(1, 1))
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      paramsBuilder.setSeamlessResizeEnabled(false)
-    }
+    val overlay = ensurePipOverlay(payload)
+    overlay.postInvalidateOnAnimation()
+    updatePipParamsForOverlay(overlay)
     isEnteringPip = true
     return try {
-      val entered = enterPictureInPictureMode(paramsBuilder.build())
+      val entered = enterPictureInPictureMode(buildPipParams(overlay))
       if (!entered) {
         isEnteringPip = false
         removePipOverlay()
@@ -325,14 +331,15 @@ class MainActivity : FlutterActivity() {
     }
   }
 
-  private fun ensurePipOverlay(payload: MutableMap<String, Any?>) {
+  private fun ensurePipOverlay(payload: MutableMap<String, Any?>): ChessPipOverlayView {
     val content = findViewById<ViewGroup>(android.R.id.content)
     val existing = pipOverlay
     if (existing != null && existing.parent != null) {
       existing.payload = payload
       existing.visibility = View.VISIBLE
       existing.invalidate()
-      return
+      attachPipSourceRectTracker(existing)
+      return existing
     }
     val overlay = ChessPipOverlayView(this).apply {
       this.payload = payload
@@ -345,11 +352,20 @@ class MainActivity : FlutterActivity() {
     }
     pipOverlay = overlay
     content.addView(overlay)
+    attachPipSourceRectTracker(overlay)
+    return overlay
   }
 
   private fun clearPipState() {
-    pipPayload = null
     isEnteringPip = false
+    if (isCurrentlyInPip()) {
+      stopNativePolling()
+      pipOverlay?.payload = pipPayload
+      pipOverlay?.invalidate()
+      startClockTicker()
+      return
+    }
+    pipPayload = null
     stopClockTicker()
     stopNativePolling()
     removePipOverlay()
@@ -357,8 +373,70 @@ class MainActivity : FlutterActivity() {
 
   private fun removePipOverlay() {
     val overlay = pipOverlay ?: return
+    detachPipSourceRectTracker(overlay)
+    overlay.visibility = View.GONE
+    overlay.payload = null
     (overlay.parent as? ViewGroup)?.removeView(overlay)
     pipOverlay = null
+  }
+
+  private fun cleanupExitedPip() {
+    isEnteringPip = false
+    stopClockTicker()
+    stopNativePolling()
+    removePipOverlay()
+  }
+
+  private fun notifyPipModeChanged(isInPip: Boolean) {
+    if (lastReportedPipMode == isInPip) return
+    lastReportedPipMode = isInPip
+    pipChannel?.invokeMethod(
+      "onPipModeChanged",
+      mapOf("isInPip" to isInPip)
+    )
+  }
+
+  private fun buildPipParams(overlay: ChessPipOverlayView?): PictureInPictureParams {
+    val builder = PictureInPictureParams.Builder()
+      .setAspectRatio(Rational(1, 1))
+    pipSourceRectHint(overlay)?.let { builder.setSourceRectHint(it) }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      builder.setSeamlessResizeEnabled(false)
+    }
+    return builder.build()
+  }
+
+  private fun pipSourceRectHint(overlay: ChessPipOverlayView?): Rect? {
+    overlay?.sourceRectHint()?.let { return it }
+    val content = findViewById<View>(android.R.id.content) ?: return null
+    val rect = Rect()
+    return if (content.getGlobalVisibleRect(rect) && !rect.isEmpty) rect else null
+  }
+
+  private fun updatePipParamsForOverlay(overlay: ChessPipOverlayView?) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    try {
+      setPictureInPictureParams(buildPipParams(overlay))
+    } catch (e: Exception) {
+      Log.w("ChessPiP", "Failed to update PiP params", e)
+    }
+  }
+
+  private fun attachPipSourceRectTracker(overlay: ChessPipOverlayView) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    if (pipLayoutListener != null) return
+    val listener = View.OnLayoutChangeListener { view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+      if (view !== overlay) return@OnLayoutChangeListener
+      if (left == oldLeft && top == oldTop && right == oldRight && bottom == oldBottom) return@OnLayoutChangeListener
+      updatePipParamsForOverlay(overlay)
+    }
+    pipLayoutListener = listener
+    overlay.addOnLayoutChangeListener(listener)
+  }
+
+  private fun detachPipSourceRectTracker(overlay: ChessPipOverlayView) {
+    pipLayoutListener?.let { overlay.removeOnLayoutChangeListener(it) }
+    pipLayoutListener = null
   }
 
   private fun mergePayload(update: Map<String, Any?>) {
@@ -398,6 +476,9 @@ class MainActivity : FlutterActivity() {
 
     val runnable = object : Runnable {
       override fun run() {
+        if (isCurrentlyInPip() && pipOverlay == null) {
+          pipPayload?.let { ensurePipOverlay(it) }
+        }
         pipOverlay?.postInvalidateOnAnimation()
         mainHandler.postDelayed(this, 1_000L)
       }
@@ -596,7 +677,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
 
   override fun onDraw(canvas: Canvas) {
     super.onDraw(canvas)
-    val data = payload ?: return
+    val data = payload ?: emptyMap()
     canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
 
     val side = min(width, height).toFloat()
@@ -654,6 +735,37 @@ private class ChessPipOverlayView(context: Context) : View(context) {
       width = actualBoardSize,
       height = footerH,
     )
+  }
+
+  fun sourceRectHint(): Rect? {
+    if (width <= 0 || height <= 0) return null
+    val rect = contentRect()
+    val location = IntArray(2)
+    getLocationOnScreen(location)
+    return Rect(
+      (location[0] + rect.left).roundToInt(),
+      (location[1] + rect.top).roundToInt(),
+      (location[0] + rect.right).roundToInt(),
+      (location[1] + rect.bottom).roundToInt(),
+    ).takeUnless { it.isEmpty }
+  }
+
+  private fun contentRect(): RectF {
+    val side = min(width, height).toFloat()
+    val left = (width - side) / 2f
+    val headerH = side * 0.07f
+    val footerH = side * 0.07f
+    val evalW = side * 0.028f
+    val evalGap = side * 0.018f
+    val horizontalMargin = side * 0.06f
+    val maxBoardWidth = side - horizontalMargin * 2f - evalW - evalGap
+    val maxBoardHeight = side - headerH - footerH - side * 0.025f
+    val actualBoardSize = min(maxBoardWidth, maxBoardHeight)
+    val groupWidth = evalW + evalGap + actualBoardSize
+    val groupLeft = left + (side - groupWidth) / 2f
+    val totalHeight = headerH + actualBoardSize + footerH
+    val top = (height - totalHeight) / 2f
+    return RectF(groupLeft, top, groupLeft + groupWidth, top + totalHeight)
   }
 
   private fun drawPlayerRow(

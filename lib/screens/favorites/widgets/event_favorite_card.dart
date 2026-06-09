@@ -8,6 +8,7 @@ import '../../../utils/responsive_helper.dart';
 import '../../../screens/group_event/model/tour_event_card_model.dart';
 import '../../../screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import '../../../repository/supabase/group_broadcast/group_broadcast.dart';
+import '../../../widgets/alert_dialog/alert_modal.dart';
 import '../../../widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
@@ -38,11 +39,16 @@ class EventFavoriteCard extends ConsumerWidget {
         ),
         alignment: Alignment.centerRight,
         padding: EdgeInsets.only(right: 20.sp),
-        child: Icon(Icons.delete_outline, color: context.colors.textPrimary, size: 24.ic),
+        child: Icon(
+          Icons.delete_outline,
+          color: context.colors.textPrimary,
+          size: 24.ic,
+        ),
       ),
       confirmDismiss: (direction) async {
         final allowed = await requireFullAuthGuard(context);
         if (!allowed) return false;
+        if (!context.mounted) return false;
 
         HapticFeedback.mediumImpact();
         return await _showDeleteConfirmation(context, title);
@@ -94,13 +100,17 @@ class EventFavoriteCard extends ConsumerWidget {
                           Icon(
                             Icons.calendar_today,
                             size: 14.ic,
-                            color: context.colors.textPrimary.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                           SizedBox(width: 4.w),
                           Text(
                             dates,
                             style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                         ],
@@ -114,7 +124,9 @@ class EventFavoriteCard extends ConsumerWidget {
                               height: 4.h,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.5,
+                                ),
                               ),
                             ),
                             SizedBox(width: 8.w),
@@ -124,7 +136,9 @@ class EventFavoriteCard extends ConsumerWidget {
                           Text(
                             timeControl,
                             style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                         ],
@@ -139,13 +153,17 @@ class EventFavoriteCard extends ConsumerWidget {
                           Icon(
                             Icons.trending_up,
                             size: 14.ic,
-                            color: context.colors.textPrimary.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                           SizedBox(width: 4.w),
                           Text(
                             'Avg ELO: $maxAvgElo',
                             style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                         ],
@@ -221,44 +239,13 @@ class EventFavoriteCard extends ConsumerWidget {
     BuildContext context,
     String eventTitle,
   ) {
-    return showDialog<bool>(
+    return showSmoothConfirmDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: context.colors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.br),
-          ),
-          title: Text(
-            'Remove from favorites?',
-            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
-          ),
-          content: Text(
-            'Are you sure you want to remove $eventTitle from your favorites?',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'Cancel',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.7),
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(
-                'Remove',
-                style: AppTypography.textSmMedium.copyWith(color: kRedColor),
-              ),
-            ),
-          ],
-        );
-      },
+      title: 'Remove from favorites?',
+      message:
+          'Are you sure you want to remove $eventTitle from your favorites?',
+      confirmText: 'Remove',
+      isDangerous: true,
     );
   }
 

@@ -172,7 +172,18 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final liveIds =
         ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ??
         const <String>[];
-    final savedSmartData = _savedSmartCards(favoriteEvents, liveIds);
+    final smartFavoriteEventIds = _smartFavoriteEventIds(favoriteEvents);
+    final currentSmartEventIdsAsync = ref.watch(
+      smartCurrentEventIdsProvider(
+        SmartCurrentEventIdsQuery(smartFavoriteEventIds),
+      ),
+    );
+    final savedSmartData = currentSmartEventIdsAsync.maybeWhen(
+      data:
+          (currentEventIds) =>
+              _savedSmartCards(favoriteEvents, liveIds, currentEventIds),
+      orElse: () => const <SmartEventCardData>[],
+    );
 
     if (state.isLoading && events.isEmpty) {
       return _buildLoadingState();
@@ -227,15 +238,36 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     );
   }
 
+  List<String> _smartFavoriteEventIds(List<FavoriteEvent> favoriteEvents) {
+    final ids = <String>{};
+    for (final favorite in favoriteEvents) {
+      if (!isSmartFavoriteEvent(favorite)) continue;
+      final request = SmartEventRequest.fromFavoriteEvent(favorite);
+      ids.addAll(request.eventIds);
+    }
+    return ids.toList(growable: false);
+  }
+
   List<SmartEventCardData> _savedSmartCards(
     List<FavoriteEvent> favoriteEvents,
     List<String> liveIds,
+    Set<String> currentEventIds,
   ) {
     final cards = <SmartEventCardData>[];
     for (final favorite in favoriteEvents) {
       if (!isSmartFavoriteEvent(favorite)) continue;
       final request = SmartEventRequest.fromFavoriteEvent(favorite);
       if (request.events.isEmpty) continue;
+      if (!smartEventHasCurrentEvents(request, currentEventIds)) {
+        unawaited(
+          Future.microtask(
+            () => ref
+                .read(favoriteEventsProvider.notifier)
+                .removeFavorite(request.favoriteEventId),
+          ),
+        );
+        continue;
+      }
       if (!smartEventHasUnfinishedEvents(request, liveIds)) {
         unawaited(
           Future.microtask(

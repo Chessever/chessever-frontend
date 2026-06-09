@@ -12,6 +12,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -333,65 +334,80 @@ class FolderCard extends ConsumerWidget {
   }
 
   void _showChessEverSourceLinksDialog(BuildContext context) {
-    showDialog<void>(
+    showAlertModal<void>(
       context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            backgroundColor: context.colors.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16.br),
-            ),
-            title: Text(
-              'ChessEver source databases',
-              style: AppTypography.textMdMedium.copyWith(
-                color: context.colors.textPrimary,
+      child: Builder(
+        builder:
+            (dialogContext) => Container(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.isTablet ? 400.w : double.infinity,
               ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Links',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.8),
-                  ),
-                ),
-                SizedBox(height: 12.h),
-                _buildSourceLink(
-                  dialogContext,
-                  'Lichess',
-                  'https://lichess.org/',
-                ),
-                _buildSourceLink(
-                  dialogContext,
-                  'TWIC',
-                  'https://theweekinchess.com/',
-                ),
-                _buildSourceLink(
-                  dialogContext,
-                  'Lumbra\'s Gigabase',
-                  'https://lumbrasgigabase.com/en/download-in-pgn-format-en/',
-                ),
-                _buildSourceLink(
-                  dialogContext,
-                  'ChessEver',
-                  'https://chessever.com/',
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(
-                  'Close',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.8),
-                  ),
+              padding: EdgeInsets.all(20.sp),
+              decoration: BoxDecoration(
+                color: context.colors.surface,
+                borderRadius: BorderRadius.circular(16.br),
+                border: Border.all(
+                  color: context.colors.textPrimary.withValues(alpha: 0.1),
+                  width: 1,
                 ),
               ),
-            ],
-          ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ChessEver source databases',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    'Links',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textPrimary.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  SizedBox(height: 12.h),
+                  _buildSourceLink(
+                    dialogContext,
+                    'Lichess',
+                    'https://lichess.org/',
+                  ),
+                  _buildSourceLink(
+                    dialogContext,
+                    'TWIC',
+                    'https://theweekinchess.com/',
+                  ),
+                  _buildSourceLink(
+                    dialogContext,
+                    'Lumbra\'s Gigabase',
+                    'https://lumbrasgigabase.com/en/download-in-pgn-format-en/',
+                  ),
+                  _buildSourceLink(
+                    dialogContext,
+                    'ChessEver',
+                    'https://chessever.com/',
+                  ),
+                  SizedBox(height: 16.h),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: Text(
+                        'Close',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.8,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+      ),
     );
   }
 
@@ -679,58 +695,15 @@ class FolderCard extends ConsumerWidget {
   }
 
   Future<void> _deleteFolder(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSmoothConfirmDialog(
       context: context,
-      builder:
-          (_) => Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
-              ),
-              child: AlertDialog(
-                backgroundColor: context.colors.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16.br),
-                ),
-                title: Text(
-                  'Delete ${folder.isFolder ? 'folder' : 'database'}?',
-                  style: AppTypography.textSmBold.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
-                ),
-                content: Text(
-                  folder.isFolder
-                      ? 'This permanently deletes the folder and every database inside it. This cannot be undone.'
-                      : 'This permanently deletes the database and every game inside it. This cannot be undone.',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.7),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: Text(
-                      'Cancel',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.7,
-                        ),
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: Text(
-                      'Delete',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kRedColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      title: 'Delete ${folder.isFolder ? 'folder' : 'database'}?',
+      message:
+          folder.isFolder
+              ? 'This permanently deletes the folder and every database inside it. This cannot be undone.'
+              : 'This permanently deletes the database and every game inside it. This cannot be undone.',
+      confirmText: 'Delete',
+      isDangerous: true,
     );
 
     if (confirmed != true) return;

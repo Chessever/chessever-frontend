@@ -22,6 +22,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -298,25 +299,23 @@ class GroupEventScreen extends HookConsumerWidget {
                             .read(filterPopupProvider.notifier)
                             .setState(appliedFilterState);
 
-                        showDialog(
+                        showAlertModal<void>(
                           context: context,
-                          // ignore: deprecated_member_use
-                          barrierColor: kBlackColor.withOpacity(0.5),
-                          builder:
-                              (cxt) => FilterPopup(
-                                onApplyFilters: (filterState) {
-                                  ref
-                                      .read(eventAppliedFilterProvider.notifier)
-                                      .state = filterState;
-                                  ref.invalidate(forYouEventsProvider);
-                                },
-                                onResetFilters: () {
-                                  ref
-                                      .read(eventAppliedFilterProvider.notifier)
-                                      .state = defaultFilterPopupState;
-                                  ref.invalidate(forYouEventsProvider);
-                                },
-                              ),
+                          horizontalPadding: 0,
+                          child: FilterPopup(
+                            onApplyFilters: (filterState) {
+                              ref
+                                  .read(eventAppliedFilterProvider.notifier)
+                                  .state = filterState;
+                              ref.invalidate(forYouEventsProvider);
+                            },
+                            onResetFilters: () {
+                              ref
+                                  .read(eventAppliedFilterProvider.notifier)
+                                  .state = defaultFilterPopupState;
+                              ref.invalidate(forYouEventsProvider);
+                            },
+                          ),
                         );
                       },
                       onProfileTap:
