@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 const Duration kForegroundRefreshDelay = Duration(milliseconds: 700);
 const Duration kForegroundHeavyRefreshDelay = Duration(milliseconds: 1100);
@@ -62,9 +63,30 @@ class ForegroundTaskScheduler {
         return;
       }
 
+      _addBreadcrumb(
+        key,
+        'foreground task started',
+        data: {'lifecycle_state': lifecycleState?.name},
+      );
+      final stopwatch = Stopwatch()..start();
       await task();
+      stopwatch.stop();
+      _addBreadcrumb(
+        key,
+        'foreground task completed',
+        data: {
+          'elapsed_ms': stopwatch.elapsedMilliseconds,
+          'lifecycle_state': lifecycleState?.name,
+        },
+      );
     } catch (error, stackTrace) {
       debugPrint('Foreground task "$key" failed: $error');
+      _addBreadcrumb(
+        key,
+        'foreground task failed',
+        data: {'error': error.toString()},
+        level: SentryLevel.warning,
+      );
       if (kDebugMode) {
         debugPrintStack(stackTrace: stackTrace);
       }
@@ -72,6 +94,27 @@ class ForegroundTaskScheduler {
       if (_generations[key] == generation) {
         _generations.remove(key);
       }
+    }
+  }
+
+  static void _addBreadcrumb(
+    String key,
+    String message, {
+    Map<String, dynamic>? data,
+    SentryLevel level = SentryLevel.info,
+  }) {
+    try {
+      Sentry.addBreadcrumb(
+        Breadcrumb(
+          category: 'foreground_task',
+          message: message,
+          type: 'debug',
+          data: <String, dynamic>{'key': key, ...?data},
+          level: level,
+        ),
+      );
+    } catch (_) {
+      // Diagnostics must never affect scheduled work.
     }
   }
 }
