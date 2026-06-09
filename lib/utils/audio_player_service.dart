@@ -5,16 +5,20 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:chessever2/services/pip_service.dart';
 
-/// Sound effect types — used instead of raw AudioSource to avoid stale native
-/// handles after the SoLoud engine is torn down and reinitialized.
+/// Sound effect types used by both the native Android SoundPool path and the
+/// SoLoud path used on the other platforms.
 enum SfxType { move, castling, check, checkmate, draw, promotion, takeover }
 
 class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
+  static const Duration _minimumAnyPlaySpacing = Duration(milliseconds: 60);
+  static const Duration _minimumSameSoundSpacing = Duration(milliseconds: 120);
+  static const MethodChannel _androidSfxChannel = MethodChannel(
+    'com.chessever/audio_sfx',
+  );
 
-  // Note: These MUST NOT be `final` - they need to be reassignable
-  // after the native SoLoud engine is torn down and reinitialized
-  // (e.g., when app returns from background)
+  // Note: These MUST NOT be `final` - non-Android recovery reloads them after
+  // the native SoLoud engine is torn down and reinitialized.
   late AudioSource pieceMoveSfx;
   late AudioSource pieceCastlingSfx;
   late AudioSource pieceCheckSfx;
@@ -34,9 +38,12 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _initialized = false;
   bool _assetsLoaded = false;
   Future<void>? _initializing;
+  Future<void>? _androidSfxInitializing;
+  DateTime _lastPlayAt = DateTime.fromMillisecondsSinceEpoch(0);
+  SfxType? _lastPlayedType;
   bool _audioSessionConfigured = false;
-  bool _hasInitializedOnce = false;
-  bool _androidAudioUnavailable = false;
+  bool _androidSfxPrepared = false;
+  bool _androidSfxUnavailable = false;
 
   /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
   Future<void> _configureAudioSession() async {
@@ -65,8 +72,8 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> initializeAndLoadAllAssets({bool force = false}) {
-    if (Platform.isAndroid && _androidAudioUnavailable) {
-      return Future.value();
+    if (Platform.isAndroid) {
+      return _prepareAndroidSfx();
     }
 
     // Always reuse the in-flight initialization to avoid racing init/deinit.
@@ -115,32 +122,81 @@ class AudioPlayerService with WidgetsBindingObserver {
     return SfxType.move;
   }
 
-  /// Play a sound effect by type. Resolves the native handle AFTER ensuring
-  /// the engine is initialized, preventing stale-handle issues.
-  ///
-  /// Fire-and-forget: each call plays independently. SoLoud mixes voices
-  /// natively, so SFX must NOT be serialized through a shared queue — doing so
-  /// couples every sound to the slowest/previous native op and lets a single
-  /// stalled init/recovery silence all subsequent moves.
+  /// Play a sound effect by type. Android uses native SoundPool so foreground
+  /// SFX never touch flutter_soloud's init/deinit path.
   void playSound(SfxType type) {
     // While in PiP the move SFX is played natively (iOS/Android) from the poll,
     // so suppress the Flutter path to avoid double sounds. On iOS the Dart
     // isolate is suspended in PiP anyway, making this a no-op there.
     if (PipService.instance.isInPip) return;
-    if (Platform.isAndroid && _androidAudioUnavailable) return;
+    if (_shouldSkipForSpacing(type)) return;
+    if (Platform.isAndroid) {
+      unawaited(_playAndroidSfx(type));
+      return;
+    }
     unawaited(_playWithRecovery(type));
   }
 
   /// Convenience: determine sound from SAN notation and play it.
   void playSfxForSan(String san) => playSound(sfxTypeForSan(san));
 
+  bool _shouldSkipForSpacing(SfxType type) {
+    final now = DateTime.now();
+    final elapsed = now.difference(_lastPlayAt);
+    if (elapsed < _minimumAnyPlaySpacing ||
+        (_lastPlayedType == type && elapsed < _minimumSameSoundSpacing)) {
+      return true;
+    }
+
+    _lastPlayedType = type;
+    _lastPlayAt = now;
+    return false;
+  }
+
+  Future<void> _prepareAndroidSfx() {
+    if (_androidSfxUnavailable || _androidSfxPrepared) {
+      return Future.value();
+    }
+    if (_androidSfxInitializing != null) return _androidSfxInitializing!;
+
+    _androidSfxInitializing = _prepareAndroidSfxInternal().whenComplete(() {
+      _androidSfxInitializing = null;
+    });
+
+    return _androidSfxInitializing!;
+  }
+
+  Future<void> _prepareAndroidSfxInternal() async {
+    try {
+      final prepared = await _androidSfxChannel.invokeMethod<bool>('prepare');
+      _androidSfxPrepared = prepared == true;
+      if (!_androidSfxPrepared) {
+        _markAndroidSfxUnavailable('native SoundPool prepare returned false');
+      }
+    } catch (e, s) {
+      debugPrint('⚠️ Android native SFX prepare failed: $e\n$s');
+      _markAndroidSfxUnavailable('native SoundPool prepare threw');
+    }
+  }
+
+  Future<void> _playAndroidSfx(SfxType type) async {
+    if (_androidSfxUnavailable) return;
+    try {
+      await _prepareAndroidSfx();
+      if (_androidSfxUnavailable) return;
+      await _androidSfxChannel.invokeMethod<void>('play', {'type': type.name});
+    } catch (e, s) {
+      debugPrint('⚠️ Android native SFX playback failed: $e\n$s');
+      _markAndroidSfxUnavailable('native SoundPool playback threw');
+    }
+  }
+
   Future<void> _playWithRecovery(SfxType type) async {
     try {
       await initializeAndLoadAllAssets();
-      // The engine can die during the await gap above (Android backgrounding,
-      // iOS route change). Calling play() then throws SoLoudNotInitializedException
-      // — the 1169-user "MA" crash, surfaced to Sentry via SoLoud's logger.
-      // Re-check and funnel into recovery instead of letting play() throw.
+      // The engine can die during the await gap above (for example iOS route
+      // changes). Re-check and funnel into recovery instead of letting play()
+      // throw SoLoudNotInitializedException.
       if (!player.isInitialized) {
         throw StateError('SoLoud not initialized after init; forcing recovery');
       }
@@ -148,12 +204,6 @@ class AudioPlayerService with WidgetsBindingObserver {
       player.play(_resolve(type));
     } catch (e, s) {
       debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
-      if (Platform.isAndroid) {
-        _markAndroidAudioUnavailable(
-          'playback failed; skipping forced SoLoud restart',
-        );
-        return;
-      }
       _teardownPlayer();
       try {
         await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -171,28 +221,6 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _initializeInternal({required bool force}) async {
-    if (Platform.isAndroid && _androidAudioUnavailable) {
-      return;
-    }
-
-    // On Android, flutter_soloud's init() tears down native SoLoud when the
-    // native engine is still initialized but Dart-side callbacks are not. That
-    // path reaches disposeAllSound()/ma_device_stop__opensl and has shown up as
-    // a delayed production crash. Keep Android SoLoud single-init per process.
-    if (Platform.isAndroid && force) {
-      debugPrint(
-        '🎧 AudioPlayerService: ignoring forced Android SoLoud restart',
-      );
-      force = false;
-    }
-
-    if (Platform.isAndroid && _hasInitializedOnce && !player.isInitialized) {
-      _markAndroidAudioUnavailable(
-        'SoLoud lost Dart initialized state after previous Android init',
-      );
-      return;
-    }
-
     if (force) {
       // A forced init means the previous Dart AudioSource handles may no longer
       // match the native audio device/session even when SoLoud still reports
@@ -218,15 +246,7 @@ class AudioPlayerService with WidgetsBindingObserver {
     await _configureAudioSession();
 
     if (!player.isInitialized) {
-      if (Platform.isAndroid) {
-        await SoLoud.instance.init(
-          sampleRate: 48000,
-          bufferSize: 4096,
-          channels: Channels.stereo,
-        );
-      } else {
-        await SoLoud.instance.init();
-      }
+      await SoLoud.instance.init();
       // Re-apply after init just in case SoLoud native layer reset the category
       _audioSessionConfigured = false;
       await _configureAudioSession();
@@ -268,7 +288,6 @@ class AudioPlayerService with WidgetsBindingObserver {
     }
 
     _initialized = true;
-    _hasInitializedOnce = true;
     debugPrint('🎧 AudioPlayerService initialized successfully');
   }
 
@@ -295,13 +314,12 @@ class AudioPlayerService with WidgetsBindingObserver {
     }
   }
 
-  void _markAndroidAudioUnavailable(String reason) {
-    if (_androidAudioUnavailable) return;
-    _androidAudioUnavailable = true;
-    _initialized = false;
-    _assetsLoaded = false;
+  void _markAndroidSfxUnavailable(String reason) {
+    if (_androidSfxUnavailable) return;
+    _androidSfxUnavailable = true;
+    _androidSfxPrepared = false;
     debugPrint(
-      '⚠️ AudioPlayerService: Android audio disabled until next app start: $reason',
+      '⚠️ AudioPlayerService: Android native SFX disabled until next app start: $reason',
     );
   }
 
@@ -309,7 +327,8 @@ class AudioPlayerService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
     if (state == AppLifecycleState.resumed) {
-      if (Platform.isAndroid && _androidAudioUnavailable) {
+      if (Platform.isAndroid) {
+        unawaited(_prepareAndroidSfx());
         return;
       }
 
@@ -317,13 +336,6 @@ class AudioPlayerService with WidgetsBindingObserver {
       // Avoids unnecessary teardown→reinit cycles (esp. iOS) that create
       // windows of broken audio.
       if (!player.isInitialized) {
-        if (Platform.isAndroid && _hasInitializedOnce) {
-          _markAndroidAudioUnavailable(
-            'SoLoud not initialized on Android resume after previous init',
-          );
-          return;
-        }
-
         debugPrint(
           '🎧 AudioPlayerService: engine dead after resume, reinitializing',
         );

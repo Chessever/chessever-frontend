@@ -1522,16 +1522,46 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
     _pipCleared = false;
     final payload = _buildPipPayload(state.game, state: state);
-    // Skip the native round-trip when nothing the PiP card shows changed (the
-    // provider re-emits constantly while the engine deepens).
-    final sig = payload.toString();
+    // Skip the native round-trip when nothing important changed. In foreground
+    // we intentionally ignore eval/clock churn because the provider re-emits
+    // constantly while the engine deepens; the full payload is still sent on
+    // position/game/settings changes and immediately before entering PiP.
+    final isInPip = PipService.instance.isInPip;
+    final sig = _pipPayloadSignature(payload, isInPip: isInPip);
     if (sig == _lastPipSig) return;
     _lastPipSig = sig;
-    if (PipService.instance.isInPip) {
+    if (isInPip) {
       await PipService.instance.updatePosition(payload);
     } else {
       await PipService.instance.setActiveGame(payload);
     }
+  }
+
+  String _pipPayloadSignature(
+    Map<String, dynamic> payload, {
+    required bool isInPip,
+  }) {
+    if (isInPip) return payload.toString();
+
+    return <Object?>[
+      payload['eligible'],
+      payload['followLive'],
+      payload['gameId'],
+      payload['fen'],
+      payload['lastMoveUci'],
+      payload['lastMove'],
+      payload['status'],
+      payload['whiteName'],
+      payload['blackName'],
+      payload['whiteTitle'],
+      payload['blackTitle'],
+      payload['whiteFed'],
+      payload['blackFed'],
+      payload['eventName'],
+      payload['roundName'],
+      payload['boardThemeIndex'],
+      payload['pieceStyleIndex'],
+    ].toString();
   }
 
   Future<void> _syncPipGameSnapshot(GamesTourModel game) async {

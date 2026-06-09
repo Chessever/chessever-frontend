@@ -43,6 +43,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -50,24 +51,37 @@ import kotlin.math.roundToInt
 class MainActivity : FlutterActivity() {
   private var pipChannel: MethodChannel? = null
   private var liveChannel: MethodChannel? = null
+  private var audioChannel: MethodChannel? = null
   private var pipPayload: MutableMap<String, Any?>? = null
   private var pipOverlay: ChessPipOverlayView? = null
   private val mainHandler = Handler(Looper.getMainLooper())
   private val httpClient = OkHttpClient()
   private val liveNotificationExecutor: ExecutorService =
     Executors.newSingleThreadExecutor()
+  private val sfxExecutor: ExecutorService = Executors.newSingleThreadExecutor()
   private var pollRunnable: Runnable? = null
   private var clockRunnable: Runnable? = null
   private var activePollCall: Call? = null
   private var isEnteringPip = false
   private var lastReportedPipMode = false
   private var pipLayoutListener: View.OnLayoutChangeListener? = null
-  // Native move SFX for PiP (mirrors iOS). Flutter SFX is suppressed while in PiP
-  // so these don't double up; capture vs move chosen by FEN piece-count drop.
+  // Native short SFX. Android foreground playback deliberately bypasses
+  // flutter_soloud; PiP also reuses this path while Dart is suspended.
   private var soundPool: SoundPool? = null
-  private var moveSoundId = 0
-  private var captureSoundId = 0
+  private val sfxSoundIds = ConcurrentHashMap<String, Int>()
+  private val sfxLock = Any()
+  @Volatile private var sfxLoadStarted = false
+  @Volatile private var sfxShuttingDown = false
   private var lastSoundedMove: String? = null
+  private val sfxAssets = mapOf(
+    "move" to Pair("flutter_assets/assets/sfx/piece_move.wav", "sfx_piece_move.wav"),
+    "castling" to Pair("flutter_assets/assets/sfx/piece_castling.wav", "sfx_piece_castling.wav"),
+    "check" to Pair("flutter_assets/assets/sfx/piece_check.wav", "sfx_piece_check.wav"),
+    "checkmate" to Pair("flutter_assets/assets/sfx/piece_checkmate.wav", "sfx_piece_checkmate.wav"),
+    "draw" to Pair("flutter_assets/assets/sfx/piece_draw.wav", "sfx_piece_draw.wav"),
+    "promotion" to Pair("flutter_assets/assets/sfx/piece_promotion.wav", "sfx_piece_promotion.wav"),
+    "takeover" to Pair("flutter_assets/assets/sfx/piece_takeover.wav", "sfx_piece_takeover.wav")
+  )
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -113,6 +127,26 @@ class MainActivity : FlutterActivity() {
         "enterIfEligible" -> result.success(enterPipIfEligible())
         "clearActiveGame" -> {
           clearPipState()
+          result.success(null)
+        }
+        else -> result.notImplemented()
+      }
+    }
+
+    audioChannel = MethodChannel(
+      flutterEngine.dartExecutor.binaryMessenger,
+      "com.chessever/audio_sfx"
+    )
+    audioChannel?.setMethodCallHandler { call, result ->
+      when (call.method) {
+        "prepare" -> {
+          initSounds()
+          result.success(soundPool != null)
+        }
+        "play" -> {
+          @Suppress("UNCHECKED_CAST")
+          val args = call.arguments as? Map<String, Any?>
+          playNativeSfx(args?.get("type") as? String ?: "move")
           result.success(null)
         }
         else -> result.notImplemented()
@@ -220,19 +254,33 @@ class MainActivity : FlutterActivity() {
   }
 
   private fun initSounds() {
-    if (soundPool != null) return
-    val attrs = AudioAttributes.Builder()
-      .setUsage(AudioAttributes.USAGE_MEDIA)
-      .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-      .build()
-    val pool = SoundPool.Builder().setMaxStreams(4).setAudioAttributes(attrs).build()
-    extractAsset("flutter_assets/assets/sfx/piece_move.wav", "pip_move.wav")?.let {
-      moveSoundId = pool.load(it, 1)
+    val pool = synchronized(sfxLock) {
+      soundPool ?: run {
+        val attrs = AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_MEDIA)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+        SoundPool.Builder().setMaxStreams(4).setAudioAttributes(attrs).build().also {
+          soundPool = it
+        }
+      }
     }
-    extractAsset("flutter_assets/assets/sfx/piece_takeover.wav", "pip_capture.wav")?.let {
-      captureSoundId = pool.load(it, 1)
+
+    if (sfxLoadStarted) return
+    sfxLoadStarted = true
+    sfxExecutor.execute {
+      for ((type, asset) in sfxAssets) {
+        if (sfxShuttingDown || Thread.currentThread().isInterrupted) return@execute
+        if (sfxSoundIds.containsKey(type)) continue
+        val path = extractAsset(asset.first, asset.second) ?: continue
+        val soundId = synchronized(sfxLock) {
+          if (sfxShuttingDown || soundPool !== pool) 0 else pool.load(path, 1)
+        }
+        if (soundId != 0 && !sfxShuttingDown) {
+          sfxSoundIds[type] = soundId
+        }
+      }
     }
-    soundPool = pool
   }
 
   // .wav assets in flutter_assets may be stored compressed, so SoundPool can't
@@ -247,16 +295,21 @@ class MainActivity : FlutterActivity() {
       }
       outFile.absolutePath
     } catch (e: Exception) {
-      Log.w("ChessPip", "Failed to extract $assetPath: $e")
+      Log.w("ChessSfx", "Failed to extract $assetPath: $e")
       null
     }
   }
 
-  private fun playPipMoveSound(captured: Boolean) {
+  private fun playNativeSfx(type: String) {
+    initSounds()
     val pool = soundPool ?: return
-    val id = if (captured && captureSoundId != 0) captureSoundId else moveSoundId
+    val id = sfxSoundIds[type] ?: sfxSoundIds["move"] ?: return
     if (id == 0) return
     pool.play(id, 1f, 1f, 1, 0, 1f)
+  }
+
+  private fun playPipMoveSound(captured: Boolean) {
+    playNativeSfx(if (captured) "takeover" else "move")
   }
 
   private fun fenPieceCount(fen: String?): Int {
@@ -291,10 +344,17 @@ class MainActivity : FlutterActivity() {
     stopNativePolling()
     removePipOverlay()
     liveNotificationExecutor.shutdownNow()
+    sfxShuttingDown = true
+    sfxExecutor.shutdownNow()
     pipChannel?.setMethodCallHandler(null)
     liveChannel?.setMethodCallHandler(null)
-    soundPool?.release()
-    soundPool = null
+    audioChannel?.setMethodCallHandler(null)
+    synchronized(sfxLock) {
+      soundPool?.release()
+      soundPool = null
+      sfxSoundIds.clear()
+      sfxLoadStarted = false
+    }
     super.onDestroy()
   }
 
