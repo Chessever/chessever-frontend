@@ -80,6 +80,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:country_flags/country_flags.dart' hide Shape, Circle;
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -14909,48 +14910,219 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
 */
 // End of deprecated _CommentDialog class
 
-/// Provider to fetch tour info by tour ID or name - used by the event info sheet
+bool _isEventInfoUuid(String value) {
+  return RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  ).hasMatch(value.trim());
+}
+
+@visibleForTesting
+Map<String, String> parseEventInfoHeadersForTesting(String? pgnString) {
+  if (pgnString == null || pgnString.isEmpty) {
+    return {};
+  }
+
+  try {
+    final pgnGame = PgnGame.parsePgn(pgnString);
+    return pgnGame.headers;
+  } catch (e) {
+    // Fallback to regex parsing if dartchess fails.
+    final headers = <String, String>{};
+    final matches = RegExp(r'\[(\w+)\s+"([^"]+)"\]').allMatches(pgnString);
+    for (final match in matches) {
+      headers[match.group(1)!] = match.group(2)!;
+    }
+    return headers;
+  }
+}
+
+@visibleForTesting
+String resolveEventInfoFallbackEventNameForTesting(
+  GamesTourModel game,
+  String? pgn,
+) {
+  final headers = parseEventInfoHeadersForTesting(pgn ?? game.pgn);
+  final tourSlug = game.tourSlug?.trim();
+  final tourSlugTitle =
+      tourSlug != null && tourSlug.isNotEmpty
+          ? StringUtils.slugToTitle(tourSlug)
+          : null;
+  final tourId = game.tourId.trim();
+  final displayTourId =
+      tourId.isNotEmpty && !_isEventInfoUuid(tourId) ? tourId : null;
+
+  return preferredTwicEventTitle(
+    pgnEvent: headers['Event'],
+    tourSlug: tourSlugTitle,
+    tourId: displayTourId,
+    site: headers['Site'],
+    fallback: 'Game Info',
+  );
+}
+
+DateTime? _parseEventInfoPgnDate(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null ||
+      trimmed.isEmpty ||
+      trimmed == '?' ||
+      trimmed.contains('?')) {
+    return null;
+  }
+
+  final parts = trimmed.split(RegExp(r'[.\-/]'));
+  if (parts.length < 3) return null;
+
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (year == null || month == null || day == null) return null;
+
+  return DateTime.tryParse(
+    '${year.toString().padLeft(4, '0')}-'
+    '${month.toString().padLeft(2, '0')}-'
+    '${day.toString().padLeft(2, '0')}',
+  );
+}
+
+DateTime? _eventInfoLookupDate(GamesTourModel game, String? pgn) {
+  return game.bucketDate ??
+      _parseEventInfoPgnDate(
+        parseEventInfoHeadersForTesting(pgn ?? game.pgn)['Date'],
+      );
+}
+
+String _normalizeEventInfoLookupText(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ');
+}
+
+String _slugifyEventInfoLookupText(String value) {
+  return _normalizeEventInfoLookupText(value).replaceAll(' ', '-');
+}
+
+int _scoreEventInfoTourMatch(Tour tour, String query, DateTime? gameDate) {
+  final normalizedQuery = _normalizeEventInfoLookupText(query);
+  final normalizedName = _normalizeEventInfoLookupText(tour.name);
+  final normalizedSlugTitle = _normalizeEventInfoLookupText(
+    StringUtils.slugToTitle(tour.slug),
+  );
+  final slugifiedQuery = _slugifyEventInfoLookupText(query);
+
+  var score = 0;
+  if (normalizedName == normalizedQuery) {
+    score += 100;
+  } else if (normalizedName.contains(normalizedQuery) ||
+      normalizedQuery.contains(normalizedName)) {
+    score += 45;
+  }
+
+  if (normalizedSlugTitle == normalizedQuery || tour.slug == slugifiedQuery) {
+    score += 80;
+  } else if (tour.slug.contains(slugifiedQuery) ||
+      normalizedSlugTitle.contains(normalizedQuery)) {
+    score += 35;
+  }
+
+  if (gameDate != null && tour.dates.isNotEmpty) {
+    final gameDay = DateUtils.dateOnly(gameDate);
+    final start = DateUtils.dateOnly(tour.dates.first);
+    final end = DateUtils.dateOnly(tour.dates.last);
+    if (!gameDay.isBefore(start) && !gameDay.isAfter(end)) {
+      score += 70;
+    } else if (gameDay.year == start.year || gameDay.year == end.year) {
+      score += 20;
+    }
+  }
+
+  return score;
+}
+
+Tour? _bestEventInfoTourMatch(
+  List<Tour> tours,
+  String query,
+  DateTime? gameDate,
+) {
+  if (tours.isEmpty) return null;
+
+  final ranked = tours.toList(growable: false)..sort((a, b) {
+    final scoreComparison = _scoreEventInfoTourMatch(
+      b,
+      query,
+      gameDate,
+    ).compareTo(_scoreEventInfoTourMatch(a, query, gameDate));
+    if (scoreComparison != 0) return scoreComparison;
+
+    final aDate = a.dates.isNotEmpty ? a.dates.first : DateTime(0);
+    final bDate = b.dates.isNotEmpty ? b.dates.first : DateTime(0);
+    return bDate.compareTo(aDate);
+  });
+
+  final best = ranked.first;
+  return _scoreEventInfoTourMatch(best, query, gameDate) > 0 ? best : null;
+}
+
+class _EventInfoTourLookupKey {
+  const _EventInfoTourLookupKey({required this.query, this.gameDate});
+
+  final String query;
+  final DateTime? gameDate;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _EventInfoTourLookupKey &&
+        other.query == query &&
+        other.gameDate == gameDate;
+  }
+
+  @override
+  int get hashCode => Object.hash(query, gameDate);
+}
+
+/// Provider to fetch tour info by tour ID, slug, or event name.
 final _tourInfoByIdProvider = FutureProvider.autoDispose.family<
   AboutTourModel?,
-  String
->((ref, tourId) async {
-  if (tourId.isEmpty) return null;
+  _EventInfoTourLookupKey
+>((ref, lookup) async {
+  final query = lookup.query.trim();
+  if (query.isEmpty) return null;
 
   final repo = ref.read(tourRepositoryProvider);
 
   try {
-    // 1. Try fetching by UUID first (exact match)
-    final uuidPattern = RegExp(
-      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-      caseSensitive: false,
-    );
-
-    if (uuidPattern.hasMatch(tourId.trim())) {
-      final tours = await repo.getToursByIds([tourId.trim()]);
-      if (tours.isNotEmpty) {
-        return AboutTourModel.fromTour(tours.first);
-      }
+    // Tour ids are not always UUIDs; Lichess broadcast ids are short strings.
+    final toursById = await repo.getToursByIds([query]);
+    if (toursById.isNotEmpty) {
+      return AboutTourModel.fromTour(toursById.first);
     }
 
-    // 2. Fallback: Try searching by name if it's not a UUID or not found by UUID
-    // This handles legacy games or games from Gamebase where we only have the name.
-    final searchResults = await repo.searchTours(
-      query: tourId.trim(),
-      limit: 1,
+    final slugQuery = _slugifyEventInfoLookupText(query);
+    final slugMatches = await repo.getToursBySlugs(
+      {query, slugQuery}.where((slug) => slug.isNotEmpty).toList(),
     );
-    if (searchResults.isNotEmpty) {
-      // Verify it's a reasonably close match (simple containment check)
-      final bestMatch = searchResults.first;
-      final normalizedQuery = tourId.trim().toLowerCase();
-      final normalizedMatch = bestMatch.name.toLowerCase();
+    final bestSlugMatch = _bestEventInfoTourMatch(
+      slugMatches,
+      query,
+      lookup.gameDate,
+    );
+    if (bestSlugMatch != null) {
+      return AboutTourModel.fromTour(bestSlugMatch);
+    }
 
-      if (normalizedMatch.contains(normalizedQuery) ||
-          normalizedQuery.contains(normalizedMatch)) {
-        return AboutTourModel.fromTour(bestMatch);
-      }
+    final searchResults = await repo.searchTours(query: query, limit: 20);
+    final bestMatch = _bestEventInfoTourMatch(
+      searchResults,
+      query,
+      lookup.gameDate,
+    );
+    if (bestMatch != null) {
+      return AboutTourModel.fromTour(bestMatch);
     }
   } catch (e) {
-    debugPrint('Failed to fetch tour info for $tourId: $e');
+    debugPrint('Failed to fetch tour info for $query: $e');
   }
   return null;
 });
@@ -14964,23 +15136,17 @@ class _EventInfoSheet extends ConsumerWidget {
 
   /// Parse headers from PGN
   Map<String, String> _parseHeadersFromPgn() {
-    final pgnString = pgn ?? game.pgn;
-    if (pgnString == null || pgnString.isEmpty) {
-      return {};
-    }
+    return parseEventInfoHeadersForTesting(pgn ?? game.pgn);
+  }
 
-    try {
-      final pgnGame = PgnGame.parsePgn(pgnString);
-      return pgnGame.headers;
-    } catch (e) {
-      // Fallback to regex parsing if dartchess fails
-      final headers = <String, String>{};
-      final matches = RegExp(r'\[(\w+)\s+"([^"]+)"\]').allMatches(pgnString);
-      for (final match in matches) {
-        headers[match.group(1)!] = match.group(2)!;
-      }
-      return headers;
-    }
+  String _fallbackEventName() {
+    return resolveEventInfoFallbackEventNameForTesting(game, pgn);
+  }
+
+  bool _shouldLookupFallbackEvent(String fallbackEventName) {
+    return fallbackEventName != 'Game Info' &&
+        _normalizeEventInfoLookupText(fallbackEventName) !=
+            _normalizeEventInfoLookupText(game.tourId);
   }
 
   /// Navigate to the tournament detail screen
@@ -15036,18 +15202,48 @@ class _EventInfoSheet extends ConsumerWidget {
     final tourDetail = ref.watch(tourDetailScreenProvider);
     final tourDetailAboutModel = tourDetail.valueOrNull?.aboutTourModel;
 
-    // If tourDetailScreenProvider doesn't have data, fetch independently by tourId
-    final tourInfoAsync = ref.watch(_tourInfoByIdProvider(game.tourId));
+    final lookupDate = _eventInfoLookupDate(game, pgn);
+
+    // If tourDetailScreenProvider doesn't have data, fetch independently by
+    // tour id first, then by the readable PGN/slug title if the id is not
+    // enough to resolve a tournament.
+    final tourInfoAsync = ref.watch(
+      _tourInfoByIdProvider(
+        _EventInfoTourLookupKey(query: game.tourId, gameDate: lookupDate),
+      ),
+    );
 
     // Use tourDetailAboutModel only if it matches the current game's tourId
     final matchesCachedTour =
         tourDetailAboutModel?.id.isNotEmpty == true &&
         tourDetailAboutModel?.id == game.tourId;
+    final fallbackEventName = _fallbackEventName();
+    final shouldLookupFallbackEvent =
+        !matchesCachedTour &&
+        !tourInfoAsync.isLoading &&
+        tourInfoAsync.valueOrNull == null &&
+        _shouldLookupFallbackEvent(fallbackEventName);
+    final fallbackTourInfoAsync =
+        shouldLookupFallbackEvent
+            ? ref.watch(
+              _tourInfoByIdProvider(
+                _EventInfoTourLookupKey(
+                  query: fallbackEventName,
+                  gameDate: lookupDate,
+                ),
+              ),
+            )
+            : const AsyncData<AboutTourModel?>(null);
+
     final aboutModel =
-        matchesCachedTour ? tourDetailAboutModel : tourInfoAsync.valueOrNull;
+        matchesCachedTour
+            ? tourDetailAboutModel
+            : tourInfoAsync.valueOrNull ?? fallbackTourInfoAsync.valueOrNull;
 
     // Check if we're still loading
-    final isLoading = !matchesCachedTour && tourInfoAsync.isLoading;
+    final isLoading =
+        !matchesCachedTour &&
+        (tourInfoAsync.isLoading || fallbackTourInfoAsync.isLoading);
 
     final locationService = ref.read(locationServiceProvider);
     final urlLauncher = ref.read(urlLauncherProvider);
@@ -15113,17 +15309,7 @@ class _EventInfoSheet extends ConsumerWidget {
   ) {
     final headers = _parseHeadersFromPgn();
 
-    // Determine event name. In TWIC player-profile routes, raw PGN Event can
-    // be a per-round/pairing label; prefer the canonical event from the game
-    // list when that happens.
-    final pgnEvent = headers['Event'];
-    final eventName = preferredTwicEventTitle(
-      pgnEvent: pgnEvent,
-      tourSlug: game.tourSlug,
-      tourId: game.tourId,
-      site: headers['Site'],
-      fallback: 'Game Info',
-    );
+    final eventName = _fallbackEventName();
 
     return ListView(
       controller: scrollController,
