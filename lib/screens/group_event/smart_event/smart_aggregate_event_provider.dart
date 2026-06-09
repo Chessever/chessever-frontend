@@ -79,7 +79,7 @@ class SmartEventRequest {
 
   String get favoriteEventId => 'smart_event:$scopeId';
 
-  String get displayName => '$tierLabel $titleSuffix';
+  String get displayName => '$tierLabel $titleSuffix'.trim();
 
   Map<String, dynamic> toFavoriteMetadata() {
     return {
@@ -90,6 +90,7 @@ class SmartEventRequest {
       'minElo': minElo,
       'maxElo': maxElo,
       'caption': caption,
+      'notificationsEnabled': false,
       'countSingular': countSingular,
       'countPlural': countPlural,
       'savedAt': (savedAt ?? DateTime.now()).toIso8601String(),
@@ -133,13 +134,25 @@ class SmartEventRequest {
 
     return SmartEventRequest(
       source: source,
-      tierLabel: metadata['tierLabel']?.toString() ?? favorite.eventName,
-      titleSuffix: metadata['titleSuffix']?.toString() ?? 'Games',
+      tierLabel: _normalizedTierLabel(
+        metadata['tierLabel'],
+        favorite.eventName,
+      ),
+      titleSuffix: _normalizedTitleSuffix(metadata['titleSuffix']),
       minElo: _intFromMetadata(metadata['minElo']) ?? kFilterMinElo.round(),
       maxElo: _intFromMetadata(metadata['maxElo']) ?? kFilterMaxElo.round(),
-      caption: metadata['caption']?.toString() ?? 'Saved smart event',
-      countSingular: metadata['countSingular']?.toString() ?? 'filtered event',
-      countPlural: metadata['countPlural']?.toString() ?? 'filtered events',
+      caption: _normalizedCaption(
+        metadata['caption'],
+        _intFromMetadata(metadata['minElo']) ?? kFilterMinElo.round(),
+      ),
+      countSingular: _normalizedCountLabel(
+        metadata['countSingular'],
+        singular: true,
+      ),
+      countPlural: _normalizedCountLabel(
+        metadata['countPlural'],
+        singular: false,
+      ),
       events: events,
       savedAt: _dateFromMetadata(metadata['savedAt']) ?? favorite.createdAt,
     );
@@ -204,9 +217,6 @@ class SmartEventCardData {
 
     final minElo = filter.minElo ?? kFilterMinElo.round();
     final maxElo = filter.maxElo ?? kFilterMaxElo.round();
-    final hasOnlyEloFilter =
-        filter.hasEloFilter && filter.formatsAndStates.isEmpty;
-
     final fullLabel =
         filter.hasEloFilter ? RatingTierFilter.labelForMinRating(minElo) : null;
     final tierLabel =
@@ -222,15 +232,15 @@ class SmartEventCardData {
       request: SmartEventRequest(
         source: source,
         tierLabel: tierLabel,
-        titleSuffix: hasOnlyEloFilter ? 'Live Games' : 'Games',
+        titleSuffix: 'Games',
         minElo: minElo,
         maxElo: maxElo,
         caption:
             filter.hasEloFilter
-                ? 'Gathered from your $minElo+ filter'
-                : 'Gathered from your filters',
-        countSingular: hasOnlyEloFilter ? 'live event' : 'filtered event',
-        countPlural: hasOnlyEloFilter ? 'live events' : 'filtered events',
+                ? 'From your $minElo+ filter'
+                : 'From your filters',
+        countSingular: 'event',
+        countPlural: 'events',
         events: events,
       ),
       eventCount: events.length,
@@ -238,21 +248,8 @@ class SmartEventCardData {
     );
   }
 
-  static String _labelForNonEloFilters(FilterPopupState filter) {
-    final values =
-        filter.formatsAndStates
-            .map((value) => value.trim().toLowerCase())
-            .where((value) => value.isNotEmpty)
-            .toSet();
-    if (values.length == 1) {
-      final only = values.first;
-      if (only == 'live') return 'Live';
-      if (only == 'completed') return 'Completed';
-      if (only == 'standard') return 'Standard';
-      if (only == 'rapid') return 'Rapid';
-      if (only == 'blitz') return 'Blitz';
-    }
-    return 'Filtered';
+  static String _labelForNonEloFilters(FilterPopupState _) {
+    return 'All';
   }
 }
 
@@ -324,9 +321,9 @@ final smartCurrentEventIdsProvider = FutureProvider.autoDispose
       return broadcasts.map((broadcast) => broadcast.id).toSet();
     });
 
-/// The synthetic "smart event": live games gathered from every currently-live
-/// broadcast (optionally narrowed by the applied ELO tier) into one place, plus
-/// the aggregate metadata the event view needs for its About header.
+/// Generated level games gathered from every currently-live broadcast
+/// (optionally narrowed by the applied ELO tier) into one place, plus the
+/// aggregate metadata the event view needs for its About header.
 class SmartAggregateEvent {
   const SmartAggregateEvent({
     required this.games,
@@ -342,7 +339,7 @@ class SmartAggregateEvent {
     required this.gameEventNames,
   });
 
-  /// Most-interesting ordering already applied (live first, then strongest).
+  /// Ordered by day, then pinned games, then average rating.
   final List<GamesTourModel> games;
   final int tournamentCount;
   final int avgElo;
@@ -650,6 +647,7 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
 
   final orderedGames = _sortSmartGames(
     gamesById.values.toList(growable: false),
+    pinnedIds: const <String>[],
   );
   final participatingEvents =
       eventIdsWithGames.isEmpty
@@ -696,6 +694,7 @@ SmartAggregateEvent _buildAggregateEvent(
 
   final orderedGames = _sortSmartGames(
     gamesById.values.toList(growable: false),
+    pinnedIds: pinnedIds,
   );
 
   final participatingEvents =
@@ -807,17 +806,29 @@ int smartGameAverageElo(GamesTourModel game) {
   return (ratings.reduce((a, b) => a + b) / ratings.length).round();
 }
 
-List<GamesTourModel> _sortSmartGames(List<GamesTourModel> games) {
+@visibleForTesting
+List<GamesTourModel> sortSmartGamesForTest(
+  List<GamesTourModel> games, {
+  required List<String> pinnedIds,
+}) {
+  return _sortSmartGames(games, pinnedIds: pinnedIds);
+}
+
+List<GamesTourModel> _sortSmartGames(
+  List<GamesTourModel> games, {
+  required List<String> pinnedIds,
+}) {
+  final pinned = pinnedIds.toSet();
   final sorted = List<GamesTourModel>.from(games);
   sorted.sort((a, b) {
-    final aLive = a.effectiveGameStatus.isOngoing ? 1 : 0;
-    final bLive = b.effectiveGameStatus.isOngoing ? 1 : 0;
-    if (aLive != bLive) return bLive.compareTo(aLive);
+    final ad = _smartGameDay(a);
+    final bd = _smartGameDay(b);
+    final byDay = bd.compareTo(ad);
+    if (byDay != 0) return byDay;
 
-    final ad = a.lastMoveTime ?? a.bucketDate ?? DateTime(0);
-    final bd = b.lastMoveTime ?? b.bucketDate ?? DateTime(0);
-    final byDate = bd.compareTo(ad);
-    if (byDate != 0) return byDate;
+    final aPinned = pinned.contains(a.gameId) ? 1 : 0;
+    final bPinned = pinned.contains(b.gameId) ? 1 : 0;
+    if (aPinned != bPinned) return bPinned.compareTo(aPinned);
 
     final byAvgElo = smartGameAverageElo(b).compareTo(smartGameAverageElo(a));
     if (byAvgElo != 0) return byAvgElo;
@@ -833,6 +844,69 @@ List<GamesTourModel> _sortSmartGames(List<GamesTourModel> games) {
     return a.gameId.compareTo(b.gameId);
   });
   return sorted;
+}
+
+DateTime _smartGameDay(GamesTourModel game) {
+  final raw = game.lastMoveTime ?? game.bucketDate ?? DateTime(0);
+  final local = raw.toLocal();
+  return DateTime(local.year, local.month, local.day);
+}
+
+String _normalizedTierLabel(Object? value, String fallbackName) {
+  final text = value?.toString().trim();
+  final label =
+      text == null || text.isEmpty
+          ? _tierLabelFromDisplayName(fallbackName)
+          : text;
+  const oldNonLevelLabels = {
+    'Live',
+    'Completed',
+    'Standard',
+    'Rapid',
+    'Blitz',
+    'Filtered',
+  };
+  if (oldNonLevelLabels.contains(label)) return 'All';
+  return label.isEmpty ? 'All' : label;
+}
+
+String _tierLabelFromDisplayName(String value) {
+  final text = value.trim();
+  const suffix = ' Games';
+  if (text.endsWith(suffix)) {
+    return text.substring(0, text.length - suffix.length).trim();
+  }
+  return text;
+}
+
+String _normalizedTitleSuffix(Object? value) {
+  final text = value?.toString().trim();
+  if (text == null || text.isEmpty || text == 'Live Games') return 'Games';
+  return text;
+}
+
+String _normalizedCountLabel(Object? value, {required bool singular}) {
+  final fallback = singular ? 'event' : 'events';
+  final text = value?.toString().trim();
+  if (text == null ||
+      text.isEmpty ||
+      text.startsWith('live ') ||
+      text.startsWith('filtered ')) {
+    return fallback;
+  }
+  return text;
+}
+
+String _normalizedCaption(Object? value, int minElo) {
+  final text = value?.toString().trim();
+  if (text == null ||
+      text.isEmpty ||
+      text == 'Saved smart event' ||
+      text.startsWith('Gathered from your')) {
+    if (minElo > kFilterMinElo) return 'From your $minElo+ filter';
+    return 'From your filters';
+  }
+  return text;
 }
 
 GroupEventCardModel? _eventFromMetadata(Map<String, dynamic> json) {

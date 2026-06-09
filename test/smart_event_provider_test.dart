@@ -16,9 +16,15 @@ PlayerCard _player(String name, int rating, {int? fideId}) {
   );
 }
 
-GamesTourModel _game({required int whiteRating, required int blackRating}) {
+GamesTourModel _game({
+  String id = 'game-1',
+  required int whiteRating,
+  required int blackRating,
+  DateTime? lastMoveTime,
+  int? boardNr,
+}) {
   return GamesTourModel(
-    gameId: 'game-1',
+    gameId: id,
     whitePlayer: _player('White', whiteRating),
     blackPlayer: _player('Black', blackRating),
     whiteTimeDisplay: '--:--',
@@ -28,6 +34,8 @@ GamesTourModel _game({required int whiteRating, required int blackRating}) {
     gameStatus: GameStatus.ongoing,
     roundId: 'round-1',
     tourId: 'tour-1',
+    lastMoveTime: lastMoveTime,
+    boardNr: boardNr,
   );
 }
 
@@ -49,6 +57,23 @@ GroupEventCardModel _event({
   );
 }
 
+Map<String, dynamic> _favoriteEventMetadataRow(GroupEventCardModel event) {
+  return {
+    'id': event.id,
+    'title': event.title,
+    'dates': event.dates,
+    'maxAvgElo': event.maxAvgElo,
+    'timeUntilStart': event.timeUntilStart,
+    'tourEventCategory': event.tourEventCategory.name,
+    'timeControl': event.timeControl,
+    'startDate': event.startDate?.toIso8601String(),
+    'endDate': event.endDate?.toIso8601String(),
+    'location': event.location,
+    'searchTerms': event.searchTerms,
+    'eventSource': event.eventSource.name,
+  };
+}
+
 void main() {
   group('smartGameAverageElo', () {
     test('uses individual game average instead of event average', () {
@@ -66,8 +91,60 @@ void main() {
     });
   });
 
+  group('sortSmartGamesForTest', () {
+    test('groups by day, then pinned first, then average rating', () {
+      final today = DateTime(2026, 6, 9, 12);
+      final yesterday = DateTime(2026, 6, 8, 12);
+      final games = [
+        _game(
+          id: 'older-high',
+          whiteRating: 2800,
+          blackRating: 2800,
+          lastMoveTime: yesterday,
+        ),
+        _game(
+          id: 'today-low',
+          whiteRating: 2300,
+          blackRating: 2300,
+          lastMoveTime: today,
+        ),
+        _game(
+          id: 'older-pinned-low',
+          whiteRating: 2200,
+          blackRating: 2200,
+          lastMoveTime: yesterday,
+        ),
+        _game(
+          id: 'today-pinned-low',
+          whiteRating: 2200,
+          blackRating: 2200,
+          lastMoveTime: today,
+        ),
+        _game(
+          id: 'today-high',
+          whiteRating: 2600,
+          blackRating: 2600,
+          lastMoveTime: today,
+        ),
+      ];
+
+      final sorted = sortSmartGamesForTest(
+        games,
+        pinnedIds: ['today-pinned-low', 'older-pinned-low'],
+      );
+
+      expect(sorted.map((game) => game.gameId), [
+        'today-pinned-low',
+        'today-high',
+        'today-low',
+        'older-pinned-low',
+        'older-high',
+      ]);
+    });
+  });
+
   group('SmartEventRequest favorite metadata', () {
-    test('round-trips saved smart events through favorite metadata', () {
+    test('round-trips saved level games through favorite metadata', () {
       final event = _event(
         id: 'event-a',
         start: DateTime.utc(2026, 6, 1),
@@ -76,12 +153,12 @@ void main() {
       final request = SmartEventRequest(
         source: SmartEventSource.forYou,
         tierLabel: 'GM',
-        titleSuffix: 'Live Games',
+        titleSuffix: 'Games',
         minElo: 2500,
         maxElo: 3200,
-        caption: 'Gathered from your 2500+ filter',
-        countSingular: 'live event',
-        countPlural: 'live events',
+        caption: 'From your 2500+ filter',
+        countSingular: 'event',
+        countPlural: 'events',
         events: [event],
         savedAt: DateTime.utc(2026, 6, 3),
       );
@@ -101,16 +178,55 @@ void main() {
       expect(restored.minElo, 2500);
       expect(restored.maxElo, 3200);
       expect(restored.events.single.id, 'event-a');
+      expect(restored.displayName, 'GM Games');
+      expect(restored.caption, 'From your 2500+ filter');
+      expect(restored.countSingular, 'event');
+      expect(restored.countPlural, 'events');
+    });
+
+    test('normalizes legacy live games metadata to all games language', () {
+      final event = _event(
+        id: 'event-a',
+        start: DateTime.utc(2026, 6, 1),
+        end: DateTime.utc(2026, 6, 2),
+      );
+      final favorite = FavoriteEvent(
+        id: 'favorite-1',
+        userId: 'user-1',
+        eventId: 'smart_event:forYou:0-3200:event-a',
+        eventName: 'Live Games',
+        metadata: {
+          'type': 'smart_event',
+          'source': 'forYou',
+          'tierLabel': 'Live',
+          'titleSuffix': 'Live Games',
+          'minElo': 0,
+          'maxElo': 3200,
+          'caption': 'Saved smart event',
+          'countSingular': 'live event',
+          'countPlural': 'live events',
+          'events': [_favoriteEventMetadataRow(event)],
+        },
+        createdAt: DateTime.utc(2026, 6, 3),
+        updatedAt: DateTime.utc(2026, 6, 3),
+      );
+
+      final restored = SmartEventRequest.fromFavoriteEvent(favorite);
+
+      expect(restored.displayName, 'All Games');
+      expect(restored.caption, 'From your filters');
+      expect(restored.countSingular, 'event');
+      expect(restored.countPlural, 'events');
     });
 
     test(
-      'reports saved smart event finished when all events are completed',
+      'reports saved level games finished when all events are completed',
       () {
         final now = DateTime.now();
         final request = SmartEventRequest(
           source: SmartEventSource.forYou,
           tierLabel: 'GM',
-          titleSuffix: 'Live Games',
+          titleSuffix: 'Games',
           minElo: 2500,
           maxElo: 3200,
           caption: 'Saved',
@@ -132,12 +248,12 @@ void main() {
       },
     );
 
-    test('reports saved smart event inactive when no event is current', () {
+    test('reports saved level games inactive when no event is current', () {
       final now = DateTime.now();
       final request = SmartEventRequest(
         source: SmartEventSource.current,
         tierLabel: 'GM',
-        titleSuffix: 'Live Games',
+        titleSuffix: 'Games',
         minElo: 2500,
         maxElo: 3200,
         caption: 'Saved',

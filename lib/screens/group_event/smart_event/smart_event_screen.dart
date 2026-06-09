@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -21,13 +22,14 @@ import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Full event view for the synthetic smart event. Renders the familiar
-/// About / Games / Players tabbed shell, but every tab is computed from the
-/// aggregate of all currently-live broadcasts ([smartAggregateEventProvider]).
+/// Full event view for generated level games. Renders the familiar
+/// About / Games / Players tabbed shell, with every tab computed from the
+/// current broadcast aggregate ([smartAggregateEventProvider]).
 class SmartEventScreen extends ConsumerStatefulWidget {
   const SmartEventScreen({required this.request, super.key});
 
@@ -40,7 +42,7 @@ class SmartEventScreen extends ConsumerStatefulWidget {
 class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   static const _tabs = ['About', 'Games', 'Players'];
 
-  // Default to Games — the live firehose is the point of the smart event.
+  // Default to Games because this surface is opened from a generated games card.
   int _index = 1;
   late final PageController _page = PageController(initialPage: _index);
 
@@ -110,11 +112,14 @@ class _AppBar extends ConsumerWidget {
   }) async {
     final confirmed = await showSmoothConfirmDialog(
       context: context,
-      title: isSaved ? 'Remove smart event?' : 'Save smart event?',
+      title:
+          isSaved
+              ? 'Remove ${request.displayName}?'
+              : 'Save ${request.displayName}?',
       message:
           isSaved
-              ? 'This will remove ${request.displayName} from your For You and Current tabs.'
-              : 'This will add ${request.displayName} to your For You and Current tabs while its events are active.',
+              ? 'This will remove ${request.displayName} from your For You.'
+              : 'This will add ${request.displayName} to your For You tab.',
       confirmText: isSaved ? 'Remove' : 'Save',
       isDangerous: isSaved,
     );
@@ -151,57 +156,22 @@ class _AppBar extends ConsumerWidget {
           ),
           Expanded(
             child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      '${request.tierLabel} ${request.titleSuffix}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: context.colors.textPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 6.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6.w,
-                      vertical: 2.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: kPrimaryColor,
-                      borderRadius: BorderRadius.circular(5.br),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome,
-                          size: 10.sp,
-                          color: kBlackColor,
-                        ),
-                        SizedBox(width: 3.w),
-                        Text(
-                          'SMART',
-                          style: AppTypography.textXxsBold.copyWith(
-                            color: kBlackColor,
-                            fontSize: 9.sp,
-                            letterSpacing: 0.6,
-                            height: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              child: Text(
+                request.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
           IconButton(
-            tooltip: isSaved ? 'Unsave smart event' : 'Save smart event',
+            tooltip:
+                isSaved
+                    ? 'Remove ${request.displayName}'
+                    : 'Save ${request.displayName}',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             iconSize: 26.ic,
@@ -296,7 +266,7 @@ class _EmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.auto_awesome,
+              Icons.event_busy_outlined,
               size: 40.sp,
               color: context.colors.textPrimaryMuted,
             ),
@@ -367,6 +337,7 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                   gameIds: liveGameIds,
                 );
 
+        final rows = _buildDayRows(games);
         return RefreshIndicator(
           color: kPrimaryColor,
           backgroundColor: context.colors.surface,
@@ -379,7 +350,7 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
-            itemCount: games.isEmpty ? 2 : games.length + 1,
+            itemCount: games.isEmpty ? 2 : rows.length + 1,
             itemBuilder: (context, i) {
               if (i == 0) {
                 return Padding(
@@ -400,7 +371,9 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                         context: context,
                         currentFilter: _filter,
                         showColorFilter: false,
-                        showSortSection: true,
+                        showSortSection: false,
+                        showLevelFilter: false,
+                        showYearFilter: false,
                       );
                       if (result != null && mounted) {
                         setState(() => _filter = result);
@@ -409,21 +382,37 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                   ),
                 );
               }
-              final gameIndex = i - 1;
               if (games.isEmpty) {
                 return _EmptyState();
               }
+              final row = rows[i - 1];
+              if (row.header != null) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(2.sp, 6.sp, 2.sp, 8.sp),
+                  child: Text(
+                    row.header!,
+                    style: AppTypography.textSmBold.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                );
+              }
+              final game = row.game!;
+              final gameIndex = games.indexWhere(
+                (g) => g.gameId == game.gameId,
+              );
               return Padding(
                 padding: EdgeInsets.only(bottom: 12.sp),
                 child: GameCardWrapperWidget(
-                  key: ValueKey('smart_${games[gameIndex].gameId}'),
-                  game: games[gameIndex],
+                  key: ValueKey('smart_${game.gameId}'),
+                  game: game,
                   gamesData: gamesData,
-                  gameIndex: gameIndex,
+                  gameIndex: gameIndex < 0 ? 0 : gameIndex,
                   isChessBoardVisible: false,
                   viewSource: ChessboardView.tour,
                   onReturnFromChessboard: (_) {},
                   liveBatchKey: liveBatchKey,
+                  onBeforeOpen: () => _guardGameOpen(context),
                 ),
               );
             },
@@ -517,6 +506,60 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
     };
   }
 
+  Future<bool> _guardGameOpen(BuildContext context) async {
+    if (ref.read(subscriptionProvider).isSubscribed) return true;
+    if (!context.mounted) return false;
+    return await showPremiumPaywallSheet(context: context);
+  }
+
+  List<_GameListRow> _buildDayRows(List<GamesTourModel> games) {
+    final rows = <_GameListRow>[];
+    DateTime? currentDay;
+    for (final game in games) {
+      final day = _gameDay(game);
+      if (currentDay == null || !_sameDay(currentDay, day)) {
+        currentDay = day;
+        rows.add(_GameListRow.header(_dayLabel(day)));
+      }
+      rows.add(_GameListRow.game(game));
+    }
+    return rows;
+  }
+
+  DateTime _gameDay(GamesTourModel game) {
+    final raw = game.lastMoveTime ?? game.bucketDate ?? DateTime.now();
+    final local = raw.toLocal();
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  bool _sameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _dayLabel(DateTime day) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_sameDay(day, today)) return 'Today';
+    if (_sameDay(day, today.subtract(const Duration(days: 1)))) {
+      return 'Yesterday';
+    }
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${months[day.month - 1]} ${day.day}';
+  }
+
   int _compareBySortCriterion(
     GamesTourModel a,
     GamesTourModel b,
@@ -543,6 +586,18 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
         ? comparison
         : -comparison;
   }
+}
+
+class _GameListRow {
+  const _GameListRow._({this.header, this.game});
+
+  factory _GameListRow.header(String value) => _GameListRow._(header: value);
+
+  factory _GameListRow.game(GamesTourModel value) =>
+      _GameListRow._(game: value);
+
+  final String? header;
+  final GamesTourModel? game;
 }
 
 class _AboutTab extends ConsumerWidget {
@@ -572,9 +627,9 @@ class _AboutTab extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'A live smart database that gathers the strongest games '
-                    'from every ongoing broadcast into one place, so you never '
-                    'have to switch between tournaments.',
+                    'This database gathers the strongest games from every '
+                    'ongoing broadcast into one place, so you never have to '
+                    'switch between tournaments.',
                     style: AppTypography.textSmRegular.copyWith(
                       color: context.colors.textPrimary,
                       height: 1.4,
@@ -794,7 +849,7 @@ class _PlayersTab extends ConsumerWidget {
     }
 
     for (final game in games) {
-      final eventName = gameEventNames[game.gameId] ?? 'Smart event';
+      final eventName = gameEventNames[game.gameId] ?? 'Generated games';
       for (final player in [game.whitePlayer, game.blackPlayer]) {
         if (player.name.trim().isEmpty) continue;
         final row = slot(player);
