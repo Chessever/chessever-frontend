@@ -23,23 +23,17 @@ Color smartEventAccentColor(String stableKey) {
   return palette[hash % palette.length];
 }
 
-/// The "Convergence" smart-event card.
+/// Generated level-games card.
 ///
-/// A synthetic event that gathers the most interesting live games from every
-/// ongoing broadcast into one place — so the user never has to hop between
-/// tournaments. It mirrors the real [EventCard] silhouette (same size, same
-/// image-left + title + meta anatomy) so it sits natively in the For-You feed,
-/// but the rectangle is fractured into primary-tinted facets and self-brands as
-/// SMART so it reads instantly as the special, filter-driven card.
-///
-/// It is shown only when an ELO/tier filter is applied, pinned top-most.
+/// Gathers current games from active broadcasts that match the user's filter,
+/// while keeping the For You surface close to the regular event-card anatomy.
 class SmartEventCard extends StatelessWidget {
   const SmartEventCard({
     required this.tierLabel,
     required this.minElo,
     required this.liveCount,
     required this.avgElo,
-    this.titleSuffix = 'Live Games',
+    this.titleSuffix = 'Games',
     this.caption,
     this.countSingular = 'live event',
     this.countPlural = 'live events',
@@ -123,8 +117,6 @@ class SmartEventCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
-        // A primary-tinted border + soft primary glow distinguishes the smart
-        // card from the plain divider/shadow of a normal event card.
         border: Border.all(
           color: accentColor.withValues(
             alpha: context.isLightTheme ? 0.45 : 0.35,
@@ -159,10 +151,10 @@ class SmartEventCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _MosaicEmblem(
+                  _LevelEmblem(
+                    tierLabel: tierLabel,
                     width: imageW,
                     height: imageH,
-                    reduceMotion: reduceMotion,
                     accentColor: accentColor,
                   ),
                   SizedBox(width: 10.w),
@@ -211,7 +203,7 @@ class SmartEventCard extends StatelessWidget {
   }
 }
 
-/// Headline row: smart name + the SMART brand pill.
+/// Headline row: level name.
 class _TitleRow extends StatelessWidget {
   const _TitleRow({
     required this.tierLabel,
@@ -229,7 +221,7 @@ class _TitleRow extends StatelessWidget {
       children: [
         Flexible(
           child: Text(
-            '$tierLabel · $titleSuffix',
+            '$tierLabel $titleSuffix',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.textSmMedium.copyWith(
@@ -241,42 +233,7 @@ class _TitleRow extends StatelessWidget {
           ),
         ),
         SizedBox(width: 6.w),
-        _SmartPill(accentColor: accentColor),
       ],
-    );
-  }
-}
-
-/// Solid-primary SMART badge with a spark glyph.
-class _SmartPill extends StatelessWidget {
-  const _SmartPill({required this.accentColor});
-
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-      decoration: BoxDecoration(
-        color: accentColor,
-        borderRadius: BorderRadius.circular(5.br),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.auto_awesome, size: 10.sp, color: kBlackColor),
-          SizedBox(width: 3.w),
-          Text(
-            'SMART',
-            style: AppTypography.textXxsBold.copyWith(
-              color: kBlackColor,
-              fontSize: 9.sp,
-              letterSpacing: 0.6,
-              height: 1,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -365,7 +322,7 @@ class _FilterCaption extends StatelessWidget {
         SizedBox(width: 5.w),
         Flexible(
           child: Text(
-            caption ?? 'Gathered from your $minElo+ filter',
+            caption ?? 'From your $minElo+ filter',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.textXxsMedium.copyWith(
@@ -380,69 +337,43 @@ class _FilterCaption extends StatelessWidget {
   }
 }
 
-/// The left tile: a faceted mosaic emblem with a "stacked events" hint and a
-/// central spark — the visual metaphor for many broadcasts folding into one.
-class _MosaicEmblem extends StatelessWidget {
-  const _MosaicEmblem({
+/// The left tile: a restrained level emblem with large, readable letters.
+class _LevelEmblem extends StatelessWidget {
+  const _LevelEmblem({
+    required this.tierLabel,
     required this.width,
     required this.height,
-    required this.reduceMotion,
     required this.accentColor,
   });
 
+  final String tierLabel;
   final double width;
   final double height;
-  final bool reduceMotion;
   final Color accentColor;
 
   @override
   Widget build(BuildContext context) {
-    final spark = Icon(Icons.auto_awesome, size: 22.sp, color: Colors.white);
-
-    return SizedBox(
+    return Container(
       width: width,
       height: height,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // "Stacked events" hint: two faint offset outlines peeking behind the
-          // tile, reading as a pile of tournaments collapsed into one.
-          Positioned(top: -3, right: -3, child: _stackGhost(width, height)),
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6.br),
-              child: CustomPaint(
-                painter: _MosaicTilePainter(accentColor: accentColor),
-                child: Center(
-                  child:
-                      reduceMotion
-                          ? spark
-                          : spark
-                              .animate(onPlay: (c) => c.repeat(reverse: true))
-                              .fadeIn(duration: 1200.ms)
-                              .then()
-                              .shimmer(
-                                duration: 1600.ms,
-                                color: Colors.white.withValues(alpha: 0.8),
-                              ),
-                ),
-              ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF12202B),
+        borderRadius: BorderRadius.circular(6.br),
+        border: Border.all(color: accentColor.withValues(alpha: 0.45)),
+      ),
+      child: CustomPaint(
+        painter: _MosaicTilePainter(accentColor: accentColor),
+        child: Center(
+          child: Text(
+            tierLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textMdBold.copyWith(
+              color: Colors.white,
+              fontSize: 28.sp,
+              letterSpacing: 0.8,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _stackGhost(double w, double h) {
-    return Container(
-      width: w,
-      height: h,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6.br),
-        border: Border.all(
-          color: accentColor.withValues(alpha: 0.35),
-          width: 1,
         ),
       ),
     );

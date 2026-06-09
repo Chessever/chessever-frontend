@@ -20,6 +20,8 @@ Future<GameFilter?> showGameFilterDialog({
   bool showSortSection = false,
   bool showColorFilter = true,
   bool showSortDirection = true,
+  bool showLevelFilter = true,
+  bool showYearFilter = true,
 }) {
   return showAlertModal<GameFilter>(
     context: context,
@@ -31,6 +33,8 @@ Future<GameFilter?> showGameFilterDialog({
       showSortSection: showSortSection,
       showColorFilter: showColorFilter,
       showSortDirection: showSortDirection,
+      showLevelFilter: showLevelFilter,
+      showYearFilter: showYearFilter,
     ),
   );
 }
@@ -44,6 +48,8 @@ class GameFilterDialog extends StatefulWidget {
     this.showSortSection = false,
     this.showColorFilter = true,
     this.showSortDirection = true,
+    this.showLevelFilter = true,
+    this.showYearFilter = true,
   });
 
   final GameFilter initialFilter;
@@ -55,6 +61,8 @@ class GameFilterDialog extends StatefulWidget {
   // both (defaults true).
   final bool showColorFilter;
   final bool showSortDirection;
+  final bool showLevelFilter;
+  final bool showYearFilter;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -172,16 +180,18 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                     SizedBox(height: 20.h),
 
                     // 3. Level
-                    _sectionLabel('Level'),
-                    SizedBox(height: 8.h),
-                    RatingTierFilter(
-                      selectedMinRating: _selectedMinRating,
-                      onChanged: (value) {
-                        HapticFeedbackService.selection();
-                        setState(() => _selectedMinRating = value);
-                      },
-                    ),
-                    SizedBox(height: 20.h),
+                    if (widget.showLevelFilter) ...[
+                      _sectionLabel('Level'),
+                      SizedBox(height: 8.h),
+                      RatingTierFilter(
+                        selectedMinRating: _selectedMinRating,
+                        onChanged: (value) {
+                          HapticFeedbackService.selection();
+                          setState(() => _selectedMinRating = value);
+                        },
+                      ),
+                      SizedBox(height: 20.h),
+                    ],
 
                     // 4. Result (box grid)
                     _sectionLabel('Result'),
@@ -241,17 +251,19 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                     ],
 
                     // 7. Year range
-                    _sectionLabel('Year'),
-                    SizedBox(height: 8.h),
-                    _rangeSliderCard(
-                      values: _yearRange,
-                      min: GameFilter.absoluteMinYear.toDouble(),
-                      max: DateTime.now().year.toDouble(),
-                      divisions:
-                          DateTime.now().year - GameFilter.absoluteMinYear,
-                      onChanged: (v) => setState(() => _yearRange = v),
-                    ),
-                    SizedBox(height: 12.h),
+                    if (widget.showYearFilter) ...[
+                      _sectionLabel('Year'),
+                      SizedBox(height: 8.h),
+                      _rangeSliderCard(
+                        values: _yearRange,
+                        min: GameFilter.absoluteMinYear.toDouble(),
+                        max: DateTime.now().year.toDouble(),
+                        divisions:
+                            DateTime.now().year - GameFilter.absoluteMinYear,
+                        onChanged: (v) => setState(() => _yearRange = v),
+                      ),
+                      SizedBox(height: 12.h),
+                    ],
                   ],
                 ),
               ),
@@ -355,9 +367,16 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       timeControl: _timeControl,
       online: _online,
       live: _live,
-      minYear: _yearRange.start.round(),
-      maxYear: _yearRange.end.round(),
-      minRating: _selectedMinRating ?? GameFilter.defaultMinRating,
+      minYear:
+          widget.showYearFilter
+              ? _yearRange.start.round()
+              : GameFilter.defaultMinYear,
+      maxYear:
+          widget.showYearFilter ? _yearRange.end.round() : DateTime.now().year,
+      minRating:
+          widget.showLevelFilter
+              ? _selectedMinRating ?? GameFilter.defaultMinRating
+              : GameFilter.defaultMinRating,
       maxRating: GameFilter.absoluteMaxRating,
       sorts: widget.showSortSection ? _sorts : const [],
     );

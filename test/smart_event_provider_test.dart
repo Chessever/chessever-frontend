@@ -67,7 +67,7 @@ void main() {
   });
 
   group('SmartEventRequest favorite metadata', () {
-    test('round-trips saved smart events through favorite metadata', () {
+    test('round-trips saved level games through favorite metadata', () {
       final event = _event(
         id: 'event-a',
         start: DateTime.utc(2026, 6, 1),
@@ -76,10 +76,10 @@ void main() {
       final request = SmartEventRequest(
         source: SmartEventSource.forYou,
         tierLabel: 'GM',
-        titleSuffix: 'Live Games',
+        titleSuffix: 'Games',
         minElo: 2500,
         maxElo: 3200,
-        caption: 'Gathered from your 2500+ filter',
+        caption: 'From your 2500+ filter',
         countSingular: 'live event',
         countPlural: 'live events',
         events: [event],
@@ -101,16 +101,18 @@ void main() {
       expect(restored.minElo, 2500);
       expect(restored.maxElo, 3200);
       expect(restored.events.single.id, 'event-a');
+      expect(restored.displayName, 'GM Games');
+      expect(restored.caption, 'From your 2500+ filter');
     });
 
     test(
-      'reports saved smart event finished when all events are completed',
+      'reports saved level games finished when all events are completed',
       () {
         final now = DateTime.now();
         final request = SmartEventRequest(
           source: SmartEventSource.forYou,
           tierLabel: 'GM',
-          titleSuffix: 'Live Games',
+          titleSuffix: 'Games',
           minElo: 2500,
           maxElo: 3200,
           caption: 'Saved',
@@ -132,12 +134,12 @@ void main() {
       },
     );
 
-    test('reports saved smart event inactive when no event is current', () {
+    test('reports saved level games inactive when no event is current', () {
       final now = DateTime.now();
       final request = SmartEventRequest(
         source: SmartEventSource.current,
         tierLabel: 'GM',
-        titleSuffix: 'Live Games',
+        titleSuffix: 'Games',
         minElo: 2500,
         maxElo: 3200,
         caption: 'Saved',
