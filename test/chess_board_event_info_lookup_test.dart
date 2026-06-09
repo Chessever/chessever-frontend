@@ -65,5 +65,14 @@ void main() {
         'Game Info',
       );
     });
+
+    test('keeps short non-UUID tour ids as a last display fallback', () {
+      final game = _game(tourId: 'U9AdmoyQ');
+
+      expect(
+        resolveEventInfoFallbackEventNameForTesting(game, null),
+        'U9AdmoyQ',
+      );
+    });
   });
 }
