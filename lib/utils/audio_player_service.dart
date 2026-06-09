@@ -192,6 +192,11 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _playWithRecovery(SfxType type) async {
+    if (Platform.isAndroid) {
+      await _playAndroidSfx(type);
+      return;
+    }
+
     try {
       await initializeAndLoadAllAssets();
       // The engine can die during the await gap above (for example iOS route
@@ -221,6 +226,12 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _initializeInternal({required bool force}) async {
+    if (Platform.isAndroid) {
+      // Android SFX must not enter flutter_soloud's init/deinit path.
+      await _prepareAndroidSfx();
+      return;
+    }
+
     if (force) {
       // A forced init means the previous Dart AudioSource handles may no longer
       // match the native audio device/session even when SoLoud still reports
@@ -298,6 +309,14 @@ class AudioPlayerService with WidgetsBindingObserver {
   // non-sendable Future) and would have deinit'd an empty fresh SoLoud
   // instance in the child isolate anyway.
   void _teardownPlayer() {
+    if (Platform.isAndroid) {
+      // Never call SoLoud.deinit() on Android; the observed crash is in that
+      // native teardown path. Android uses native SoundPool instead.
+      _initialized = false;
+      _assetsLoaded = false;
+      return;
+    }
+
     debugPrint(
       '🎧 AudioPlayerService: tearing down player (wasInitialized: $_initialized, assetsLoaded: $_assetsLoaded)',
     );
