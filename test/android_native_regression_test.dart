@@ -4,6 +4,31 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Android native regression guards', () {
+    test('flutter_soloud remains isolated to the audio service', () {
+      final offenders = <String>[];
+
+      for (final entity in Directory('lib').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        final normalizedPath = entity.path.replaceAll('\\', '/');
+        if (normalizedPath == 'lib/utils/audio_player_service.dart') continue;
+
+        final source = entity.readAsStringSync();
+        if (RegExp(
+          r'\b(flutter_soloud|SoLoud|AudioSource|LoadMode)\b',
+        ).hasMatch(source)) {
+          offenders.add(normalizedPath);
+        }
+      }
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'Keep all SoLoud access inside AudioPlayerService so Android can '
+            'be guarded behind the native SoundPool path.',
+      );
+    });
+
     test('audio service keeps Android off flutter_soloud init/play/deinit', () {
       final source = File(
         'lib/utils/audio_player_service.dart',
@@ -57,6 +82,26 @@ void main() {
         reason: 'Android should not start native Stockfish while the user is idle.',
         searchBackwardsForFirst: true,
       );
+    });
+
+    test('Android native SFX channel is backed by SoundPool', () {
+      final source = File(
+        'android/app/src/main/kotlin/com/chessEver/app/MainActivity.kt',
+      ).readAsStringSync();
+
+      expect(source, contains('"com.chessever/audio_sfx"'));
+      expect(source, contains('SoundPool.Builder'));
+      expect(source, contains('playNativeSfx'));
+    });
+
+    test('pubspec keeps .env commented out', () {
+      final lines = File('pubspec.yaml').readAsLinesSync();
+      final uncommentedEnvAssets = lines.where(
+        (line) => line.trimLeft().startsWith('- .env'),
+      );
+
+      expect(uncommentedEnvAssets, isEmpty);
+      expect(lines.any((line) => line.trim() == '# - .env'), isTrue);
     });
   });
 }
