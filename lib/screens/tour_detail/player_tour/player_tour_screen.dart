@@ -21,7 +21,9 @@ String _standingsScrollBucket(String query) {
 /// Only the inner [_StandingsList] subscribes to it, which keeps the outer
 /// page stable across keystrokes and live-round rebuilds.
 class PlayerTourScreen extends ConsumerStatefulWidget {
-  const PlayerTourScreen({super.key});
+  const PlayerTourScreen({super.key, this.scrollController});
+
+  final ScrollController? scrollController;
 
   @override
   ConsumerState<PlayerTourScreen> createState() => _PlayerTourScreenState();
@@ -30,6 +32,7 @@ class PlayerTourScreen extends ConsumerStatefulWidget {
 class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
     with AutomaticKeepAliveClientMixin {
   late final ScrollController _scrollController;
+  late final bool _ownsScrollController;
   late String _scrollBucket;
   final Map<String, double> _scrollOffsets = {};
 
@@ -42,15 +45,18 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
     _scrollBucket = _standingsScrollBucket(
       ref.read(standingsSearchQueryProvider),
     );
-    _scrollController = ScrollController()..addListener(_rememberScrollOffset);
+    _scrollController = widget.scrollController ?? ScrollController();
+    _ownsScrollController = widget.scrollController == null;
+    _scrollController.addListener(_rememberScrollOffset);
   }
 
   @override
   void dispose() {
     _rememberScrollOffset();
-    _scrollController
-      ..removeListener(_rememberScrollOffset)
-      ..dispose();
+    _scrollController.removeListener(_rememberScrollOffset);
+    if (_ownsScrollController) {
+      _scrollController.dispose();
+    }
     super.dispose();
   }
 

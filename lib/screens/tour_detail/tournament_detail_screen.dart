@@ -21,7 +21,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropd
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -42,6 +41,8 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
 class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     with RouteAware, WidgetsBindingObserver {
   late PageController pageController;
+  late final ScrollController _aboutScrollController;
+  late final ScrollController _standingsScrollController;
   late final String _scrollScopeId;
 
   @override
@@ -159,6 +160,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ref.read(selectedTourModeProvider),
     );
     pageController = PageController(initialPage: initialPage);
+    _aboutScrollController = ScrollController();
+    _standingsScrollController = ScrollController();
     _scrollScopeId = 'games_scroll_${UniqueKey()}';
   }
 
@@ -191,6 +194,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
     pageController.dispose();
+    _aboutScrollController.dispose();
+    _standingsScrollController.dispose();
     super.dispose();
   }
 
@@ -231,16 +236,22 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                       onPageChanged: _handlePageChanged,
                       itemBuilder: (context, index) {
                         if (index == 0) {
-                          return AboutTourScreen();
+                          return AboutTourScreen(
+                            scrollController: _aboutScrollController,
+                          );
                         } else if (index == 1) {
                           return GamesTourScreen();
                         } else if (index == 2) {
-                          return PlayerTourScreen();
+                          return PlayerTourScreen(
+                            scrollController: _standingsScrollController,
+                          );
                         } else {
                           return Center(
                             child: Text(
                               'Invalid page index: $index',
-                              style: TextStyle(color: context.colors.textPrimary),
+                              style: TextStyle(
+                                color: context.colors.textPrimary,
+                              ),
                             ),
                           );
                         }
@@ -270,10 +281,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           pageController: pageController,
           fallbackPage: selectedTourMode.index.toDouble(),
         ),
-        _buildSegmentedSwitcher(
-          selectedTourMode,
-          (index) => _handleTabSelection(index),
-        ),
+        _buildSegmentedSwitcher(selectedTourMode),
       ],
     );
   }
@@ -287,36 +295,48 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       children: [
         _LoadingAppBarWithTitle(title: "Error: $errorPreview$suffix"),
         SizedBox(height: 8.h),
-        _buildSegmentedSwitcher(TournamentDetailScreenMode.games, (index) {}),
+        _buildSegmentedSwitcher(TournamentDetailScreenMode.games),
       ],
     );
   }
 
-  Widget _buildSegmentedSwitcher(
-    TournamentDetailScreenMode selectedTourMode,
-    ValueChanged<int> onChanged,
-  ) {
+  Widget _buildSegmentedSwitcher(TournamentDetailScreenMode selectedTourMode) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
     );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: SegmentedSwitcher(
-        key: UniqueKey(),
-        backgroundColor: context.colors.popup,
-        selectedBackgroundColor: context.colors.popup,
-        options: _mappedName.values.toList(),
-        initialSelection: _mappedName.values.toList().indexOf(
-          _mappedName[selectedTourMode]!,
-        ),
-        onSelectionChanged: onChanged,
+      child: Consumer(
+        builder: (context, scopedRef, _) {
+          return SegmentedSwitcher(
+            key: UniqueKey(),
+            backgroundColor: context.colors.popup,
+            selectedBackgroundColor: context.colors.popup,
+            options: _mappedName.values.toList(),
+            initialSelection: _mappedName.values.toList().indexOf(
+              _mappedName[selectedTourMode]!,
+            ),
+            notifyOnReselect: true,
+            onSelectionChanged:
+                (index) => _handleTabSelection(scopedRef, index),
+          );
+        },
       ),
     );
   }
 
-  void _handleTabSelection(int index) {
+  void _handleTabSelection(WidgetRef scopedRef, int index) {
     try {
+      final selectedMode = scopedRef.read(selectedTourModeProvider);
+      final selectedIndex = TournamentDetailScreenMode.values.indexOf(
+        selectedMode,
+      );
+      if (index == selectedIndex) {
+        _scrollSelectedTabToTop(scopedRef, selectedMode);
+        return;
+      }
+
       // Drop the keyboard when leaving the search-enabled tabs so the field
       // and the keyboard collapse together, instead of the keyboard hovering
       // over About after a swipe.
@@ -325,7 +345,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       // layout/semantics passes, which can trigger parentDataDirty assertions.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ref
+        scopedRef
             .read(selectedTourModeProvider.notifier)
             .update((_) => TournamentDetailScreenMode.values[index]);
       });
@@ -338,6 +358,55 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     } catch (e) {
       debugPrint('Error handling tab selection: $e');
     }
+  }
+
+  void _scrollSelectedTabToTop(
+    WidgetRef scopedRef,
+    TournamentDetailScreenMode mode,
+  ) {
+    FocusScope.of(context).unfocus();
+    const duration = Duration(milliseconds: 300);
+    switch (mode) {
+      case TournamentDetailScreenMode.about:
+        _animateScrollControllerToTop(_aboutScrollController, duration);
+      case TournamentDetailScreenMode.games:
+        _scrollGamesTabToTop(scopedRef, duration);
+      case TournamentDetailScreenMode.standings:
+        _animateScrollControllerToTop(_standingsScrollController, duration);
+    }
+  }
+
+  void _animateScrollControllerToTop(
+    ScrollController controller,
+    Duration duration,
+  ) {
+    if (!controller.hasClients) return;
+    final position = controller.position;
+    controller.animateTo(
+      position.minScrollExtent,
+      duration: duration,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scrollGamesTabToTop(WidgetRef scopedRef, Duration duration) {
+    final scrollNotifier = scopedRef.read(
+      gamesTourScrollProvider(_scrollScopeId).notifier,
+    );
+    final controller = scrollNotifier.scrollController;
+    if (!controller.isAttached) return;
+
+    scrollNotifier.startProgrammaticScroll();
+    unawaited(
+      controller
+          .scrollTo(
+            index: 0,
+            alignment: 0,
+            duration: duration,
+            curve: Curves.easeOutCubic,
+          )
+          .whenComplete(scrollNotifier.endProgrammaticScroll),
+    );
   }
 
   void _handlePageChanged(int index) {
@@ -410,7 +479,9 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         const Spacer(),
         Text(
           errorMessage,
-          style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textMdRegular.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         const Spacer(),
         SizedBox(width: 44.w),
@@ -445,7 +516,9 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
         SkeletonWidget(
           child: Text(
             title,
-            style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdRegular.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
         ),
         SizedBox(width: 44.w),
