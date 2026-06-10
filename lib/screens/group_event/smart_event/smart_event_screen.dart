@@ -1670,6 +1670,22 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
       );
     }
 
+    Future<bool> confirmHide() async {
+      final confirmed = await showSmoothConfirmDialog(
+        context: context,
+        title: 'Hide tournament?',
+        message:
+            'Are you sure you want to hide ${event.title} from this view?',
+        confirmText: 'Hide',
+        isDangerous: true,
+      );
+      return confirmed == true;
+    }
+
+    Future<void> confirmAndDismiss() async {
+      if (await confirmHide()) dismiss();
+    }
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1679,10 +1695,12 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
           dismissThresholds: const {DismissDirection.endToStart: 0.35},
           background: const SizedBox.shrink(),
           secondaryBackground: const _IncludedEventDismissBackground(),
+          confirmDismiss: (_) => confirmHide(),
           onDismissed: (_) => dismiss(),
           child: Semantics(
             customSemanticsActions: {
-              const CustomSemanticsAction(label: 'Hide from this view'): dismiss,
+              const CustomSemanticsAction(label: 'Hide from this view'):
+                  confirmAndDismiss,
             },
             child: EventCard(
               tourEventCardModel: event,
@@ -1700,7 +1718,7 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
             elevation: 2,
             child: InkWell(
               customBorder: const CircleBorder(),
-              onTap: dismiss,
+              onTap: confirmAndDismiss,
               child: Tooltip(
                 message: 'Hide from this view',
                 child: SizedBox(
