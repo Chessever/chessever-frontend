@@ -15,6 +15,8 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
@@ -33,9 +35,11 @@ import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
+import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -69,6 +73,19 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   // dropdown without leaving the screen.
   late String _tier = _initialTier(widget.request);
 
+  /// In-event dialog filter, owned here (not by the Games tab) so the exit
+  /// flow can compare it against the request's generating criteria and offer
+  /// to apply + save the overrides. Seeded from those criteria, so the root
+  /// filters that created this smart event arrive pre-selected and counted
+  /// by the filter-button badge.
+  late GameFilter _filter = widget.request.seedGameFilter();
+
+  /// The last applied/saved identity of this smart event. Starts as the
+  /// opening request and is re-pointed every time the user confirms an
+  /// apply — so dirty-tracking measures against what is actually persisted,
+  /// not against the (stale) opening request.
+  late SmartEventRequest _baselineRequest = widget.request;
+
   static String _initialTier(SmartEventRequest request) {
     final first = request.tierLabel.split(' ').first;
     return _validTiers.contains(first) ? first : 'All';
@@ -90,72 +107,108 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     );
   }
 
-  /// The request as the user currently sees it: identical to the saved one
-  /// until the tier dropdown diverges, then re-keyed via [SmartEventRequest
-  /// .withTierSelection] so naming, caption, Elo floor and favorite identity
-  /// all follow the selected tier. The Games / Standings tabs load through
-  /// [SmartEventRequest.withNeutralEloRange] and carry the selected tier band
-  /// in the query filter instead, so any tier — including ones BELOW the
-  /// saved floor — can actually fetch its games.
-  SmartEventRequest get _effectiveRequest =>
-      _tier == _initialTier(widget.request)
-          ? widget.request
-          : widget.request.withTierSelection(_tier);
+  /// The request as the user currently sees it: the saved one re-keyed by
+  /// the dialog's criteria overrides ([SmartEventRequest
+  /// .withGameFilterOverrides]) and the tier dropdown ([SmartEventRequest
+  /// .withTierSelection]) so naming, caption, Elo floor and favorite
+  /// identity all follow the overridden config. The Games / Standings tabs
+  /// load through [SmartEventRequest.withNeutralEloRange] and carry the
+  /// selected tier band in the query filter instead, so any tier — including
+  /// ones BELOW the saved floor — can actually fetch its games.
+  SmartEventRequest get _effectiveRequest {
+    var updated = _baselineRequest.withGameFilterOverrides(_filter);
+    if (_tier != _initialTier(_baselineRequest)) {
+      updated = updated.withTierSelection(_tier);
+    }
+    return updated;
+  }
 
-  /// Serializes favorite migrations so rapid tier hopping can't interleave
-  /// remove/add pairs.
-  Future<void> _favoriteMigration = Future.value();
+  /// Whether the user diverged from the criteria this smart event was
+  /// generated from — the dimensions a smart event is keyed on (tier band,
+  /// live/completed state, time control). Result / year / OTB-online / sort
+  /// tweaks are view-only narrowing and never dirty the config.
+  bool get _isConfigDirty {
+    final seed = _baselineRequest.seedGameFilter();
+    return _tier != _initialTier(_baselineRequest) ||
+        _filter.live != seed.live ||
+        _filter.timeControl != seed.timeControl;
+  }
 
+  // Overrides stay local until the user confirms them on the way out (back
+  // navigation or the save button) — nothing is persisted while exploring.
   void _setTier(String tier) {
     if (_tier == tier) return;
-    final previous = _effectiveRequest;
     setState(() => _tier = tier);
-    final effective = _effectiveRequest;
+  }
 
-    // The smart event IS a projection of the tabs' filter popup state, so a
-    // tier change writes its Elo floor back into that state — the generated
-    // cards on For You / Current rename and regenerate immediately.
+  void _setFilter(GameFilter filter) {
+    if (_filter == filter) return;
+    setState(() => _filter = filter);
+  }
+
+  /// Persists the overridden config: writes it back into the tabs' filter
+  /// popup state — the smart event IS a projection of that state, so the
+  /// generated cards on For You / Current rename and regenerate — and, when
+  /// this smart event is saved, rewrites the favorite row to the re-keyed
+  /// request (identity embeds the Elo floor, and even an identity-stable
+  /// change must refresh the stored criteria metadata).
+  Future<void> _applyConfigChanges() async {
+    final updated = _effectiveRequest;
+
     final filter = ref.read(eventAppliedFilterProvider);
     ref.read(eventAppliedFilterProvider.notifier).state = filter.copyWith(
+      formatsAndStates: updated.formatsAndStates,
       eloRange: RangeValues(
-        effective.minElo
+        updated.minElo
             .toDouble()
             .clamp(kFilterMinElo, kFilterMaxElo)
             .toDouble(),
-        effective.maxElo
+        updated.maxElo
             .toDouble()
             .clamp(kFilterMinElo, kFilterMaxElo)
             .toDouble(),
       ),
     );
 
-    // A saved card follows the rename too: identity embeds the Elo floor, so
-    // migrate the favorite row to the re-keyed request.
-    _favoriteMigration = _favoriteMigration.then(
-      (_) => _migrateFavoriteIfSaved(previous, effective),
-    );
-  }
-
-  Future<void> _migrateFavoriteIfSaved(
-    SmartEventRequest previous,
-    SmartEventRequest effective,
-  ) async {
-    if (previous.favoriteEventId == effective.favoriteEventId) return;
     final favorites = ref.read(favoriteEventsProvider).valueOrNull;
-    if (favorites == null) return;
-    final wasSaved = favorites.any(
-      (favorite) => favorite.eventId == previous.favoriteEventId,
-    );
+    final savedId = _baselineRequest.favoriteEventId;
+    final wasSaved =
+        favorites?.any((favorite) => favorite.eventId == savedId) ?? false;
+
+    // Re-point dirty-tracking at what is now persisted, so a later exit
+    // doesn't re-prompt for already-applied changes.
+    if (mounted) setState(() => _baselineRequest = updated);
+
     if (!wasSaved) return;
 
     final notifier = ref.read(favoriteEventsProvider.notifier);
-    await notifier.removeFavorite(previous.favoriteEventId);
+    await notifier.removeFavorite(savedId);
     await notifier.addFavorite(
-      eventId: effective.favoriteEventId,
-      eventName: effective.displayName,
-      maxAvgElo: effective.minElo > 0 ? effective.minElo : null,
-      extraMetadata: effective.toFavoriteMetadata(),
+      eventId: updated.favoriteEventId,
+      eventName: updated.displayName,
+      maxAvgElo: updated.minElo > 0 ? updated.minElo : null,
+      extraMetadata: updated.toFavoriteMetadata(),
     );
+  }
+
+  /// Back navigation with a dirty config: confirm that the new configuration
+  /// gets applied + saved, or let the user discard it and leave as-is.
+  /// Dismissing the dialog (tap outside) stays on the screen.
+  Future<void> _confirmLeaveWithChanges() async {
+    final navigator = Navigator.of(context);
+    final confirmed = await showSmoothConfirmDialog(
+      context: context,
+      title: 'Apply changes?',
+      message:
+          'You changed the filters this smart event was built from. '
+          'Leaving will apply and save the new configuration.',
+      confirmText: 'Apply & leave',
+      cancelText: 'Discard',
+    );
+    if (!mounted || confirmed == null) return;
+    if (confirmed) await _applyConfigChanges();
+    if (!mounted) return;
+    navigator.pop();
   }
 
   @override
@@ -168,33 +221,54 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
       child: _SmartTierFilterScope(
         tier: _tier,
         onTierChanged: _setTier,
+        filter: _filter,
+        onFilterChanged: _setFilter,
         tabIndex: _index,
-        child: Scaffold(
-          backgroundColor: context.colors.background,
-          body: SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                _AppBar(request: _effectiveRequest),
-                SizedBox(height: 8.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                  child: SegmentedSwitcher(
-                    options: _tabs,
-                    initialSelection: _index,
-                    currentSelection: _index,
-                    onSelectionChanged: _select,
+        child: PopScope(
+          // A dirty config intercepts the pop (back button, system back,
+          // swipe-back) so the changes can be confirmed-applied or discarded.
+          canPop: !_isConfigDirty,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _confirmLeaveWithChanges();
+          },
+          child: Scaffold(
+            backgroundColor: context.colors.background,
+            body: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _AppBar(
+                    request: _effectiveRequest,
+                    savedRequest: _baselineRequest,
+                    isDirty: _isConfigDirty,
+                    onApplyChanges: _applyConfigChanges,
                   ),
-                ),
-                SizedBox(height: 8.h),
-                Expanded(
-                  child: PageView(
-                    controller: _page,
-                    onPageChanged: (i) => setState(() => _index = i),
-                    children: const [_AboutTab(), _GamesTab(), _StandingsTab()],
+                  SizedBox(height: 8.h),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                    ),
+                    child: SegmentedSwitcher(
+                      options: _tabs,
+                      initialSelection: _index,
+                      currentSelection: _index,
+                      onSelectionChanged: _select,
+                    ),
                   ),
-                ),
-              ],
+                  SizedBox(height: 8.h),
+                  Expanded(
+                    child: PageView(
+                      controller: _page,
+                      onPageChanged: (i) => setState(() => _index = i),
+                      children: const [
+                        _AboutTab(),
+                        _GamesTab(),
+                        _StandingsTab(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -203,21 +277,26 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   }
 }
 
-/// Carries the screen's tier filter + the active tab index down to the app
-/// bar and tab content. The dropdown writes through [onTierChanged]; the
-/// Games/Standings tabs read [tier] to filter what they render. The app bar
-/// hides the dropdown when [tabIndex] is 0 (About) since the About tab
-/// summarizes the saved aggregate, not a filtered view.
+/// Carries the screen's tier filter, the dialog filter and the active tab
+/// index down to the app bar and tab content. The dropdown writes through
+/// [onTierChanged], the Games tab's filter dialog through [onFilterChanged];
+/// the Games/Standings tabs read [tier] + [filter] to filter what they
+/// render. The app bar hides the dropdown when [tabIndex] is 0 (About) since
+/// the About tab summarizes the saved aggregate, not a filtered view.
 class _SmartTierFilterScope extends InheritedWidget {
   const _SmartTierFilterScope({
     required this.tier,
     required this.onTierChanged,
+    required this.filter,
+    required this.onFilterChanged,
     required this.tabIndex,
     required super.child,
   });
 
   final String tier;
   final ValueChanged<String> onTierChanged;
+  final GameFilter filter;
+  final ValueChanged<GameFilter> onFilterChanged;
   final int tabIndex;
 
   static _SmartTierFilterScope of(BuildContext context) {
@@ -229,7 +308,9 @@ class _SmartTierFilterScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(_SmartTierFilterScope oldWidget) {
-    return tier != oldWidget.tier || tabIndex != oldWidget.tabIndex;
+    return tier != oldWidget.tier ||
+        filter != oldWidget.filter ||
+        tabIndex != oldWidget.tabIndex;
   }
 }
 
@@ -266,6 +347,23 @@ int? _tierCeiling(String tier) {
   }
 }
 
+/// Reverse of [_tierFloor]: maps the filter dialog's Level pick back onto
+/// the app bar tier dropdown, keeping the two Elo override surfaces in sync.
+String _tierForMinRating(int minRating) {
+  switch (RatingTierFilter.normalizeMinRating(minRating)) {
+    case 2500:
+      return 'GM';
+    case 2400:
+      return 'IM';
+    case 2300:
+      return 'FM';
+    case 2200:
+      return 'CM';
+    default:
+      return 'All';
+  }
+}
+
 bool _gameMatchesTier(GamesTourModel game, String tier) {
   if (tier == 'All') return true;
   final avgElo = smartGameAverageElo(game);
@@ -275,9 +373,21 @@ bool _gameMatchesTier(GamesTourModel game, String tier) {
 }
 
 class _AppBar extends ConsumerWidget {
-  const _AppBar({required this.request});
+  const _AppBar({
+    required this.request,
+    required this.savedRequest,
+    required this.isDirty,
+    required this.onApplyChanges,
+  });
 
+  /// The request with the user's current tier + filter overrides folded in.
   final SmartEventRequest request;
+
+  /// The request the screen was opened with — a saved favorite still lives
+  /// under THIS identity until the overrides are applied.
+  final SmartEventRequest savedRequest;
+  final bool isDirty;
+  final Future<void> Function() onApplyChanges;
 
   Future<bool> _confirmFavoriteChange(
     BuildContext context, {
@@ -292,9 +402,25 @@ class _AppBar extends ConsumerWidget {
       message:
           isSaved
               ? 'This will remove ${request.displayName} from your For You.'
+              : isDirty
+              ? 'Your changed filter configuration will be applied and '
+                  'saved — this adds ${request.displayName} to your '
+                  'For You tab.'
               : 'This will add ${request.displayName} to your For You tab.',
       confirmText: isSaved ? 'Remove' : 'Save',
       isDangerous: isSaved,
+    );
+    return confirmed == true;
+  }
+
+  Future<bool> _confirmApplyChanges(BuildContext context) async {
+    final confirmed = await showSmoothConfirmDialog(
+      context: context,
+      title: 'Apply changes?',
+      message:
+          'Your new filter configuration will be applied and saved to '
+          '${request.displayName}.',
+      confirmText: 'Apply',
     );
     return confirmed == true;
   }
@@ -305,7 +431,9 @@ class _AppBar extends ConsumerWidget {
     final isSaved = favoritesAsync.maybeWhen(
       data:
           (favorites) => favorites.any(
-            (favorite) => favorite.eventId == request.favoriteEventId,
+            (favorite) =>
+                favorite.eventId == savedRequest.favoriteEventId ||
+                favorite.eventId == request.favoriteEventId,
           ),
       orElse: () => false,
       skipLoadingOnRefresh: true,
@@ -325,26 +453,42 @@ class _AppBar extends ConsumerWidget {
               size: 24.ic,
               color: context.colors.textPrimary,
             ),
-            onPressed: () => Navigator.of(context).pop(),
+            // maybePop so the screen's PopScope can intercept a dirty config
+            // and offer to apply + save it.
+            onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(child: Center(child: _AppBarTitle(request: request))),
           IconButton(
             tooltip:
                 isSaved
-                    ? 'Remove ${request.displayName}'
+                    ? (isDirty
+                        ? 'Apply changes to ${request.displayName}'
+                        : 'Remove ${request.displayName}')
                     : 'Save ${request.displayName}',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             iconSize: 26.ic,
             icon: Icon(
               isSaved
-                  ? Icons.remove_circle_outline_rounded
+                  ? (isDirty
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.remove_circle_outline_rounded)
                   : Icons.add_circle_outline_rounded,
               color: context.colors.textPrimary,
             ),
             onPressed: () async {
               final allowed = await requireFullAuthGuard(context);
               if (!allowed || !context.mounted) return;
+
+              // Saved + overridden: the button applies + saves the new
+              // config onto the saved smart event (after confirmation).
+              if (isSaved && isDirty) {
+                final confirmed = await _confirmApplyChanges(context);
+                if (!confirmed || !context.mounted) return;
+                await onApplyChanges();
+                return;
+              }
+
               final confirmed = await _confirmFavoriteChange(
                 context,
                 isSaved: isSaved,
@@ -353,11 +497,15 @@ class _AppBar extends ConsumerWidget {
 
               final notifier = ref.read(favoriteEventsProvider.notifier);
               if (isSaved) {
-                await notifier.removeFavorite(request.favoriteEventId);
+                await notifier.removeFavorite(savedRequest.favoriteEventId);
                 if (context.mounted) Navigator.of(context).pop();
                 return;
               }
 
+              // Unsaved + overridden: persist the new config first (filter
+              // popup write-back) so the saved card and the generated cards
+              // reflect the same criteria.
+              if (isDirty) await onApplyChanges();
               await notifier.addFavorite(
                 eventId: request.favoriteEventId,
                 eventName: request.displayName,
@@ -807,6 +955,10 @@ class _TabAsync extends ConsumerWidget {
     final query = SmartEventGamesQuery(request: request);
     final async = ref.watch(smartAggregateEventRepositoryProvider(query));
     return async.when(
+      // Pull-to-refresh invalidates the whole family; keep the rendered
+      // content while the refetch is in flight instead of flashing a spinner.
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
       data: (event) {
         if (event.games.isEmpty) {
           return const _EmptyState();
@@ -844,7 +996,7 @@ class _SmartEventRequestScope extends InheritedWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({this.message = 'No games right now'});
+  const _EmptyState({this.message = 'No games right now', super.key});
 
   final String message;
 
@@ -876,6 +1028,75 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+/// Full-tab shimmer for the Games tab's first load — same padding as the
+/// loaded list so swapping in the real cards doesn't shift layout.
+class _GamesShimmerList extends StatelessWidget {
+  const _GamesShimmerList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+      physics: const NeverScrollableScrollPhysics(),
+      children: const [_GameCardShimmerColumn(cardCount: 8)],
+    );
+  }
+}
+
+/// Shimmer game-card placeholders — the mock-card technique from
+/// TourLoadingWidget. Rendered inside the Games tab list while a re-keyed
+/// query (tier switch, filter edit, committed search) is fetching and the
+/// stale aggregate filters down to nothing.
+class _GameCardShimmerColumn extends StatelessWidget {
+  const _GameCardShimmerColumn({this.cardCount = 6, super.key});
+
+  final int cardCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final mockPlayer = PlayerCard(
+      name: 'name',
+      federation: 'federation',
+      title: 'title',
+      rating: 0,
+      countryCode: 'USA',
+      team: 'team',
+    );
+    final mockGame = GamesTourModel(
+      roundId: 'roundId',
+      tourId: 'tourId',
+      gameId: 'gameId',
+      whitePlayer: mockPlayer,
+      blackPlayer: mockPlayer,
+      whiteTimeDisplay: 'whiteTimeDisplay',
+      blackTimeDisplay: 'blackTimeDisplay',
+      whiteClockCentiseconds: 180000,
+      blackClockCentiseconds: 180000,
+      gameStatus: GameStatus.whiteWins,
+    );
+    return Column(
+      children: [
+        for (var i = 0; i < cardCount; i++)
+          SkeletonWidget(
+            ignoreContainers: true,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 12.sp),
+              child: GameCard(
+                onTap: () {},
+                matchComparison: MatchWithComparison(
+                  game: mockGame,
+                  comparison: MatchComparison.sameOrder,
+                ),
+                onPinToggle: (_) {},
+                pinnedIds: const [],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _GamesTab extends ConsumerStatefulWidget {
   const _GamesTab();
 
@@ -883,12 +1104,23 @@ class _GamesTab extends ConsumerStatefulWidget {
   ConsumerState<_GamesTab> createState() => _GamesTabState();
 }
 
-class _GamesTabState extends ConsumerState<_GamesTab> {
+class _GamesTabState extends ConsumerState<_GamesTab>
+    with AutomaticKeepAliveClientMixin {
+  // Keep the tab alive when the PageView swaps it offscreen: disposal would
+  // drop the autoDispose aggregate provider (full refetch on return) plus
+  // the search text, scroll offset and collapsed sections.
+  @override
+  bool get wantKeepAlive => true;
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  GameFilter _filter = GameFilter.defaultFilter();
   String _query = '';
   Timer? _searchDebounce;
+
+  /// The dialog filter is owned by the screen state (seeded from the smart
+  /// event's generating criteria, applied + saved on confirmed exit); this
+  /// tab reads and writes it through the scope.
+  GameFilter get _filter => _SmartTierFilterScope.of(context).filter;
 
   /// Last successfully loaded aggregate. Tier switches, search keystrokes and
   /// filter edits re-key the query provider; rendering this while the new
@@ -938,6 +1170,7 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final request = _SmartEventRequestScope.of(context);
     final tier = _SmartTierFilterScope.of(context).tier;
     final smartQuery = SmartEventGamesQuery(
@@ -992,7 +1225,11 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                 child: GameSearchFilterBar(
                   controller: _searchController,
                   focusNode: _focusNode,
-                  currentFilter: _filter,
+                  // The badge counts every root/override criterion that's
+                  // narrowing the list — including the tier band picked in
+                  // the app bar dropdown — so the red indicator mirrors the
+                  // smart event's full active config.
+                  currentFilter: _dataFilterForTier(tier) ?? _filter,
                   hintText: 'Search games',
                   onChanged: (value) {
                     // Debounce: every committed query is a server-side
@@ -1014,24 +1251,37 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                     });
                   },
                   onFilterTap: () async {
+                    final scope = _SmartTierFilterScope.of(context);
+                    // Every dimension is offered — including the ones that
+                    // GENERATED this smart event, which arrive pre-selected
+                    // (seeded on the screen state) and act as overrides of
+                    // the event's config, applied + saved on confirmed exit.
                     final result = await showGameFilterDialog(
                       context: context,
-                      currentFilter: _filter,
+                      // Level mirrors the app bar tier dropdown — seed it
+                      // from the current tier so both override surfaces
+                      // present one config.
+                      currentFilter: scope.filter.copyWith(
+                        minRating: _tierFloor(scope.tier),
+                      ),
+                      showSortSection: true,
+                      // Color filters by a target player's color; this
+                      // aggregate has no target player, so the section
+                      // would be inert.
                       showColorFilter: false,
-                      showSortSection: false,
-                      showLevelFilter: false,
+                      // Smart events aggregate ongoing broadcasts — every
+                      // game is from the current year, so a year range is
+                      // redundant.
                       showYearFilter: false,
-                      // Format (OTB/Online) is TWIC-only — smart events are
-                      // Supabase broadcasts, so the section is meaningless.
-                      showFormatFilter: false,
-                      // Dimensions already pinned by the filters that
-                      // GENERATED this smart event must not be re-offered —
-                      // they'd conflict with how the event was built.
-                      showLiveFilter: !request.hasStateCriterion,
-                      showTimeControlFilter: !request.hasTimeControlCriterion,
                     );
                     if (result != null && mounted) {
-                      setState(() => _filter = result);
+                      // The Level pick routes back into the tier dropdown
+                      // (single owner of the Elo dimension); the band is
+                      // re-merged per query by [_dataFilterForTier].
+                      scope.onFilterChanged(
+                        result.copyWith(minRating: GameFilter.defaultMinRating),
+                      );
+                      scope.onTierChanged(_tierForMinRating(result.minRating));
                     }
                   },
                   trailing: GestureDetector(
@@ -1069,11 +1319,26 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                   _query.isNotEmpty ||
                   _filter.hasActiveFilters ||
                   _SmartTierFilterScope.of(context).tier != 'All';
-              return _EmptyState(
-                message:
-                    hasNarrowingControls
-                        ? 'No games match your filters'
-                        : 'No games right now',
+              // A tier switch / filter edit / committed search re-keys the
+              // query; while the new fetch is in flight the stale aggregate
+              // may filter down to nothing. That's "loading", not "no
+              // results" — shimmer instead of a false empty state.
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                child:
+                    async.isLoading
+                        ? const _GameCardShimmerColumn(
+                          key: ValueKey('smart_games_filter_shimmer'),
+                        )
+                        : _EmptyState(
+                          key: const ValueKey('smart_games_filter_empty'),
+                          message:
+                              hasNarrowingControls
+                                  ? 'No games match your filters'
+                                  : 'No games right now',
+                        ),
               );
             }
             final row = rows[i - 1];
@@ -1143,18 +1408,33 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
     }
     final event =
         async.valueOrNull ?? (async.isLoading ? _lastLoadedEvent : null);
-    if (event == null) {
-      if (async.hasError) {
-        return GenericErrorWidget(
-          onRetry:
-              () => ref.invalidate(
-                smartAggregateEventRepositoryProvider(smartQuery),
-              ),
-        );
-      }
-      return const Center(child: CircularProgressIndicator());
+
+    // Fade between the three tab-level states (shimmer / error / content)
+    // instead of hard-swapping; rebuilds within the data state keep the same
+    // key, so the list itself never re-animates.
+    Widget content;
+    if (event != null) {
+      content = KeyedSubtree(
+        key: const ValueKey('smart_games_data'),
+        child: buildLoaded(event),
+      );
+    } else if (async.hasError) {
+      content = GenericErrorWidget(
+        key: const ValueKey('smart_games_error'),
+        onRetry:
+            () => ref.invalidate(
+              smartAggregateEventRepositoryProvider(smartQuery),
+            ),
+      );
+    } else {
+      content = const _GamesShimmerList(key: ValueKey('smart_games_loading'));
     }
-    return buildLoaded(event);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: content,
+    );
   }
 
   List<GamesTourModel> _applySmartGameControls(
@@ -1209,11 +1489,6 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
       if (filter.online == GameOnlineFilter.otb && game.isOnline) return false;
     }
     if (!filter.eco.matches(game.eco)) return false;
-
-    final year = game.lastMoveTime?.year ?? game.bucketDate?.year;
-    if (year != null && (year < filter.minYear || year > filter.maxYear)) {
-      return false;
-    }
 
     final gameAvgElo = smartGameAverageElo(game);
     if (gameAvgElo < filter.minRating || gameAvgElo > filter.maxRating) {
@@ -1489,11 +1764,23 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-class _AboutTab extends ConsumerWidget {
+class _AboutTab extends ConsumerStatefulWidget {
   const _AboutTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AboutTab> createState() => _AboutTabState();
+}
+
+class _AboutTabState extends ConsumerState<_AboutTab>
+    with AutomaticKeepAliveClientMixin {
+  // Keep-alive so swapping tabs doesn't dispose this page's listener on the
+  // autoDispose aggregate provider (which would refetch on every return).
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final request = _SmartEventRequestScope.of(context);
     return _TabAsync(
       builder: (event) {
@@ -1654,7 +1941,14 @@ class _StandingsTab extends ConsumerStatefulWidget {
   ConsumerState<_StandingsTab> createState() => _StandingsTabState();
 }
 
-class _StandingsTabState extends ConsumerState<_StandingsTab> {
+class _StandingsTabState extends ConsumerState<_StandingsTab>
+    with AutomaticKeepAliveClientMixin {
+  // Same keep-alive rationale as the Games tab: offscreen disposal would
+  // kill the autoDispose aggregate + per-event standings providers and the
+  // collapsed-section state.
+  @override
+  bool get wantKeepAlive => true;
+
   final Set<String> _collapsedEventIds = {};
 
   void _toggleEventSection(String eventId) {
@@ -1670,6 +1964,7 @@ class _StandingsTabState extends ConsumerState<_StandingsTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final request = _SmartEventRequestScope.of(context);
     final tier = _SmartTierFilterScope.of(context).tier;
     // Neutral Elo range: the tier dropdown classifies per game below, and any
@@ -1677,6 +1972,11 @@ class _StandingsTabState extends ConsumerState<_StandingsTab> {
     final query = SmartEventGamesQuery(request: request.withNeutralEloRange());
     final async = ref.watch(smartAggregateEventRepositoryProvider(query));
     return async.when(
+      // Same query key for the screen's lifetime — only reloads (refresh /
+      // invalidate) can interrupt it, and those should keep the standings
+      // on screen rather than flash a spinner.
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
       data: (event) {
         if (event.events.isEmpty) {
           return const _EmptyState();

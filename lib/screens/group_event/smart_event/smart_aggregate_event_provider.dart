@@ -69,8 +69,8 @@ class SmartEventRequest {
 
   /// The format/state criteria the smart event was generated from (subset of
   /// {live, completed, standard, rapid, blitz}). The in-event filter dialog
-  /// hides any dimension already pinned here — re-offering it would conflict
-  /// with how the event was built.
+  /// seeds from these via [seedGameFilter] so they arrive pre-selected, and
+  /// overrides flow back through [withGameFilterOverrides].
   final Set<String> formatsAndStates;
   final DateTime? savedAt;
 
@@ -78,10 +78,111 @@ class SmartEventRequest {
   static const _stateCriteria = {'live', 'completed'};
   static const _tierFloors = {'GM': 2500, 'IM': 2400, 'FM': 2300, 'CM': 2200};
 
-  bool get hasTimeControlCriterion =>
-      formatsAndStates.any(_timeControlCriteria.contains);
+  /// The dialog-representable projection of the criteria this smart event
+  /// was generated from. Seeds the in-event Games tab filter so the root
+  /// filters arrive pre-selected (and counted by the filter-button badge)
+  /// instead of hidden; the dialog and the tier dropdown then act as
+  /// override surfaces on top. A live+completed pair cancels out to "all",
+  /// and a multi-value time-control set falls back to "all" because the
+  /// dialog's single-select can't represent it.
+  GameFilter seedGameFilter() {
+    final hasLive = formatsAndStates.contains('live');
+    final hasCompleted = formatsAndStates.contains('completed');
+    final live =
+        hasLive == hasCompleted
+            ? GameLiveFilter.all
+            : (hasLive ? GameLiveFilter.live : GameLiveFilter.completed);
 
-  bool get hasStateCriterion => formatsAndStates.any(_stateCriteria.contains);
+    final timeControls =
+        formatsAndStates.where(_timeControlCriteria.contains).toList();
+    final timeControl =
+        timeControls.length != 1
+            ? GameTimeControlFilter.all
+            : switch (timeControls.first) {
+              'standard' => GameTimeControlFilter.classical,
+              'rapid' => GameTimeControlFilter.rapid,
+              'blitz' => GameTimeControlFilter.blitz,
+              _ => GameTimeControlFilter.all,
+            };
+
+    return GameFilter(live: live, timeControl: timeControl);
+  }
+
+  /// The request re-keyed to the in-event dialog's overrides of its
+  /// generating criteria. A dimension is replaced only when the dialog value
+  /// diverges from [seedGameFilter]'s projection (an "all" selection clears
+  /// it); untouched dimensions keep their original — possibly multi-value —
+  /// criteria. Returns `this` unchanged when nothing diverges.
+  SmartEventRequest withGameFilterOverrides(GameFilter filter) {
+    final seed = seedGameFilter();
+    final updated = <String>{...formatsAndStates};
+
+    if (filter.live != seed.live) {
+      updated.removeAll(_stateCriteria);
+      switch (filter.live) {
+        case GameLiveFilter.live:
+          updated.add('live');
+        case GameLiveFilter.completed:
+          updated.add('completed');
+        case GameLiveFilter.all:
+          break;
+      }
+    }
+    if (filter.timeControl != seed.timeControl) {
+      updated.removeAll(_timeControlCriteria);
+      switch (filter.timeControl) {
+        case GameTimeControlFilter.classical:
+          updated.add('standard');
+        case GameTimeControlFilter.rapid:
+          updated.add('rapid');
+        case GameTimeControlFilter.blitz:
+          updated.add('blitz');
+        case GameTimeControlFilter.all:
+          break;
+      }
+    }
+
+    if (setEquals(updated, formatsAndStates)) return this;
+    return _withFormatsAndStates(updated);
+  }
+
+  /// Rebuilds the request around a new criteria set, re-deriving the name
+  /// and caption exactly like [SmartEventCardData.fromState] /
+  /// [withTierSelection] so all three produce identical labels.
+  SmartEventRequest _withFormatsAndStates(Set<String> newFormatsAndStates) {
+    final eloFull =
+        hasEloRange ? RatingTierFilter.labelForMinRating(minElo) : null;
+    final eloPart = eloFull?.split(' ').first;
+
+    final rawFormat = _labelForFormatsAndStates(newFormatsAndStates);
+    final formatPart =
+        rawFormat == null || (eloPart != null && rawFormat == 'Filtered')
+            ? null
+            : rawFormat;
+    final combined = [eloPart, formatPart].whereType<String>().join(' ').trim();
+
+    final captionSegments = <String>[
+      if (hasEloRange) '$minElo+',
+      if (formatPart != null) formatPart,
+    ];
+
+    return SmartEventRequest(
+      source: source,
+      tierLabel: combined.isEmpty ? 'All' : combined,
+      titleSuffix: titleSuffix,
+      minElo: minElo,
+      maxElo: maxElo,
+      caption:
+          captionSegments.isEmpty
+              ? 'From your filters'
+              : 'From your ${captionSegments.join(' ')} filter',
+      countSingular: countSingular,
+      countPlural: countPlural,
+      events: events,
+      formatsAndStates: newFormatsAndStates,
+      savedAt: savedAt,
+    );
+  }
 
   /// The same smart event re-keyed to a different level tier — what the
   /// in-event tier dropdown produces. Naming, caption and the Elo floor

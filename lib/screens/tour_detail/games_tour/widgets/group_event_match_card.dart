@@ -258,7 +258,7 @@ country2,
                   gameIndexMap[matchWithComparison.game.gameId] ?? -1,
                 ),
               ),
-              if (game2 != null) ...[
+              if (game2 != null)
                 Expanded(
                   child: _buildGridChessBoard(
                     context,
@@ -266,8 +266,11 @@ country2,
                     game2,
                     gameIndexMap[game2.game.gameId] ?? -1,
                   ),
-                ),
-              ],
+                )
+              else
+                // Keep the lone card at half-row width; without this the
+                // single Expanded stretches it across the whole row.
+                const Expanded(child: SizedBox()),
             ],
           ),
         );

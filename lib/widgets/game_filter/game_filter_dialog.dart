@@ -17,6 +17,7 @@ Future<GameFilter?> showGameFilterDialog({
   required GameFilter currentFilter,
   bool showFormatFilter = true,
   bool showLiveFilter = true,
+  bool showTimeControlFilter = true,
   bool showSortSection = false,
   bool showColorFilter = true,
   bool showSortDirection = true,
@@ -30,6 +31,7 @@ Future<GameFilter?> showGameFilterDialog({
       initialFilter: currentFilter,
       showFormatFilter: showFormatFilter,
       showLiveFilter: showLiveFilter,
+      showTimeControlFilter: showTimeControlFilter,
       showSortSection: showSortSection,
       showColorFilter: showColorFilter,
       showSortDirection: showSortDirection,
@@ -45,6 +47,7 @@ class GameFilterDialog extends StatefulWidget {
     required this.initialFilter,
     this.showFormatFilter = true,
     this.showLiveFilter = true,
+    this.showTimeControlFilter = true,
     this.showSortSection = false,
     this.showColorFilter = true,
     this.showSortDirection = true,
@@ -55,6 +58,10 @@ class GameFilterDialog extends StatefulWidget {
   final GameFilter initialFilter;
   final bool showFormatFilter;
   final bool showLiveFilter;
+
+  /// Hidden when the surrounding context already pins a time control (e.g. a
+  /// smart event generated from a Blitz/Rapid/Classical filter).
+  final bool showTimeControlFilter;
   final bool showSortSection;
   // Database/My-Likes contexts hide the Color filter and the asc/desc sort
   // direction toggle (sort stays Date-style descending). Other screens keep
@@ -139,8 +146,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                   children: [
                     // 1. Status (Live / Completed) — top priority when shown.
                     // In database/My-Likes contexts the caller drops this
-                    // (saved games are always finished) and asks for Sort
-                    // controls in its place via [showSortSection].
+                    // (saved games are always finished); Sort controls render
+                    // independently via [showSortSection], so contexts that
+                    // keep Status (e.g. smart events) can still offer Sort.
                     if (widget.showLiveFilter) ...[
                       _sectionLabel('Status'),
                       SizedBox(height: 8.h),
@@ -156,28 +164,31 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         },
                       ),
                       SizedBox(height: 20.h),
-                    ] else if (widget.showSortSection) ...[
+                    ],
+                    if (widget.showSortSection) ...[
                       _buildSortSection(),
                       SizedBox(height: 20.h),
                     ],
 
                     // 2. Time Control
-                    _sectionLabel('Time Control'),
-                    SizedBox(height: 8.h),
-                    _chipGrid<GameTimeControlFilter>(
-                      values: GameTimeControlFilter.values,
-                      selected: _timeControl,
-                      label:
-                          (v) =>
-                              v == GameTimeControlFilter.all
-                                  ? 'All'
-                                  : v.displayText,
-                      onTap: (v) {
-                        HapticFeedbackService.selection();
-                        setState(() => _timeControl = v);
-                      },
-                    ),
-                    SizedBox(height: 20.h),
+                    if (widget.showTimeControlFilter) ...[
+                      _sectionLabel('Time Control'),
+                      SizedBox(height: 8.h),
+                      _chipGrid<GameTimeControlFilter>(
+                        values: GameTimeControlFilter.values,
+                        selected: _timeControl,
+                        label:
+                            (v) =>
+                                v == GameTimeControlFilter.all
+                                    ? 'All'
+                                    : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _timeControl = v);
+                        },
+                      ),
+                      SizedBox(height: 20.h),
+                    ],
 
                     // 3. Level
                     if (widget.showLevelFilter) ...[
@@ -364,7 +375,11 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       result: _result,
       // Color hidden → never carry a stale color filter (no UI to clear it).
       color: widget.showColorFilter ? _color : GameColorFilter.all,
-      timeControl: _timeControl,
+      // Same rule for a hidden Time Control section.
+      timeControl:
+          widget.showTimeControlFilter
+              ? _timeControl
+              : GameTimeControlFilter.all,
       online: _online,
       live: _live,
       minYear:
@@ -487,16 +502,21 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
           ],
         ),
         SizedBox(height: 8.h),
-        Wrap(
-          spacing: 8.w,
-          runSpacing: 8.h,
-          children: GamebaseSortField.values.map(_buildSortChip).toList(),
+        _adaptiveChipLayout(
+          measureLabels:
+              GamebaseSortField.values.map(_sortFieldLabel).toList(),
+          extraPerChip: widget.showSortDirection ? 4.w + 12.ic : 0,
+          chipsBuilder:
+              (expanded) =>
+                  GamebaseSortField.values
+                      .map((f) => _buildSortChip(f, expanded: expanded))
+                      .toList(),
         ),
       ],
     );
   }
 
-  Widget _buildSortChip(GamebaseSortField field) {
+  Widget _buildSortChip(GamebaseSortField field, {required bool expanded}) {
     final index = _sorts.indexWhere((s) => s.field == field);
     final isSelected = index >= 0;
     final criterion = isSelected ? _sorts[index] : null;
@@ -506,6 +526,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+        alignment: expanded ? Alignment.center : null,
         decoration: BoxDecoration(
           color: isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
@@ -556,40 +577,106 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     );
   }
 
+  /// Lays a section's chips on one content-hugging row when they fit;
+  /// otherwise switches to a tidy two-per-row grid of equal-width cells.
+  /// A ragged Wrap (three chips plus one dangling onto the next line) reads
+  /// as misalignment in a 320-wide dialog, so overflow always realigns to
+  /// the grid. [extraPerChip] accounts for non-text chip content (e.g. the
+  /// sort chips' reserved direction-arrow slot).
+  Widget _adaptiveChipLayout({
+    required List<String> measureLabels,
+    required List<Widget> Function(bool expanded) chipsBuilder,
+    double extraPerChip = 0,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScaler = MediaQuery.textScalerOf(context);
+        var total = 8.w * (measureLabels.length - 1);
+        for (final label in measureLabels) {
+          final painter = TextPainter(
+            text: TextSpan(text: label, style: AppTypography.textXsMedium),
+            textDirection: TextDirection.ltr,
+            textScaler: textScaler,
+          )..layout();
+          total += painter.width + 28.w + extraPerChip;
+        }
+
+        if (total <= constraints.maxWidth) {
+          return Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: chipsBuilder(false),
+          );
+        }
+
+        final chips = chipsBuilder(true);
+        return Column(
+          children: [
+            for (var i = 0; i < chips.length; i += 2) ...[
+              if (i > 0) SizedBox(height: 8.h),
+              Row(
+                children: [
+                  Expanded(child: chips[i]),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child:
+                        i + 1 < chips.length
+                            ? chips[i + 1]
+                            : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
   Widget _chipGrid<T>({
     required List<T> values,
     required T selected,
     required String Function(T) label,
     required ValueChanged<T> onTap,
   }) {
-    return Wrap(
-      spacing: 8.w,
-      runSpacing: 8.h,
-      children:
-          values.map((v) {
-            final isSelected = v == selected;
-            return GestureDetector(
-              onTap: () => onTap(v),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-                decoration: BoxDecoration(
-                  color:
-                      isSelected
-                          ? kPrimaryColor
-                          : context.colors.surfaceRecessed,
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: Text(
-                  label(v),
-                  style: AppTypography.textXsMedium.copyWith(
-                    color:
-                        isSelected ? kBlackColor : context.colors.textPrimary,
+    return _adaptiveChipLayout(
+      measureLabels: values.map(label).toList(),
+      chipsBuilder:
+          (expanded) =>
+              values.map((v) {
+                final isSelected = v == selected;
+                return GestureDetector(
+                  onTap: () => onTap(v),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 10.h,
+                    ),
+                    // Equal-width grid cells center their label; row chips
+                    // hug their content as before.
+                    alignment: expanded ? Alignment.center : null,
+                    decoration: BoxDecoration(
+                      color:
+                          isSelected
+                              ? kPrimaryColor
+                              : context.colors.surfaceRecessed,
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                    child: Text(
+                      label(v),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color:
+                            isSelected
+                                ? kBlackColor
+                                : context.colors.textPrimary,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            );
-          }).toList(),
+                );
+              }).toList(),
     );
   }
 

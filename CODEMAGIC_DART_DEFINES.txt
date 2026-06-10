@@ -7,6 +7,7 @@ flutter build apk --release \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+  --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
   --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" \
   --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" \
   --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" \
@@ -26,6 +27,7 @@ flutter build appbundle --release \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+  --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
   --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" \
   --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" \
   --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" \
@@ -45,6 +47,7 @@ flutter build ipa --release \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+  --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
   --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" \
   --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" \
   --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" \
@@ -64,6 +67,7 @@ flutter build ios --release \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+  --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
   --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" \
   --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" \
   --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" \
@@ -80,13 +84,13 @@ flutter build ios --release \
 
 For Android APK:
 ```bash
-flutter build apk --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
+flutter build apk --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY"
 ```
 
 For iOS IPA:
 ```bash
-flutter build ipa --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
+flutter build ipa --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY"
 ```
 
