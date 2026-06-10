@@ -5,16 +5,23 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_standings_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
@@ -30,6 +37,7 @@ import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -79,9 +87,64 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     );
   }
 
+  /// The request as the user currently sees it: identical to the saved one
+  /// until the tier dropdown diverges, then re-keyed via [SmartEventRequest
+  /// .withTierSelection] so naming, caption, Elo floor and favorite identity
+  /// all follow the selected tier. Data loading keeps using the ORIGINAL
+  /// request — the dropdown is a view filter, not a refetch.
+  SmartEventRequest get _effectiveRequest =>
+      _tier == _initialTier(widget.request)
+          ? widget.request
+          : widget.request.withTierSelection(_tier);
+
+  /// Serializes favorite migrations so rapid tier hopping can't interleave
+  /// remove/add pairs.
+  Future<void> _favoriteMigration = Future.value();
+
   void _setTier(String tier) {
     if (_tier == tier) return;
+    final previous = _effectiveRequest;
     setState(() => _tier = tier);
+    final effective = _effectiveRequest;
+
+    // The smart event IS a projection of the tabs' filter popup state, so a
+    // tier change writes its Elo floor back into that state — the generated
+    // cards on For You / Current rename and regenerate immediately.
+    final filter = ref.read(eventAppliedFilterProvider);
+    ref.read(eventAppliedFilterProvider.notifier).state = filter.copyWith(
+      eloRange: RangeValues(
+        effective.minElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo).toDouble(),
+        effective.maxElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo).toDouble(),
+      ),
+    );
+
+    // A saved card follows the rename too: identity embeds the Elo floor, so
+    // migrate the favorite row to the re-keyed request.
+    _favoriteMigration = _favoriteMigration.then(
+      (_) => _migrateFavoriteIfSaved(previous, effective),
+    );
+  }
+
+  Future<void> _migrateFavoriteIfSaved(
+    SmartEventRequest previous,
+    SmartEventRequest effective,
+  ) async {
+    if (previous.favoriteEventId == effective.favoriteEventId) return;
+    final favorites = ref.read(favoriteEventsProvider).valueOrNull;
+    if (favorites == null) return;
+    final wasSaved = favorites.any(
+      (favorite) => favorite.eventId == previous.favoriteEventId,
+    );
+    if (!wasSaved) return;
+
+    final notifier = ref.read(favoriteEventsProvider.notifier);
+    await notifier.removeFavorite(previous.favoriteEventId);
+    await notifier.addFavorite(
+      eventId: effective.favoriteEventId,
+      eventName: effective.displayName,
+      maxAvgElo: effective.minElo > 0 ? effective.minElo : null,
+      extraMetadata: effective.toFavoriteMetadata(),
+    );
   }
 
   @override
@@ -98,9 +161,10 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         child: Scaffold(
           backgroundColor: context.colors.background,
           body: SafeArea(
+            bottom: false,
             child: Column(
               children: [
-                _AppBar(request: widget.request),
+                _AppBar(request: _effectiveRequest),
                 SizedBox(height: 8.h),
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -158,7 +222,12 @@ class _SmartTierFilterScope extends InheritedWidget {
   }
 }
 
-int _tierThreshold(String tier) {
+/// Tier bands keyed off the game's average Elo — the same scalar the smart
+/// event pipeline uses to build, filter and sort these events. Each tier
+/// covers its floor up to (exclusive) the next title's floor: CM 2200–2299,
+/// FM 2300–2399, IM 2400–2499. GM has no ceiling. An open-ended `>=` here
+/// would make CM ≈ All in strong fields, which reads as a dead dropdown.
+int _tierFloor(String tier) {
   switch (tier) {
     case 'GM':
       return 2500;
@@ -173,15 +242,25 @@ int _tierThreshold(String tier) {
   }
 }
 
-bool _playerRatingMatchesTier(int rating, String tier) {
-  if (tier == 'All') return true;
-  return rating >= _tierThreshold(tier);
+int? _tierCeiling(String tier) {
+  switch (tier) {
+    case 'IM':
+      return 2500;
+    case 'FM':
+      return 2400;
+    case 'CM':
+      return 2300;
+    default:
+      return null;
+  }
 }
 
 bool _gameMatchesTier(GamesTourModel game, String tier) {
   if (tier == 'All') return true;
-  return _playerRatingMatchesTier(game.whitePlayer.rating, tier) ||
-      _playerRatingMatchesTier(game.blackPlayer.rating, tier);
+  final avgElo = smartGameAverageElo(game);
+  if (avgElo <= 0) return false;
+  final ceiling = _tierCeiling(tier);
+  return avgElo >= _tierFloor(tier) && (ceiling == null || avgElo < ceiling);
 }
 
 class _AppBar extends ConsumerWidget {
@@ -442,7 +521,8 @@ class _TitleSelectorState extends State<_TitleSelector>
   }
 
   String _triggerLabel() {
-    return widget.selectedTier == 'All' ? 'All' : '${widget.selectedTier}+';
+    // GM keeps the "+" (open-ended top tier); the others are bands.
+    return widget.selectedTier == 'GM' ? 'GM+' : widget.selectedTier;
   }
 
   @override
@@ -636,11 +716,11 @@ class _TierOptionRow extends StatelessWidget {
       case 'GM':
         return 'Grandmaster · 2500+';
       case 'IM':
-        return 'International Master · 2400+';
+        return 'International Master · 2400–2499';
       case 'FM':
-        return 'FIDE Master · 2300+';
+        return 'FIDE Master · 2300–2399';
       case 'CM':
-        return 'Candidate Master · 2200+';
+        return 'Candidate Master · 2200–2299';
       case 'All':
       default:
         return 'All games';
@@ -823,6 +903,7 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
       searchQuery: _query,
     );
     final async = ref.watch(smartFilteredAggregateEventProvider(smartQuery));
+    final viewMode = ref.watch(gamesListViewModeProvider);
 
     return async.when(
       data: (event) {
@@ -846,7 +927,15 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                   gameIds: liveGameIds,
                 );
 
-        final rows = _buildDayRows(games);
+        final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+        // Tablet landscape: 4 columns; tablet portrait / phone: 2 — mirrors
+        // the Favorites / Countrymen games tabs.
+        final gridColumns =
+            ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+        final rows = _buildDayRows(
+          games,
+          gridColumns: isGrid ? gridColumns : 1,
+        );
         return RefreshIndicator(
           color: kPrimaryColor,
           backgroundColor: context.colors.surface,
@@ -883,11 +972,47 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                         showSortSection: false,
                         showLevelFilter: false,
                         showYearFilter: false,
+                        // Format (OTB/Online) is TWIC-only — smart events are
+                        // Supabase broadcasts, so the section is meaningless.
+                        showFormatFilter: false,
+                        // Dimensions already pinned by the filters that
+                        // GENERATED this smart event must not be re-offered —
+                        // they'd conflict with how the event was built.
+                        showLiveFilter: !request.hasStateCriterion,
+                        showTimeControlFilter:
+                            !request.hasTimeControlCriterion,
                       );
                       if (result != null && mounted) {
                         setState(() => _filter = result);
                       }
                     },
+                    trailing: GestureDetector(
+                      onTap:
+                          () =>
+                              ref
+                                  .read(gamesListViewModeSwitcher)
+                                  .toggleViewMode(),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: context.colors.background,
+                          borderRadius: BorderRadius.circular(12.br),
+                          border: Border.all(
+                            color: context.colors.surfaceRecessed,
+                          ),
+                        ),
+                        child: Center(
+                          child: SvgPicture.asset(
+                            SvgAsset.chase_grid,
+                            width: 20.sp,
+                            height: 20.sp,
+                            colorFilter: ColorFilter.mode(
+                              context.colors.textSecondary,
+                              BlendMode.srcIn,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 );
               }
@@ -907,6 +1032,32 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                   ),
                 );
               }
+              if (row.gridGames != null) {
+                final rowGames = row.gridGames!;
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: row.isLastInSection ? 16.h : 12.h,
+                  ),
+                  child: Row(
+                    children: [
+                      for (int j = 0; j < gridColumns; j++) ...[
+                        if (j > 0) SizedBox(width: 12.sp),
+                        Expanded(
+                          child:
+                              j < rowGames.length
+                                  ? _buildGridGame(
+                                    rowGames[j],
+                                    games,
+                                    gamesData,
+                                    liveBatchKey,
+                                  )
+                                  : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }
               final game = row.game!;
               final gameIndex = games.indexWhere(
                 (g) => g.gameId == game.gameId,
@@ -920,7 +1071,8 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                   game: game,
                   gamesData: gamesData,
                   gameIndex: gameIndex < 0 ? 0 : gameIndex,
-                  isChessBoardVisible: false,
+                  isChessBoardVisible:
+                      viewMode == GamesListViewMode.chessBoard,
                   viewSource: ChessboardView.tour,
                   onReturnFromChessboard: (_) {},
                   liveBatchKey: liveBatchKey,
@@ -1026,9 +1178,48 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
     return await showPremiumPaywallSheet(context: context);
   }
 
+  Widget _buildGridGame(
+    GamesTourModel game,
+    List<GamesTourModel> games,
+    GamesScreenModel gamesData,
+    LiveGamesBatchKey? liveBatchKey,
+  ) {
+    final gameIndex = games.indexWhere((g) => g.gameId == game.gameId);
+    final safeIndex = gameIndex < 0 ? 0 : gameIndex;
+    return GridGameCardWrapperWidget(
+      key: ValueKey('smart_grid_${game.gameId}'),
+      game: game,
+      orderedGames: games,
+      gameIndex: safeIndex,
+      pinnedIds: gamesData.pinnedGamedIs,
+      liveBatchKey: liveBatchKey,
+      onPinToggle:
+          (g) async => await ref
+              .read(gamesTourScreenProvider.notifier)
+              .togglePinGame(g.gameId, sourceTourId: g.tourId),
+      onChangedWithLiveGames: (updatedGames) async {
+        final allowed = await _guardGameOpen(context);
+        if (!allowed || !mounted) return;
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
+              context: context,
+              orderedGames: updatedGames,
+              gameIndex: safeIndex,
+              onReturnFromChessboard: (_) {},
+              viewSource: ChessboardView.tour,
+            );
+      },
+    );
+  }
+
   /// Group games by day and flatten into header + game rows, honoring the
   /// collapsed state. Games arrive pre-sorted (day desc, pinned, avg Elo).
-  List<_GameListRow> _buildDayRows(List<GamesTourModel> games) {
+  /// With [gridColumns] > 1 each section's games are chunked into grid rows.
+  List<_GameListRow> _buildDayRows(
+    List<GamesTourModel> games, {
+    int gridColumns = 1,
+  }) {
     final gamesByDate = <String, List<GamesTourModel>>{};
     for (final game in games) {
       final dateKey = DateFormat('yyyy-MM-dd').format(_gameDay(game));
@@ -1045,6 +1236,21 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
         ),
       );
       if (_collapsedDates.contains(dateKey)) continue;
+      if (gridColumns > 1) {
+        for (var i = 0; i < dateGames.length; i += gridColumns) {
+          final end =
+              i + gridColumns < dateGames.length
+                  ? i + gridColumns
+                  : dateGames.length;
+          rows.add(
+            _GameListRow.grid(
+              dateGames.sublist(i, end),
+              isLastInSection: end == dateGames.length,
+            ),
+          );
+        }
+        continue;
+      }
       for (var i = 0; i < dateGames.length; i++) {
         rows.add(
           _GameListRow.game(
@@ -1115,7 +1321,12 @@ class _DateHeaderData {
 }
 
 class _GameListRow {
-  const _GameListRow._({this.header, this.game, this.isLastInSection = false});
+  const _GameListRow._({
+    this.header,
+    this.game,
+    this.gridGames,
+    this.isLastInSection = false,
+  });
 
   factory _GameListRow.header(_DateHeaderData value) =>
       _GameListRow._(header: value);
@@ -1126,8 +1337,17 @@ class _GameListRow {
   }) =>
       _GameListRow._(game: value, isLastInSection: isLastInSection);
 
+  factory _GameListRow.grid(
+    List<GamesTourModel> value, {
+    required bool isLastInSection,
+  }) =>
+      _GameListRow._(gridGames: value, isLastInSection: isLastInSection);
+
   final _DateHeaderData? header;
   final GamesTourModel? game;
+
+  /// One grid row of boards (chessBoardGrid mode); null in list modes.
+  final List<GamesTourModel>? gridGames;
   final bool isLastInSection;
 }
 
@@ -1434,11 +1654,10 @@ class _StandingsTabState extends ConsumerState<_StandingsTab> {
     );
   }
 
-  /// Keeps only events that contain at least one game whose participants
-  /// match the selected tier. Classification is per-game, not per-event:
-  /// a CM-rated event that happens to include one GM game still shows up
-  /// under the GM filter (the GM filter is asking "where do GMs play",
-  /// not "where do GMs dominate").
+  /// Keeps only events that contain at least one game whose average Elo
+  /// falls in the selected tier band. Classification is per-game, not
+  /// per-event: a CM-rated event that happens to include one GM-level game
+  /// still shows up under the GM filter.
   List<GroupEventCardModel> _filterEventsByTier(
     SmartAggregateEvent event,
     String tier,
