@@ -184,7 +184,7 @@ void main() {
       expect(restored.countPlural, 'events');
     });
 
-    test('preserves legacy live games metadata verbatim on restore', () {
+    test('heals legacy live-games count labels on restore', () {
       final event = _event(
         id: 'event-a',
         start: DateTime.utc(2026, 6, 1),
@@ -215,8 +215,10 @@ void main() {
 
       expect(restored.displayName, 'Live Games');
       expect(restored.caption, 'From your filters');
-      expect(restored.countSingular, 'live event');
-      expect(restored.countPlural, 'live events');
+      // Smart events aggregate every event in Current, live or not — the
+      // legacy "live event(s)" labels are rewritten on restore.
+      expect(restored.countSingular, 'event');
+      expect(restored.countPlural, 'events');
     });
 
     test(

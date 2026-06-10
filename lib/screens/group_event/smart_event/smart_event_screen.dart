@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -41,9 +43,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-/// Full event view for generated level games. Renders the familiar
+/// Full event view for generated level games — an aggregate of every game in
+/// the events from the Current view (NOT live-only). Renders the familiar
 /// About / Games / Standings tabbed shell, with every tab computed from the
-/// current broadcast aggregate ([smartAggregateEventProvider]).
+/// one repository fetch ([smartAggregateEventRepositoryProvider]).
 class SmartEventScreen extends ConsumerStatefulWidget {
   const SmartEventScreen({required this.request, super.key});
 
@@ -90,8 +93,10 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   /// The request as the user currently sees it: identical to the saved one
   /// until the tier dropdown diverges, then re-keyed via [SmartEventRequest
   /// .withTierSelection] so naming, caption, Elo floor and favorite identity
-  /// all follow the selected tier. Data loading keeps using the ORIGINAL
-  /// request — the dropdown is a view filter, not a refetch.
+  /// all follow the selected tier. The Games / Standings tabs load through
+  /// [SmartEventRequest.withNeutralEloRange] and carry the selected tier band
+  /// in the query filter instead, so any tier — including ones BELOW the
+  /// saved floor — can actually fetch its games.
   SmartEventRequest get _effectiveRequest =>
       _tier == _initialTier(widget.request)
           ? widget.request
@@ -113,8 +118,14 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     final filter = ref.read(eventAppliedFilterProvider);
     ref.read(eventAppliedFilterProvider.notifier).state = filter.copyWith(
       eloRange: RangeValues(
-        effective.minElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo).toDouble(),
-        effective.maxElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo).toDouble(),
+        effective.minElo
+            .toDouble()
+            .clamp(kFilterMinElo, kFilterMaxElo)
+            .toDouble(),
+        effective.maxElo
+            .toDouble()
+            .clamp(kFilterMinElo, kFilterMaxElo)
+            .toDouble(),
       ),
     );
 
@@ -481,16 +492,17 @@ class _TitleSelectorState extends State<_TitleSelector>
       final screenSize = MediaQuery.of(context).size;
 
       _overlay = OverlayEntry(
-        builder: (_) => _TierOverlay(
-          triggerSize: triggerSize,
-          triggerOffset: triggerOffset,
-          screenWidth: screenSize.width,
-          animation: _animation,
-          options: _tierOptions,
-          currentTier: widget.selectedTier,
-          onDismiss: _close,
-          onSelect: _onSelect,
-        ),
+        builder:
+            (_) => _TierOverlay(
+              triggerSize: triggerSize,
+              triggerOffset: triggerOffset,
+              screenWidth: screenSize.width,
+              animation: _animation,
+              options: _tierOptions,
+              currentTier: widget.selectedTier,
+              onDismiss: _close,
+              onSelect: _onSelect,
+            ),
       );
       overlayState.insert(_overlay!);
     });
@@ -533,13 +545,14 @@ class _TitleSelectorState extends State<_TitleSelector>
         animation: _shimmerController,
         builder: (context, child) {
           return CustomPaint(
-            painter: _isOpen
-                ? null
-                : FluidShimmerPainter(
-                    progress: _shimmerController.value,
-                    shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                    borderRadius: 14.br,
-                  ),
+            painter:
+                _isOpen
+                    ? null
+                    : FluidShimmerPainter(
+                      progress: _shimmerController.value,
+                      shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                      borderRadius: 14.br,
+                    ),
             child: child,
           );
         },
@@ -549,13 +562,15 @@ class _TitleSelectorState extends State<_TitleSelector>
           padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color: _isOpen
-                ? kPrimaryColor.withValues(alpha: 0.15)
-                : context.colors.textPrimary.withValues(alpha: 0.06),
+            color:
+                _isOpen
+                    ? kPrimaryColor.withValues(alpha: 0.15)
+                    : context.colors.textPrimary.withValues(alpha: 0.06),
             border: Border.all(
-              color: _isOpen
-                  ? kPrimaryColor.withValues(alpha: 0.4)
-                  : context.colors.textPrimary.withValues(alpha: 0.12),
+              color:
+                  _isOpen
+                      ? kPrimaryColor.withValues(alpha: 0.4)
+                      : context.colors.textPrimary.withValues(alpha: 0.12),
               width: 1,
             ),
           ),
@@ -568,9 +583,7 @@ class _TitleSelectorState extends State<_TitleSelector>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: _isOpen
-                        ? kPrimaryColor
-                        : context.colors.textPrimary,
+                    color: _isOpen ? kPrimaryColor : context.colors.textPrimary,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.3,
                   ),
@@ -584,9 +597,10 @@ class _TitleSelectorState extends State<_TitleSelector>
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 18.ic,
-                  color: _isOpen
-                      ? kPrimaryColor
-                      : context.colors.textPrimary.withValues(alpha: 0.7),
+                  color:
+                      _isOpen
+                          ? kPrimaryColor
+                          : context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
               ),
             ],
@@ -752,9 +766,10 @@ class _TierOptionRow extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
-          color: isSelected
-              ? kPrimaryColor.withValues(alpha: 0.10)
-              : Colors.transparent,
+          color:
+              isSelected
+                  ? kPrimaryColor.withValues(alpha: 0.10)
+                  : Colors.transparent,
           child: Row(
             children: [
               Expanded(
@@ -763,20 +778,14 @@ class _TierOptionRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: isSelected
-                        ? kPrimaryColor
-                        : context.colors.textPrimary,
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color:
+                        isSelected ? kPrimaryColor : context.colors.textPrimary,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
               ),
               if (isSelected)
-                Icon(
-                  Icons.check_rounded,
-                  size: 18.ic,
-                  color: kPrimaryColor,
-                ),
+                Icon(Icons.check_rounded, size: 18.ic, color: kPrimaryColor),
             ],
           ),
         ),
@@ -795,18 +804,22 @@ class _TabAsync extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final request = _SmartEventRequestScope.of(context);
-    final async = ref.watch(smartAggregateEventProvider(request));
+    final query = SmartEventGamesQuery(request: request);
+    final async = ref.watch(smartAggregateEventRepositoryProvider(query));
     return async.when(
       data: (event) {
         if (event.games.isEmpty) {
-          return _EmptyState();
+          return const _EmptyState();
         }
         return builder(event);
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error:
           (e, _) => GenericErrorWidget(
-            onRetry: () => ref.invalidate(smartAggregateEventProvider(request)),
+            onRetry:
+                () => ref.invalidate(
+                  smartAggregateEventRepositoryProvider(query),
+                ),
           ),
     );
   }
@@ -831,6 +844,10 @@ class _SmartEventRequestScope extends InheritedWidget {
 }
 
 class _EmptyState extends StatelessWidget {
+  const _EmptyState({this.message = 'No games right now'});
+
+  final String message;
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -846,7 +863,7 @@ class _EmptyState extends StatelessWidget {
             ),
             SizedBox(height: 12.h),
             Text(
-              'No live games right now',
+              message,
               textAlign: TextAlign.center,
               style: AppTypography.textSmMedium.copyWith(
                 color: context.colors.textPrimaryMuted,
@@ -871,6 +888,13 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
   final FocusNode _focusNode = FocusNode();
   GameFilter _filter = GameFilter.defaultFilter();
   String _query = '';
+  Timer? _searchDebounce;
+
+  /// Last successfully loaded aggregate. Tier switches, search keystrokes and
+  /// filter edits re-key the query provider; rendering this while the new
+  /// fetch is in flight keeps the list on screen instead of flashing a
+  /// spinner or a false empty state.
+  SmartAggregateEvent? _lastLoadedEvent;
 
   /// Track collapsed state for date sections — mirrors the Countrymen /
   /// Favorites games tabs.
@@ -889,209 +913,248 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
+  /// The server-bound filter: the user's dialog filter tightened by the
+  /// selected tier band. The tier travels HERE (not in the request) so
+  /// switching tiers refetches exactly that band — including bands below the
+  /// saved request's Elo floor.
+  GameFilter? _dataFilterForTier(String tier) {
+    final floor = _tierFloor(tier);
+    final ceiling = _tierCeiling(tier);
+    var merged = _filter;
+    if (floor > merged.minRating) {
+      merged = merged.copyWith(minRating: floor);
+    }
+    if (ceiling != null && ceiling - 1 < merged.maxRating) {
+      merged = merged.copyWith(maxRating: ceiling - 1);
+    }
+    return merged.hasActiveFilters ? merged : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final request = _SmartEventRequestScope.of(context);
+    final tier = _SmartTierFilterScope.of(context).tier;
     final smartQuery = SmartEventGamesQuery(
-      request: request,
-      filter: _filter.hasActiveFilters ? _filter : null,
+      request: request.withNeutralEloRange(),
+      filter: _dataFilterForTier(tier),
       searchQuery: _query,
     );
-    final async = ref.watch(smartFilteredAggregateEventProvider(smartQuery));
+    final async = ref.watch(smartAggregateEventRepositoryProvider(smartQuery));
     final viewMode = ref.watch(gamesListViewModeProvider);
 
-    return async.when(
-      data: (event) {
-        final games = _applySmartGameControls(
-          event.games,
-          event.gameEventNames,
-        );
-        final gamesData = GamesScreenModel(
-          gamesTourModels: games,
-          pinnedGamedIs: event.pinnedGameIds,
-        );
-        final liveGameIds = games
-            .where((game) => game.effectiveGameStatus.isOngoing)
-            .map((game) => game.gameId)
-            .toList(growable: false);
-        final liveBatchKey =
-            liveGameIds.isEmpty
-                ? null
-                : LiveGamesBatchKey(
-                  scopeId: 'smart_event:${request.scopeId}',
-                  gameIds: liveGameIds,
-                );
+    Widget buildLoaded(SmartAggregateEvent event) {
+      final games = _applySmartGameControls(event.games, event.gameEventNames);
+      final gamesData = GamesScreenModel(
+        gamesTourModels: games,
+        pinnedGamedIs: event.pinnedGameIds,
+      );
+      final liveGameIds = games
+          .where((game) => game.effectiveGameStatus.isOngoing)
+          .map((game) => game.gameId)
+          .toList(growable: false);
+      final liveBatchKey =
+          liveGameIds.isEmpty
+              ? null
+              : LiveGamesBatchKey(
+                scopeId: 'smart_event:${request.scopeId}',
+                gameIds: liveGameIds,
+              );
 
-        final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
-        // Tablet landscape: 4 columns; tablet portrait / phone: 2 — mirrors
-        // the Favorites / Countrymen games tabs.
-        final gridColumns =
-            ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
-        final rows = _buildDayRows(
-          games,
-          gridColumns: isGrid ? gridColumns : 1,
-        );
-        return RefreshIndicator(
-          color: kPrimaryColor,
-          backgroundColor: context.colors.surface,
-          onRefresh: () async {
-            ref.invalidate(smartAggregateEventRepositoryProvider(smartQuery));
-            ref.invalidate(smartAggregateEventProvider(request));
-          },
-          child: ListView.builder(
-            padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            itemCount: games.isEmpty ? 2 : rows.length + 1,
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return Padding(
-                  padding: EdgeInsets.only(bottom: 12.sp),
-                  child: GameSearchFilterBar(
-                    controller: _searchController,
-                    focusNode: _focusNode,
-                    currentFilter: _filter,
-                    hintText: 'Search games',
-                    onChanged: (value) => setState(() => _query = value.trim()),
-                    onClear:
-                        () => setState(() {
-                          _query = '';
-                          _searchController.clear();
-                        }),
-                    onFilterTap: () async {
-                      final result = await showGameFilterDialog(
-                        context: context,
-                        currentFilter: _filter,
-                        showColorFilter: false,
-                        showSortSection: false,
-                        showLevelFilter: false,
-                        showYearFilter: false,
-                        // Format (OTB/Online) is TWIC-only — smart events are
-                        // Supabase broadcasts, so the section is meaningless.
-                        showFormatFilter: false,
-                        // Dimensions already pinned by the filters that
-                        // GENERATED this smart event must not be re-offered —
-                        // they'd conflict with how the event was built.
-                        showLiveFilter: !request.hasStateCriterion,
-                        showTimeControlFilter:
-                            !request.hasTimeControlCriterion,
-                      );
-                      if (result != null && mounted) {
-                        setState(() => _filter = result);
-                      }
-                    },
-                    trailing: GestureDetector(
-                      onTap:
-                          () =>
-                              ref
-                                  .read(gamesListViewModeSwitcher)
-                                  .toggleViewMode(),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: context.colors.background,
-                          borderRadius: BorderRadius.circular(12.br),
-                          border: Border.all(
-                            color: context.colors.surfaceRecessed,
-                          ),
+      final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+      // Tablet landscape: 4 columns; tablet portrait / phone: 2 — mirrors
+      // the Favorites / Countrymen games tabs.
+      final gridColumns =
+          ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+      final rows = _buildDayRows(games, gridColumns: isGrid ? gridColumns : 1);
+      return RefreshIndicator(
+        color: kPrimaryColor,
+        backgroundColor: context.colors.surface,
+        onRefresh: () async {
+          // Refresh every tab's slice of the aggregate, not just this query.
+          ref.invalidate(smartAggregateEventRepositoryProvider);
+        },
+        child: ListView.builder(
+          padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          itemCount: games.isEmpty ? 2 : rows.length + 1,
+          itemBuilder: (context, i) {
+            if (i == 0) {
+              return Padding(
+                padding: EdgeInsets.only(bottom: 12.sp),
+                child: GameSearchFilterBar(
+                  controller: _searchController,
+                  focusNode: _focusNode,
+                  currentFilter: _filter,
+                  hintText: 'Search games',
+                  onChanged: (value) {
+                    // Debounce: every committed query is a server-side
+                    // search across ALL games of the included events, so
+                    // don't fire one per keystroke.
+                    _searchDebounce?.cancel();
+                    _searchDebounce = Timer(
+                      const Duration(milliseconds: 350),
+                      () {
+                        if (mounted) setState(() => _query = value.trim());
+                      },
+                    );
+                  },
+                  onClear: () {
+                    _searchDebounce?.cancel();
+                    setState(() {
+                      _query = '';
+                      _searchController.clear();
+                    });
+                  },
+                  onFilterTap: () async {
+                    final result = await showGameFilterDialog(
+                      context: context,
+                      currentFilter: _filter,
+                      showColorFilter: false,
+                      showSortSection: false,
+                      showLevelFilter: false,
+                      showYearFilter: false,
+                      // Format (OTB/Online) is TWIC-only — smart events are
+                      // Supabase broadcasts, so the section is meaningless.
+                      showFormatFilter: false,
+                      // Dimensions already pinned by the filters that
+                      // GENERATED this smart event must not be re-offered —
+                      // they'd conflict with how the event was built.
+                      showLiveFilter: !request.hasStateCriterion,
+                      showTimeControlFilter: !request.hasTimeControlCriterion,
+                    );
+                    if (result != null && mounted) {
+                      setState(() => _filter = result);
+                    }
+                  },
+                  trailing: GestureDetector(
+                    onTap:
+                        () =>
+                            ref
+                                .read(gamesListViewModeSwitcher)
+                                .toggleViewMode(),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: context.colors.background,
+                        borderRadius: BorderRadius.circular(12.br),
+                        border: Border.all(
+                          color: context.colors.surfaceRecessed,
                         ),
-                        child: Center(
-                          child: SvgPicture.asset(
-                            SvgAsset.chase_grid,
-                            width: 20.sp,
-                            height: 20.sp,
-                            colorFilter: ColorFilter.mode(
-                              context.colors.textSecondary,
-                              BlendMode.srcIn,
-                            ),
+                      ),
+                      child: Center(
+                        child: SvgPicture.asset(
+                          SvgAsset.chase_grid,
+                          width: 20.sp,
+                          height: 20.sp,
+                          colorFilter: ColorFilter.mode(
+                            context.colors.textSecondary,
+                            BlendMode.srcIn,
                           ),
                         ),
                       ),
                     ),
                   ),
-                );
-              }
-              if (games.isEmpty) {
-                return _EmptyState();
-              }
-              final row = rows[i - 1];
-              if (row.header != null) {
-                final header = row.header!;
-                return Padding(
-                  padding: EdgeInsets.only(bottom: 12.h),
-                  child: _DateHeader(
-                    dateLabel: _formatDateHeader(header.dateKey),
-                    gameCount: header.gameCount,
-                    isExpanded: !_collapsedDates.contains(header.dateKey),
-                    onToggle: () => _toggleDateSection(header.dateKey),
-                  ),
-                );
-              }
-              if (row.gridGames != null) {
-                final rowGames = row.gridGames!;
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: row.isLastInSection ? 16.h : 12.h,
-                  ),
-                  child: Row(
-                    children: [
-                      for (int j = 0; j < gridColumns; j++) ...[
-                        if (j > 0) SizedBox(width: 12.sp),
-                        Expanded(
-                          child:
-                              j < rowGames.length
-                                  ? _buildGridGame(
-                                    rowGames[j],
-                                    games,
-                                    gamesData,
-                                    liveBatchKey,
-                                  )
-                                  : const SizedBox.shrink(),
-                        ),
-                      ],
-                    ],
-                  ),
-                );
-              }
-              final game = row.game!;
-              final gameIndex = games.indexWhere(
-                (g) => g.gameId == game.gameId,
+                ),
               );
+            }
+            if (games.isEmpty) {
+              final hasNarrowingControls =
+                  _query.isNotEmpty ||
+                  _filter.hasActiveFilters ||
+                  _SmartTierFilterScope.of(context).tier != 'All';
+              return _EmptyState(
+                message:
+                    hasNarrowingControls
+                        ? 'No games match your filters'
+                        : 'No games right now',
+              );
+            }
+            final row = rows[i - 1];
+            if (row.header != null) {
+              final header = row.header!;
+              return Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: _DateHeader(
+                  dateLabel: _formatDateHeader(header.dateKey),
+                  gameCount: header.gameCount,
+                  isExpanded: !_collapsedDates.contains(header.dateKey),
+                  onToggle: () => _toggleDateSection(header.dateKey),
+                ),
+              );
+            }
+            if (row.gridGames != null) {
+              final rowGames = row.gridGames!;
               return Padding(
                 padding: EdgeInsets.only(
                   bottom: row.isLastInSection ? 16.h : 12.h,
                 ),
-                child: GameCardWrapperWidget(
-                  key: ValueKey('smart_${game.gameId}'),
-                  game: game,
-                  gamesData: gamesData,
-                  gameIndex: gameIndex < 0 ? 0 : gameIndex,
-                  isChessBoardVisible:
-                      viewMode == GamesListViewMode.chessBoard,
-                  viewSource: ChessboardView.tour,
-                  onReturnFromChessboard: (_) {},
-                  liveBatchKey: liveBatchKey,
-                  onBeforeOpen: () => _guardGameOpen(context),
+                child: Row(
+                  children: [
+                    for (int j = 0; j < gridColumns; j++) ...[
+                      if (j > 0) SizedBox(width: 12.sp),
+                      Expanded(
+                        child:
+                            j < rowGames.length
+                                ? _buildGridGame(
+                                  rowGames[j],
+                                  games,
+                                  gamesData,
+                                  liveBatchKey,
+                                )
+                                : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
                 ),
               );
-            },
-          ),
+            }
+            final game = row.game!;
+            final gameIndex = games.indexWhere((g) => g.gameId == game.gameId);
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: row.isLastInSection ? 16.h : 12.h,
+              ),
+              child: GameCardWrapperWidget(
+                key: ValueKey('smart_${game.gameId}'),
+                game: game,
+                gamesData: gamesData,
+                gameIndex: gameIndex < 0 ? 0 : gameIndex,
+                isChessBoardVisible: viewMode == GamesListViewMode.chessBoard,
+                viewSource: ChessboardView.tour,
+                onReturnFromChessboard: (_) {},
+                liveBatchKey: liveBatchKey,
+                onBeforeOpen: () => _guardGameOpen(context),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    if (async.hasValue) {
+      _lastLoadedEvent = async.requireValue;
+    }
+    final event =
+        async.valueOrNull ?? (async.isLoading ? _lastLoadedEvent : null);
+    if (event == null) {
+      if (async.hasError) {
+        return GenericErrorWidget(
+          onRetry:
+              () => ref.invalidate(
+                smartAggregateEventRepositoryProvider(smartQuery),
+              ),
         );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error:
-          (e, _) => GenericErrorWidget(
-            onRetry: () {
-              ref.invalidate(smartAggregateEventRepositoryProvider(smartQuery));
-              ref.invalidate(smartAggregateEventProvider(request));
-            },
-          ),
-    );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
+    return buildLoaded(event);
   }
 
   List<GamesTourModel> _applySmartGameControls(
@@ -1225,7 +1288,8 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
       final dateKey = DateFormat('yyyy-MM-dd').format(_gameDay(game));
       gamesByDate.putIfAbsent(dateKey, () => []).add(game);
     }
-    final sortedKeys = gamesByDate.keys.toList()..sort((a, b) => b.compareTo(a));
+    final sortedKeys =
+        gamesByDate.keys.toList()..sort((a, b) => b.compareTo(a));
 
     final rows = <_GameListRow>[];
     for (final dateKey in sortedKeys) {
@@ -1334,14 +1398,12 @@ class _GameListRow {
   factory _GameListRow.game(
     GamesTourModel value, {
     required bool isLastInSection,
-  }) =>
-      _GameListRow._(game: value, isLastInSection: isLastInSection);
+  }) => _GameListRow._(game: value, isLastInSection: isLastInSection);
 
   factory _GameListRow.grid(
     List<GamesTourModel> value, {
     required bool isLastInSection,
-  }) =>
-      _GameListRow._(gridGames: value, isLastInSection: isLastInSection);
+  }) => _GameListRow._(gridGames: value, isLastInSection: isLastInSection);
 
   final _DateHeaderData? header;
   final GamesTourModel? game;
@@ -1509,7 +1571,7 @@ class _AboutTab extends ConsumerWidget {
                 padding: EdgeInsets.only(bottom: 8.h),
                 child: _DismissibleIncludedEventCard(
                   event: includedEvent,
-                  scopeId: request.scopeId,
+                  scopeId: request.dismissScopeId,
                 ),
               ),
             ),
@@ -1610,15 +1672,18 @@ class _StandingsTabState extends ConsumerState<_StandingsTab> {
   Widget build(BuildContext context) {
     final request = _SmartEventRequestScope.of(context);
     final tier = _SmartTierFilterScope.of(context).tier;
-    final async = ref.watch(smartAggregateEventProvider(request));
+    // Neutral Elo range: the tier dropdown classifies per game below, and any
+    // tier — including ones below the saved floor — must find its games.
+    final query = SmartEventGamesQuery(request: request.withNeutralEloRange());
+    final async = ref.watch(smartAggregateEventRepositoryProvider(query));
     return async.when(
       data: (event) {
         if (event.events.isEmpty) {
-          return _EmptyState();
+          return const _EmptyState();
         }
         final visibleEvents = _filterEventsByTier(event, tier);
         if (visibleEvents.isEmpty) {
-          return _EmptyState();
+          return const _EmptyState(message: 'No games match this level');
         }
         final rows = _buildRows(visibleEvents, request.scopeId);
         final horizontalPadding = ResponsiveHelper.adaptive(
@@ -1649,7 +1714,10 @@ class _StandingsTabState extends ConsumerState<_StandingsTab> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error:
           (e, _) => GenericErrorWidget(
-            onRetry: () => ref.invalidate(smartAggregateEventProvider(request)),
+            onRetry:
+                () => ref.invalidate(
+                  smartAggregateEventRepositoryProvider(query),
+                ),
           ),
     );
   }
@@ -1893,8 +1961,7 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
       final confirmed = await showSmoothConfirmDialog(
         context: context,
         title: 'Hide tournament?',
-        message:
-            'Are you sure you want to hide ${event.title} from this view?',
+        message: 'Are you sure you want to hide ${event.title} from this view?',
         confirmText: 'Hide',
         isDangerous: true,
       );

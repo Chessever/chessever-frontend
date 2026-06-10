@@ -1,5 +1,3 @@
-import 'package:chessever2/providers/for_you_games_logic.dart';
-import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -50,8 +48,14 @@ class SmartEventRequest {
     required this.countSingular,
     required this.countPlural,
     required List<GroupEventCardModel> events,
+    Set<String> formatsAndStates = const {},
     this.savedAt,
-  }) : events = List<GroupEventCardModel>.unmodifiable(events);
+  }) : events = List<GroupEventCardModel>.unmodifiable(events),
+       formatsAndStates = Set<String>.unmodifiable(
+         formatsAndStates
+             .map((value) => value.trim().toLowerCase())
+             .where((value) => value.isNotEmpty),
+       );
 
   final SmartEventSource source;
   final String tierLabel;
@@ -62,7 +66,63 @@ class SmartEventRequest {
   final String countSingular;
   final String countPlural;
   final List<GroupEventCardModel> events;
+
+  /// The format/state criteria the smart event was generated from (subset of
+  /// {live, completed, standard, rapid, blitz}). The in-event filter dialog
+  /// hides any dimension already pinned here — re-offering it would conflict
+  /// with how the event was built.
+  final Set<String> formatsAndStates;
   final DateTime? savedAt;
+
+  static const _timeControlCriteria = {'standard', 'rapid', 'blitz'};
+  static const _stateCriteria = {'live', 'completed'};
+  static const _tierFloors = {'GM': 2500, 'IM': 2400, 'FM': 2300, 'CM': 2200};
+
+  bool get hasTimeControlCriterion =>
+      formatsAndStates.any(_timeControlCriteria.contains);
+
+  bool get hasStateCriterion => formatsAndStates.any(_stateCriteria.contains);
+
+  /// The same smart event re-keyed to a different level tier — what the
+  /// in-event tier dropdown produces. Naming, caption and the Elo floor
+  /// follow the new tier immediately; the included events, format criteria
+  /// and labels otherwise stay.
+  SmartEventRequest withTierSelection(String tier) {
+    final floor = _tierFloors[tier];
+    final newMinElo = floor ?? kFilterMinElo.round();
+    final eloPart = floor == null ? null : tier;
+
+    // Mirrors SmartEventCardData.fromState: single-value format labels stay,
+    // multi-value "Filtered" is dropped next to a tier part.
+    final rawFormat = _labelForFormatsAndStates(formatsAndStates);
+    final formatPart =
+        rawFormat == null || (eloPart != null && rawFormat == 'Filtered')
+            ? null
+            : rawFormat;
+    final combined = [eloPart, formatPart].whereType<String>().join(' ').trim();
+
+    final captionSegments = <String>[
+      if (floor != null) '$newMinElo+',
+      if (formatPart != null) formatPart,
+    ];
+
+    return SmartEventRequest(
+      source: source,
+      tierLabel: combined.isEmpty ? 'All' : combined,
+      titleSuffix: titleSuffix,
+      minElo: newMinElo,
+      maxElo: maxElo,
+      caption:
+          captionSegments.isEmpty
+              ? 'From your filters'
+              : 'From your ${captionSegments.join(' ')} filter',
+      countSingular: countSingular,
+      countPlural: countPlural,
+      events: events,
+      formatsAndStates: formatsAndStates,
+      savedAt: savedAt,
+    );
+  }
 
   List<String> get eventIds =>
       events.map((event) => event.id).toList(growable: false);
@@ -76,6 +136,31 @@ class SmartEventRequest {
 
   String get scopeId =>
       '${source.name}:$minElo-$maxElo:${stableEventIds.join('|')}';
+
+  /// Tier-independent scope: hiding a tournament from the About tab applies
+  /// across every tier re-keying of the same smart event.
+  String get dismissScopeId => '${source.name}:${stableEventIds.join('|')}';
+
+  /// The same request with the Elo range opened up to the full scale. The
+  /// Games / Standings tabs load through this so the tier dropdown can move
+  /// BELOW the saved floor — the selected band travels in the query's
+  /// [GameFilter] instead.
+  SmartEventRequest withNeutralEloRange() {
+    if (!hasEloRange) return this;
+    return SmartEventRequest(
+      source: source,
+      tierLabel: tierLabel,
+      titleSuffix: titleSuffix,
+      minElo: kFilterMinElo.round(),
+      maxElo: kFilterMaxElo.round(),
+      caption: caption,
+      countSingular: countSingular,
+      countPlural: countPlural,
+      events: events,
+      formatsAndStates: formatsAndStates,
+      savedAt: savedAt,
+    );
+  }
 
   String get favoriteEventId => 'smart_event:$scopeId';
 
@@ -93,6 +178,7 @@ class SmartEventRequest {
       'notificationsEnabled': false,
       'countSingular': countSingular,
       'countPlural': countPlural,
+      'formatsAndStates': (formatsAndStates.toList(growable: false)..sort()),
       'savedAt': (savedAt ?? DateTime.now()).toIso8601String(),
       'events': events
           .map(
@@ -154,6 +240,13 @@ class SmartEventRequest {
         singular: false,
       ),
       events: events,
+      formatsAndStates: _formatsAndStatesFromMetadata(
+        metadata['formatsAndStates'],
+        fallbackLabel: _normalizedTierLabel(
+          metadata['tierLabel'],
+          favorite.eventName,
+        ),
+      ),
       savedAt: _dateFromMetadata(metadata['savedAt']) ?? favorite.createdAt,
     );
   }
@@ -171,6 +264,7 @@ class SmartEventRequest {
         countSingular != other.countSingular ||
         countPlural != other.countPlural ||
         savedAt != other.savedAt ||
+        !setEquals(formatsAndStates, other.formatsAndStates) ||
         events.length != other.events.length) {
       return false;
     }
@@ -191,6 +285,7 @@ class SmartEventRequest {
     countSingular,
     countPlural,
     savedAt,
+    Object.hashAllUnordered(formatsAndStates),
     Object.hashAll(events),
   );
 }
@@ -233,8 +328,7 @@ class SmartEventCardData {
             ? null
             : rawFormat;
 
-    final combined =
-        [eloPart, formatPart].whereType<String>().join(' ').trim();
+    final combined = [eloPart, formatPart].whereType<String>().join(' ').trim();
     final tierLabel = combined.isEmpty ? 'All' : combined;
 
     final captionSegments = <String>[
@@ -258,9 +352,10 @@ class SmartEventCardData {
         minElo: minElo,
         maxElo: maxElo,
         caption: caption,
-        countSingular: 'live event',
-        countPlural: 'live events',
+        countSingular: 'event',
+        countPlural: 'events',
         events: events,
+        formatsAndStates: filter.formatsAndStates,
       ),
       eventCount: events.length,
       avgElo: avgElo,
@@ -270,23 +365,28 @@ class SmartEventCardData {
   /// Returns a friendly label for the non-ELO portion of the filter, or null
   /// when no format/state filter is applied.
   /// Multi-value combinations collapse to "Filtered".
-  static String? _labelForNonEloFilters(FilterPopupState filter) {
-    final values =
-        filter.formatsAndStates
-            .map((value) => value.trim().toLowerCase())
-            .where((value) => value.isNotEmpty)
-            .toSet();
-    if (values.isEmpty) return null;
-    if (values.length == 1) {
-      final only = values.first;
-      if (only == 'live') return 'Live';
-      if (only == 'completed') return 'Completed';
-      if (only == 'standard') return 'Classical';
-      if (only == 'rapid') return 'Rapid';
-      if (only == 'blitz') return 'Blitz';
-    }
-    return 'Filtered';
+  static String? _labelForNonEloFilters(FilterPopupState filter) =>
+      _labelForFormatsAndStates(filter.formatsAndStates);
+}
+
+/// Shared by card generation and tier re-keying so both produce identical
+/// format/state name parts.
+String? _labelForFormatsAndStates(Set<String> formatsAndStates) {
+  final values =
+      formatsAndStates
+          .map((value) => value.trim().toLowerCase())
+          .where((value) => value.isNotEmpty)
+          .toSet();
+  if (values.isEmpty) return null;
+  if (values.length == 1) {
+    final only = values.first;
+    if (only == 'live') return 'Live';
+    if (only == 'completed') return 'Completed';
+    if (only == 'standard') return 'Classical';
+    if (only == 'rapid') return 'Rapid';
+    if (only == 'blitz') return 'Blitz';
   }
+  return 'Filtered';
 }
 
 @immutable
@@ -406,167 +506,26 @@ class SmartAggregateEvent {
   );
 }
 
-/// Composes the filtered event set from the launching tab. Each child event is
-/// resolved through [forYouEventSnapshotProvider], the same snapshot path used
-/// by real event cards in For You, so smart-event Games rows stay aligned with
-/// the regular event detail selection, ordering, pinning, and live updates.
+/// Session-scoped set of tournaments the user hid from a smart event view,
+/// keyed by [SmartEventRequest.dismissScopeId].
 final smartEventDismissedEventIdsProvider = StateProvider.autoDispose
     .family<Set<String>, String>((ref, scopeId) => const <String>{});
 
+/// THE single data path for the smart event view. One server fetch per query
+/// (events narrowed to the `group_broadcasts_current` view — the same source
+/// as the home Current tab — search and filters applied server-side), then a
+/// deterministic client-side sort. No snapshot fallback, no second source:
+/// what loads is what renders, so the list can't reshuffle after first paint.
 final smartAggregateEventRepositoryProvider = FutureProvider.autoDispose
     .family<SmartAggregateEvent, SmartEventGamesQuery>((ref, query) async {
       final dismissedIds = ref.watch(
-        smartEventDismissedEventIdsProvider(query.request.scopeId),
+        smartEventDismissedEventIdsProvider(query.request.dismissScopeId),
       );
       return _loadAggregateEventFromRepository(
         ref: ref,
         query: query,
         dismissedIds: dismissedIds,
       );
-    });
-
-final smartFilteredAggregateEventProvider = Provider.autoDispose.family<
-  AsyncValue<SmartAggregateEvent>,
-  SmartEventGamesQuery
->((ref, query) {
-  final directAsync = ref.watch(smartAggregateEventRepositoryProvider(query));
-  final baseAsync = ref.watch(smartAggregateEventProvider(query.request));
-
-  return directAsync.when(
-    data: (direct) {
-      if (direct.events.isEmpty) {
-        return AsyncValue.data(direct);
-      }
-      if (direct.games.isNotEmpty) {
-        return AsyncValue.data(direct);
-      }
-      final fallback = baseAsync.valueOrNull;
-      if (fallback != null && fallback.games.isNotEmpty) {
-        return AsyncValue.data(fallback);
-      }
-      return AsyncValue.data(direct);
-    },
-    loading: () {
-      final fallback = baseAsync.valueOrNull;
-      if (fallback != null && fallback.games.isNotEmpty) {
-        return AsyncValue.data(fallback);
-      }
-      return const AsyncValue.loading();
-    },
-    error: (error, stackTrace) {
-      final fallback = baseAsync.valueOrNull;
-      if (fallback != null) {
-        return AsyncValue.data(fallback);
-      }
-      return AsyncValue.error(error, stackTrace);
-    },
-  );
-});
-
-final smartAggregateEventProvider = Provider.autoDispose
-    .family<AsyncValue<SmartAggregateEvent>, SmartEventRequest>((ref, request) {
-      if (request.events.isEmpty) {
-        return const AsyncValue.data(SmartAggregateEvent.empty);
-      }
-
-      final directAsync = ref.watch(
-        smartAggregateEventRepositoryProvider(
-          SmartEventGamesQuery(request: request),
-        ),
-      );
-      final directAggregate = directAsync.valueOrNull;
-      if (directAggregate != null && directAggregate.games.isNotEmpty) {
-        return AsyncValue.data(directAggregate);
-      }
-      if (directAggregate != null && directAggregate.events.isEmpty) {
-        return AsyncValue.data(directAggregate);
-      }
-
-      var isLoading = false;
-      Object? firstError;
-      StackTrace? firstStackTrace;
-      final snapshots = <ForYouEventGamesSnapshot>[];
-      final dismissedIds = ref.watch(
-        smartEventDismissedEventIdsProvider(request.scopeId),
-      );
-      final activeEvents = request.events
-          .where((event) => !dismissedIds.contains(event.id))
-          .toList(growable: false);
-      if (activeEvents.isEmpty) {
-        return const AsyncValue.data(SmartAggregateEvent.empty);
-      }
-
-      // The whole smart event view is scoped to *current* broadcasts. The
-      // repository path filters server-side; mirror it here so the snapshot
-      // fallback can't resurrect games from events that are no longer current.
-      final currentEventIdsAsync = ref.watch(
-        smartCurrentEventIdsProvider(
-          SmartCurrentEventIdsQuery(activeEvents.map((event) => event.id)),
-        ),
-      );
-      if (currentEventIdsAsync.hasError) {
-        if (directAggregate != null) {
-          return AsyncValue.data(directAggregate);
-        }
-        return AsyncValue.error(
-          currentEventIdsAsync.error!,
-          currentEventIdsAsync.stackTrace ?? StackTrace.current,
-        );
-      }
-      final currentEventIds = currentEventIdsAsync.valueOrNull;
-      if (currentEventIds == null) {
-        if (directAggregate != null) {
-          return AsyncValue.data(directAggregate);
-        }
-        return const AsyncValue.loading();
-      }
-      final currentEvents = activeEvents
-          .where((event) => currentEventIds.contains(event.id))
-          .toList(growable: false);
-      if (currentEvents.isEmpty) {
-        return const AsyncValue.data(SmartAggregateEvent.empty);
-      }
-
-      for (final event in currentEvents) {
-        final snapshotAsync = ref.watch(forYouEventSnapshotProvider(event.id));
-        snapshotAsync.when(
-          data: (snapshot) {
-            if (snapshot.hasGames) snapshots.add(snapshot);
-          },
-          loading: () => isLoading = true,
-          error: (error, stackTrace) {
-            firstError ??= error;
-            firstStackTrace ??= stackTrace;
-          },
-        );
-      }
-
-      final aggregate = _buildAggregateEvent(
-        request,
-        snapshots,
-        events: currentEvents,
-      );
-      if (aggregate.games.isNotEmpty) {
-        return AsyncValue.data(aggregate);
-      }
-
-      if (directAggregate != null) {
-        return AsyncValue.data(directAggregate);
-      }
-
-      if (isLoading || directAsync.isLoading) {
-        return const AsyncValue.loading();
-      }
-
-      if (firstError != null) {
-        return AsyncValue.error(firstError!, firstStackTrace!);
-      }
-
-      if (directAsync.hasError) {
-        return AsyncValue.error(directAsync.error!, directAsync.stackTrace!);
-      }
-
-      return AsyncValue.data(aggregate);
     });
 
 Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
@@ -686,6 +645,7 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
   final eventById = {for (final event in events) event.id: event};
   final gamesById = <String, GamesTourModel>{};
   final gameEventNames = <String, String>{};
+  final gameEventIds = <String, String>{};
   final eventIdsWithGames = <String>{};
 
   for (final game in games) {
@@ -709,19 +669,23 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
 
     gamesById.putIfAbsent(gameModel.gameId, () => gameModel);
     gameEventNames[gameModel.gameId] = eventById[eventId]?.title ?? eventId;
+    gameEventIds[gameModel.gameId] = eventId;
     eventIdsWithGames.add(eventId);
   }
 
+  final participatingEvents = _sortEventsByAvgElo(
+    eventIdsWithGames.isEmpty
+        ? events
+        : events
+            .where((event) => eventIdsWithGames.contains(event.id))
+            .toList(growable: false),
+    games: gamesById.values,
+    gameEventIds: gameEventIds,
+  );
   final orderedGames = _sortSmartGames(
     gamesById.values.toList(growable: false),
     pinnedIds: const <String>[],
   );
-  final participatingEvents =
-      eventIdsWithGames.isEmpty
-          ? events
-          : events
-              .where((event) => eventIdsWithGames.contains(event.id))
-              .toList(growable: false);
 
   return _createSmartAggregateEvent(
     request: request,
@@ -729,54 +693,6 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
     orderedGames: orderedGames,
     gameEventNames: gameEventNames,
     pinnedIds: const <String>[],
-  );
-}
-
-SmartAggregateEvent _buildAggregateEvent(
-  SmartEventRequest request,
-  List<ForYouEventGamesSnapshot> snapshots, {
-  List<GroupEventCardModel>? events,
-}) {
-  final activeEvents = events ?? request.events;
-  final eventById = {for (final event in activeEvents) event.id: event};
-
-  final gamesById = <String, GamesTourModel>{};
-  final gameEventNames = <String, String>{};
-  final pinnedIds = <String>[];
-  final seenPinnedIds = <String>{};
-  final eventIdsWithGames = <String>{};
-
-  for (final snapshot in snapshots) {
-    if (snapshot.hasGames) eventIdsWithGames.add(snapshot.eventId);
-    for (final pinId in snapshot.pinnedIds) {
-      if (seenPinnedIds.add(pinId)) pinnedIds.add(pinId);
-    }
-    for (final game in snapshot.visibleGames) {
-      if (!_matchesRequestEloRange(game, request)) continue;
-      gamesById.putIfAbsent(game.gameId, () => game);
-      gameEventNames[game.gameId] =
-          eventById[snapshot.eventId]?.title ?? snapshot.eventId;
-    }
-  }
-
-  final orderedGames = _sortSmartGames(
-    gamesById.values.toList(growable: false),
-    pinnedIds: pinnedIds,
-  );
-
-  final participatingEvents =
-      eventIdsWithGames.isEmpty
-          ? activeEvents
-          : activeEvents
-              .where((event) => eventIdsWithGames.contains(event.id))
-              .toList(growable: false);
-
-  return _createSmartAggregateEvent(
-    request: request,
-    participatingEvents: participatingEvents,
-    orderedGames: orderedGames,
-    gameEventNames: gameEventNames,
-    pinnedIds: pinnedIds,
   );
 }
 
@@ -826,15 +742,6 @@ SmartAggregateEvent _createSmartAggregateEvent({
   );
 }
 
-bool _matchesRequestEloRange(GamesTourModel game, SmartEventRequest request) {
-  if (!request.hasEloRange) return true;
-  return _matchesAverageEloRange(
-    game,
-    minAverageElo: request.minElo,
-    maxAverageElo: request.maxElo,
-  );
-}
-
 bool _matchesAverageEloRange(
   GamesTourModel game, {
   required int minAverageElo,
@@ -864,6 +771,48 @@ int _effectiveMaxAverageElo(SmartEventRequest request, GameFilter? filter) {
   return value;
 }
 
+/// Canonical event ordering inside a smart event: average Elo descending.
+/// About / Standings render the sorted [SmartAggregateEvent.events] list
+/// directly.
+///
+/// Sort key per event: the stored broadcast average ([GroupEventCardModel
+/// .maxAvgElo], the Ø figure shown on the event card) when present, otherwise
+/// the mean of the event's own game averages so unrated broadcast rows still
+/// land in the right place.
+List<GroupEventCardModel> _sortEventsByAvgElo(
+  List<GroupEventCardModel> events, {
+  required Iterable<GamesTourModel> games,
+  required Map<String, String> gameEventIds,
+}) {
+  if (events.length < 2) return events;
+
+  final sums = <String, int>{};
+  final counts = <String, int>{};
+  for (final game in games) {
+    final eventId = gameEventIds[game.gameId];
+    if (eventId == null) continue;
+    final avg = smartGameAverageElo(game);
+    if (avg <= 0) continue;
+    sums[eventId] = (sums[eventId] ?? 0) + avg;
+    counts[eventId] = (counts[eventId] ?? 0) + 1;
+  }
+
+  int sortElo(GroupEventCardModel event) {
+    if (event.maxAvgElo > 0) return event.maxAvgElo;
+    final count = counts[event.id];
+    if (count == null || count == 0) return 0;
+    return (sums[event.id]! / count).round();
+  }
+
+  final sorted = List<GroupEventCardModel>.from(events);
+  sorted.sort((a, b) {
+    final byElo = sortElo(b).compareTo(sortElo(a));
+    if (byElo != 0) return byElo;
+    return a.title.compareTo(b.title);
+  });
+  return sorted;
+}
+
 int smartGameAverageElo(GamesTourModel game) {
   final ratings = <int>[
     game.whitePlayer.rating,
@@ -881,6 +830,10 @@ List<GamesTourModel> sortSmartGamesForTest(
   return _sortSmartGames(games, pinnedIds: pinnedIds);
 }
 
+/// Deterministic games ordering: day (newest first) → pinned → average Elo
+/// descending, with fixed tie-breakers down to the game id. Every key is a
+/// stable property of the fetched row — deliberately NOT live status — so the
+/// list can never reshuffle while the user is looking at it.
 List<GamesTourModel> _sortSmartGames(
   List<GamesTourModel> games, {
   required List<String> pinnedIds,
@@ -892,12 +845,6 @@ List<GamesTourModel> _sortSmartGames(
     final bd = _smartGameDay(b);
     final byDay = bd.compareTo(ad);
     if (byDay != 0) return byDay;
-
-    // Within a day, live games surface above finished ones — the live tab
-    // should feel live first, strongest second.
-    final aLive = a.effectiveGameStatus.isOngoing ? 1 : 0;
-    final bLive = b.effectiveGameStatus.isOngoing ? 1 : 0;
-    if (aLive != bLive) return bLive.compareTo(aLive);
 
     final aPinned = pinned.contains(a.gameId) ? 1 : 0;
     final bPinned = pinned.contains(b.gameId) ? 1 : 0;
@@ -950,9 +897,12 @@ String _normalizedTitleSuffix(Object? value) {
 }
 
 String _normalizedCountLabel(Object? value, {required bool singular}) {
-  final fallback = singular ? 'live event' : 'live events';
+  final fallback = singular ? 'event' : 'events';
   final text = value?.toString().trim();
   if (text == null || text.isEmpty) return fallback;
+  // A smart event aggregates every event in the Current view, live or not —
+  // heal legacy saves that called the count "live events".
+  if (text == 'live event' || text == 'live events') return fallback;
   return text;
 }
 
@@ -1003,6 +953,32 @@ GroupEventCardModel? _eventFromMetadata(Map<String, dynamic> json) {
             : const <String>[],
     eventSource: eventSource,
   );
+}
+
+Set<String> _formatsAndStatesFromMetadata(
+  Object? value, {
+  required String fallbackLabel,
+}) {
+  if (value is List) {
+    return value
+        .map((entry) => entry.toString().trim().toLowerCase())
+        .where((entry) => entry.isNotEmpty)
+        .toSet();
+  }
+  // Legacy saves predate the field — recover what we can from the display
+  // label ("GM Blitz", "Live", ...). Multi-value combos collapsed to
+  // "Filtered" at save time and stay unrecoverable (empty = nothing pinned).
+  final words = fallbackLabel.toLowerCase().split(RegExp(r'\s+'));
+  return {
+    for (final word in words)
+      if (word == 'live' ||
+          word == 'completed' ||
+          word == 'rapid' ||
+          word == 'blitz')
+        word
+      else if (word == 'classical')
+        'standard',
+  };
 }
 
 int? _intFromMetadata(Object? value) {
