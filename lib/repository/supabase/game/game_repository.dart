@@ -1212,12 +1212,17 @@ class GameRepository extends BaseRepository {
   /// `player_max_rating`; [minAverageEloForPrefilter] is therefore only used as
   /// a safe lower-bound prefilter and the exact average range is checked after
   /// decoding by the provider.
+  ///
+  /// Pages through every matching row ([_tourGamesFetchPageSize] per request,
+  /// like [getGamesByTourId]) up to [limit] TOTAL rows. A single-page fetch
+  /// silently truncated broad filters to a shorter day span than narrow ones,
+  /// making "Classical" show fewer games than "Classical + GM" on older days.
   Future<List<Games>> getSmartEventGamesFromTourIds({
     required List<String> tourIds,
     GameFilter? filter,
     String? query,
     int? minAverageEloForPrefilter,
-    int limit = 700,
+    int limit = 6000,
     int offset = 0,
   }) async {
     if (tourIds.isEmpty) return <Games>[];
@@ -1228,39 +1233,59 @@ class GameRepository extends BaseRepository {
       );
       final selectCols =
           tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
-
-      dynamic dbQuery = supabase
-          .from('games')
-          .select(selectCols)
-          .inFilter('tour_id', tourIds);
-
       final trimmedQuery = query?.trim();
-      if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
-        dbQuery = dbQuery.or(
-          'name.ilike.%$trimmedQuery%,'
-          'player_white.ilike.%$trimmedQuery%,'
-          'player_black.ilike.%$trimmedQuery%,'
-          'eco.ilike.%$trimmedQuery%,'
-          'opening_name.ilike.%$trimmedQuery%',
+
+      final jsonList = <String>[];
+      var pageOffset = offset;
+      var remaining = limit;
+
+      while (remaining > 0) {
+        final pageSize =
+            remaining > _tourGamesFetchPageSize
+                ? _tourGamesFetchPageSize
+                : remaining;
+
+        dynamic dbQuery = supabase
+            .from('games')
+            .select(selectCols)
+            .inFilter('tour_id', tourIds);
+
+        if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
+          dbQuery = dbQuery.or(
+            'name.ilike.%$trimmedQuery%,'
+            'player_white.ilike.%$trimmedQuery%,'
+            'player_black.ilike.%$trimmedQuery%,'
+            'eco.ilike.%$trimmedQuery%,'
+            'opening_name.ilike.%$trimmedQuery%',
+          );
+        }
+
+        dbQuery = _applySmartEventFilterChain(
+          query: dbQuery,
+          filter: filter,
+          tcDb: tcDb,
+          minAverageEloForPrefilter: minAverageEloForPrefilter,
         );
+
+        final response = await dbQuery
+            .order('last_move_time', ascending: false, nullsFirst: false)
+            .order('game_day', ascending: false, nullsFirst: false)
+            .order('date_start', ascending: false, nullsFirst: false)
+            .order('player_max_rating', ascending: false, nullsFirst: false)
+            .range(pageOffset, pageOffset + pageSize - 1);
+
+        final responseList = response as List;
+        jsonList.addAll(responseList.map((item) => json.encode(item)));
+
+        if (!shouldFetchAnotherTourGamesPage(
+          responseList.length,
+          pageSize: pageSize,
+        )) {
+          break;
+        }
+        pageOffset += responseList.length;
+        remaining -= responseList.length;
       }
-
-      dbQuery = _applySmartEventFilterChain(
-        query: dbQuery,
-        filter: filter,
-        tcDb: tcDb,
-        minAverageEloForPrefilter: minAverageEloForPrefilter,
-      );
-
-      final response = await dbQuery
-          .order('last_move_time', ascending: false, nullsFirst: false)
-          .order('game_day', ascending: false, nullsFirst: false)
-          .order('date_start', ascending: false, nullsFirst: false)
-          .order('player_max_rating', ascending: false, nullsFirst: false)
-          .range(offset, offset + limit - 1);
-
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
 
       return compute(_decodeGamesInIsolate, jsonList);
     });

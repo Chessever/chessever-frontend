@@ -704,7 +704,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
         query: query.normalizedSearchQuery,
         minAverageEloForPrefilter:
             minAverageElo > GameFilter.defaultMinRating ? minAverageElo : null,
-        limit: 1000,
+        limit: _smartEventGamesFetchCap,
       );
 
   return _buildAggregateEventFromGameRows(
@@ -714,8 +714,18 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
     tourIdToEventId: tourIdToEventId,
     minAverageElo: minAverageElo,
     maxAverageElo: maxAverageElo,
+    truncated: games.length >= _smartEventGamesFetchCap,
   );
 }
+
+/// Hard ceiling on how many game rows one smart event aggregation may pull.
+/// The repository pages until every matching row is fetched, so a broad
+/// filter (e.g. Classical across every current broadcast) sees the same day
+/// span as a narrow one (e.g. Classical + GM) — a fixed single-page cap made
+/// the broader filter cover FEWER days than the narrower one, which read as
+/// "more games with more filters". The cap only guards against pathological
+/// aggregations; when it is hit the trailing (incomplete) day is trimmed.
+const int _smartEventGamesFetchCap = 6000;
 
 Future<List<GroupEventCardModel>> _currentSmartEvents({
   required Ref ref,
@@ -742,12 +752,11 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
   required Map<String, String> tourIdToEventId,
   required int minAverageElo,
   required int maxAverageElo,
+  bool truncated = false,
 }) {
   final eventById = {for (final event in events) event.id: event};
   final gamesById = <String, GamesTourModel>{};
-  final gameEventNames = <String, String>{};
   final gameEventIds = <String, String>{};
-  final eventIdsWithGames = <String>{};
 
   for (final game in games) {
     final eventId = tourIdToEventId[game.tourId];
@@ -769,8 +778,26 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
     }
 
     gamesById.putIfAbsent(gameModel.gameId, () => gameModel);
-    gameEventNames[gameModel.gameId] = eventById[eventId]?.title ?? eventId;
     gameEventIds[gameModel.gameId] = eventId;
+  }
+
+  var orderedGames = _sortSmartGames(
+    gamesById.values.toList(growable: false),
+    pinnedIds: const <String>[],
+  );
+  if (truncated) {
+    orderedGames = _trimTrailingPartialDay(orderedGames);
+  }
+
+  // Names and participating events derive from the games that actually
+  // render, so a trimmed trailing day can't leave a tournament listed in
+  // About with zero visible games.
+  final gameEventNames = <String, String>{};
+  final eventIdsWithGames = <String>{};
+  for (final game in orderedGames) {
+    final eventId = gameEventIds[game.gameId];
+    if (eventId == null) continue;
+    gameEventNames[game.gameId] = eventById[eventId]?.title ?? eventId;
     eventIdsWithGames.add(eventId);
   }
 
@@ -780,12 +807,8 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
         : events
             .where((event) => eventIdsWithGames.contains(event.id))
             .toList(growable: false),
-    games: gamesById.values,
+    games: orderedGames,
     gameEventIds: gameEventIds,
-  );
-  final orderedGames = _sortSmartGames(
-    gamesById.values.toList(growable: false),
-    pinnedIds: const <String>[],
   );
 
   return _createSmartAggregateEvent(
@@ -929,6 +952,30 @@ List<GamesTourModel> sortSmartGamesForTest(
   required List<String> pinnedIds,
 }) {
   return _sortSmartGames(games, pinnedIds: pinnedIds);
+}
+
+@visibleForTesting
+List<GamesTourModel> trimTrailingPartialDayForTest(
+  List<GamesTourModel> sortedGames,
+) {
+  return _trimTrailingPartialDay(sortedGames);
+}
+
+/// Drops the oldest day from a day-desc sorted games list. Used only when the
+/// fetch hit [_smartEventGamesFetchCap]: the trailing day is then almost
+/// certainly half-fetched, and rendering it would show a misleadingly small
+/// count for that day. A single-day list stays untouched — an empty list
+/// would be worse than a partial one.
+List<GamesTourModel> _trimTrailingPartialDay(List<GamesTourModel> sortedGames) {
+  if (sortedGames.isEmpty) return sortedGames;
+  final oldestDay = _smartGameDay(sortedGames.last);
+  if (_smartGameDay(sortedGames.first) == oldestDay) return sortedGames;
+  final cut =
+      sortedGames.lastIndexWhere(
+        (game) => _smartGameDay(game) != oldestDay,
+      ) +
+      1;
+  return sortedGames.sublist(0, cut);
 }
 
 /// Deterministic games ordering: day (newest first) → pinned → average Elo

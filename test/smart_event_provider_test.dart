@@ -143,6 +143,61 @@ void main() {
     });
   });
 
+  group('trimTrailingPartialDayForTest', () {
+    test('drops the oldest day when the fetch was truncated', () {
+      final games = [
+        _game(
+          id: 'today-a',
+          whiteRating: 2600,
+          blackRating: 2600,
+          lastMoveTime: DateTime(2026, 6, 10, 14),
+        ),
+        _game(
+          id: 'today-b',
+          whiteRating: 2500,
+          blackRating: 2500,
+          lastMoveTime: DateTime(2026, 6, 10, 9),
+        ),
+        _game(
+          id: 'oldest-partial',
+          whiteRating: 2700,
+          blackRating: 2700,
+          lastMoveTime: DateTime(2026, 6, 9, 18),
+        ),
+      ];
+
+      final trimmed = trimTrailingPartialDayForTest(games);
+
+      expect(trimmed.map((game) => game.gameId), ['today-a', 'today-b']);
+    });
+
+    test('keeps everything when only one day was fetched', () {
+      final games = [
+        _game(
+          id: 'a',
+          whiteRating: 2600,
+          blackRating: 2600,
+          lastMoveTime: DateTime(2026, 6, 10, 14),
+        ),
+        _game(
+          id: 'b',
+          whiteRating: 2500,
+          blackRating: 2500,
+          lastMoveTime: DateTime(2026, 6, 10, 9),
+        ),
+      ];
+
+      expect(
+        trimTrailingPartialDayForTest(games).map((game) => game.gameId),
+        ['a', 'b'],
+      );
+    });
+
+    test('returns empty list unchanged', () {
+      expect(trimTrailingPartialDayForTest(const []), isEmpty);
+    });
+  });
+
   group('SmartEventRequest favorite metadata', () {
     test('round-trips saved level games through favorite metadata', () {
       final event = _event(
