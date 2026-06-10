@@ -221,7 +221,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
     }
 
     if (!mounted) return;
-    final data = await showCreateFolderDialog(context);
+    final data = await showCreateFolderDialog(context, defaultToDatabase: true);
     if (data == null || data.name.trim().isEmpty) return;
 
     try {

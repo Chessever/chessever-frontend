@@ -22,13 +22,13 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 String _formatGameCount(int count) {
-  if (count == 0) return 'Empty folder';
+  if (count == 0) return 'Empty database';
   if (count == 1) return '1 game';
   return '${formatCompactCount(count)} games';
 }
 
 String _formatChildCount(int count) {
-  if (count == 0) return 'Empty database';
+  if (count == 0) return 'Empty folder';
   if (count == 1) return '1 item';
   return '$count items';
 }

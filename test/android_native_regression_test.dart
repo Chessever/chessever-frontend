@@ -84,6 +84,18 @@ void main() {
       expect(envAssetLines, hasLength(1));
       expect(envAssetLines.single.trimLeft().startsWith('#'), isTrue);
     });
+
+    test('Codemagic dart defines include Gamebase API key', () {
+      final source = File('CODEMAGIC_DART_DEFINES.txt').readAsStringSync();
+
+      expect(
+        source,
+        contains('--dart-define=GAMEBASE_API_KEY="\$GAMEBASE_API_KEY"'),
+        reason:
+            'Release builds must pass GAMEBASE_API_KEY because GamebaseRepository '
+            'reads it with String.fromEnvironment.',
+      );
+    });
   });
 }
 

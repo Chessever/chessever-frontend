@@ -219,7 +219,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
     if (!mounted) return;
     HapticFeedbackService.light();
-    final data = await showCreateFolderDialog(context);
+    final data = await showCreateFolderDialog(context, defaultToDatabase: true);
     if (data == null || data.name.trim().isEmpty) return;
 
     try {

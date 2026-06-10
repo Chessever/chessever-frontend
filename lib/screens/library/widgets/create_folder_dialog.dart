@@ -23,6 +23,7 @@ Future<LibraryFolderCreationData?> showCreateFolderDialog(
   BuildContext context, {
   String? initialParentId,
   bool lockToParent = false,
+  bool defaultToDatabase = false,
 }) async {
   return showAlertModal<LibraryFolderCreationData>(
     context: context,
@@ -31,6 +32,7 @@ Future<LibraryFolderCreationData?> showCreateFolderDialog(
       confirmLabel: 'Create',
       initialParentId: initialParentId,
       isLocked: lockToParent,
+      defaultToDatabase: defaultToDatabase,
     ),
   );
 }
@@ -59,6 +61,7 @@ class _FolderNameDialog extends ConsumerStatefulWidget {
     this.initialParentId,
     this.isRename = false,
     this.isLocked = false,
+    this.defaultToDatabase = false,
   });
 
   final String title;
@@ -67,6 +70,7 @@ class _FolderNameDialog extends ConsumerStatefulWidget {
   final String? initialParentId;
   final bool isRename;
   final bool isLocked;
+  final bool defaultToDatabase;
 
   @override
   ConsumerState<_FolderNameDialog> createState() => _FolderNameDialogState();
@@ -76,7 +80,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   late TextEditingController _controller;
   late FocusNode _focusNode;
   String? _selectedParentId;
-  bool _isDatabase = true;
+  bool _isDatabase = false;
 
   @override
   void initState() {
@@ -84,7 +88,12 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     _controller = TextEditingController(text: widget.initialValue ?? '');
     _focusNode = FocusNode();
     _selectedParentId = widget.initialParentId;
-    _isDatabase = true;
+    // Inside a folder only databases are allowed; game-save flows want a
+    // database destination. Top-level '+' defaults to Folder.
+    _isDatabase =
+        widget.isLocked ||
+        widget.initialParentId != null ||
+        widget.defaultToDatabase;
 
     // Auto-focus the text field
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -233,22 +242,20 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         children: [
           Expanded(
             child: _TypeButton(
-              label: 'Database',
-              isSelected: _isDatabase,
+              label: 'Folder',
+              isSelected: !_isDatabase,
               onTap: () {
-                setState(() => _isDatabase = true);
+                setState(() => _isDatabase = false);
                 HapticFeedbackService.light();
               },
             ),
           ),
           Expanded(
             child: _TypeButton(
-              label: 'Folder',
-              isSelected: !_isDatabase,
+              label: 'Database',
+              isSelected: _isDatabase,
               onTap: () {
-                setState(() {
-                  _isDatabase = false;
-                });
+                setState(() => _isDatabase = true);
                 HapticFeedbackService.light();
               },
             ),
