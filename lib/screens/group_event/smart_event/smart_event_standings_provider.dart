@@ -1,10 +1,10 @@
+import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/supabase.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -39,13 +39,18 @@ final smartEventStandingsProvider = FutureProvider.autoDispose
       );
       if (tours.isEmpty) return const <PlayerStandingModel>[];
 
-      // Watch only the standings-relevant slice of live games so move/clock
-      // ticks don't recompute standings, but results and new games do.
+      // Read games per tour from local cache (with one-shot network fallback)
+      // instead of subscribing to gamesTourProvider. The standings tab does
+      // not need every included event's 10s polling timer running on top of
+      // the regular event view's own polling — that path was producing log
+      // spam and post-dispose state mutations when the smart event surface
+      // unmounted. Standings recompute on screen rebuild and on explicit
+      // pull-to-refresh of the smart aggregate, which is sufficient for the
+      // results / new-game cadence the standings table actually reflects.
+      final storage = ref.read(gamesLocalStorage);
       final allGames = <GamesTourModel>[];
       for (final tour in tours) {
-        ref.watch(gamesTourProvider(tour.id).select(standingsGamesSignature));
-        final games = ref.read(gamesTourProvider(tour.id)).valueOrNull;
-        if (games == null || games.isEmpty) continue;
+        final games = await storage.getGames(tour.id);
         for (final game in games) {
           try {
             allGames.add(GamesTourModel.fromGame(game));
