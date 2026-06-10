@@ -13,12 +13,14 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
@@ -201,12 +203,46 @@ class _AppBar extends ConsumerWidget {
   }
 }
 
-/// Dropdown that swaps the active level filter (GM / IM / FM / CM / All)
-/// without leaving the screen — same surface, new aggregation.
-class _TitleSelector extends StatelessWidget {
+/// Stadium-chip dropdown that swaps the active level filter
+/// (GM / IM / FM / CM / All) without leaving the screen. Visual language
+/// matches the regular event view's [CategoryDropdown] — shimmer-bordered
+/// chip when closed, kPrimary tint when open, scale + fade overlay panel.
+class _TitleSelector extends StatefulWidget {
   const _TitleSelector({required this.request});
 
   final SmartEventRequest request;
+
+  @override
+  State<_TitleSelector> createState() => _TitleSelectorState();
+}
+
+class _TitleSelectorState extends State<_TitleSelector>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  );
+  late final Animation<double> _animation = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeInCubic,
+  );
+  late final AnimationController _shimmerController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3000),
+  )..repeat();
+
+  OverlayEntry? _overlay;
+  bool _isOpen = false;
+
+  @override
+  void dispose() {
+    _overlay?.remove();
+    _overlay = null;
+    _shimmerController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
 
   List<SmartEventRequest> _options() {
     const tiers = <(String, int)>[
@@ -218,7 +254,7 @@ class _TitleSelector extends StatelessWidget {
     final options = tiers
         .map(
           (tier) => SmartEventRequest(
-            source: request.source,
+            source: widget.request.source,
             tierLabel: tier.$1,
             titleSuffix: 'Games',
             minElo: tier.$2,
@@ -226,13 +262,13 @@ class _TitleSelector extends StatelessWidget {
             caption: 'From your ${tier.$2}+ filter',
             countSingular: 'live event',
             countPlural: 'live events',
-            events: request.events,
+            events: widget.request.events,
           ),
         )
         .toList(growable: true);
     options.add(
       SmartEventRequest(
-        source: request.source,
+        source: widget.request.source,
         tierLabel: 'All',
         titleSuffix: 'Games',
         minElo: kFilterMinElo.round(),
@@ -240,72 +276,316 @@ class _TitleSelector extends StatelessWidget {
         caption: 'From your filters',
         countSingular: 'live event',
         countPlural: 'live events',
-        events: request.events,
+        events: widget.request.events,
       ),
     );
     return options;
   }
 
+  void _open() {
+    if (_isOpen) return;
+    HapticFeedbackService.selection();
+    setState(() => _isOpen = true);
+    _shimmerController.stop();
+    _controller.forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final overlayState = Overlay.of(context);
+      final renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox == null) return;
+      final triggerSize = renderBox.size;
+      final triggerOffset = renderBox.localToGlobal(Offset.zero);
+      final screenSize = MediaQuery.of(context).size;
+
+      _overlay = OverlayEntry(
+        builder: (_) => _TierOverlay(
+          triggerSize: triggerSize,
+          triggerOffset: triggerOffset,
+          screenWidth: screenSize.width,
+          animation: _animation,
+          options: _options(),
+          currentTierLabel: widget.request.tierLabel,
+          onDismiss: _close,
+          onSelect: _onSelect,
+        ),
+      );
+      overlayState.insert(_overlay!);
+    });
+  }
+
+  void _close() {
+    if (!_isOpen) return;
+    _controller.reverse().then((_) {
+      if (!mounted) return;
+      _overlay?.remove();
+      _overlay = null;
+      if (mounted) {
+        setState(() => _isOpen = false);
+        _shimmerController.repeat();
+      }
+    });
+  }
+
+  void _onSelect(SmartEventRequest next) {
+    HapticFeedbackService.selection();
+    if (next.scopeId == widget.request.scopeId &&
+        next.displayName == widget.request.displayName) {
+      _close();
+      return;
+    }
+    _controller.reverse().then((_) {
+      if (!mounted) return;
+      _overlay?.remove();
+      _overlay = null;
+      if (mounted) setState(() => _isOpen = false);
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => SmartEventScreen(request: next),
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final options = _options();
-    return PopupMenuButton<SmartEventRequest>(
-      tooltip: 'Change games level',
-      color: context.colors.surface,
-      initialValue: options.firstWhere(
-        (option) => option.tierLabel == request.tierLabel,
-        orElse: () => request,
-      ),
-      onSelected: (next) {
-        if (next.scopeId == request.scopeId &&
-            next.displayName == request.displayName) {
-          return;
-        }
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => SmartEventScreen(request: next),
+    return GestureDetector(
+      onTap: () => _isOpen ? _close() : _open(),
+      child: AnimatedBuilder(
+        animation: _shimmerController,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: _isOpen
+                ? null
+                : FluidShimmerPainter(
+                    progress: _shimmerController.value,
+                    shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                    borderRadius: 14.br,
+                  ),
+            child: child,
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14.br),
+            color: _isOpen
+                ? kPrimaryColor.withValues(alpha: 0.15)
+                : context.colors.textPrimary.withValues(alpha: 0.06),
+            border: Border.all(
+              color: _isOpen
+                  ? kPrimaryColor.withValues(alpha: 0.4)
+                  : context.colors.textPrimary.withValues(alpha: 0.12),
+              width: 1,
+            ),
           ),
-        );
-      },
-      itemBuilder:
-          (context) => options
-              .map(
-                (option) => PopupMenuItem<SmartEventRequest>(
-                  value: option,
-                  child: Text(option.displayName),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  widget.request.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: _isOpen
+                        ? kPrimaryColor
+                        : context.colors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
                 ),
-              )
-              .toList(growable: false),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(
-            color: context.colors.textPrimary.withValues(alpha: 0.12),
+              ),
+              SizedBox(width: 6.sp),
+              AnimatedRotation(
+                turns: _isOpen ? 0.5 : 0,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18.ic,
+                  color: _isOpen
+                      ? kPrimaryColor
+                      : context.colors.textPrimary.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                request.displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
+
+/// Floating panel anchored under [_TitleSelector]'s chip. Scale + fade in
+/// from the top, surface bg, kPrimary check mark on the active tier.
+class _TierOverlay extends StatelessWidget {
+  const _TierOverlay({
+    required this.triggerSize,
+    required this.triggerOffset,
+    required this.screenWidth,
+    required this.animation,
+    required this.options,
+    required this.currentTierLabel,
+    required this.onDismiss,
+    required this.onSelect,
+  });
+
+  final Size triggerSize;
+  final Offset triggerOffset;
+  final double screenWidth;
+  final Animation<double> animation;
+  final List<SmartEventRequest> options;
+  final String currentTierLabel;
+  final VoidCallback onDismiss;
+  final ValueChanged<SmartEventRequest> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final panelWidth = (screenWidth - 32.w).clamp(220.0, 320.w);
+    final leftOffset = (screenWidth - panelWidth) / 2;
+    final topOffset = triggerOffset.dy + triggerSize.height + 8.sp;
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: onDismiss,
+          ),
+        ),
+        Positioned(
+          left: leftOffset,
+          top: topOffset,
+          child: Material(
+            type: MaterialType.transparency,
+            child: AnimatedBuilder(
+              animation: animation,
+              builder: (context, child) {
+                final progress = animation.value.clamp(0.0, 1.0);
+                return Transform.scale(
+                  scale: 0.94 + (progress * 0.06),
+                  alignment: Alignment.topCenter,
+                  child: Opacity(opacity: progress, child: child),
+                );
+              },
+              child: GestureDetector(
+                onTap: () {},
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: panelWidth,
+                  decoration: BoxDecoration(
+                    color: context.colors.surface,
+                    borderRadius: BorderRadius.circular(16.br),
+                    border: Border.all(
+                      color: context.colors.textPrimary.withValues(alpha: 0.08),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        spreadRadius: -6,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16.br),
+                    child: ListView(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.symmetric(vertical: 6.sp),
+                      children: [
+                        for (var i = 0; i < options.length; i++)
+                          _TierOptionRow(
+                            index: i,
+                            animation: animation,
+                            option: options[i],
+                            isSelected:
+                                options[i].tierLabel == currentTierLabel,
+                            onTap: () => onSelect(options[i]),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
-            SizedBox(width: 6.w),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 18.ic,
-              color: context.colors.textPrimary,
-            ),
-          ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TierOptionRow extends StatelessWidget {
+  const _TierOptionRow({
+    required this.index,
+    required this.animation,
+    required this.option,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final int index;
+  final Animation<double> animation;
+  final SmartEventRequest option;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final stagger = (index * 0.06).clamp(0.0, 0.4);
+    final itemAnimation = CurvedAnimation(
+      parent: animation,
+      curve: Interval(
+        stagger,
+        (stagger + 0.5).clamp(0.0, 1.0),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: itemAnimation,
+      builder: (context, child) {
+        final v = itemAnimation.value.clamp(0.0, 1.0);
+        return Transform.translate(
+          offset: Offset(0, 10 * (1 - v)),
+          child: Opacity(opacity: v, child: child),
+        );
+      },
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+          color: isSelected
+              ? kPrimaryColor.withValues(alpha: 0.10)
+              : Colors.transparent,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  option.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: isSelected
+                        ? kPrimaryColor
+                        : context.colors.textPrimary,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                Icon(
+                  Icons.check_rounded,
+                  size: 18.ic,
+                  color: kPrimaryColor,
+                ),
+            ],
+          ),
         ),
       ),
     );
