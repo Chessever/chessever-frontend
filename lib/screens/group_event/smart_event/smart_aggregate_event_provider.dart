@@ -239,8 +239,8 @@ class SmartEventCardData {
             filter.hasEloFilter
                 ? 'From your $minElo+ filter'
                 : 'From your filters',
-        countSingular: 'event',
-        countPlural: 'events',
+        countSingular: 'live event',
+        countPlural: 'live events',
         events: events,
       ),
       eventCount: events.length,
@@ -248,8 +248,21 @@ class SmartEventCardData {
     );
   }
 
-  static String _labelForNonEloFilters(FilterPopupState _) {
-    return 'All';
+  static String _labelForNonEloFilters(FilterPopupState filter) {
+    final values =
+        filter.formatsAndStates
+            .map((value) => value.trim().toLowerCase())
+            .where((value) => value.isNotEmpty)
+            .toSet();
+    if (values.length == 1) {
+      final only = values.first;
+      if (only == 'live') return 'Live';
+      if (only == 'completed') return 'Completed';
+      if (only == 'standard') return 'Standard';
+      if (only == 'rapid') return 'Rapid';
+      if (only == 'blitz') return 'Blitz';
+    }
+    return 'Filtered';
   }
 }
 
@@ -858,15 +871,6 @@ String _normalizedTierLabel(Object? value, String fallbackName) {
       text == null || text.isEmpty
           ? _tierLabelFromDisplayName(fallbackName)
           : text;
-  const oldNonLevelLabels = {
-    'Live',
-    'Completed',
-    'Standard',
-    'Rapid',
-    'Blitz',
-    'Filtered',
-  };
-  if (oldNonLevelLabels.contains(label)) return 'All';
   return label.isEmpty ? 'All' : label;
 }
 
@@ -886,14 +890,9 @@ String _normalizedTitleSuffix(Object? value) {
 }
 
 String _normalizedCountLabel(Object? value, {required bool singular}) {
-  final fallback = singular ? 'event' : 'events';
+  final fallback = singular ? 'live event' : 'live events';
   final text = value?.toString().trim();
-  if (text == null ||
-      text.isEmpty ||
-      text.startsWith('live ') ||
-      text.startsWith('filtered ')) {
-    return fallback;
-  }
+  if (text == null || text.isEmpty) return fallback;
   return text;
 }
 

@@ -184,7 +184,7 @@ void main() {
       expect(restored.countPlural, 'events');
     });
 
-    test('normalizes legacy live games metadata to all games language', () {
+    test('preserves legacy live games metadata verbatim on restore', () {
       final event = _event(
         id: 'event-a',
         start: DateTime.utc(2026, 6, 1),
@@ -199,10 +199,10 @@ void main() {
           'type': 'smart_event',
           'source': 'forYou',
           'tierLabel': 'Live',
-          'titleSuffix': 'Live Games',
+          'titleSuffix': 'Games',
           'minElo': 0,
           'maxElo': 3200,
-          'caption': 'Saved smart event',
+          'caption': 'From your filters',
           'countSingular': 'live event',
           'countPlural': 'live events',
           'events': [_favoriteEventMetadataRow(event)],
@@ -213,10 +213,10 @@ void main() {
 
       final restored = SmartEventRequest.fromFavoriteEvent(favorite);
 
-      expect(restored.displayName, 'All Games');
+      expect(restored.displayName, 'Live Games');
       expect(restored.caption, 'From your filters');
-      expect(restored.countSingular, 'event');
-      expect(restored.countPlural, 'events');
+      expect(restored.countSingular, 'live event');
+      expect(restored.countPlural, 'live events');
     });
 
     test(

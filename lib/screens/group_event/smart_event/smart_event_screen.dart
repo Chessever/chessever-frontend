@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -155,19 +156,7 @@ class _AppBar extends ConsumerWidget {
             ),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          Expanded(
-            child: Center(
-              child: Text(
-                request.displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
+          Expanded(child: Center(child: _TitleSelector(request: request))),
           IconButton(
             tooltip:
                 isSaved
@@ -207,6 +196,117 @@ class _AppBar extends ConsumerWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Dropdown that swaps the active level filter (GM / IM / FM / CM / All)
+/// without leaving the screen — same surface, new aggregation.
+class _TitleSelector extends StatelessWidget {
+  const _TitleSelector({required this.request});
+
+  final SmartEventRequest request;
+
+  List<SmartEventRequest> _options() {
+    const tiers = <(String, int)>[
+      ('GM', 2500),
+      ('IM', 2400),
+      ('FM', 2300),
+      ('CM', 2200),
+    ];
+    final options = tiers
+        .map(
+          (tier) => SmartEventRequest(
+            source: request.source,
+            tierLabel: tier.$1,
+            titleSuffix: 'Games',
+            minElo: tier.$2,
+            maxElo: kFilterMaxElo.round(),
+            caption: 'From your ${tier.$2}+ filter',
+            countSingular: 'live event',
+            countPlural: 'live events',
+            events: request.events,
+          ),
+        )
+        .toList(growable: true);
+    options.add(
+      SmartEventRequest(
+        source: request.source,
+        tierLabel: 'All',
+        titleSuffix: 'Games',
+        minElo: kFilterMinElo.round(),
+        maxElo: kFilterMaxElo.round(),
+        caption: 'From your filters',
+        countSingular: 'live event',
+        countPlural: 'live events',
+        events: request.events,
+      ),
+    );
+    return options;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final options = _options();
+    return PopupMenuButton<SmartEventRequest>(
+      tooltip: 'Change games level',
+      color: context.colors.surface,
+      initialValue: options.firstWhere(
+        (option) => option.tierLabel == request.tierLabel,
+        orElse: () => request,
+      ),
+      onSelected: (next) {
+        if (next.scopeId == request.scopeId &&
+            next.displayName == request.displayName) {
+          return;
+        }
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => SmartEventScreen(request: next),
+          ),
+        );
+      },
+      itemBuilder:
+          (context) => options
+              .map(
+                (option) => PopupMenuItem<SmartEventRequest>(
+                  value: option,
+                  child: Text(option.displayName),
+                ),
+              )
+              .toList(growable: false),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                request.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            SizedBox(width: 6.w),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18.ic,
+              color: context.colors.textPrimary,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -267,7 +367,7 @@ class _EmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.event_busy_outlined,
+              Icons.sports_esports_outlined,
               size: 40.sp,
               color: context.colors.textPrimaryMuted,
             ),
@@ -956,22 +1056,52 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
       );
     }
 
-    return Dismissible(
-      key: ValueKey('smart_about_dismiss_${scopeId}_${event.id}'),
-      direction: DismissDirection.endToStart,
-      dismissThresholds: const {DismissDirection.endToStart: 0.35},
-      secondaryBackground: const _IncludedEventDismissBackground(),
-      onDismissed: (_) => dismiss(),
-      child: Semantics(
-        customSemanticsActions: {
-          const CustomSemanticsAction(label: 'Hide from this view'): dismiss,
-        },
-        child: EventCard(
-          tourEventCardModel: event,
-          forceCompactLayout: true,
-          heroTagSuffix: 'smart_about_$scopeId',
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Dismissible(
+          key: ValueKey('smart_about_dismiss_${scopeId}_${event.id}'),
+          direction: DismissDirection.endToStart,
+          dismissThresholds: const {DismissDirection.endToStart: 0.35},
+          secondaryBackground: const _IncludedEventDismissBackground(),
+          onDismissed: (_) => dismiss(),
+          child: Semantics(
+            customSemanticsActions: {
+              const CustomSemanticsAction(label: 'Hide from this view'): dismiss,
+            },
+            child: EventCard(
+              tourEventCardModel: event,
+              forceCompactLayout: true,
+              heroTagSuffix: 'smart_about_$scopeId',
+            ),
+          ),
         ),
-      ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: Material(
+            color: context.colors.surface,
+            shape: const CircleBorder(),
+            elevation: 2,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: dismiss,
+              child: Tooltip(
+                message: 'Hide from this view',
+                child: SizedBox(
+                  width: 28.sp,
+                  height: 28.sp,
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 17.sp,
+                    color: kRedColor,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

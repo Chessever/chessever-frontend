@@ -5,9 +5,22 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 Color smartEventAccentColor(String stableKey) {
-  return kPrimaryColor;
+  const palette = <Color>[
+    kPrimaryColor,
+    Color(0xFF38BDF8),
+    Color(0xFFA3E635),
+    Color(0xFFF97316),
+    Color(0xFFF472B6),
+    Color(0xFF22C55E),
+  ];
+  final hash = stableKey.codeUnits.fold<int>(
+    0,
+    (value, unit) => (value * 31 + unit) & 0x7fffffff,
+  );
+  return palette[hash % palette.length];
 }
 
 /// Generated level-games card.
@@ -22,8 +35,8 @@ class SmartEventCard extends StatelessWidget {
     required this.avgElo,
     this.titleSuffix = 'Games',
     this.caption,
-    this.countSingular = 'event',
-    this.countPlural = 'events',
+    this.countSingular = 'live event',
+    this.countPlural = 'live events',
     this.accentColor = kPrimaryColor,
     this.onTap,
     super.key,
@@ -58,20 +71,45 @@ class SmartEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final card = _buildCard(context);
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final card = _buildCard(context, reduceMotion);
 
-    if (onTap == null) return card;
+    if (onTap == null) return _entrance(card, reduceMotion);
 
-    return TappableScale(
-      onTap: () {
-        HapticFeedbackService.cardTap();
-        onTap!();
-      },
-      child: card,
+    return _entrance(
+      TappableScale(
+        onTap: () {
+          HapticFeedbackService.cardTap();
+          onTap!();
+        },
+        child: card,
+      ),
+      reduceMotion,
     );
   }
 
-  Widget _buildCard(BuildContext context) {
+  // One-shot reveal so the card lands gracefully when the filter is applied.
+  Widget _entrance(Widget child, bool reduceMotion) {
+    if (reduceMotion) return child;
+    return child
+        .animate()
+        .fadeIn(duration: 320.ms, curve: Curves.easeOutQuart)
+        .slideY(
+          begin: -0.06,
+          end: 0,
+          duration: 360.ms,
+          curve: Curves.easeOutQuart,
+        )
+        .scaleXY(
+          begin: 0.985,
+          end: 1,
+          duration: 360.ms,
+          curve: Curves.easeOutQuart,
+        );
+  }
+
+  Widget _buildCard(BuildContext context, bool reduceMotion) {
     final imageW = _imageWidth(context);
     final imageH = imageW * 4 / 5;
 
@@ -79,73 +117,87 @@ class SmartEventCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
-        border:
-            context.isLightTheme
-                ? Border.all(
-                  color: context.colors.divider.withValues(alpha: 0.4),
-                )
-                : Border.all(
-                  color: context.colors.divider.withValues(alpha: 0.4),
-                ),
-        boxShadow:
-            context.isLightTheme
-                ? [
-                  BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 8,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-                : null,
+        border: Border.all(
+          color: accentColor.withValues(
+            alpha: context.isLightTheme ? 0.45 : 0.35,
+          ),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.18),
+            blurRadius: 16,
+            spreadRadius: -4,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: EdgeInsets.all(6.sp),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: imageH),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _LevelEmblem(
-                tierLabel: tierLabel,
-                width: imageW,
-                height: imageH,
+      child: Stack(
+        children: [
+          // Faceted "convergence" background — the rectangle split into pieces.
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _FacetBackgroundPainter(
+                isLight: context.isLightTheme,
                 accentColor: accentColor,
               ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _TitleRow(tierLabel: tierLabel, titleSuffix: titleSuffix),
-                    SizedBox(height: 4.h),
-                    _MetaLine(
-                      liveCount: liveCount,
-                      avgElo: avgElo,
-                      countSingular: countSingular,
-                      countPlural: countPlural,
-                    ),
-                    SizedBox(height: 3.h),
-                    _FilterCaption(
-                      minElo: minElo,
-                      caption: caption,
-                      accentColor: accentColor,
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 2.w),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: context.colors.textPrimaryMuted,
-                size: 16.sp,
-                weight: 700,
-              ),
-              SizedBox(width: 2.w),
-            ],
+            ),
           ),
-        ),
+          Padding(
+            padding: EdgeInsets.all(6.sp),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: imageH),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _LevelEmblem(
+                    tierLabel: tierLabel,
+                    width: imageW,
+                    height: imageH,
+                    accentColor: accentColor,
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _TitleRow(
+                          tierLabel: tierLabel,
+                          titleSuffix: titleSuffix,
+                          accentColor: accentColor,
+                        ),
+                        SizedBox(height: 4.h),
+                        _MetaLine(
+                          liveCount: liveCount,
+                          avgElo: avgElo,
+                          countSingular: countSingular,
+                          countPlural: countPlural,
+                        ),
+                        SizedBox(height: 3.h),
+                        _FilterCaption(
+                          minElo: minElo,
+                          caption: caption,
+                          accentColor: accentColor,
+                          reduceMotion: reduceMotion,
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 2.w),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: accentColor.withValues(alpha: 0.85),
+                    size: 16.sp,
+                    weight: 700,
+                  ),
+                  SizedBox(width: 2.w),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -153,10 +205,15 @@ class SmartEventCard extends StatelessWidget {
 
 /// Headline row: level name.
 class _TitleRow extends StatelessWidget {
-  const _TitleRow({required this.tierLabel, required this.titleSuffix});
+  const _TitleRow({
+    required this.tierLabel,
+    required this.titleSuffix,
+    required this.accentColor,
+  });
 
   final String tierLabel;
   final String titleSuffix;
+  final Color accentColor;
 
   @override
   Widget build(BuildContext context) {
@@ -175,6 +232,7 @@ class _TitleRow extends StatelessWidget {
             ),
           ),
         ),
+        SizedBox(width: 6.w),
       ],
     );
   }
@@ -230,17 +288,20 @@ class _MetaLine extends StatelessWidget {
   }
 }
 
-/// Third line: compact filter context for why this generated card exists.
+/// Third line: a pulsing live dot + the filter-bound caption, so it is obvious
+/// this card only exists because a filter is applied.
 class _FilterCaption extends StatelessWidget {
   const _FilterCaption({
     required this.minElo,
     required this.caption,
     required this.accentColor,
+    required this.reduceMotion,
   });
 
   final int minElo;
   final String? caption;
   final Color accentColor;
+  final bool reduceMotion;
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +313,12 @@ class _FilterCaption extends StatelessWidget {
 
     return Row(
       children: [
-        dot,
+        reduceMotion
+            ? dot
+            : dot
+                .animate(onPlay: (c) => c.repeat(reverse: true))
+                .fadeIn(duration: 700.ms, curve: Curves.easeOut)
+                .scaleXY(begin: 0.7, end: 1.15, duration: 700.ms),
         SizedBox(width: 5.w),
         Flexible(
           child: Text(
@@ -271,7 +337,8 @@ class _FilterCaption extends StatelessWidget {
   }
 }
 
-/// The left tile: a restrained level emblem with large, readable letters.
+/// The left tile: a stylized "board of boards" — a diamond mosaic tinted with
+/// the level's accent color, atop a deep base for premium contrast.
 class _LevelEmblem extends StatelessWidget {
   const _LevelEmblem({
     required this.tierLabel,
@@ -291,42 +358,146 @@ class _LevelEmblem extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: context.colors.surfaceRecessed,
+        color: const Color(0xFF12202B),
         borderRadius: BorderRadius.circular(6.br),
-        border: Border.all(
-          color: context.colors.divider.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: accentColor.withValues(alpha: 0.45)),
       ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(
-              width: 3.w,
-              decoration: BoxDecoration(
-                color: accentColor,
-                borderRadius: BorderRadius.horizontal(
-                  left: Radius.circular(6.br),
-                ),
-              ),
+      child: CustomPaint(
+        painter: _MosaicTilePainter(accentColor: accentColor),
+        child: Center(
+          child: Text(
+            tierLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textMdBold.copyWith(
+              color: Colors.white,
+              fontSize: 28.sp,
+              letterSpacing: 0.8,
             ),
           ),
-          Center(
-            child: Text(
-              tierLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textMdBold.copyWith(
-                color: context.colors.textPrimary,
-                fontSize: 28.sp,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
+}
+
+/// Paints the card's fractured "convergence" background: slanted facets tinted
+/// with the accent color at stepped alphas, separated by hairline seams.
+class _FacetBackgroundPainter extends CustomPainter {
+  _FacetBackgroundPainter({required this.isLight, required this.accentColor});
+
+  final bool isLight;
+  final Color accentColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    final cuts = <List<double>>[
+      [0.0, 0.0, 0.30, 0.14, 0.05],
+      [0.30, 0.14, 0.55, 0.40, 0.085],
+      [0.55, 0.40, 0.80, 0.66, 0.055],
+      [0.80, 0.66, 1.0, 1.0, 0.11],
+    ];
+
+    for (final c in cuts) {
+      final path =
+          Path()
+            ..moveTo(c[0] * w, 0)
+            ..lineTo(c[2] * w, 0)
+            ..lineTo(c[3] * w, h)
+            ..lineTo(c[1] * w, h)
+            ..close();
+      canvas.drawPath(
+        path,
+        Paint()..color = accentColor.withValues(alpha: c[4]),
+      );
+    }
+
+    final corner =
+        Path()
+          ..moveTo(0.62 * w, 0)
+          ..lineTo(w, 0)
+          ..lineTo(w, 0.45 * h)
+          ..close();
+    canvas.drawPath(
+      corner,
+      Paint()..color = accentColor.withValues(alpha: 0.10),
+    );
+
+    final seam =
+        Paint()
+          ..color = accentColor.withValues(alpha: isLight ? 0.16 : 0.12)
+          ..strokeWidth = 1
+          ..style = PaintingStyle.stroke;
+    for (final c in cuts.sublist(1)) {
+      canvas.drawLine(Offset(c[0] * w, 0), Offset(c[1] * w, h), seam);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FacetBackgroundPainter oldDelegate) =>
+      oldDelegate.isLight != isLight || oldDelegate.accentColor != accentColor;
+}
+
+/// Paints the left emblem tile: a dark base broken into a diamond mosaic of
+/// accent facets — a stylized, abstracted "board of boards".
+class _MosaicTilePainter extends CustomPainter {
+  const _MosaicTilePainter({required this.accentColor});
+
+  final Color accentColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFF12202B),
+    );
+
+    const cols = 4;
+    const rows = 3;
+    final cw = w / cols;
+    final ch = h / rows;
+    for (var r = 0; r < rows; r++) {
+      for (var col = 0; col < cols; col++) {
+        final cx = (col + 0.5) * cw;
+        final cy = (r + 0.5) * ch;
+        final alpha =
+            ((col + r) % 3 == 0)
+                ? 0.30
+                : ((col + r) % 3 == 1)
+                ? 0.16
+                : 0.07;
+        final diamond =
+            Path()
+              ..moveTo(cx, cy - ch * 0.5)
+              ..lineTo(cx + cw * 0.5, cy)
+              ..lineTo(cx, cy + ch * 0.5)
+              ..lineTo(cx - cw * 0.5, cy)
+              ..close();
+        canvas.drawPath(
+          diamond,
+          Paint()..color = accentColor.withValues(alpha: alpha),
+        );
+      }
+    }
+
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white.withValues(alpha: 0.10), Colors.transparent],
+        ).createShader(Offset.zero & size),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _MosaicTilePainter oldDelegate) =>
+      oldDelegate.accentColor != accentColor;
 }
