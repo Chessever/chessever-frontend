@@ -6,7 +6,6 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_standings_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -48,10 +47,21 @@ class SmartEventScreen extends ConsumerStatefulWidget {
 
 class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   static const _tabs = ['About', 'Games', 'Standings'];
+  static const _validTiers = <String>{'GM', 'IM', 'FM', 'CM', 'All'};
 
   // Default to Games because this surface is opened from a generated games card.
   int _index = 1;
   late final PageController _page = PageController(initialPage: _index);
+
+  // Local tier filter: starts from the saved request's tier (first word so
+  // "GM Rapid" defaults the filter to GM) and is mutated by the app bar
+  // dropdown without leaving the screen.
+  late String _tier = _initialTier(widget.request);
+
+  static String _initialTier(SmartEventRequest request) {
+    final first = request.tierLabel.split(' ').first;
+    return _validTiers.contains(first) ? first : 'All';
+  }
 
   @override
   void dispose() {
@@ -69,6 +79,11 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     );
   }
 
+  void _setTier(String tier) {
+    if (_tier == tier) return;
+    setState(() => _tier = tier);
+  }
+
   @override
   Widget build(BuildContext context) {
     final horizontalPadding =
@@ -76,36 +91,97 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
 
     return _SmartEventRequestScope(
       request: widget.request,
-      child: Scaffold(
-        backgroundColor: context.colors.background,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _AppBar(request: widget.request),
-              SizedBox(height: 8.h),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: SegmentedSwitcher(
-                  options: _tabs,
-                  initialSelection: _index,
-                  currentSelection: _index,
-                  onSelectionChanged: _select,
+      child: _SmartTierFilterScope(
+        tier: _tier,
+        onTierChanged: _setTier,
+        tabIndex: _index,
+        child: Scaffold(
+          backgroundColor: context.colors.background,
+          body: SafeArea(
+            child: Column(
+              children: [
+                _AppBar(request: widget.request),
+                SizedBox(height: 8.h),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: SegmentedSwitcher(
+                    options: _tabs,
+                    initialSelection: _index,
+                    currentSelection: _index,
+                    onSelectionChanged: _select,
+                  ),
                 ),
-              ),
-              SizedBox(height: 8.h),
-              Expanded(
-                child: PageView(
-                  controller: _page,
-                  onPageChanged: (i) => setState(() => _index = i),
-                  children: const [_AboutTab(), _GamesTab(), _StandingsTab()],
+                SizedBox(height: 8.h),
+                Expanded(
+                  child: PageView(
+                    controller: _page,
+                    onPageChanged: (i) => setState(() => _index = i),
+                    children: const [_AboutTab(), _GamesTab(), _StandingsTab()],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Carries the screen's tier filter + the active tab index down to the app
+/// bar and tab content. The dropdown writes through [onTierChanged]; the
+/// Games/Standings tabs read [tier] to filter what they render. The app bar
+/// hides the dropdown when [tabIndex] is 0 (About) since the About tab
+/// summarizes the saved aggregate, not a filtered view.
+class _SmartTierFilterScope extends InheritedWidget {
+  const _SmartTierFilterScope({
+    required this.tier,
+    required this.onTierChanged,
+    required this.tabIndex,
+    required super.child,
+  });
+
+  final String tier;
+  final ValueChanged<String> onTierChanged;
+  final int tabIndex;
+
+  static _SmartTierFilterScope of(BuildContext context) {
+    final scope =
+        context.dependOnInheritedWidgetOfExactType<_SmartTierFilterScope>();
+    assert(scope != null, '_SmartTierFilterScope was not found');
+    return scope!;
+  }
+
+  @override
+  bool updateShouldNotify(_SmartTierFilterScope oldWidget) {
+    return tier != oldWidget.tier || tabIndex != oldWidget.tabIndex;
+  }
+}
+
+int _tierThreshold(String tier) {
+  switch (tier) {
+    case 'GM':
+      return 2500;
+    case 'IM':
+      return 2400;
+    case 'FM':
+      return 2300;
+    case 'CM':
+      return 2200;
+    default:
+      return 0;
+  }
+}
+
+bool _playerRatingMatchesTier(int rating, String tier) {
+  if (tier == 'All') return true;
+  return rating >= _tierThreshold(tier);
+}
+
+bool _gameMatchesTier(GamesTourModel game, String tier) {
+  if (tier == 'All') return true;
+  return _playerRatingMatchesTier(game.whitePlayer.rating, tier) ||
+      _playerRatingMatchesTier(game.blackPlayer.rating, tier);
 }
 
 class _AppBar extends ConsumerWidget {
@@ -161,7 +237,7 @@ class _AppBar extends ConsumerWidget {
             ),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          Expanded(child: Center(child: _TitleSelector(request: request))),
+          Expanded(child: Center(child: _AppBarTitle(request: request))),
           IconButton(
             tooltip:
                 isSaved
@@ -206,14 +282,74 @@ class _AppBar extends ConsumerWidget {
   }
 }
 
-/// Stadium-chip dropdown that swaps the active level filter
-/// (GM / IM / FM / CM / All) without leaving the screen. Visual language
+/// Tab-aware app bar title.
+///
+/// About tab (index 0): plain static label — the saved request's display
+/// name — since the About tab summarizes the aggregate that was actually
+/// saved, not a filtered slice.
+///
+/// Games / Standings tabs: the stadium-chip dropdown, which writes the
+/// selected tier into [_SmartTierFilterScope] so the visible games / events
+/// re-filter without leaving the screen.
+class _AppBarTitle extends StatelessWidget {
+  const _AppBarTitle({required this.request});
+
+  final SmartEventRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = _SmartTierFilterScope.of(context);
+
+    if (scope.tabIndex == 0) {
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder:
+            (child, animation) =>
+                FadeTransition(opacity: animation, child: child),
+        child: Text(
+          request.displayName,
+          key: const ValueKey('smart_title_static'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.textMdMedium.copyWith(
+            color: context.colors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder:
+          (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
+      child: _TitleSelector(
+        key: const ValueKey('smart_title_dropdown'),
+        selectedTier: scope.tier,
+        onSelected: scope.onTierChanged,
+      ),
+    );
+  }
+}
+
+/// Stadium-chip dropdown that swaps the active tier filter
+/// (GM / IM / FM / CM / All) for the current screen. Visual language
 /// matches the regular event view's [CategoryDropdown] — shimmer-bordered
 /// chip when closed, kPrimary tint when open, scale + fade overlay panel.
 class _TitleSelector extends StatefulWidget {
-  const _TitleSelector({required this.request});
+  const _TitleSelector({
+    required this.selectedTier,
+    required this.onSelected,
+    super.key,
+  });
 
-  final SmartEventRequest request;
+  final String selectedTier;
+  final ValueChanged<String> onSelected;
 
   @override
   State<_TitleSelector> createState() => _TitleSelectorState();
@@ -247,43 +383,7 @@ class _TitleSelectorState extends State<_TitleSelector>
     super.dispose();
   }
 
-  List<SmartEventRequest> _options() {
-    const tiers = <(String, int)>[
-      ('GM', 2500),
-      ('IM', 2400),
-      ('FM', 2300),
-      ('CM', 2200),
-    ];
-    final options = tiers
-        .map(
-          (tier) => SmartEventRequest(
-            source: widget.request.source,
-            tierLabel: tier.$1,
-            titleSuffix: 'Games',
-            minElo: tier.$2,
-            maxElo: kFilterMaxElo.round(),
-            caption: 'From your ${tier.$2}+ filter',
-            countSingular: 'live event',
-            countPlural: 'live events',
-            events: widget.request.events,
-          ),
-        )
-        .toList(growable: true);
-    options.add(
-      SmartEventRequest(
-        source: widget.request.source,
-        tierLabel: 'All',
-        titleSuffix: 'Games',
-        minElo: kFilterMinElo.round(),
-        maxElo: kFilterMaxElo.round(),
-        caption: 'From your filters',
-        countSingular: 'live event',
-        countPlural: 'live events',
-        events: widget.request.events,
-      ),
-    );
-    return options;
-  }
+  static const _tierOptions = <String>['GM', 'IM', 'FM', 'CM', 'All'];
 
   void _open() {
     if (_isOpen) return;
@@ -307,8 +407,8 @@ class _TitleSelectorState extends State<_TitleSelector>
           triggerOffset: triggerOffset,
           screenWidth: screenSize.width,
           animation: _animation,
-          options: _options(),
-          currentTierLabel: widget.request.tierLabel,
+          options: _tierOptions,
+          currentTier: widget.selectedTier,
           onDismiss: _close,
           onSelect: _onSelect,
         ),
@@ -330,24 +430,19 @@ class _TitleSelectorState extends State<_TitleSelector>
     });
   }
 
-  void _onSelect(SmartEventRequest next) {
+  void _onSelect(String next) {
     HapticFeedbackService.selection();
-    if (next.scopeId == widget.request.scopeId &&
-        next.displayName == widget.request.displayName) {
-      _close();
-      return;
-    }
     _controller.reverse().then((_) {
       if (!mounted) return;
       _overlay?.remove();
       _overlay = null;
       if (mounted) setState(() => _isOpen = false);
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => SmartEventScreen(request: next),
-        ),
-      );
+      if (next != widget.selectedTier) widget.onSelected(next);
     });
+  }
+
+  String _triggerLabel() {
+    return widget.selectedTier == 'All' ? 'All' : '${widget.selectedTier}+';
   }
 
   @override
@@ -389,7 +484,7 @@ class _TitleSelectorState extends State<_TitleSelector>
             children: [
               Flexible(
                 child: Text(
-                  widget.request.displayName,
+                  _triggerLabel(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
@@ -431,7 +526,7 @@ class _TierOverlay extends StatelessWidget {
     required this.screenWidth,
     required this.animation,
     required this.options,
-    required this.currentTierLabel,
+    required this.currentTier,
     required this.onDismiss,
     required this.onSelect,
   });
@@ -440,10 +535,10 @@ class _TierOverlay extends StatelessWidget {
   final Offset triggerOffset;
   final double screenWidth;
   final Animation<double> animation;
-  final List<SmartEventRequest> options;
-  final String currentTierLabel;
+  final List<String> options;
+  final String currentTier;
   final VoidCallback onDismiss;
-  final ValueChanged<SmartEventRequest> onSelect;
+  final ValueChanged<String> onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -504,9 +599,8 @@ class _TierOverlay extends StatelessWidget {
                           _TierOptionRow(
                             index: i,
                             animation: animation,
-                            option: options[i],
-                            isSelected:
-                                options[i].tierLabel == currentTierLabel,
+                            tier: options[i],
+                            isSelected: options[i] == currentTier,
                             onTap: () => onSelect(options[i]),
                           ),
                       ],
@@ -526,16 +620,32 @@ class _TierOptionRow extends StatelessWidget {
   const _TierOptionRow({
     required this.index,
     required this.animation,
-    required this.option,
+    required this.tier,
     required this.isSelected,
     required this.onTap,
   });
 
   final int index;
   final Animation<double> animation;
-  final SmartEventRequest option;
+  final String tier;
   final bool isSelected;
   final VoidCallback onTap;
+
+  String get _displayLabel {
+    switch (tier) {
+      case 'GM':
+        return 'Grandmaster · 2500+';
+      case 'IM':
+        return 'International Master · 2400+';
+      case 'FM':
+        return 'FIDE Master · 2300+';
+      case 'CM':
+        return 'Candidate Master · 2200+';
+      case 'All':
+      default:
+        return 'All games';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -569,7 +679,7 @@ class _TierOptionRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  option.displayName,
+                  _displayLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
@@ -837,8 +947,10 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
     Map<String, String> gameEventNames,
   ) {
     final query = _query.toLowerCase();
+    final tier = _SmartTierFilterScope.of(context).tier;
     final filtered = source
         .where((game) {
+          if (!_gameMatchesTier(game, tier)) return false;
           if (!_matchesSmartGameFilter(game, _filter)) return false;
           if (query.isEmpty) return true;
           final eventName = gameEventNames[game.gameId]?.toLowerCase() ?? '';
@@ -1277,13 +1389,18 @@ class _StandingsTabState extends ConsumerState<_StandingsTab> {
   @override
   Widget build(BuildContext context) {
     final request = _SmartEventRequestScope.of(context);
+    final tier = _SmartTierFilterScope.of(context).tier;
     final async = ref.watch(smartAggregateEventProvider(request));
     return async.when(
       data: (event) {
         if (event.events.isEmpty) {
           return _EmptyState();
         }
-        final rows = _buildRows(event.events, request.scopeId);
+        final visibleEvents = _filterEventsByTier(event, tier);
+        if (visibleEvents.isEmpty) {
+          return _EmptyState();
+        }
+        final rows = _buildRows(visibleEvents, request.scopeId);
         final horizontalPadding = ResponsiveHelper.adaptive(
           phone: 16.sp,
           tablet: 24.sp,
@@ -1315,6 +1432,27 @@ class _StandingsTabState extends ConsumerState<_StandingsTab> {
             onRetry: () => ref.invalidate(smartAggregateEventProvider(request)),
           ),
     );
+  }
+
+  /// Keeps only events that contain at least one game whose participants
+  /// match the selected tier. Classification is per-game, not per-event:
+  /// a CM-rated event that happens to include one GM game still shows up
+  /// under the GM filter (the GM filter is asking "where do GMs play",
+  /// not "where do GMs dominate").
+  List<GroupEventCardModel> _filterEventsByTier(
+    SmartAggregateEvent event,
+    String tier,
+  ) {
+    if (tier == 'All') return event.events;
+    final qualifyingEventNames = <String>{
+      for (final game in event.games)
+        if (_gameMatchesTier(game, tier))
+          if (event.gameEventNames[game.gameId] case final name?) name,
+    };
+    if (qualifyingEventNames.isEmpty) return const <GroupEventCardModel>[];
+    return event.events
+        .where((e) => qualifyingEventNames.contains(e.title))
+        .toList(growable: false);
   }
 
   /// Flattened section rows so the outer list stays virtualized even when an
