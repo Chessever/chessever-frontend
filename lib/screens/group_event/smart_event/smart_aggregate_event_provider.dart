@@ -217,12 +217,34 @@ class SmartEventCardData {
 
     final minElo = filter.minElo ?? kFilterMinElo.round();
     final maxElo = filter.maxElo ?? kFilterMaxElo.round();
-    final fullLabel =
+
+    // ELO segment: e.g. "GM" / "IM" / "FM" / "CM". Null when no ELO filter.
+    final eloFull =
         filter.hasEloFilter ? RatingTierFilter.labelForMinRating(minElo) : null;
-    final tierLabel =
-        fullLabel != null
-            ? fullLabel.split(' ').first
-            : _labelForNonEloFilters(filter);
+    final eloPart = eloFull?.split(' ').first;
+
+    // Format / state segment: single-value labels stay as-is; multi-value
+    // combinations fall back to "Filtered". When the user has both an ELO
+    // tier AND a multi-value format set, prefer the cleaner tier-only label
+    // (the format ambiguity reads worse than its absence).
+    final rawFormat = _labelForNonEloFilters(filter);
+    final formatPart =
+        rawFormat == null || (eloPart != null && rawFormat == 'Filtered')
+            ? null
+            : rawFormat;
+
+    final combined =
+        [eloPart, formatPart].whereType<String>().join(' ').trim();
+    final tierLabel = combined.isEmpty ? 'All' : combined;
+
+    final captionSegments = <String>[
+      if (filter.hasEloFilter) '$minElo+',
+      if (formatPart != null) formatPart,
+    ];
+    final caption =
+        captionSegments.isEmpty
+            ? 'From your filters'
+            : 'From your ${captionSegments.join(' ')} filter';
 
     final elos = events.map((e) => e.maxAvgElo).where((e) => e > 0).toList();
     final avgElo =
@@ -235,10 +257,7 @@ class SmartEventCardData {
         titleSuffix: 'Games',
         minElo: minElo,
         maxElo: maxElo,
-        caption:
-            filter.hasEloFilter
-                ? 'From your $minElo+ filter'
-                : 'From your filters',
+        caption: caption,
         countSingular: 'live event',
         countPlural: 'live events',
         events: events,
@@ -248,17 +267,21 @@ class SmartEventCardData {
     );
   }
 
-  static String _labelForNonEloFilters(FilterPopupState filter) {
+  /// Returns a friendly label for the non-ELO portion of the filter, or null
+  /// when no format/state filter is applied.
+  /// Multi-value combinations collapse to "Filtered".
+  static String? _labelForNonEloFilters(FilterPopupState filter) {
     final values =
         filter.formatsAndStates
             .map((value) => value.trim().toLowerCase())
             .where((value) => value.isNotEmpty)
             .toSet();
+    if (values.isEmpty) return null;
     if (values.length == 1) {
       final only = values.first;
       if (only == 'live') return 'Live';
       if (only == 'completed') return 'Completed';
-      if (only == 'standard') return 'Standard';
+      if (only == 'standard') return 'Classical';
       if (only == 'rapid') return 'Rapid';
       if (only == 'blitz') return 'Blitz';
     }
@@ -869,6 +892,12 @@ List<GamesTourModel> _sortSmartGames(
     final bd = _smartGameDay(b);
     final byDay = bd.compareTo(ad);
     if (byDay != 0) return byDay;
+
+    // Within a day, live games surface above finished ones — the live tab
+    // should feel live first, strongest second.
+    final aLive = a.effectiveGameStatus.isOngoing ? 1 : 0;
+    final bLive = b.effectiveGameStatus.isOngoing ? 1 : 0;
+    if (aLive != bLive) return bLive.compareTo(aLive);
 
     final aPinned = pinned.contains(a.gameId) ? 1 : 0;
     final bPinned = pinned.contains(b.gameId) ? 1 : 0;

@@ -203,7 +203,8 @@ class SmartEventCard extends StatelessWidget {
   }
 }
 
-/// Headline row: level name.
+/// Headline row: level name. Auto-shrinks to fit instead of ever ellipsizing,
+/// since "GM Rap…" reads worse than slightly smaller "GM Rapid Games".
 class _TitleRow extends StatelessWidget {
   const _TitleRow({
     required this.tierLabel,
@@ -219,16 +220,20 @@ class _TitleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Flexible(
-          child: Text(
-            '$tierLabel $titleSuffix',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-              fontSize: 14.sp,
-              height: 1.2,
-              fontWeight: FontWeight.w700,
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '$tierLabel $titleSuffix',
+              maxLines: 1,
+              softWrap: false,
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+                fontSize: 14.sp,
+                height: 1.2,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -265,13 +270,17 @@ class _MetaLine extends StatelessWidget {
       spans.add(TextSpan(text: 'Ø $avgElo'));
     }
 
-    return Text.rich(
-      TextSpan(
-        style: AppTypography.textXsMedium.copyWith(color: muted),
-        children: spans,
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text.rich(
+        TextSpan(
+          style: AppTypography.textXsMedium.copyWith(color: muted),
+          children: spans,
+        ),
+        maxLines: 1,
+        softWrap: false,
       ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -320,15 +329,19 @@ class _FilterCaption extends StatelessWidget {
                 .fadeIn(duration: 700.ms, curve: Curves.easeOut)
                 .scaleXY(begin: 0.7, end: 1.15, duration: 700.ms),
         SizedBox(width: 5.w),
-        Flexible(
-          child: Text(
-            caption ?? 'From your $minElo+ filter',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.textXxsMedium.copyWith(
-              color: accentColor.withValues(alpha: 0.95),
-              fontSize: 11.sp,
-              letterSpacing: 0.1,
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              caption ?? 'From your $minElo+ filter',
+              maxLines: 1,
+              softWrap: false,
+              style: AppTypography.textXxsMedium.copyWith(
+                color: accentColor.withValues(alpha: 0.95),
+                fontSize: 11.sp,
+                letterSpacing: 0.1,
+              ),
             ),
           ),
         ),
@@ -339,6 +352,13 @@ class _FilterCaption extends StatelessWidget {
 
 /// The left tile: a stylized "board of boards" — a diamond mosaic tinted with
 /// the level's accent color, atop a deep base for premium contrast.
+///
+/// Short tier codes (GM / IM / FM / CM / All / Live) render as oversized
+/// uppercase text. Longer category labels (Classical / Standard / Rapid /
+/// Blitz / Completed / Filtered, plus any unrecognized term) switch to a
+/// canonical icon so the tile stays iconic instead of ever ellipsizing.
+/// Combinations such as "GM Rapid" use the first word — the second segment
+/// rides along in the title row above the meta line.
 class _LevelEmblem extends StatelessWidget {
   const _LevelEmblem({
     required this.tierLabel,
@@ -352,8 +372,46 @@ class _LevelEmblem extends StatelessWidget {
   final double height;
   final Color accentColor;
 
+  static const _textLabels = <String>{'GM', 'IM', 'FM', 'CM', 'All', 'Live'};
+
+  static IconData _iconForLabel(String label) {
+    final lc = label.toLowerCase();
+    if (lc.contains('classical') || lc.contains('standard')) {
+      return Icons.hourglass_top_rounded;
+    }
+    if (lc.contains('rapid')) return Icons.bolt_rounded;
+    if (lc.contains('blitz')) return Icons.flash_on_rounded;
+    if (lc.contains('completed')) return Icons.flag_rounded;
+    if (lc.contains('filtered')) return Icons.tune_rounded;
+    return Icons.auto_awesome_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final firstWord = tierLabel.split(' ').first;
+    final useText = _textLabels.contains(firstWord);
+
+    final content =
+        useText
+            ? FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                firstWord,
+                maxLines: 1,
+                softWrap: false,
+                style: AppTypography.textMdBold.copyWith(
+                  color: Colors.white,
+                  fontSize: 28.sp,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            )
+            : Icon(
+              _iconForLabel(tierLabel),
+              size: 38.sp,
+              color: Colors.white,
+            );
+
     return Container(
       width: width,
       height: height,
@@ -364,18 +422,7 @@ class _LevelEmblem extends StatelessWidget {
       ),
       child: CustomPaint(
         painter: _MosaicTilePainter(accentColor: accentColor),
-        child: Center(
-          child: Text(
-            tierLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.textMdBold.copyWith(
-              color: Colors.white,
-              fontSize: 28.sp,
-              letterSpacing: 0.8,
-            ),
-          ),
-        ),
+        child: Center(child: content),
       ),
     );
   }
