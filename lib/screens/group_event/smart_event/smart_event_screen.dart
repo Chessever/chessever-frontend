@@ -217,7 +217,7 @@ class _TitleSelector extends StatefulWidget {
 }
 
 class _TitleSelectorState extends State<_TitleSelector>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 220),
