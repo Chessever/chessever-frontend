@@ -473,7 +473,38 @@ final smartAggregateEventProvider = Provider.autoDispose
         return const AsyncValue.data(SmartAggregateEvent.empty);
       }
 
-      for (final event in activeEvents) {
+      // The whole smart event view is scoped to *current* broadcasts. The
+      // repository path filters server-side; mirror it here so the snapshot
+      // fallback can't resurrect games from events that are no longer current.
+      final currentEventIdsAsync = ref.watch(
+        smartCurrentEventIdsProvider(
+          SmartCurrentEventIdsQuery(activeEvents.map((event) => event.id)),
+        ),
+      );
+      if (currentEventIdsAsync.hasError) {
+        if (directAggregate != null) {
+          return AsyncValue.data(directAggregate);
+        }
+        return AsyncValue.error(
+          currentEventIdsAsync.error!,
+          currentEventIdsAsync.stackTrace ?? StackTrace.current,
+        );
+      }
+      final currentEventIds = currentEventIdsAsync.valueOrNull;
+      if (currentEventIds == null) {
+        if (directAggregate != null) {
+          return AsyncValue.data(directAggregate);
+        }
+        return const AsyncValue.loading();
+      }
+      final currentEvents = activeEvents
+          .where((event) => currentEventIds.contains(event.id))
+          .toList(growable: false);
+      if (currentEvents.isEmpty) {
+        return const AsyncValue.data(SmartAggregateEvent.empty);
+      }
+
+      for (final event in currentEvents) {
         final snapshotAsync = ref.watch(forYouEventSnapshotProvider(event.id));
         snapshotAsync.when(
           data: (snapshot) {
@@ -490,7 +521,7 @@ final smartAggregateEventProvider = Provider.autoDispose
       final aggregate = _buildAggregateEvent(
         request,
         snapshots,
-        events: activeEvents,
+        events: currentEvents,
       );
       if (aggregate.games.isNotEmpty) {
         return AsyncValue.data(aggregate);

@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_standings_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -29,10 +30,12 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 
 /// Full event view for generated level games. Renders the familiar
-/// About / Games / Players tabbed shell, with every tab computed from the
+/// About / Games / Standings tabbed shell, with every tab computed from the
 /// current broadcast aggregate ([smartAggregateEventProvider]).
 class SmartEventScreen extends ConsumerStatefulWidget {
   const SmartEventScreen({required this.request, super.key});
@@ -44,7 +47,7 @@ class SmartEventScreen extends ConsumerStatefulWidget {
 }
 
 class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
-  static const _tabs = ['About', 'Games', 'Players'];
+  static const _tabs = ['About', 'Games', 'Standings'];
 
   // Default to Games because this surface is opened from a generated games card.
   int _index = 1;
@@ -94,7 +97,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                 child: PageView(
                   controller: _page,
                   onPageChanged: (i) => setState(() => _index = i),
-                  children: const [_AboutTab(), _GamesTab(), _PlayersTab()],
+                  children: const [_AboutTab(), _GamesTab(), _StandingsTab()],
                 ),
               ),
             ],
@@ -679,6 +682,21 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
   GameFilter _filter = GameFilter.defaultFilter();
   String _query = '';
 
+  /// Track collapsed state for date sections — mirrors the Countrymen /
+  /// Favorites games tabs.
+  final Set<String> _collapsedDates = {};
+
+  void _toggleDateSection(String dateKey) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (_collapsedDates.contains(dateKey)) {
+        _collapsedDates.remove(dateKey);
+      } else {
+        _collapsedDates.add(dateKey);
+      }
+    });
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -768,13 +786,14 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
               }
               final row = rows[i - 1];
               if (row.header != null) {
+                final header = row.header!;
                 return Padding(
-                  padding: EdgeInsets.fromLTRB(2.sp, 6.sp, 2.sp, 8.sp),
-                  child: Text(
-                    row.header!,
-                    style: AppTypography.textSmBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: _DateHeader(
+                    dateLabel: _formatDateHeader(header.dateKey),
+                    gameCount: header.gameCount,
+                    isExpanded: !_collapsedDates.contains(header.dateKey),
+                    onToggle: () => _toggleDateSection(header.dateKey),
                   ),
                 );
               }
@@ -783,7 +802,9 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
                 (g) => g.gameId == game.gameId,
               );
               return Padding(
-                padding: EdgeInsets.only(bottom: 12.sp),
+                padding: EdgeInsets.only(
+                  bottom: row.isLastInSection ? 16.h : 12.h,
+                ),
                 child: GameCardWrapperWidget(
                   key: ValueKey('smart_${game.gameId}'),
                   game: game,
@@ -893,16 +914,33 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
     return await showPremiumPaywallSheet(context: context);
   }
 
+  /// Group games by day and flatten into header + game rows, honoring the
+  /// collapsed state. Games arrive pre-sorted (day desc, pinned, avg Elo).
   List<_GameListRow> _buildDayRows(List<GamesTourModel> games) {
-    final rows = <_GameListRow>[];
-    DateTime? currentDay;
+    final gamesByDate = <String, List<GamesTourModel>>{};
     for (final game in games) {
-      final day = _gameDay(game);
-      if (currentDay == null || !_sameDay(currentDay, day)) {
-        currentDay = day;
-        rows.add(_GameListRow.header(_dayLabel(day)));
+      final dateKey = DateFormat('yyyy-MM-dd').format(_gameDay(game));
+      gamesByDate.putIfAbsent(dateKey, () => []).add(game);
+    }
+    final sortedKeys = gamesByDate.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final rows = <_GameListRow>[];
+    for (final dateKey in sortedKeys) {
+      final dateGames = gamesByDate[dateKey]!;
+      rows.add(
+        _GameListRow.header(
+          _DateHeaderData(dateKey: dateKey, gameCount: dateGames.length),
+        ),
+      );
+      if (_collapsedDates.contains(dateKey)) continue;
+      for (var i = 0; i < dateGames.length; i++) {
+        rows.add(
+          _GameListRow.game(
+            dateGames[i],
+            isLastInSection: i == dateGames.length - 1,
+          ),
+        );
       }
-      rows.add(_GameListRow.game(game));
     }
     return rows;
   }
@@ -913,32 +951,20 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
     return DateTime(local.year, local.month, local.day);
   }
 
-  bool _sameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  String _dayLabel(DateTime day) {
+  String _formatDateHeader(String dateKey) {
+    final date = DateTime.parse(dateKey);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (_sameDay(day, today)) return 'Today';
-    if (_sameDay(day, today.subtract(const Duration(days: 1)))) {
+    final yesterday = today.subtract(const Duration(days: 1));
+    final gameDate = DateTime(date.year, date.month, date.day);
+
+    if (gameDate == today) {
+      return 'Today';
+    } else if (gameDate == yesterday) {
       return 'Yesterday';
+    } else {
+      return DateFormat('EEEE, MMM d').format(date);
     }
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${months[day.month - 1]} ${day.day}';
   }
 
   int _compareBySortCriterion(
@@ -969,16 +995,104 @@ class _GamesTabState extends ConsumerState<_GamesTab> {
   }
 }
 
+class _DateHeaderData {
+  const _DateHeaderData({required this.dateKey, required this.gameCount});
+
+  final String dateKey;
+  final int gameCount;
+}
+
 class _GameListRow {
-  const _GameListRow._({this.header, this.game});
+  const _GameListRow._({this.header, this.game, this.isLastInSection = false});
 
-  factory _GameListRow.header(String value) => _GameListRow._(header: value);
+  factory _GameListRow.header(_DateHeaderData value) =>
+      _GameListRow._(header: value);
 
-  factory _GameListRow.game(GamesTourModel value) =>
-      _GameListRow._(game: value);
+  factory _GameListRow.game(
+    GamesTourModel value, {
+    required bool isLastInSection,
+  }) =>
+      _GameListRow._(game: value, isLastInSection: isLastInSection);
 
-  final String? header;
+  final _DateHeaderData? header;
   final GamesTourModel? game;
+  final bool isLastInSection;
+}
+
+/// Date section header — identical to the Countrymen / Favorites games tabs.
+class _DateHeader extends StatelessWidget {
+  final String dateLabel;
+  final int gameCount;
+  final bool isExpanded;
+  final VoidCallback? onToggle;
+
+  const _DateHeader({
+    required this.dateLabel,
+    required this.gameCount,
+    required this.isExpanded,
+    this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(12.br),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
+        decoration: BoxDecoration(
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 4.w,
+              height: 20.h,
+              decoration: BoxDecoration(
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
+                style: TextStyle(
+                  color: context.colors.textPrimary,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (onToggle != null) ...[
+              SizedBox(width: 12.w),
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                size: 20.sp,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _AboutTab extends ConsumerWidget {
@@ -1136,17 +1250,40 @@ class _MetaRow extends StatelessWidget {
   }
 }
 
-class _PlayersTab extends ConsumerWidget {
-  const _PlayersTab();
+/// Standings grouped by included event: each section renders the event card
+/// followed by that event's live standings — the same ranked list the user
+/// would see inside the event's own Standings tab.
+class _StandingsTab extends ConsumerStatefulWidget {
+  const _StandingsTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return _TabAsync(
-      builder: (event) {
-        final rows = _buildPlayers(event.games, event.gameEventNames);
-        if (rows.isEmpty) {
+  ConsumerState<_StandingsTab> createState() => _StandingsTabState();
+}
+
+class _StandingsTabState extends ConsumerState<_StandingsTab> {
+  final Set<String> _collapsedEventIds = {};
+
+  void _toggleEventSection(String eventId) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (_collapsedEventIds.contains(eventId)) {
+        _collapsedEventIds.remove(eventId);
+      } else {
+        _collapsedEventIds.add(eventId);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final request = _SmartEventRequestScope.of(context);
+    final async = ref.watch(smartAggregateEventProvider(request));
+    return async.when(
+      data: (event) {
+        if (event.events.isEmpty) {
           return _EmptyState();
         }
+        final rows = _buildRows(event.events, request.scopeId);
         final horizontalPadding = ResponsiveHelper.adaptive(
           phone: 16.sp,
           tablet: 24.sp,
@@ -1156,142 +1293,201 @@ class _PlayersTab extends ConsumerWidget {
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: Column(
-                children: [
-                  const FigmaStandingsHeader(showScore: true),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: EdgeInsets.only(top: 8.sp, bottom: 24.sp),
-                      itemCount: rows.length,
-                      itemBuilder: (context, i) {
-                        final row = rows[i];
-                        return FigmaPlayerCard(
-                          key: ValueKey(
-                            'smart_player_${row.fideId ?? row.name}_${row.rank}',
-                          ),
-                          player: row.toStandingModel(),
-                          rank: row.rank,
-                          isFavorite: false,
-                          showFavoriteButton: false,
-                          onTap: () => _openPlayerProfile(context, row),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+            child: ListView.builder(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                8.sp,
+                horizontalPadding,
+                24.sp,
               ),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              itemCount: rows.length,
+              itemBuilder: (context, i) => rows[i],
             ),
           ),
         );
       },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error:
+          (e, _) => GenericErrorWidget(
+            onRetry: () => ref.invalidate(smartAggregateEventProvider(request)),
+          ),
     );
   }
 
-  void _openPlayerProfile(BuildContext context, _SmartPlayerRow row) {
+  /// Flattened section rows so the outer list stays virtualized even when an
+  /// expanded event carries a long standings table.
+  List<Widget> _buildRows(List<GroupEventCardModel> events, String scopeId) {
+    final rows = <Widget>[];
+    for (final includedEvent in events) {
+      final isExpanded = !_collapsedEventIds.contains(includedEvent.id);
+      rows.add(
+        Padding(
+          padding: EdgeInsets.only(bottom: isExpanded ? 8.h : 12.h),
+          child: _StandingsEventHeaderCard(
+            event: includedEvent,
+            scopeId: scopeId,
+            isExpanded: isExpanded,
+            onToggle: () => _toggleEventSection(includedEvent.id),
+          ),
+        ),
+      );
+      if (!isExpanded) continue;
+      rows.addAll(_buildStandingsRows(includedEvent));
+      rows.add(SizedBox(height: 16.h));
+    }
+    return rows;
+  }
+
+  List<Widget> _buildStandingsRows(GroupEventCardModel event) {
+    final standingsAsync = ref.watch(smartEventStandingsProvider(event.id));
+    return standingsAsync.when(
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+      data: (standings) {
+        if (standings.isEmpty) {
+          return [_StandingsSectionStatus(message: 'No standings yet')];
+        }
+        return [
+          const FigmaStandingsHeader(showScore: true),
+          SizedBox(height: 8.sp),
+          ...standings.map(
+            (player) => FigmaPlayerCard(
+              key: ValueKey(
+                'smart_standing_${event.id}_'
+                '${player.fideId ?? player.gamebasePlayerId ?? player.name}',
+              ),
+              player: player,
+              rank: player.overallRank,
+              isFavorite: false,
+              showFavoriteButton: false,
+              onTap: () => _openPlayerProfile(context, player),
+            ),
+          ),
+        ];
+      },
+      loading:
+          () => [
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.h),
+              child: Center(
+                child: SizedBox(
+                  width: 24.w,
+                  height: 24.h,
+                  child: CircularProgressIndicator(
+                    color: context.colors.textPrimary,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+      error:
+          (_, __) => [
+            _StandingsSectionStatus(message: 'Standings unavailable'),
+          ],
+    );
+  }
+
+  void _openPlayerProfile(BuildContext context, PlayerStandingModel player) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder:
             (_) => PlayerProfileScreen(
-              fideId: row.fideId,
-              playerName: row.name,
-              title: row.title.isEmpty ? null : row.title,
-              federation: row.countryCode.isEmpty ? null : row.countryCode,
-              rating: row.rating > 0 ? row.rating : null,
-              gamebasePlayerId: row.gamebasePlayerId,
+              fideId: player.fideId,
+              playerName: player.name,
+              title:
+                  (player.title == null || player.title!.isEmpty)
+                      ? null
+                      : player.title,
+              federation:
+                  player.countryCode.isEmpty ? null : player.countryCode,
+              rating: player.score > 0 ? player.score : null,
+              gamebasePlayerId: player.gamebasePlayerId,
             ),
       ),
     );
   }
+}
 
-  List<_SmartPlayerRow> _buildPlayers(
-    List<GamesTourModel> games,
-    Map<String, String> gameEventNames,
-  ) {
-    final table = <String, _SmartPlayerRow>{};
+/// Event card heading a standings section. Tapping it (or the chevron badge)
+/// collapses or expands the standings underneath.
+class _StandingsEventHeaderCard extends StatelessWidget {
+  const _StandingsEventHeaderCard({
+    required this.event,
+    required this.scopeId,
+    required this.isExpanded,
+    required this.onToggle,
+  });
 
-    _SmartPlayerRow slot(PlayerCard player) {
-      final name = player.name.trim();
-      final fideId = player.fideId;
-      final key = fideId != null ? 'f$fideId' : 'n${name.toLowerCase().trim()}';
-      return table.putIfAbsent(
-        key,
-        () => _SmartPlayerRow(
-          name: name,
-          rating: player.rating,
-          title: player.title,
-          countryCode: player.countryCode,
-          fideId: player.fideId,
-          gamebasePlayerId: player.gamebasePlayerId,
+  final GroupEventCardModel event;
+  final String scopeId;
+  final bool isExpanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        EventCard(
+          tourEventCardModel: event,
+          forceCompactLayout: true,
+          heroTagSuffix: 'smart_standings_$scopeId',
+          onTap: onToggle,
         ),
-      );
-    }
-
-    for (final game in games) {
-      final eventName = gameEventNames[game.gameId] ?? 'Generated games';
-      for (final player in [game.whitePlayer, game.blackPlayer]) {
-        if (player.name.trim().isEmpty) continue;
-        final row = slot(player);
-        row.games++;
-        row.events.add(eventName);
-        if (player.rating > row.rating) row.rating = player.rating;
-        if (row.title.isEmpty && player.title.isNotEmpty) {
-          row.title = player.title;
-        }
-        if (row.countryCode.isEmpty && player.countryCode.isNotEmpty) {
-          row.countryCode = player.countryCode;
-        }
-      }
-    }
-
-    final list =
-        table.values.toList()..sort((a, b) {
-          final byRating = b.rating.compareTo(a.rating);
-          if (byRating != 0) return byRating;
-          return a.name.compareTo(b.name);
-        });
-    for (var i = 0; i < list.length; i++) {
-      list[i].rank = i + 1;
-    }
-    return list;
+        Positioned(
+          top: -6,
+          right: -6,
+          child: Material(
+            color: context.colors.surface,
+            shape: const CircleBorder(),
+            elevation: 2,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onToggle,
+              child: Tooltip(
+                message: isExpanded ? 'Hide standings' : 'Show standings',
+                child: SizedBox(
+                  width: 28.sp,
+                  height: 28.sp,
+                  child: Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 19.sp,
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
-class _SmartPlayerRow {
-  _SmartPlayerRow({
-    required this.name,
-    required this.rating,
-    required this.title,
-    required this.countryCode,
-    this.fideId,
-    this.gamebasePlayerId,
-  });
+class _StandingsSectionStatus extends StatelessWidget {
+  const _StandingsSectionStatus({required this.message});
 
-  final String name;
-  String title;
-  String countryCode;
-  final int? fideId;
-  final String? gamebasePlayerId;
-  int rating;
-  int games = 0;
-  int rank = 0;
-  final Set<String> events = <String>{};
+  final String message;
 
-  PlayerStandingModel toStandingModel() {
-    final eventCount = events.length;
-    final gameText = games == 1 ? '1 game' : '$games games';
-    return PlayerStandingModel(
-      countryCode: countryCode,
-      title: title.isEmpty ? null : title,
-      name: name,
-      score: rating,
-      scoreChange: 0,
-      matchScore: eventCount > 1 ? '$gameText / $eventCount events' : gameText,
-      fideId: fideId,
-      gamebasePlayerId: gamebasePlayerId,
-      overallRank: rank,
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 16.h),
+      child: Center(
+        child: Text(
+          message,
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
+        ),
+      ),
     );
   }
 }
