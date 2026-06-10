@@ -1063,6 +1063,7 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
           key: ValueKey('smart_about_dismiss_${scopeId}_${event.id}'),
           direction: DismissDirection.endToStart,
           dismissThresholds: const {DismissDirection.endToStart: 0.35},
+          background: const SizedBox.shrink(),
           secondaryBackground: const _IncludedEventDismissBackground(),
           onDismissed: (_) => dismiss(),
           child: Semantics(
