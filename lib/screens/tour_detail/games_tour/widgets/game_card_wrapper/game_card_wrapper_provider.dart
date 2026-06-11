@@ -53,9 +53,9 @@ class _GameCardWrapperProvider {
     if (tourId.isEmpty) return;
 
     try {
-      final tours = await _ref.read(tourRepositoryProvider).getTourByGroupId(
-        tourId,
-      );
+      final tours = await _ref
+          .read(tourRepositoryProvider)
+          .getTourByGroupId(tourId);
       final groupBroadcastId = tours
           .map((tour) => tour.groupBroadcastId)
           .whereType<String>()
