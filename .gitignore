@@ -18,6 +18,9 @@
 .env.dev
 .env.local
 .env.production
+# Keep distributable, secret-free contributor templates tracked.
+!.env.example
+!.env.e2e.example
 opencode.jsonc
 
 lichess_openapi_structure.json

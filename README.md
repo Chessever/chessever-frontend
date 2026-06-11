@@ -21,10 +21,41 @@ This is a Flutter project for the Chessever application.
    ```bash
    flutter pub get
    ```
-3. Run the app:
+3. Create your environment file:
+   ```bash
+   cp .env.example .env
+   ```
+   The public keys are already filled in, so the app builds and reads public
+   data out of the box. See [Contributing](#contributing) for live game search.
+4. Run the app:
    ```bash
    flutter run
    ```
+
+## Contributing
+
+ChessEver is open source and we welcome contributions. You do **not** need our
+production secrets to work on the app.
+
+**1. Get set up.** `cp .env.example .env`. The template ships the public keys
+that already live inside every released build, so the app compiles, signs in,
+and shows live broadcast data immediately. With no developer key, historical
+search and the position explorer fall back to bundled sample data, which is
+enough for most UI and feature work.
+
+**2. Get a developer key (optional, for live historical data).** The large
+historical game database is served through a separate, rate-limited API. Sign in
+and generate a personal key at:
+
+> **https://chessever.com/developers**
+
+Paste it into your `.env` as `GAMEBASE_API_KEY=...` and restart the app. The key
+is read-only, rate-limited, scoped to safe endpoints, and expires in 90 days.
+You can revoke or rotate it anytime from the same page. It cannot write to or
+strain our database, so it is safe to use freely while you build.
+
+**3. Open a PR.** Run `flutter analyze` before pushing. Never commit your `.env`
+(it is git-ignored) or any real secret.
 
 ## Mobile E2E Tests
 
