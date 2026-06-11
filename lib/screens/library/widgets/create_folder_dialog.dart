@@ -5,6 +5,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -22,17 +23,17 @@ Future<LibraryFolderCreationData?> showCreateFolderDialog(
   BuildContext context, {
   String? initialParentId,
   bool lockToParent = false,
+  bool defaultToDatabase = false,
 }) async {
-  return showDialog<LibraryFolderCreationData>(
+  return showAlertModal<LibraryFolderCreationData>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.8),
-    builder:
-        (context) => _FolderNameDialog(
-          title: initialParentId != null ? 'Add to Database' : 'New Library Item',
-          confirmLabel: 'Create',
-          initialParentId: initialParentId,
-          isLocked: lockToParent,
-        ),
+    child: _FolderNameDialog(
+      title: initialParentId != null ? 'Add to Folder' : 'New Library Item',
+      confirmLabel: 'Create',
+      initialParentId: initialParentId,
+      isLocked: lockToParent,
+      defaultToDatabase: defaultToDatabase,
+    ),
   );
 }
 
@@ -41,16 +42,14 @@ Future<String?> showRenameFolderDialog(
   BuildContext context, {
   required String currentName,
 }) async {
-  return showDialog<String>(
+  return showAlertModal<String>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.8),
-    builder:
-        (context) => _FolderNameDialog(
-          title: 'Rename',
-          confirmLabel: 'Save',
-          initialValue: currentName,
-          isRename: true,
-        ),
+    child: _FolderNameDialog(
+      title: 'Rename',
+      confirmLabel: 'Save',
+      initialValue: currentName,
+      isRename: true,
+    ),
   );
 }
 
@@ -62,6 +61,7 @@ class _FolderNameDialog extends ConsumerStatefulWidget {
     this.initialParentId,
     this.isRename = false,
     this.isLocked = false,
+    this.defaultToDatabase = false,
   });
 
   final String title;
@@ -70,6 +70,7 @@ class _FolderNameDialog extends ConsumerStatefulWidget {
   final String? initialParentId;
   final bool isRename;
   final bool isLocked;
+  final bool defaultToDatabase;
 
   @override
   ConsumerState<_FolderNameDialog> createState() => _FolderNameDialogState();
@@ -79,7 +80,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   late TextEditingController _controller;
   late FocusNode _focusNode;
   String? _selectedParentId;
-  bool _isDatabase = true;
+  bool _isDatabase = false;
 
   @override
   void initState() {
@@ -87,7 +88,12 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     _controller = TextEditingController(text: widget.initialValue ?? '');
     _focusNode = FocusNode();
     _selectedParentId = widget.initialParentId;
-    _isDatabase = true;
+    // Inside a folder only databases are allowed; game-save flows want a
+    // database destination. Top-level '+' defaults to Folder.
+    _isDatabase =
+        widget.isLocked ||
+        widget.initialParentId != null ||
+        widget.defaultToDatabase;
 
     // Auto-focus the text field
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -134,95 +140,91 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     final availableParents =
         allFolders.where((f) => f.id != kTwicBookId && f.isFolder).toList();
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.isTablet ? 420 : double.infinity,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: context.colors.surface,
-            borderRadius: BorderRadius.circular(24.br),
-            border: Border.all(color: context.colors.divider),
-            boxShadow: [
-              BoxShadow(
-                color: context.colors.shadow,
-                blurRadius: 40,
-                offset: const Offset(0, 20),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(28.sp),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                Row(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(10.sp),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12.br),
-                      ),
-                      child: Icon(
-                        widget.isRename
-                            ? Icons.edit_rounded
-                            : (_isDatabase
-                                ? Icons.folder_rounded
-                                : Icons.storage_rounded),
-                        color: kPrimaryColor,
-                        size: 22.sp,
-                      ),
-                    ),
-                    SizedBox(width: 16.w),
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        style: AppTypography.textLgBold.copyWith(
-                          color: context.colors.textPrimary,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                SizedBox(height: 24.h),
-
-                // Type Selection (only if not renaming and not locked)
-                if (!widget.isRename && !widget.isLocked) ...[
-                  _buildTypeSelector(),
-                  SizedBox(height: 20.h),
-                ],
-
-                // Parent selection (if a parent folder is being selected)
-                if (_selectedParentId != null &&
-                    !widget.isLocked &&
-                    !widget.isRename) ...[
-                  _buildParentSelector(availableParents),
-                  SizedBox(height: 20.h),
-                ],
-
-                // Context message for a locked parent folder
-                if (widget.isLocked && _selectedParentId != null) ...[
-                  _buildLockedContext(availableParents),
-                  SizedBox(height: 20.h),
-                ],
-
-                // Input Field
-                _buildTextField(),
-
-                SizedBox(height: 32.h),
-
-                // Actions
-                _buildActions(),
-              ],
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: ResponsiveHelper.isTablet ? 420 : double.infinity,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(24.br),
+          border: Border.all(color: context.colors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: context.colors.shadow,
+              blurRadius: 40,
+              offset: const Offset(0, 20),
             ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(28.sp),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(10.sp),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12.br),
+                    ),
+                    child: Icon(
+                      widget.isRename
+                          ? Icons.edit_rounded
+                          : (_isDatabase
+                              ? Icons.storage_rounded
+                              : Icons.folder_rounded),
+                      color: kPrimaryColor,
+                      size: 22.sp,
+                    ),
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: context.colors.textPrimary,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              SizedBox(height: 24.h),
+
+              // Type Selection (only if not renaming and not locked)
+              if (!widget.isRename && !widget.isLocked) ...[
+                _buildTypeSelector(),
+                SizedBox(height: 20.h),
+              ],
+
+              // Parent selection (if a parent folder is being selected)
+              if (_selectedParentId != null &&
+                  !widget.isLocked &&
+                  !widget.isRename) ...[
+                _buildParentSelector(availableParents),
+                SizedBox(height: 20.h),
+              ],
+
+              // Context message for a locked parent folder
+              if (widget.isLocked && _selectedParentId != null) ...[
+                _buildLockedContext(availableParents),
+                SizedBox(height: 20.h),
+              ],
+
+              // Input Field
+              _buildTextField(),
+
+              SizedBox(height: 32.h),
+
+              // Actions
+              _buildActions(),
+            ],
           ),
         ),
       ),
@@ -240,7 +242,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         children: [
           Expanded(
             child: _TypeButton(
-              label: 'Database',
+              label: 'Folder',
               isSelected: !_isDatabase,
               onTap: () {
                 setState(() => _isDatabase = false);
@@ -250,12 +252,10 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           ),
           Expanded(
             child: _TypeButton(
-              label: 'Folder',
+              label: 'Database',
               isSelected: _isDatabase,
               onTap: () {
-                setState(() {
-                  _isDatabase = true;
-                });
+                setState(() => _isDatabase = true);
                 HapticFeedbackService.light();
               },
             ),
@@ -268,7 +268,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   Widget _buildParentSelector(List<LibraryFolder> parents) {
     if (parents.isEmpty) {
       return Text(
-        'Create a database first to organize folders inside it.',
+        'Create a folder first to organize databases inside it.',
         style: AppTypography.textXsRegular.copyWith(color: kRedColor),
       ).animate().fadeIn();
     }
@@ -277,7 +277,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'PARENT DATABASE',
+          'PARENT FOLDER',
           style: AppTypography.textXsBold.copyWith(
             color: context.colors.textPrimary.withValues(alpha: 0.4),
             letterSpacing: 1.0,
@@ -344,7 +344,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Inside database "${parent.name}"',
+              'Inside folder "${parent.name}"',
               style: AppTypography.textXsMedium.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),

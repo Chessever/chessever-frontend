@@ -55,7 +55,7 @@ class _GamebaseDatabaseSearchScreenState
           ),
         ),
         title: Text(
-          'TWIC Database',
+          'ChessEver Database',
           style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
         ),
       ),

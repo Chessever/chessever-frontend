@@ -1,24 +1,22 @@
 import 'package:chessever2/screens/library/providers/book_games_search_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
-import 'package:motor/motor.dart';
 
 Future<BookGamesFilter?> showBookGamesFilterDialog({
   required BuildContext context,
   required BookGamesFilter currentFilter,
 }) {
-  return showDialog<BookGamesFilter>(
+  return showAlertModal<BookGamesFilter>(
     context: context,
-    barrierColor: Colors.transparent,
-    builder: (_) => BookGamesFilterDialog(initialFilter: currentFilter),
+    horizontalPadding: 0,
+    child: BookGamesFilterDialog(initialFilter: currentFilter),
   );
 }
 
@@ -42,8 +40,6 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
   late final TextEditingController _eventController;
   late final TextEditingController _playerController;
   late final TextEditingController _federationController;
-
-  double _targetValue = 0.0;
 
   @override
   void initState() {
@@ -70,12 +66,6 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
     _federationController = TextEditingController(
       text: widget.initialFilter.federation,
     );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() => _targetValue = 1.0);
-      }
-    });
   }
 
   @override
@@ -91,155 +81,125 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
   @override
   Widget build(BuildContext context) {
     final dialogWidth = 320.w;
-
-    return GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
-      child: Stack(
-        children: [
-          const Positioned.fill(child: BackDropFilterWidget()),
-          Center(
-            child: GestureDetector(
-              onTap: () {},
-              child: SingleMotionBuilder(
-                motion: const CupertinoMotion.smooth(),
-                value: _targetValue,
-                builder: (context, value, _) {
-                  final scale = 0.95 + (0.05 * value);
-                  final opacity = value.clamp(0.0, 1.0).toDouble();
-                  return Opacity(
-                    opacity: opacity,
-                    child: Transform.scale(
-                      scale: scale,
-                      child: _buildDialogCard(context, dialogWidth),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return _buildDialogCard(context, dialogWidth);
   }
 
   Widget _buildDialogCard(BuildContext context, double dialogWidth) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.zero,
-      child: Container(
-        width: dialogWidth,
-        constraints: BoxConstraints(maxHeight: 560.h),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: context.colors.divider, width: 1),
+    return Container(
+      width: dialogWidth,
+      constraints: BoxConstraints(maxHeight: 560.h),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.1),
+          width: 1,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionLabel('Result'),
-                    SizedBox(height: 8.h),
-                    _dropdown<BookGamesResultFilter>(
-                      value: _result,
-                      items: BookGamesResultFilter.values,
-                      itemLabel: (v) => v.displayText,
-                      onChanged: (v) => setState(() => _result = v),
-                    ),
-                    SizedBox(height: 16.h),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionLabel('Result'),
+                  SizedBox(height: 8.h),
+                  _dropdown<BookGamesResultFilter>(
+                    value: _result,
+                    items: BookGamesResultFilter.values,
+                    itemLabel: (v) => v.displayText,
+                    onChanged: (v) => setState(() => _result = v),
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Color'),
-                    SizedBox(height: 8.h),
-                    _dropdown<BookGamesColorFilter>(
-                      value: _color,
-                      items: BookGamesColorFilter.values,
-                      itemLabel: (v) => v.displayText,
-                      onChanged: (v) => setState(() => _color = v),
-                    ),
-                    SizedBox(height: 16.h),
+                  _sectionLabel('Color'),
+                  SizedBox(height: 8.h),
+                  _dropdown<BookGamesColorFilter>(
+                    value: _color,
+                    items: BookGamesColorFilter.values,
+                    itemLabel: (v) => v.displayText,
+                    onChanged: (v) => setState(() => _color = v),
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Time Control'),
-                    SizedBox(height: 8.h),
-                    _dropdown<BookGamesTimeControlFilter>(
-                      value: _timeControl,
-                      items: BookGamesTimeControlFilter.values,
-                      itemLabel: (v) => v.displayText,
-                      onChanged: (v) => setState(() => _timeControl = v),
-                    ),
-                    SizedBox(height: 16.h),
+                  _sectionLabel('Time Control'),
+                  SizedBox(height: 8.h),
+                  _dropdown<BookGamesTimeControlFilter>(
+                    value: _timeControl,
+                    items: BookGamesTimeControlFilter.values,
+                    itemLabel: (v) => v.displayText,
+                    onChanged: (v) => setState(() => _timeControl = v),
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Year'),
-                    SizedBox(height: 8.h),
-                    _rangeSlider(
-                      values: _yearRange,
-                      min: GameFilter.absoluteMinYear.toDouble(),
-                      max: DateTime.now().year.toDouble(),
-                      divisions:
-                          DateTime.now().year - GameFilter.absoluteMinYear,
-                      onChanged: (v) => setState(() => _yearRange = v),
-                    ),
-                    SizedBox(height: 16.h),
+                  _sectionLabel('Year'),
+                  SizedBox(height: 8.h),
+                  _rangeSlider(
+                    values: _yearRange,
+                    min: GameFilter.absoluteMinYear.toDouble(),
+                    max: DateTime.now().year.toDouble(),
+                    divisions: DateTime.now().year - GameFilter.absoluteMinYear,
+                    onChanged: (v) => setState(() => _yearRange = v),
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Level'),
-                    SizedBox(height: 8.h),
-                    RatingTierFilter(
-                      selectedMinRating: _selectedMinRating,
-                      onChanged: (value) {
-                        HapticFeedbackService.selection();
-                        setState(() => _selectedMinRating = value);
-                      },
-                    ),
-                    SizedBox(height: 16.h),
+                  _sectionLabel('Level'),
+                  SizedBox(height: 8.h),
+                  RatingTierFilter(
+                    selectedMinRating: _selectedMinRating,
+                    onChanged: (value) {
+                      HapticFeedbackService.selection();
+                      setState(() => _selectedMinRating = value);
+                    },
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Opening / ECO'),
-                    SizedBox(height: 8.h),
-                    _textField(
-                      controller: _openingController,
-                      hintText: 'Opening (e.g., Sicilian Defense)',
-                    ),
-                    SizedBox(height: 8.h),
-                    _textField(
-                      controller: _ecoController,
-                      hintText: 'ECO code (e.g., B07)',
-                    ),
-                    SizedBox(height: 16.h),
+                  _sectionLabel('Opening / ECO'),
+                  SizedBox(height: 8.h),
+                  _textField(
+                    controller: _openingController,
+                    hintText: 'Opening (e.g., Sicilian Defense)',
+                  ),
+                  SizedBox(height: 8.h),
+                  _textField(
+                    controller: _ecoController,
+                    hintText: 'ECO code (e.g., B07)',
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Event / Tournament'),
-                    SizedBox(height: 8.h),
-                    _textField(
-                      controller: _eventController,
-                      hintText: 'Event (e.g., Candidates 2024)',
-                    ),
-                    SizedBox(height: 16.h),
+                  _sectionLabel('Event / Tournament'),
+                  SizedBox(height: 8.h),
+                  _textField(
+                    controller: _eventController,
+                    hintText: 'Event (e.g., Candidates 2024)',
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Player'),
-                    SizedBox(height: 8.h),
-                    _textField(
-                      controller: _playerController,
-                      hintText: 'Player name or FIDE ID',
-                    ),
-                    SizedBox(height: 16.h),
+                  _sectionLabel('Player'),
+                  SizedBox(height: 8.h),
+                  _textField(
+                    controller: _playerController,
+                    hintText: 'Player name or FIDE ID',
+                  ),
+                  SizedBox(height: 16.h),
 
-                    _sectionLabel('Country / Federation'),
-                    SizedBox(height: 8.h),
-                    _textField(
-                      controller: _federationController,
-                      hintText: 'Country or federation (e.g., NOR)',
-                    ),
-                    SizedBox(height: 8.h),
-                  ],
-                ),
+                  _sectionLabel('Country / Federation'),
+                  SizedBox(height: 8.h),
+                  _textField(
+                    controller: _federationController,
+                    hintText: 'Country or federation (e.g., NOR)',
+                  ),
+                  SizedBox(height: 8.h),
+                ],
               ),
             ),
-            _buildButtons(),
-          ],
-        ),
+          ),
+          _buildButtons(),
+        ],
       ),
     );
   }
@@ -252,7 +212,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
         children: [
           Text(
             'Filters',
-            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -287,7 +249,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                 ),
                 child: Text(
                   'Reset',
-                  style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
               ),
             ),
@@ -431,7 +395,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
       ),
       child: TextField(
         controller: controller,
-        style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+        style: AppTypography.textSmMedium.copyWith(
+          color: context.colors.textPrimary,
+        ),
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: AppTypography.textSmRegular.copyWith(

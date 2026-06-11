@@ -923,7 +923,6 @@ class ScoreCardScreen extends ConsumerWidget {
     WidgetRef ref,
     PlayerStandingModel player,
   ) {
-    final source = ref.read(scoreCardPlayerProfileDataSourceProvider);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -934,7 +933,6 @@ class ScoreCardScreen extends ConsumerWidget {
               title: player.title,
               federation: player.countryCode,
               rating: player.score.round(),
-              dataSource: source,
               gamebasePlayerId: player.gamebasePlayerId,
             ),
       ),

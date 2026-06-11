@@ -21,7 +21,8 @@ class PushNotificationsService {
 
   Future<void> initialize({required String appId}) async {
     if (_initialized) return;
-    if (appId.isEmpty) {
+    final normalizedAppId = appId.trim();
+    if (normalizedAppId.isEmpty) {
       debugPrint(
         '[PushNotifications] Missing OneSignal app ID; skipping init.',
       );
@@ -32,8 +33,13 @@ class PushNotificationsService {
       OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
     }
 
+    // OneSignal.LiveActivities.setupDefault() MUST run AFTER OneSignal.initialize().
+    // Called before init, the LiveActivities module has no appId/subscription, so it
+    // never forwards the Live Activity push token to OneSignal → server-side updates
+    // reach 0 recipients and the iOS card never updates. Order is load-bearing.
+    OneSignal.initialize(normalizedAppId);
+    LiveUpdatesService.instance.markOneSignalReady();
     await LiveUpdatesService.instance.setup();
-    OneSignal.initialize(appId);
 
     // Apply opt-in state based on local preference and current OS permission.
     // This prevents release builds from forcing users into opt-out when iOS

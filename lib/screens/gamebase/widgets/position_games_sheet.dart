@@ -10,6 +10,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -593,13 +594,21 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
         ChessboardView.tour;
 
     if (!context.mounted) return;
-    showDialog(
+    showAlertModal<void>(
       context: context,
       barrierDismissible: false,
-      builder:
-          (ctx) => Center(
-            child: CircularProgressIndicator(color: context.colors.textPrimary),
+      child: Container(
+        padding: EdgeInsets.all(20.sp),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+            width: 1,
           ),
+        ),
+        child: CircularProgressIndicator(color: context.colors.textPrimary),
+      ),
     );
 
     try {

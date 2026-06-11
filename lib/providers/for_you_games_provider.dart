@@ -355,6 +355,11 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       // Sort this batch (without heart data initially — will re-sort once heart data arrives)
       final sortedModels = await _sortModels(models);
 
+      // Bail out if the notifier was disposed while we were awaiting (e.g.
+      // hot restart, or the tab/provider being torn down mid-fetch). Writing
+      // `state` after dispose throws "used after dispose".
+      if (!mounted) return;
+
       // Update state
       if (isInitial) {
         state = ForYouState(
@@ -378,7 +383,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       debugPrint('[ForYou] Error: $e');
       debugPrint('[ForYou] Stack: $stack');
       _logErrorToSentry(e, stack);
-      state = state.copyWith(isLoading: false, error: e.toString());
+      if (mounted) {
+        state = state.copyWith(isLoading: false, error: e.toString());
+      }
     } finally {
       _isFetching = false;
     }

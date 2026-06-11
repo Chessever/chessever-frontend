@@ -2,6 +2,7 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 // ignore_for_file: type=lint
+// ignore_for_file: invalid_use_of_protected_member
 // ignore_for_file: unused_element, unnecessary_cast, override_on_non_overriding_member
 // ignore_for_file: strict_raw_type, inference_failure_on_untyped_parameter
 
@@ -81,6 +82,13 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
     opt: true,
     def: false,
   );
+  static bool _$isLikedGames(LibraryFolder v) => v.isLikedGames;
+  static const Field<LibraryFolder, bool> _f$isLikedGames = Field(
+    'isLikedGames',
+    _$isLikedGames,
+    opt: true,
+    def: false,
+  );
 
   @override
   final MappableFields<LibraryFolder> fields = const {
@@ -97,6 +105,7 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
     #parentId: _f$parentId,
     #nodeType: _f$nodeType,
     #isSubscribed: _f$isSubscribed,
+    #isLikedGames: _f$isLikedGames,
   };
 
   static LibraryFolder _instantiate(DecodingData data) {
@@ -114,6 +123,7 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
       parentId: data.dec(_f$parentId),
       nodeType: data.dec(_f$nodeType),
       isSubscribed: data.dec(_f$isSubscribed),
+      isLikedGames: data.dec(_f$isLikedGames),
     );
   }
 
@@ -193,6 +203,7 @@ abstract class LibraryFolderCopyWith<$R, $In extends LibraryFolder, $Out>
     String? parentId,
     String? nodeType,
     bool? isSubscribed,
+    bool? isLikedGames,
   });
   LibraryFolderCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
 }
@@ -220,6 +231,7 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     Object? parentId = $none,
     String? nodeType,
     bool? isSubscribed,
+    bool? isLikedGames,
   }) => $apply(
     FieldCopyWithData({
       if (id != null) #id: id,
@@ -235,6 +247,7 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
       if (parentId != $none) #parentId: parentId,
       if (nodeType != null) #nodeType: nodeType,
       if (isSubscribed != null) #isSubscribed: isSubscribed,
+      if (isLikedGames != null) #isLikedGames: isLikedGames,
     }),
   );
   @override
@@ -252,6 +265,7 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     parentId: data.get(#parentId, or: $value.parentId),
     nodeType: data.get(#nodeType, or: $value.nodeType),
     isSubscribed: data.get(#isSubscribed, or: $value.isSubscribed),
+    isLikedGames: data.get(#isLikedGames, or: $value.isLikedGames),
   );
 
   @override

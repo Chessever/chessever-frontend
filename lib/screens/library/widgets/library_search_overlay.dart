@@ -221,7 +221,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
       onTap: () => onFolderTap(folder),
       icon: Icons.folder_open_rounded,
       title: folder.name,
-      subtitle: 'Folder',
+      subtitle: folder.isFolder ? 'Folder' : 'Database',
     );
   }
 

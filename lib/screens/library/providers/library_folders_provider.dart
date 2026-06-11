@@ -10,7 +10,7 @@ const kTwicBookId = '__twic__';
 final kTwicFolder = LibraryFolder(
   id: kTwicBookId,
   userId: '',
-  name: 'TWIC',
+  name: 'ChessEver',
   color: '#0FB4E5',
   icon: 'twic',
   orderIndex: -1,

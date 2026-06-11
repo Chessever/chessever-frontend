@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chessever2/providers/live_activity_mode_provider.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/board_settings/models/board_settings_model.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
@@ -37,6 +38,7 @@ class BoardSettingsNew {
     this.showCoordinates = true,
     this.rawPgnMode = false,
     this.pipModeIndex = 0, // PipMode.off (default)
+    this.liveActivityModeIndex = 0, // LiveActivityMode.off (default)
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -70,6 +72,14 @@ class BoardSettingsNew {
 
   /// Picture-in-Picture mode as an enum.
   PipMode get pipMode => PipModeInfo.fromIndex(pipModeIndex);
+
+  /// Live Activity / live-notification eligibility, stored as the
+  /// LiveActivityMode index (0=off, 1=live, 2=all).
+  final int liveActivityModeIndex;
+
+  /// Live Activity mode as an enum.
+  LiveActivityMode get liveActivityMode =>
+      LiveActivityModeInfo.fromIndex(liveActivityModeIndex);
 
   /// Get the current piece set from chessground
   PieceSet get pieceSet => getPieceSetByIndex(pieceStyleIndex);
@@ -141,6 +151,7 @@ class BoardSettingsNew {
     bool? showCoordinates,
     bool? rawPgnMode,
     int? pipModeIndex,
+    int? liveActivityModeIndex,
   }) {
     return BoardSettingsNew(
       boardColorIndex: boardColorIndex ?? this.boardColorIndex,
@@ -155,6 +166,8 @@ class BoardSettingsNew {
       showCoordinates: showCoordinates ?? this.showCoordinates,
       rawPgnMode: rawPgnMode ?? this.rawPgnMode,
       pipModeIndex: pipModeIndex ?? this.pipModeIndex,
+      liveActivityModeIndex:
+          liveActivityModeIndex ?? this.liveActivityModeIndex,
     );
   }
 }
@@ -234,6 +247,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         // pip_mode isn't part of BoardSettingsModel's mapper; read it straight
         // from the row so we don't need to regenerate the dart_mappable code.
         pipModeIndex: (response['pip_mode'] as int?) ?? 0,
+        liveActivityModeIndex: (response['live_activity_mode'] as int?) ?? 0,
       );
 
       // Cache locally
@@ -350,6 +364,17 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     await _persist(newSettings);
   }
 
+  /// Set Live Activity / live-notification mode.
+  Future<void> setLiveActivityMode(LiveActivityMode mode) async {
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(
+      liveActivityModeIndex: mode.index,
+    );
+    debugPrint('🔔 BoardSettings: Live Activity mode changed to ${mode.label}');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Toggle figurine notation (chess piece symbols instead of letters)
   Future<void> toggleFigurine(bool value) async {
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
@@ -441,6 +466,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
           'show_coordinates': settings.showCoordinates,
           'raw_pgn_mode': settings.rawPgnMode,
           'pip_mode': settings.pipModeIndex,
+          'live_activity_mode': settings.liveActivityModeIndex,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -467,6 +493,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'showCoordinates': settings.showCoordinates,
         'rawPgnMode': settings.rawPgnMode,
         'pipModeIndex': settings.pipModeIndex,
+        'liveActivityModeIndex': settings.liveActivityModeIndex,
       });
       await db.setString(_cacheKey, json);
       debugPrint('[BoardSettings] Cached settings locally');
@@ -509,6 +536,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         showCoordinates: map['showCoordinates'] as bool? ?? true,
         rawPgnMode: map['rawPgnMode'] as bool? ?? false,
         pipModeIndex: map['pipModeIndex'] as int? ?? 0,
+        liveActivityModeIndex: map['liveActivityModeIndex'] as int? ?? 0,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;

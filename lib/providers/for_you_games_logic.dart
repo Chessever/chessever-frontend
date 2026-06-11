@@ -101,7 +101,8 @@ bool _gamesEqual(GamesTourModel a, GamesTourModel b) {
       a.lastMoveTime == b.lastMoveTime &&
       a.eco == b.eco &&
       a.openingName == b.openingName &&
-      a.timeControl == b.timeControl;
+      a.timeControl == b.timeControl &&
+      a.isOnline == b.isOnline;
 }
 
 bool _playerCardsEqual(PlayerCard a, PlayerCard b) {

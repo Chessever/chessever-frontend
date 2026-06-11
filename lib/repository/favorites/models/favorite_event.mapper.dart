@@ -2,6 +2,7 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 // ignore_for_file: type=lint
+// ignore_for_file: invalid_use_of_protected_member
 // ignore_for_file: unused_element, unnecessary_cast, override_on_non_overriding_member
 // ignore_for_file: strict_raw_type, inference_failure_on_untyped_parameter
 
@@ -139,7 +140,7 @@ extension FavoriteEventValueCopy<$R, $Out>
 
 abstract class FavoriteEventCopyWith<$R, $In extends FavoriteEvent, $Out>
     implements ClassCopyWith<$R, $In, $Out> {
-  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>
+  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>
   get metadata;
   $R call({
     String? id,
@@ -162,7 +163,7 @@ class _FavoriteEventCopyWithImpl<$R, $Out>
   late final ClassMapperBase<FavoriteEvent> $mapper =
       FavoriteEventMapper.ensureInitialized();
   @override
-  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>
+  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>
   get metadata => MapCopyWith(
     $value.metadata,
     (v, t) => ObjectCopyWith(v, $identity, t),

@@ -180,6 +180,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     return Scaffold(
       backgroundColor: context.colors.background,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             _buildHeader(),

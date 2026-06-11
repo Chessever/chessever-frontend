@@ -336,6 +336,7 @@ class GamesTourModel {
         openingName: resolvedOpening,
         timeControl: game.timeControl,
         avgElo: game.avgElo,
+        isOnline: game.lichessId?.isNotEmpty == true,
       );
     } catch (e) {
       throw ArgumentError(
@@ -769,7 +770,9 @@ enum GameStatus {
       case '0-1':
         return GameStatus.blackWins;
       case '1/2-1/2':
+      case '1/2':
       case '½-½':
+      case '½':
       case '0.5-0.5':
         return GameStatus.draw;
       case '*':

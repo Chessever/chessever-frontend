@@ -231,10 +231,15 @@ final class ChessPipController: NSObject {
   }
 
   private func restoreAmbientAudioSession() {
-    do {
-      try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-    } catch {
-      print("[PiP] Failed to restore ambient audio session: \(error)")
+    // Runs on resume (via clear()) when no game is PiP-eligible. setCategory can
+    // block when the route is contended right after foregrounding, so hand the
+    // session back OFF the main thread to keep the resume frame responsive.
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+      } catch {
+        print("[PiP] Failed to restore ambient audio session: \(error)")
+      }
     }
   }
 
@@ -428,8 +433,14 @@ final class ChessPipController: NSObject {
     timer.schedule(deadline: .now(), repeating: 1.0)
     timer.setEventHandler { [weak self] in
       guard let self, self.payload != nil else { return }
-      // Hold .playback against any SoLoud/ambient stomp while a game is armed.
-      self.ensurePlaybackAudioSession()
+      // Only re-assert .playback while PiP is actually visible. Doing it every
+      // second in the foreground churned the shared AVAudioSession and competed
+      // with the app's SoLoud engine + main thread (a slowdown source). In the
+      // foreground the loop just re-enqueues the cached frame to keep the layer
+      // PiP-eligible — no audio-session work needed.
+      if self.pipController?.isPictureInPictureActive == true {
+        self.ensurePlaybackAudioSession()
+      }
       self.enqueueFrame()
     }
     timer.resume()
@@ -586,6 +597,24 @@ extension ChessPipController: AVPictureInPictureControllerDelegate {
     stopNativePolling()
     stopRenderLoop()
     channel?.invokeMethod("onPipModeChanged", arguments: ["isInPip": false])
+  }
+
+  // Tapping the PiP window's restore control asks the app to bring its UI back.
+  // AVKit holds the PiP overlay and the expand animation until we acknowledge
+  // restoration via this completion handler; if the delegate method is absent,
+  // AVKit waits out its internal timeout — that stall is the multi-second freeze
+  // seen when returning from PiP. Flutter runs a single FlutterViewController
+  // that is still mounted underneath the overlay, so there is nothing to
+  // re-present: ack immediately on the main thread so the transition snaps back.
+  func pictureInPictureController(
+    _ pictureInPictureController: AVPictureInPictureController,
+    restoreUserInterfaceForPictureInPictureStop completionHandler: @escaping (Bool) -> Void
+  ) {
+    if Thread.isMainThread {
+      completionHandler(true)
+    } else {
+      DispatchQueue.main.async { completionHandler(true) }
+    }
   }
 }
 

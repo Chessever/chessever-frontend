@@ -12,87 +12,181 @@ class LiveUpdatesService {
   );
 
   bool _setupDone = false;
-  String? _activeGameId;
+  bool _oneSignalReady = false;
 
-  /// Returns the currently active Live Activity game ID, if any.
-  String? get activeGameId => _activeGameId;
+  /// Game IDs with an active Live Activity, OLDEST first. Capped at
+  /// [_maxActive]; starting one beyond the cap evicts the oldest (FIFO).
+  final List<String> _activeGameIds = <String>[];
 
-  /// Returns true if a Live Activity is currently active.
-  bool get isActive => _activeGameId != null;
+  /// Max concurrent Live Activities. Hard cap of 1 — only ever ONE live card at
+  /// a time; starting a new one evicts (ends) the previous.
+  static const int _maxActive = 1;
 
-  Future<void> setup() async {
-    if (_setupDone) return;
-    if (kIsWeb) return;
-    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+  final Set<String> _startingGameIds = <String>{};
 
-    try {
-      OneSignal.LiveActivities.setupDefault();
-      _setupDone = true;
-    } catch (_) {
-      // Live Activities not available on this device/OS.
+  /// Most-recently-started active game (kept for back-compat callers).
+  String? get activeGameId =>
+      _activeGameIds.isEmpty ? null : _activeGameIds.last;
+
+  /// All active Live Activity game IDs, oldest first.
+  List<String> get activeGameIds => List.unmodifiable(_activeGameIds);
+
+  /// Returns true if any Live Activity is currently active.
+  bool get isActive => _activeGameIds.isNotEmpty;
+
+  void _trackActiveGame(String gameId) {
+    _activeGameIds.remove(gameId); // dedup → move to most-recent
+    _activeGameIds.add(gameId);
+  }
+
+  /// Evicts the oldest active Live Activity (ending it) until there is room for
+  /// [newGameId]. No-op if [newGameId] is already tracked (it's a refresh).
+  Future<void> _evictOldestIfNeeded(String newGameId) async {
+    if (_activeGameIds.contains(newGameId)) return;
+    while (_activeGameIds.length >= _maxActive) {
+      final oldest = _activeGameIds.first;
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        // stopForGame → endLiveActivity removes it from the list + disables sub.
+        await stopForGame(oldest, userId);
+      } else {
+        _activeGameIds.remove(oldest);
+      }
     }
   }
 
-  Future<void> startLiveActivity({
+  void markOneSignalReady() {
+    _oneSignalReady = true;
+  }
+
+  Future<bool> setup() async {
+    if (kIsWeb) return false;
+    if (defaultTargetPlatform != TargetPlatform.iOS) return true;
+    if (_setupDone) return true;
+    if (!_oneSignalReady) {
+      debugPrint(
+        '[LiveUpdates] OneSignal is not initialized; skipping iOS Live Activity setup.',
+      );
+      return false;
+    }
+
+    try {
+      await OneSignal.LiveActivities.setupDefault(
+        options: LiveActivitySetupOptions(
+          enablePushToStart: true,
+          enablePushToUpdate: true,
+        ),
+      );
+      _setupDone = true;
+      return true;
+    } catch (_) {
+      // Live Activities not available on this device/OS.
+      return false;
+    }
+  }
+
+  Future<bool> startLiveActivity({
     required String activityId,
     required Map<String, dynamic> attributes,
     required Map<String, dynamic> content,
   }) async {
-    await setup();
-    if (kIsWeb) return;
+    if (kIsWeb) return false;
 
     final gameId = attributes['game_id'] as String?;
-    if (gameId == null || gameId.isEmpty) return;
-    var started = false;
-
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      try {
-        debugPrint('[LiveUpdates] Starting iOS Live Activity: $activityId');
-        final response = await _liveActivitiesChannel
-            .invokeMethod<Map<Object?, Object?>>('startDefaultVerified', {
-              'activityId': activityId,
-              'attributes': attributes,
-              'content': content,
-            });
-
-        final startedOnDevice = response?['ok'] == true;
-        if (startedOnDevice) {
-          _activeGameId = gameId;
-          started = true;
-          debugPrint(
-            '[LiveUpdates] iOS Live Activity persisted for game: $gameId',
-          );
-          debugPrint('[LiveUpdates] Native state: ${response?['activity']}');
-        } else {
-          debugPrint(
-            '[LiveUpdates] iOS Live Activity did not persist for game: $gameId',
-          );
-          debugPrint('[LiveUpdates] Native debug state: $response');
-        }
-      } catch (e, st) {
-        debugPrint('[LiveUpdates] iOS Live Activity failed: $e');
-        debugPrintStack(stackTrace: st);
-      }
-    } else if (defaultTargetPlatform == TargetPlatform.android) {
-      // Android: We register the subscription in Supabase
-      // The edge function will send live notifications via collapse_id
-      _activeGameId = gameId;
-      started = true;
+    if (gameId == null || gameId.isEmpty) return false;
+    if (_activeGameIds.contains(gameId)) return true;
+    if (!_startingGameIds.add(gameId)) {
       debugPrint(
-        '[LiveUpdates] Android live subscription registered for game: $gameId',
+        '[LiveUpdates] Start already in flight for game: $gameId; skipping duplicate.',
       );
+      return false;
     }
 
-    // Register subscription in Supabase for server-side dispatch
-    if (started) {
-      await _registerSubscription(gameId, enabled: true);
+    try {
+      final liveActivitiesReady = await setup();
+      if (defaultTargetPlatform == TargetPlatform.iOS && !liveActivitiesReady) {
+        debugPrint(
+          '[LiveUpdates] iOS Live Activity was not started because ActivityKit push setup is not ready.',
+        );
+        return false;
+      }
+
+      // Cap concurrent Live Activities at [_maxActive]; evict the oldest first.
+      await _evictOldestIfNeeded(gameId);
+
+      var started = false;
+
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        try {
+          debugPrint('[LiveUpdates] Starting iOS Live Activity: $activityId');
+          final response = await _liveActivitiesChannel
+              .invokeMethod<Map<Object?, Object?>>('startDefaultVerified', {
+                'activityId': activityId,
+                'attributes': attributes,
+                'content': content,
+              });
+
+          final startedOnDevice = response?['ok'] == true;
+          if (startedOnDevice) {
+            _trackActiveGame(gameId);
+            started = true;
+            debugPrint(
+              '[LiveUpdates] iOS Live Activity persisted for game: $gameId',
+            );
+            debugPrint(
+              '[LiveUpdates] iOS Live Activity update token present: ${response?['pushTokenPresent'] == true}',
+            );
+            debugPrint('[LiveUpdates] Native state: ${response?['activity']}');
+          } else {
+            debugPrint(
+              '[LiveUpdates] iOS Live Activity did not persist for game: $gameId',
+            );
+            debugPrint('[LiveUpdates] Native debug state: $response');
+          }
+        } catch (e, st) {
+          debugPrint('[LiveUpdates] iOS Live Activity failed: $e');
+          debugPrintStack(stackTrace: st);
+        }
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        // Android: post a local live notification immediately (mirrors the iOS
+        // on-device Live Activity start) so the widget shows the viewed position
+        // even for a finished game. The edge function then keeps it updated via
+        // push using the same per-game notification id.
+        try {
+          await _liveActivitiesChannel.invokeMethod('startLocalLiveActivity', {
+            'content': content,
+          });
+        } catch (e) {
+          debugPrint(
+            '[LiveUpdates] Android local live notification failed: $e',
+          );
+        }
+        _trackActiveGame(gameId);
+        started = true;
+        debugPrint(
+          '[LiveUpdates] Android live notification started for game: $gameId',
+        );
+      }
+
+      // Register subscription in Supabase for server-side dispatch
+      if (started) {
+        await _registerSubscription(gameId, enabled: true);
+      }
+      return started;
+    } finally {
+      _startingGameIds.remove(gameId);
     }
   }
 
   Future<void> endLiveActivity(String activityId) async {
     if (kIsWeb) return;
 
-    final gameId = _activeGameId;
+    // activityId format: 'live:<gameId>:<userId>'.
+    final parts = activityId.split(':');
+    final gameId =
+        parts.length >= 2
+            ? parts[1]
+            : (_activeGameIds.isEmpty ? null : _activeGameIds.last);
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       try {
@@ -102,14 +196,45 @@ class LiveUpdatesService {
       } catch (e) {
         debugPrint('[LiveUpdates] iOS Live Activity end failed: $e');
       }
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        if (gameId != null) {
+          await _liveActivitiesChannel.invokeMethod('endLocalLiveActivity', {
+            'gameId': gameId,
+          });
+        }
+      } catch (e) {
+        debugPrint('[LiveUpdates] Android local notification end failed: $e');
+      }
     }
 
-    _activeGameId = null;
+    if (gameId != null) {
+      _activeGameIds.remove(gameId);
+      _startingGameIds.remove(gameId);
+    }
     await _registerSubscription(gameId, enabled: false);
   }
 
+  Future<Map<Object?, Object?>?> getLiveActivityDebugState() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+    try {
+      return await _liveActivitiesChannel.invokeMethod<Map<Object?, Object?>>(
+        'getLiveActivityDebugState',
+      );
+    } catch (e) {
+      debugPrint('[LiveUpdates] Failed to read Live Activity debug state: $e');
+      return null;
+    }
+  }
+
+  Future<void> logLiveActivityDebugState(String reason) async {
+    final state = await getLiveActivityDebugState();
+    if (state == null) return;
+    debugPrint('[LiveUpdates] Debug state ($reason): $state');
+  }
+
   /// Convenience method to start live updates for a game when app goes to background.
-  Future<void> startForGame({
+  Future<bool> startForGame({
     required String gameId,
     required String userId,
     required String playerWhite,
@@ -131,6 +256,14 @@ class LiveUpdatesService {
     int? blackFideId,
     int? boardThemeIndex,
     int? pieceStyleIndex,
+    String? lastMoveUci,
+    String? whiteFlag,
+    String? blackFlag,
+    int? evalCp,
+    int? evalMate,
+    String? status,
+    bool isGameOver = false,
+    bool followLive = true,
   }) async {
     try {
       final activityId = 'live:$gameId:$userId';
@@ -155,6 +288,21 @@ class LiveUpdatesService {
         if (whiteFideId != null) 'white_fide_id': whiteFideId,
         if (blackFideId != null) 'black_fide_id': blackFideId,
       };
+      final clockAnchorTime = lastMoveTime?.toUtc();
+      final activeClockColor = _activeClockColorFromFen(fen);
+      final activeClockSeconds =
+          activeClockColor == 'white'
+              ? whiteClockSeconds
+              : activeClockColor == 'black'
+              ? blackClockSeconds
+              : null;
+      final activeClockDeadline =
+          followLive &&
+                  !isGameOver &&
+                  clockAnchorTime != null &&
+                  activeClockSeconds != null
+              ? clockAnchorTime.add(Duration(seconds: activeClockSeconds))
+              : null;
       final content = <String, dynamic>{
         'game_id': gameId,
         'player_white': playerWhite,
@@ -169,18 +317,32 @@ class LiveUpdatesService {
         if (blackPhoto != null) 'black_photo': blackPhoto,
         'fen': fen ?? '',
         'last_move': lastMove ?? '',
-        'last_move_uci': lastMove ?? '',
+        'last_move_uci': lastMoveUci ?? lastMove ?? '',
         if (lastMoveTime != null)
           'last_move_time': lastMoveTime.toUtc().toIso8601String(),
         if (whiteClockSeconds != null) 'white_clock_seconds': whiteClockSeconds,
         if (blackClockSeconds != null) 'black_clock_seconds': blackClockSeconds,
+        if (clockAnchorTime != null)
+          'clock_anchor_time': clockAnchorTime.toIso8601String(),
+        if (activeClockColor != null) 'active_clock_color': activeClockColor,
+        if (activeClockDeadline != null)
+          'active_clock_deadline': activeClockDeadline.toIso8601String(),
+        if (evalCp != null) 'eval_cp': evalCp,
+        if (evalMate != null) 'eval_mate': evalMate,
         if (eventName != null) 'event_name': eventName,
         if (roundName != null) 'round_name': roundName,
         if (whiteFideId != null) 'white_fide_id': whiteFideId,
         if (blackFideId != null) 'black_fide_id': blackFideId,
+        if (whiteFlag != null && whiteFlag.isNotEmpty) 'white_flag': whiteFlag,
+        if (blackFlag != null && blackFlag.isNotEmpty) 'black_flag': blackFlag,
+        if (status != null) 'status': status,
+        'is_game_over': isGameOver ? 1 : 0,
+        // Only the side-to-move clock ticks, and only while the viewer is
+        // following the live tail (latest move). Frozen snapshots stay static.
+        'follow_live': followLive ? 1 : 0,
       };
 
-      await startLiveActivity(
+      return startLiveActivity(
         activityId: activityId,
         attributes: attributes,
         content: content,
@@ -188,7 +350,16 @@ class LiveUpdatesService {
     } catch (e, st) {
       debugPrint('[LiveUpdates] Error in startForGame: $e');
       debugPrintStack(stackTrace: st);
+      return false;
     }
+  }
+
+  String? _activeClockColorFromFen(String? fen) {
+    final parts = fen?.trim().split(RegExp(r'\s+'));
+    if (parts == null || parts.length < 2) return null;
+    if (parts[1] == 'w') return 'white';
+    if (parts[1] == 'b') return 'black';
+    return null;
   }
 
   /// Stop live updates for the current game.
@@ -217,7 +388,11 @@ class LiveUpdatesService {
             'game_id': gameId,
             'platform': platform,
             'enabled': enabled,
-            if (enabled) 'started_at': null,
+            if (enabled) 'started_at': DateTime.now().toUtc().toIso8601String(),
+            // Reset refresh markers on (re)enable so the edge fn pushes the
+            // current board immediately on its next poll.
+            if (enabled) 'last_event_at': null,
+            if (enabled) 'last_payload_signature': null,
           }, onConflict: 'user_id,game_id,platform');
     } catch (e) {
       debugPrint('[LiveUpdates] Failed to register subscription: $e');

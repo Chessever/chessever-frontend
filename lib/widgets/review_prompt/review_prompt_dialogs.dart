@@ -3,6 +3,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 
 class ReviewResult {
@@ -17,12 +18,12 @@ Future<ReviewResult?> showReviewFlowDialog(
   BuildContext context, {
   bool skipSurveyForHighRating = false,
 }) {
-  return showDialog<ReviewResult>(
+  return showAlertModal<ReviewResult>(
     context: context,
+    horizontalPadding: 16,
+    verticalPadding: 24,
     barrierDismissible: true,
-    builder:
-        (context) =>
-            ReviewFlowDialog(skipSurveyForHighRating: skipSurveyForHighRating),
+    child: ReviewFlowDialog(skipSurveyForHighRating: skipSurveyForHighRating),
   );
 }
 
@@ -137,47 +138,43 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 24.sp),
-      child: Container(
-        constraints: BoxConstraints(maxWidth: 360.w),
-        decoration: BoxDecoration(
-          color: context.colors.background,
-          borderRadius: BorderRadius.circular(20.br),
-          border: Border.all(
-            color: context.colors.textPrimary.withValues(alpha: 0.08),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
-            ),
-          ],
+    return Container(
+      constraints: BoxConstraints(maxWidth: 360.w),
+      decoration: BoxDecoration(
+        color: context.colors.background,
+        borderRadius: BorderRadius.circular(20.br),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.08),
+          width: 1,
         ),
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.1, 0),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              );
-            },
-            child: _buildCurrentStep(),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
+        ],
+      ),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.1, 0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: _buildCurrentStep(),
         ),
       ),
     );
@@ -208,7 +205,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
           SizedBox(height: 12.sp),
           Text(
             'Enjoying ChessEver?',
-            style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textLgBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 6.sp),
@@ -247,7 +246,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   },
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 12.sp),
-                    backgroundColor: context.colors.textPrimary.withValues(alpha: 0.04),
+                    backgroundColor: context.colors.textPrimary.withValues(
+                      alpha: 0.04,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.br),
                     ),
@@ -267,7 +268,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 12.sp),
                     backgroundColor:
-                        _rating == 0 ? context.colors.surfaceRecessed : kPrimaryColor,
+                        _rating == 0
+                            ? context.colors.surfaceRecessed
+                            : kPrimaryColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.br),
                     ),
@@ -302,7 +305,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
               children: [
                 Text(
                   'Your Feedback',
-                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+                  style: AppTypography.textLgBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
                 SizedBox(height: 4.sp),
                 Text(
@@ -322,7 +327,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                       color:
                           isActive
                               ? kPrimaryColor
-                              : context.colors.textPrimary.withValues(alpha: 0.25),
+                              : context.colors.textPrimary.withValues(
+                                alpha: 0.25,
+                              ),
                       size: 18.ic,
                     );
                   }),
@@ -354,13 +361,17 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
                       borderSide: BorderSide(
-                        color: context.colors.textPrimary.withValues(alpha: 0.08),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.08,
+                        ),
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
                       borderSide: BorderSide(
-                        color: context.colors.textPrimary.withValues(alpha: 0.08),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.08,
+                        ),
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
@@ -381,7 +392,8 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         onPressed: _onFeedbackSkip,
                         style: TextButton.styleFrom(
                           padding: EdgeInsets.symmetric(vertical: 12.sp),
-                          backgroundColor: context.colors.textPrimary.withValues(alpha: 0.04),
+                          backgroundColor: context.colors.textPrimary
+                              .withValues(alpha: 0.04),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.br),
                           ),
@@ -389,7 +401,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         child: Text(
                           'Skip',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                         ),
                       ),
@@ -441,7 +455,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
               children: [
                 Text(
                   'Feature Request',
-                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+                  style: AppTypography.textLgBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                 ),
                 SizedBox(height: 4.sp),
                 Text(
@@ -479,13 +495,17 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
                       borderSide: BorderSide(
-                        color: context.colors.textPrimary.withValues(alpha: 0.08),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.08,
+                        ),
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
                       borderSide: BorderSide(
-                        color: context.colors.textPrimary.withValues(alpha: 0.08),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.08,
+                        ),
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
@@ -506,7 +526,8 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         onPressed: _onFeatureSkip,
                         style: TextButton.styleFrom(
                           padding: EdgeInsets.symmetric(vertical: 12.sp),
-                          backgroundColor: context.colors.textPrimary.withValues(alpha: 0.04),
+                          backgroundColor: context.colors.textPrimary
+                              .withValues(alpha: 0.04),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.br),
                           ),
@@ -514,7 +535,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         child: Text(
                           'Skip',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                         ),
                       ),

@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
-import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -127,7 +126,6 @@ class _TwicPlayerCard extends ConsumerWidget {
           title: player.title,
           federation: player.fed,
           rating: player.highestRating,
-          dataSource: PlayerProfileDataSource.twic,
           gamebasePlayerId: player.id,
         ),
       ),

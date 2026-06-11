@@ -95,6 +95,9 @@
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		3C7C3B0D65B8EF6A1B366DCA /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		44518272C4F4483CEDDB0159 /* Pods_ChessEverLiveActivity.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_ChessEverLiveActivity.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		4CE500000000000000000001 /* ChessEverLiveActivity.debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = ChessEverLiveActivity.debug.xcconfig; path = Flutter/ChessEverLiveActivity.debug.xcconfig; sourceTree = "<group>"; };
+		4CE500000000000000000002 /* ChessEverLiveActivity.profile.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = ChessEverLiveActivity.profile.xcconfig; path = Flutter/ChessEverLiveActivity.profile.xcconfig; sourceTree = "<group>"; };
+		4CE500000000000000000003 /* ChessEverLiveActivity.release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = ChessEverLiveActivity.release.xcconfig; path = Flutter/ChessEverLiveActivity.release.xcconfig; sourceTree = "<group>"; };
 		5F2E6DBF2B1D7003C108CC99 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		6184D25B8FCCEBAC453858BA /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -213,6 +216,9 @@
 				3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */,
 				9740EEB21CF90195004384FC /* Debug.xcconfig */,
 				7AFA3C8E1D35360C0083082E /* Release.xcconfig */,
+				4CE500000000000000000001 /* ChessEverLiveActivity.debug.xcconfig */,
+				4CE500000000000000000002 /* ChessEverLiveActivity.profile.xcconfig */,
+				4CE500000000000000000003 /* ChessEverLiveActivity.release.xcconfig */,
 				9740EEB31CF90195004384FC /* Generated.xcconfig */,
 			);
 			name = Flutter;
@@ -864,11 +870,11 @@
 		};
 		36662D669FFE66A9A0899B01 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = FB8B835DA596050DC6421558 /* Pods-ChessEverLiveActivity.debug.xcconfig */;
+			baseConfigurationReference = 4CE500000000000000000001 /* ChessEverLiveActivity.debug.xcconfig */;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = N8J7TUZMYR;
 				INFOPLIST_FILE = ChessEverLiveActivity/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
@@ -877,7 +883,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.chessever.app.ChessEverLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -914,11 +920,11 @@
 		};
 		5098F4097E412DB39994161A /* Profile */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 0E9E2759DA441F26F9001AE8 /* Pods-ChessEverLiveActivity.profile.xcconfig */;
+			baseConfigurationReference = 4CE500000000000000000002 /* ChessEverLiveActivity.profile.xcconfig */;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = N8J7TUZMYR;
 				INFOPLIST_FILE = ChessEverLiveActivity/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
@@ -927,7 +933,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.chessever.app.ChessEverLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -939,11 +945,11 @@
 		};
 		88F30B7BF4774E75B4120956 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 9FBD8B8645B382AC24173A82 /* Pods-ChessEverLiveActivity.release.xcconfig */;
+			baseConfigurationReference = 4CE500000000000000000003 /* ChessEverLiveActivity.release.xcconfig */;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = N8J7TUZMYR;
 				INFOPLIST_FILE = ChessEverLiveActivity/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
@@ -952,7 +958,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.chessever.app.ChessEverLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

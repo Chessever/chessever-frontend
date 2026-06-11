@@ -62,6 +62,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
           // Do an immediate check for new games (don't wait 10 seconds)
           Future.delayed(const Duration(seconds: 2), () {
+            if (!mounted) return;
             _checkForNewGames();
           });
         }
@@ -97,6 +98,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   }
 
   Future<void> _checkForNewGames() async {
+    if (!mounted) return;
     try {
       final currentGames = state.valueOrNull;
       if (currentGames == null) return;
@@ -106,6 +108,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       final freshGames = await gamesLocalStorageProvider.fetchAndSaveGames(
         tourId,
       );
+      if (!mounted) return;
 
       final currentById = {for (final game in currentGames) game.id: game};
       final freshIds = <String>{};
@@ -147,6 +150,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         state = AsyncValue.data(mergedGames);
       }
     } catch (error, _) {
+      // Suppress noise from races where the notifier is disposed mid-await.
+      if (!mounted) return;
       debugPrint('🔥 GamesTourNotifier: Error checking for new games: $error');
     }
   }

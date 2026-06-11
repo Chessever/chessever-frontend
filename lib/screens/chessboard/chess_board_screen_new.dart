@@ -3,7 +3,6 @@ import 'dart:developer' as developer;
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -32,6 +31,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tutorial_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/pip_intro_dialog.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
@@ -49,10 +49,12 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/services/pip_service.dart';
+import 'package:chessever2/providers/live_activity_mode_provider.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
@@ -69,6 +71,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
@@ -78,6 +81,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:country_flags/country_flags.dart' hide Shape, Circle;
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -109,7 +113,7 @@ import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
-import 'package:chessever2/providers/notifications_settings_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
@@ -131,7 +135,14 @@ final boardSelectionClearRequestProvider = StateProvider.family<int, String>(
   (_, _) => 0,
 );
 
+final _androidPipBoardRecoveryEpochProvider = StateProvider.family<int, String>(
+  (_, _) => 0,
+);
+
 String _boardSelectionClearKey(GamesTourModel game, int index) =>
+    '${game.gameId}#$index';
+
+String _androidPipBoardRecoveryKey(GamesTourModel game, int index) =>
     '${game.gameId}#$index';
 
 /// Spring-based curve that mimics iOS snappy motion
@@ -661,50 +672,12 @@ Future<bool?> _showAnalysisConfirmationDialog({
   required String confirmLabel,
   Color? confirmColor,
 }) {
-  return showDialog<bool>(
+  return showSmoothConfirmDialog(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        backgroundColor: context.colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        title: Text(
-          title,
-          style: AppTypography.textMdBold.copyWith(
-            color: context.colors.textPrimary,
-          ),
-        ),
-        content: Text(
-          message,
-          style: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.7),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.7),
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(true);
-            },
-            child: Text(
-              confirmLabel,
-              style: AppTypography.textSmMedium.copyWith(
-                color: confirmColor ?? kPrimaryColor,
-              ),
-            ),
-          ),
-        ],
-      );
-    },
+    title: title,
+    message: message,
+    confirmText: confirmLabel,
+    confirmColor: confirmColor,
   );
 }
 
@@ -786,9 +759,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _pipSub;
   ChessBoardProviderParams? _pipParams;
   bool _didInitialBoardBootstrap = false;
+  bool _isLifecycleBackgrounded = false;
+  bool _pipSessionMayNeedRecovery = false;
+  int _pipRecoveryGeneration = 0;
 
   bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
+  // Step 4/4 ("live game widgets" intro) — shown once per session at most, after
+  // the three board walkthroughs. Guards against a double-show across its two
+  // trigger points (chained off the like step, and the on-open fallback).
+  bool _liveWidgetsIntroShown = false;
   late AnimationController _swipeController;
   late Animation<double> _swipeFadeAnimation;
   late Animation<double> _swipeScaleAnimation;
@@ -940,6 +920,52 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  /// One-time intro for the live-game widgets (PiP + Live Activity). Shown only
+  /// after all three board walkthroughs are done/opted-out, so the dialog never
+  /// stacks on top of a teaching overlay.
+  Future<void> _maybeShowLiveWidgetsIntro(BuildContext context) async {
+    if (!mounted ||
+        _liveWidgetsIntroShown ||
+        _showTutorialOverlay ||
+        _showLikeTutorial) {
+      return;
+    }
+
+    final prefs = ref.read(sharedPreferencesRepository);
+    if (await prefs.getBool(kLiveWidgetsIntroSeenKey) ?? false) return;
+
+    final swipeSeen =
+        (await prefs.getBool(_kWalkthroughDontShowKey) ?? false) ||
+        (await prefs.getInt(_kWalkthroughShownDateKey)) != null;
+    final switchSeen =
+        (await prefs.getBool(kSwitchViewsWalkthroughDontShowKey) ?? false) ||
+        (await prefs.getInt(kSwitchViewsWalkthroughShownDateKey)) != null;
+    final likeSeen =
+        (await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false) ||
+        (await prefs.getInt(kLikeWalkthroughShownDateKey)) != null;
+    if (!(swipeSeen && switchSeen && likeSeen)) return;
+
+    if (!mounted ||
+        _liveWidgetsIntroShown ||
+        _showTutorialOverlay ||
+        _showLikeTutorial) {
+      return;
+    }
+
+    _liveWidgetsIntroShown = true;
+    await prefs.setBool(kLiveWidgetsIntroSeenKey, true);
+    if (!mounted || !context.mounted) return;
+    await showLiveWidgetsIntroDialog(
+      context,
+      onOpenSettings: () {
+        if (!context.mounted) return;
+        Navigator.of(context).push(
+          SettingsPage.route(initiallyExpanded: SettingsSection.notification),
+        );
+      },
+    );
+  }
+
   void _onWalkthroughFinished() {
     setState(() {
       _showTutorialOverlay = false;
@@ -1023,6 +1049,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void _onLikeTutorialFinished() {
     _removeLikeTutorialOverlay();
     _showLikeTutorial = false;
+    // Step 4/4: chain the live-game-widgets intro right after the like teaching
+    // (next frame, so it never paints atop the dismissing overlay). For users
+    // who already finished 1–3 in a past session, the on-open fallback in
+    // _checkAndShowWalkthrough's caller handles it instead. The seen-key + the
+    // in-memory guard keep it to a single show.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_maybeShowLiveWidgetsIntro(context));
+    });
   }
 
   GamesTourModel _preferFresherGameSnapshot({
@@ -1399,6 +1433,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  // Guards so the PiP provider listener does NOT hit the native channel on every
+  // board/eval provider emission (it re-emits on each engine depth tick). When
+  // PiP is off we clear once; otherwise we sync only when the payload changes.
+  bool _pipCleared = false;
+  String? _lastPipSig;
+
   void _ensurePipListener(ChessBoardProviderParams params) {
     if (_pipParams == params) return;
     _pipParams = params;
@@ -1426,9 +1466,39 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   void _handlePipModeChanged(bool isInPip) {
-    if (!isInPip && mounted) {
-      unawaited(_syncCurrentPipState());
+    if (isInPip) {
+      _pipSessionMayNeedRecovery = true;
+      return;
     }
+
+    if (!mounted) return;
+    _scheduleAndroidPipBoardRecovery();
+    unawaited(_syncCurrentPipState());
+  }
+
+  void _scheduleAndroidPipBoardRecovery() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    _pipSessionMayNeedRecovery = false;
+    final generation = ++_pipRecoveryGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_runAndroidPipBoardRecovery(generation));
+    });
+  }
+
+  Future<void> _runAndroidPipBoardRecovery(int generation) async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || generation != _pipRecoveryGeneration) return;
+    if (PipService.instance.isInPip) return;
+    final route = ModalRoute.of(context);
+    if (route?.isCurrent != true) return;
+    if (widget.games.isEmpty) return;
+    final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final game = _resolveGameForIndex(safeIndex);
+    final key = _androidPipBoardRecoveryKey(game, safeIndex);
+    final notifier = ref.read(
+      _androidPipBoardRecoveryEpochProvider(key).notifier,
+    );
+    notifier.state = notifier.state + 1;
   }
 
   Future<void> _syncCurrentPipState() async {
@@ -1446,15 +1516,61 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   Future<void> _syncPipState(ChessBoardStateNew state) async {
     if (!_isPipEligible(state.game)) {
-      await PipService.instance.clearActiveGame();
+      // PiP off / ineligible: clear the native side ONCE, then no-op on every
+      // subsequent provider tick. Previously this fired a native clearActiveGame
+      // MethodChannel on each emission (incl. eval-depth ticks), contending with
+      // the engine on the main isolate and delaying eval bars.
+      if (!_pipCleared) {
+        _pipCleared = true;
+        _lastPipSig = null;
+        await PipService.instance.clearActiveGame();
+      }
       return;
     }
+    _pipCleared = false;
     final payload = _buildPipPayload(state.game, state: state);
-    if (PipService.instance.isInPip) {
+    // Skip the native round-trip when nothing important changed. In foreground
+    // we intentionally ignore eval/clock churn because the provider re-emits
+    // constantly while the engine deepens; the full payload is still sent on
+    // position/game/settings changes and immediately before entering PiP.
+    final isInPip = PipService.instance.isInPip;
+    final sig = _pipPayloadSignature(payload, isInPip: isInPip);
+    if (sig == _lastPipSig) return;
+    _lastPipSig = sig;
+    if (isInPip) {
       await PipService.instance.updatePosition(payload);
     } else {
       await PipService.instance.setActiveGame(payload);
     }
+  }
+
+  String _pipPayloadSignature(
+    Map<String, dynamic> payload, {
+    required bool isInPip,
+  }) {
+    if (isInPip) return payload.toString();
+
+    return <Object?>[
+      payload['eligible'],
+      payload['followLive'],
+      payload['gameId'],
+      payload['fen'],
+      payload['lastMoveUci'],
+      payload['lastMove'],
+      payload['lastMoveSan'],
+      payload['soundEnabled'],
+      payload['status'],
+      payload['whiteName'],
+      payload['blackName'],
+      payload['whiteTitle'],
+      payload['blackTitle'],
+      payload['whiteFed'],
+      payload['blackFed'],
+      payload['eventName'],
+      payload['roundName'],
+      payload['boardThemeIndex'],
+      payload['pieceStyleIndex'],
+    ].toString();
   }
 
   Future<void> _syncPipGameSnapshot(GamesTourModel game) async {
@@ -1467,15 +1583,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   bool _isPipEligible(GamesTourModel game) {
+    // PiP is free for everyone; eligibility depends only on the chosen mode.
     final mode =
         ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.off;
     switch (mode) {
       case PipMode.off:
         return false;
       case PipMode.live:
-        return GameFilterHelper.isLiveNow(game);
-      case PipMode.all:
-        // Legacy persisted value. PiP now only enters for live games.
         return GameFilterHelper.isLiveNow(game);
     }
   }
@@ -1486,7 +1600,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     required bool isLive,
   }) {
     return {
-      'mode': mode == PipMode.all ? PipMode.live.label : mode.label,
+      'mode': mode.label,
       'is_live': isLive,
       'game_id': game.gameId,
       'game_source': game.source.name,
@@ -1511,6 +1625,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         state?.lastMove?.uci ??
         game.lastMove ??
         '';
+    final moveSans =
+        analysisState?.moveSans ?? state?.moveSans ?? const <String>[];
+    final lastMoveSan = moveSans.isNotEmpty ? moveSans.last : '';
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final evaluation = state?.evaluation;
     // Whether the viewed position is the live mainline tail. When the user has
@@ -1539,6 +1656,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       'fen': fen,
       'lastMoveUci': lastMoveUci,
       'lastMove': game.lastMove ?? '',
+      'lastMoveSan': lastMoveSan,
+      'soundEnabled': boardSettings?.soundEnabled == true,
       'status': game.gameStatus.name,
       if (game.lastMoveTime != null)
         'lastMoveTime': game.lastMoveTime!.toUtc().toIso8601String(),
@@ -1675,6 +1794,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _handleLifecycleResume() {
     if (!mounted || widget.games.isEmpty) return;
+    if (_pipSessionMayNeedRecovery && !PipService.instance.isInPip) {
+      _scheduleAndroidPipBoardRecovery();
+    }
     ref.invalidate(gameUpdatesStreamProvider);
     ref.invalidate(liveGameUpdateStreamProvider);
     ref.invalidate(gameUpdatesBatchStreamProvider);
@@ -1688,7 +1810,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       debugPrint('Error refreshing Stockfish on resume: $e');
     }
 
-    // Stop Live Activity when user returns to the app
+    // Stop THIS game's Live Activity now that the user is back in the app.
+    // (Previously this awaited a logLiveActivityDebugState native round-trip
+    // first — a diagnostic that added a method-channel hop to the resume burst.)
     _stopLiveActivityIfActive(currentGame);
     unawaited(
       _syncPipState(
@@ -1700,17 +1824,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _stopLiveActivityIfActive(GamesTourModel game) {
     final liveService = LiveUpdatesService.instance;
-    final activeGameId = liveService.activeGameId;
-    if (activeGameId == null) return;
+    // Only stop THIS game's activity (the one the user returned to); other
+    // tracked games keep their live activities.
+    if (!liveService.activeGameIds.contains(game.gameId)) return;
 
     final user = ref.read(currentUserProvider);
     if (user == null) return;
 
-    // Stop the active live activity since user is back in the app
-    unawaited(liveService.stopForGame(activeGameId, user.id));
-    debugPrint(
-      '[ChessBoardScreen] Stopped Live Activity - user returned to app',
-    );
+    unawaited(liveService.stopForGame(game.gameId, user.id));
+    debugPrint('[ChessBoardScreen] Stopped Live Activity for resumed game');
   }
 
   void _handleLifecyclePaused() {
@@ -1725,8 +1847,69 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       debugPrint('Error pausing Stockfish on lifecycle change: $e');
     }
 
-    // Auto-start Live Activity for live games when app goes to background
-    unawaited(_startLiveActivityIfEligible(currentGame));
+    // Auto-start Live Activity when app goes to background. `isAtLiveTail`
+    // reports whether the viewer is on the latest move (following live), which
+    // gates whether the widget clock is allowed to tick.
+    final liveState = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+    final followLive = liveState?.isAtLiveTail ?? true;
+    // Render the exact position the viewer is on (a frozen earlier move or the
+    // live tail), not the game's stored fen. The on-screen board renders from
+    // `analysisState.position` (mirrors _syncPipState), NOT `state.position`
+    // which always tracks the latest mainline position — using the latter is
+    // why a viewed earlier move showed the wrong board.
+    final analysis = liveState?.analysisState;
+    final viewedFen = analysis?.position.fen ?? liveState?.position?.fen;
+    final viewedUci = analysis?.lastMove?.uci ?? liveState?.lastMove?.uci;
+    final sans = analysis?.moveSans ?? liveState?.moveSans ?? const <String>[];
+    final idx = analysis?.currentMoveIndex ?? liveState?.currentMoveIndex ?? -1;
+    final viewedSan = (idx >= 0 && idx < sans.length) ? sans[idx] : null;
+    // Eval of the viewed position (same source PiP uses) so the bar + text are
+    // populated; the client has the eval even when no server push will arrive.
+    final eval = liveState?.evaluation;
+    final viewedEvalCp = eval != null ? (eval * 100).round() : null;
+    final viewedEvalMate = liveState?.mate;
+    // Clocks: on the live tail use the freshest live snapshot (so the side to
+    // move counts down from the right base); on an earlier move use that ply's
+    // PGN clock tag — mirrors player_first_row_detail_widget.dart `_PlayerClock`
+    // / `moveTime`. Passing the latest snapshot for every move is why the clocks
+    // looked random/wrong.
+    final moveTimes = liveState?.moveTimes ?? const <String>[];
+    int? clockAtViewed(bool isWhite) {
+      for (var i = idx; i >= 0; i--) {
+        final byThisSide = (i.isEven && isWhite) || (i.isOdd && !isWhite);
+        if (byThisSide && i < moveTimes.length) {
+          final secs = parsePgnClockToSeconds(moveTimes[i]);
+          if (secs != null) return secs;
+        }
+      }
+      return null;
+    }
+
+    final liveWhiteClock =
+        liveState?.game.whiteClockSeconds ?? currentGame.whiteClockSeconds;
+    final liveBlackClock =
+        liveState?.game.blackClockSeconds ?? currentGame.blackClockSeconds;
+    final viewedWhiteClock =
+        followLive ? liveWhiteClock : (clockAtViewed(true) ?? liveWhiteClock);
+    final viewedBlackClock =
+        followLive ? liveBlackClock : (clockAtViewed(false) ?? liveBlackClock);
+    // The countdown anchor must come from the same snapshot as the live clock.
+    final viewedLastMoveTime =
+        liveState?.game.lastMoveTime ?? currentGame.lastMoveTime;
+    unawaited(
+      _startLiveActivityIfEligible(
+        currentGame,
+        followLive: followLive,
+        viewedFen: viewedFen,
+        viewedSan: viewedSan,
+        viewedUci: viewedUci,
+        viewedWhiteClock: viewedWhiteClock,
+        viewedBlackClock: viewedBlackClock,
+        viewedLastMoveTime: viewedLastMoveTime,
+        viewedEvalCp: viewedEvalCp,
+        viewedEvalMate: viewedEvalMate,
+      ),
+    );
   }
 
   Future<void> _enterPipForCurrentGameIfEligible() async {
@@ -1756,6 +1939,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
     if (isEligible) {
       final entered = await PipService.instance.enterIfEligible();
+      if (entered) {
+        _pipSessionMayNeedRecovery = true;
+      }
       AnalyticsService.instance.trackEventDetached(
         entered ? 'PiP Entered' : 'PiP Enter Failed',
         properties: {
@@ -1766,17 +1952,35 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  Future<void> _startLiveActivityIfEligible(GamesTourModel game) async {
-    // Only start for ongoing games
-    if (!game.gameStatus.isOngoing) return;
+  Future<void> _startLiveActivityIfEligible(
+    GamesTourModel game, {
+    bool followLive = true,
+    String? viewedFen,
+    String? viewedSan,
+    String? viewedUci,
+    int? viewedWhiteClock,
+    int? viewedBlackClock,
+    DateTime? viewedLastMoveTime,
+    int? viewedEvalCp,
+    int? viewedEvalMate,
+  }) async {
+    // Live Activity mode gate (off / live / all), mirrors PiP.
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    final liveActivityMode =
+        boardSettings?.liveActivityMode ?? LiveActivityMode.off;
+    if (liveActivityMode == LiveActivityMode.off) return;
+
+    final isOngoing = game.gameStatus.isOngoing;
+    final isFinished = game.gameStatus.isFinished;
+    // "live" → ongoing only.
+    if (liveActivityMode == LiveActivityMode.live && !isOngoing) return;
 
     // Check if user is authenticated
     final user = ref.read(currentUserProvider);
     if (user == null) return;
 
-    // Respect master push toggle
-    final pushEnabled = ref.read(notificationsSettingsProvider).enabled;
-    if (!pushEnabled) return;
+    // Backgrounding an active board is an explicit opt-in for Live Activity
+    // tracking. Do not gate this behind regular push notification settings.
 
     // Live Activities are a premium-only feature.
     if (!ref.read(subscriptionProvider).isSubscribed) return;
@@ -1785,15 +1989,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final prefs = ref.read(notificationPreferencesProvider).valueOrNull;
     if (prefs == null || !prefs.liveGameUpdates) return;
 
-    // Don't start if already active for this game
+    // The service caps concurrent live activities at one and FIFO-evicts the
+    // previous one. Skip only if THIS game already has a live activity.
     final liveService = LiveUpdatesService.instance;
-    if (liveService.activeGameId == game.gameId) return;
-
-    // Ensure newest game wins focus
-    final activeGameId = liveService.activeGameId;
-    if (activeGameId != null && activeGameId != game.gameId) {
-      unawaited(liveService.stopForGame(activeGameId, user.id));
-    }
+    if (liveService.activeGameIds.contains(game.gameId)) return;
 
     final whitePhoto = null;
     final blackPhoto = null;
@@ -1807,48 +2006,65 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             ? StringUtils.formatRoundLabel(game.roundSlug!)
             : null;
 
-    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final boardThemeIndex = boardSettings?.boardThemeIndex ?? 0;
     final pieceStyleIndex = boardSettings?.pieceStyleIndex ?? 0;
 
-    // Start Live Activity
-    unawaited(
-      liveService.startForGame(
-        gameId: game.gameId,
-        userId: user.id,
-        playerWhite: game.whitePlayer.name,
-        playerBlack: game.blackPlayer.name,
-        whiteTitle:
-            game.whitePlayer.title.isNotEmpty ? game.whitePlayer.title : null,
-        blackTitle:
-            game.blackPlayer.title.isNotEmpty ? game.blackPlayer.title : null,
-        whiteFed:
-            game.whitePlayer.federation.isNotEmpty
-                ? game.whitePlayer.federation
-                : null,
-        blackFed:
-            game.blackPlayer.federation.isNotEmpty
-                ? game.blackPlayer.federation
-                : null,
-        whitePhoto: whitePhoto,
-        blackPhoto: blackPhoto,
-        fen: game.fen,
-        lastMove: game.lastMove,
-        lastMoveTime: game.lastMoveTime,
-        whiteClockSeconds: game.whiteClockSeconds,
-        blackClockSeconds: game.blackClockSeconds,
-        eventName: eventName,
-        roundName: roundName,
-        whiteFideId: game.whitePlayer.fideId,
-        blackFideId: game.blackPlayer.fideId,
-        boardThemeIndex: boardThemeIndex,
-        pieceStyleIndex: pieceStyleIndex,
-      ),
+    final started = await liveService.startForGame(
+      gameId: game.gameId,
+      userId: user.id,
+      playerWhite: game.whitePlayer.name,
+      playerBlack: game.blackPlayer.name,
+      whiteTitle:
+          game.whitePlayer.title.isNotEmpty ? game.whitePlayer.title : null,
+      blackTitle:
+          game.blackPlayer.title.isNotEmpty ? game.blackPlayer.title : null,
+      whiteFed:
+          game.whitePlayer.federation.isNotEmpty
+              ? game.whitePlayer.federation
+              : null,
+      blackFed:
+          game.blackPlayer.federation.isNotEmpty
+              ? game.blackPlayer.federation
+              : null,
+      whitePhoto: whitePhoto,
+      blackPhoto: blackPhoto,
+      fen: (viewedFen != null && viewedFen.isNotEmpty) ? viewedFen : game.fen,
+      lastMove:
+          (viewedSan != null && viewedSan.isNotEmpty)
+              ? viewedSan
+              : game.lastMove,
+      lastMoveUci:
+          (viewedUci != null && viewedUci.isNotEmpty)
+              ? viewedUci
+              : game.lastMove,
+      lastMoveTime: viewedLastMoveTime ?? game.lastMoveTime,
+      whiteClockSeconds: viewedWhiteClock ?? game.whiteClockSeconds,
+      blackClockSeconds: viewedBlackClock ?? game.blackClockSeconds,
+      eventName: eventName,
+      roundName: roundName,
+      whiteFideId: game.whitePlayer.fideId,
+      blackFideId: game.blackPlayer.fideId,
+      boardThemeIndex: boardThemeIndex,
+      pieceStyleIndex: pieceStyleIndex,
+      status:
+          game.gameStatus.displayText.isNotEmpty
+              ? game.gameStatus.displayText
+              : null,
+      isGameOver: isFinished,
+      evalCp: viewedEvalCp,
+      evalMate: viewedEvalMate,
+      whiteFlag: CountryUtils.toFlagEmoji(game.whitePlayer.federation),
+      blackFlag: CountryUtils.toFlagEmoji(game.blackPlayer.federation),
+      // The clock may only tick while the game is live AND the viewer was
+      // on the latest move when backgrounding.
+      followLive: followLive && isOngoing,
     );
 
-    debugPrint(
-      '[ChessBoardScreen] Auto-started Live Activity for game: ${game.gameId}',
-    );
+    if (started) {
+      debugPrint(
+        '[ChessBoardScreen] Auto-started Live Activity for game: ${game.gameId}',
+      );
+    }
   }
 
   @override
@@ -1883,15 +2099,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     super.didChangeAppLifecycleState(state);
     if (!mounted) return;
     if (state == AppLifecycleState.resumed) {
-      _scheduleLifecycleResume();
+      final wasBackgrounded = _isLifecycleBackgrounded;
+      _isLifecycleBackgrounded = false;
+      if (wasBackgrounded) {
+        _scheduleLifecycleResume();
+      }
     } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
+      if (_isLifecycleBackgrounded) return;
+      _isLifecycleBackgrounded = true;
       unawaited(_enterPipForCurrentGameIfEligible());
       _handleLifecyclePaused();
     } else {
+      // inactive/hidden are transient focus or visibility states. Flutter also
+      // synthesizes hidden before paused on mobile, so doing background work here
+      // duplicates the real paused path.
       ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
     }
   }
@@ -1902,6 +2125,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     WidgetsBinding.instance.removeObserver(this);
     PipService.instance.removeListener(_handlePipModeChanged);
     ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
+    _pipRecoveryGeneration++;
     _boardKeepAliveSub?.close();
     _audioSub?.close();
     _pipSub?.close();
@@ -2052,6 +2276,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         likeFlightAnchorId: _likeFlightAnchorId(_currentPageIndex),
         onGameChanged: (index) {},
         lastViewedIndex: _lastViewedIndex,
+        isActivePage: true,
       );
     }
 
@@ -2088,6 +2313,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         likeFlightAnchorId: _likeFlightAnchorId(_currentPageIndex),
         onGameChanged: (index) {},
         lastViewedIndex: _lastViewedIndex,
+        isActivePage: true,
       );
     }
 
@@ -2147,8 +2373,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           builder: (context) {
             if (!_hasCheckedWalkthrough) {
               _hasCheckedWalkthrough = true;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _checkAndShowWalkthrough(context);
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                await _checkAndShowWalkthrough(context);
+                if (mounted && context.mounted) {
+                  await _maybeShowLiveWidgetsIntro(context);
+                }
               });
             }
             return Builder(
@@ -2238,6 +2467,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                           onGameChanged: _navigateToGame,
                                           lastViewedIndex: _lastViewedIndex,
                                           hideEventInfo: widget.hideEventInfo,
+                                          isActivePage:
+                                              index == _currentPageIndex,
                                         ),
                                     error: (e, _) => ErrorWidget(e),
                                   );
@@ -2252,6 +2483,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                     onGameChanged: _navigateToGame,
                                     lastViewedIndex: _lastViewedIndex,
                                     hideEventInfo: widget.hideEventInfo,
+                                    isActivePage: index == _currentPageIndex,
                                   );
                                 }
                               },
@@ -2789,6 +3021,7 @@ class _GamePage extends StatelessWidget {
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
         savedAnalysisData: savedAnalysisData,
+        isActivePage: currentGameIndex == currentPageIndex,
       ),
       body: _GameBody(
         index: currentGameIndex,
@@ -2816,6 +3049,7 @@ class _LoadingScreen extends StatelessWidget {
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
+  final bool isActivePage;
 
   const _LoadingScreen({
     required this.games,
@@ -2824,6 +3058,7 @@ class _LoadingScreen extends StatelessWidget {
     required this.onGameChanged,
     this.lastViewedIndex,
     this.hideEventInfo = false,
+    this.isActivePage = false,
   });
 
   @override
@@ -2861,6 +3096,7 @@ class _LoadingScreen extends StatelessWidget {
         isLoading: true,
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
+        isActivePage: isActivePage,
       ),
       body: Center(
         child: ConstrainedBox(
@@ -3063,6 +3299,13 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final bool hideEventInfo;
   final SavedAnalysisData? savedAnalysisData;
 
+  /// Whether this app bar belongs to the currently-visible PageView page.
+  /// Only the active page attaches the shared [LikeFlightAnchor] GlobalKeys
+  /// (heart badge + save button); adjacent pre-built pages must not, or the
+  /// same GlobalKey would appear in the tree multiple times (duplicate-key
+  /// crash) and the flying-heart would dock onto the wrong page.
+  final bool isActivePage;
+
   const _AppBar({
     required this.game,
     required this.games,
@@ -3073,6 +3316,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
     this.lastViewedIndex,
     this.hideEventInfo = false,
     this.savedAnalysisData,
+    this.isActivePage = false,
   });
 
   @override
@@ -3161,6 +3405,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
   Future<void> _showSaveAnalysisDialog() async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
+    if (!mounted) return;
 
     final params = ChessBoardProviderParams(
       game: widget.game,
@@ -3510,7 +3755,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
               // origin (scale-0 maps every child point to center), giving the
               // flight a wrong dock target. Measuring the un-transformed box
               // here yields the badge's true rect even while it's invisible.
-              child: KeyedSubtree(key: anchor.heartBadgeKey, child: heartBadge),
+              child: KeyedSubtree(
+                key: widget.isActivePage ? anchor.heartBadgeKey : null,
+                child: heartBadge,
+              ),
             ),
           ],
         );
@@ -3537,7 +3785,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // like is represented only by the small red badge above. The
         // flight phase still uses the keyed slot as its target.
         return IconButton(
-          icon: KeyedSubtree(key: anchor.saveButtonKey, child: pulsing),
+          icon: KeyedSubtree(
+            key: widget.isActivePage ? anchor.saveButtonKey : null,
+            child: pulsing,
+          ),
           tooltip: 'Save analysis',
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         );
@@ -3927,7 +4178,7 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
     _openedAt = DateTime.now();
     _ChessBoardPopupState.markOpen();
 
-    debugPrint('📂 TABLET POPUP OPENED: time=${_openedAt}');
+    debugPrint('📂 TABLET POPUP OPENED: time=$_openedAt');
 
     setState(() => _isOpen = true);
     _showOverlay();
@@ -4180,19 +4431,18 @@ class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
 
         // Schedule cleanup after a delay - gives time for popup to actually open
         Future.delayed(const Duration(milliseconds: 1500), () {
-          if (mounted && _wasPopupOpen) {
-            // Check if there's still an open popup route
-            final navigator = Navigator.of(context, rootNavigator: true);
-            final hasPopupRoute = navigator.canPop();
-            debugPrint(
-              '🕐 TABLET WRAPPER CLEANUP: hasPopupRoute=$hasPopupRoute, isAnyPopupOpen=${_ChessBoardPopupState.isAnyPopupOpen}',
-            );
-            if (!hasPopupRoute && !_ChessBoardPopupState.isAnyPopupOpen) {
-              debugPrint('🕐 TABLET WRAPPER: Resetting popup state');
-              _wasPopupOpen = false;
-              // Don't reset global state here - let the dropdown/popup handle it
-              // _ChessBoardPopupState.markClosed();
-            }
+          if (!context.mounted || !_wasPopupOpen) return;
+          // Check if there's still an open popup route
+          final navigator = Navigator.of(context, rootNavigator: true);
+          final hasPopupRoute = navigator.canPop();
+          debugPrint(
+            '🕐 TABLET WRAPPER CLEANUP: hasPopupRoute=$hasPopupRoute, isAnyPopupOpen=${_ChessBoardPopupState.isAnyPopupOpen}',
+          );
+          if (!hasPopupRoute && !_ChessBoardPopupState.isAnyPopupOpen) {
+            debugPrint('🕐 TABLET WRAPPER: Resetting popup state');
+            _wasPopupOpen = false;
+            // Don't reset global state here - let the dropdown/popup handle it
+            // _ChessBoardPopupState.markClosed();
           }
         });
       },
@@ -4313,6 +4563,7 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     return canDismiss;
   }
 
+  // ignore: unused_element
   String _formatName(String fullName, {double? maxWidth}) {
     List<String> nameParts =
         fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
@@ -4392,7 +4643,7 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
 
     if (ResponsiveHelper.isTablet) {
       debugPrint(
-        '📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=${_openedAt}',
+        '📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=$_openedAt',
       );
     }
 
@@ -4759,7 +5010,7 @@ class _GameDropdownOverlay extends StatelessWidget {
           onHorizontalDragUpdate: (_) {},
           onHorizontalDragEnd: (_) {},
           child: Container(
-            color: Colors.black.withOpacity(0.01),
+            color: Colors.black.withValues(alpha: 0.01),
           ), // Slightly visible for hit testing
         );
       }
@@ -5580,6 +5831,7 @@ class _GameSelectorPainter extends CustomPainter {
 }
 
 /// Subtle round separator - appears between game groups
+// ignore: unused_element
 class _RoundSeparator extends StatelessWidget {
   final String roundSlug;
   final bool isFirst;
@@ -5658,6 +5910,7 @@ class _RoundSeparator extends StatelessWidget {
 }
 
 /// Staggered animated game item wrapper
+// ignore: unused_element
 class _AnimatedGameItem extends StatelessWidget {
   final int index;
   final Animation<double> animation;
@@ -6601,6 +6854,7 @@ class _TabletPlayerCard extends StatelessWidget {
     required this.isFlipped,
     required this.blackPlayer,
     required this.state,
+    // ignore: unused_element_parameter
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showClock = true,
     this.onEditName,
@@ -7630,6 +7884,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final game = widget.game;
     debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
     if (!_isLikeableSource(game.source)) return;
+    if (_isOwnDatabaseGame(game)) {
+      debugPrint(
+        '[HeartFlight] like-trigger blocked own-database gameId=${game.gameId}',
+      );
+      return;
+    }
     if (_likeInteractionInProgress) {
       debugPrint(
         '[HeartFlight] like-trigger ignored in-flight gameId=${game.gameId}',
@@ -7813,7 +8073,34 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // Games opened from a library database or the Liked Games folder are
       // saved analyses; their like identity is the original sourceGameId
       // (see GamesTourModel.likeId), so they like/unlike like everywhere else.
+      // Own-database games are excluded separately in _isOwnDatabaseGame.
       source == GameSource.savedAnalysis;
+
+  /// True when the displayed game was opened from one of the user's own
+  /// library databases. Those games are not double-tap-likeable: the game is
+  /// already curated into the library, and a like would only mirror it into
+  /// the Liked Games folder as a confusing duplicate.
+  ///
+  /// Games opened from the Liked Games folder itself (My Likes) keep the
+  /// gesture so double-tap-unlike still works there, and shared/subscribed
+  /// databases (read-only, [SavedAnalysisData.analysisId] == null) are not
+  /// the user's own, so they stay likeable too.
+  bool _isOwnDatabaseGame(GamesTourModel game) {
+    if (game.source != GameSource.savedAnalysis) return false;
+    final saved =
+        ref
+            .read(
+              chessBoardScreenProviderNew(
+                ChessBoardProviderParams(game: game, index: widget.index),
+              ).notifier,
+            )
+            .savedAnalysisData;
+    if (saved?.analysisId == null) return false;
+    final likedFolderId = ref.read(likedGamesFolderProvider).valueOrNull?.id;
+    // Fail closed: if the Liked Games folder is unknown we cannot prove the
+    // game came from it, and every own-library open carries a folderId.
+    return likedFolderId == null || saved!.folderId != likedFolderId;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -8025,8 +8312,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         _clearBoardSelectionForFrame
             ? PlayerSide.none
             : (sideToMove == Side.white ? PlayerSide.white : PlayerSide.black);
+    final androidPipRecoveryEpoch = ref.watch(
+      _androidPipBoardRecoveryEpochProvider(
+        _androidPipBoardRecoveryKey(widget.game, widget.index),
+      ),
+    );
 
     final chessboard = Chessboard(
+      key: ValueKey(
+        'analysis-board-${widget.game.gameId}-${widget.index}-$androidPipRecoveryEpoch',
+      ),
       size: widget.size,
       settings: ChessboardSettings(
         enableCoordinates: showCoordinates,
@@ -9003,13 +9298,21 @@ class _FenPositionGamesTableState
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
 
-    showDialog(
+    showAlertModal<void>(
       context: context,
       barrierDismissible: false,
-      builder:
-          (ctx) => Center(
-            child: CircularProgressIndicator(color: context.colors.textPrimary),
+      child: Container(
+        padding: EdgeInsets.all(20.sp),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+            width: 1,
           ),
+        ),
+        child: CircularProgressIndicator(color: context.colors.textPrimary),
+      ),
     );
 
     try {
@@ -10369,82 +10672,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
                                         // Confirm before promoting
                                         final confirmed =
-                                            await showDialog<bool>(
+                                            await showSmoothConfirmDialog(
                                               context: context,
-                                              builder:
-                                                  (
-                                                    dialogContext,
-                                                  ) => AlertDialog(
-                                                    backgroundColor:
-                                                        context.colors.surface,
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            12.br,
-                                                          ),
-                                                    ),
-                                                    title: Text(
-                                                      'Promote to main variant?',
-                                                      style: AppTypography
-                                                          .textMdBold
-                                                          .copyWith(
-                                                            color:
-                                                                context
-                                                                    .colors
-                                                                    .textPrimary,
-                                                          ),
-                                                    ),
-                                                    content: Text(
-                                                      'This will replace the main variant with this preview line.',
-                                                      style: AppTypography
-                                                          .textSmRegular
-                                                          .copyWith(
-                                                            color: context
-                                                                .colors
-                                                                .textPrimary
-                                                                .withValues(
-                                                                  alpha: 0.7,
-                                                                ),
-                                                          ),
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed:
-                                                            () => Navigator.of(
-                                                              dialogContext,
-                                                            ).pop(false),
-                                                        child: Text(
-                                                          'Cancel',
-                                                          style: AppTypography
-                                                              .textSmMedium
-                                                              .copyWith(
-                                                                color: context
-                                                                    .colors
-                                                                    .textPrimary
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.7,
-                                                                    ),
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      TextButton(
-                                                        onPressed:
-                                                            () => Navigator.of(
-                                                              dialogContext,
-                                                            ).pop(true),
-                                                        child: Text(
-                                                          'Promote',
-                                                          style: AppTypography
-                                                              .textSmMedium
-                                                              .copyWith(
-                                                                color:
-                                                                    kPrimaryColor,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
+                                              title: 'Promote to main variant?',
+                                              message:
+                                                  'This will replace the main variant with this preview line.',
+                                              confirmText: 'Promote',
                                             ) ??
                                             false;
 
@@ -11833,8 +12066,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             await notifier.deleteVariationAtPointer(
               List<Number>.of(variantHeadPointer),
             );
-            if (!mounted) return;
-            final currentContext = this.context;
+            if (!context.mounted) return;
+            final currentContext = context;
             if (snapshot != null) {
               _showUndoSnackBar(
                 currentContext,
@@ -11946,8 +12179,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         onSelected: (_) async {
           final snapshot = notifier.navigatorStateSnapshot();
           await notifier.deleteVariationAtPointer(List<Number>.of(headPointer));
-          if (!mounted) return;
-          final currentContext = this.context;
+          if (!context.mounted) return;
+          final currentContext = context;
           if (snapshot != null) {
             _showUndoSnackBar(
               currentContext,
@@ -12385,7 +12618,7 @@ class _PrincipalVariationListState
         newSelectedIndex != null &&
         newSelectedIndex <= maxIndex) {
       // If position just changed, prefer the user's last selection to avoid flicker
-      if (ignoreSelectedChangeAfterPosition && userSelected != null) {
+      if (ignoreSelectedChangeAfterPosition) {
         targetIndex = userSelected;
       } else {
         // User explicitly selected a variant (selectedVariantIndex changed) - honor that selection
@@ -14375,7 +14608,7 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                                   '',
                                 ),
                               );
-                              if (!mounted) return;
+                              if (!context.mounted) return;
                               Navigator.of(context, rootNavigator: true).pop();
                             } catch (error, stackTrace) {
                               setState(() => _isSaving = false);
@@ -14836,48 +15069,219 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
 */
 // End of deprecated _CommentDialog class
 
-/// Provider to fetch tour info by tour ID or name - used by the event info sheet
+bool _isEventInfoUuid(String value) {
+  return RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  ).hasMatch(value.trim());
+}
+
+@visibleForTesting
+Map<String, String> parseEventInfoHeadersForTesting(String? pgnString) {
+  if (pgnString == null || pgnString.isEmpty) {
+    return {};
+  }
+
+  try {
+    final pgnGame = PgnGame.parsePgn(pgnString);
+    return pgnGame.headers;
+  } catch (e) {
+    // Fallback to regex parsing if dartchess fails.
+    final headers = <String, String>{};
+    final matches = RegExp(r'\[(\w+)\s+"([^"]+)"\]').allMatches(pgnString);
+    for (final match in matches) {
+      headers[match.group(1)!] = match.group(2)!;
+    }
+    return headers;
+  }
+}
+
+@visibleForTesting
+String resolveEventInfoFallbackEventNameForTesting(
+  GamesTourModel game,
+  String? pgn,
+) {
+  final headers = parseEventInfoHeadersForTesting(pgn ?? game.pgn);
+  final tourSlug = game.tourSlug?.trim();
+  final tourSlugTitle =
+      tourSlug != null && tourSlug.isNotEmpty
+          ? StringUtils.slugToTitle(tourSlug)
+          : null;
+  final tourId = game.tourId.trim();
+  final displayTourId =
+      tourId.isNotEmpty && !_isEventInfoUuid(tourId) ? tourId : null;
+
+  return preferredTwicEventTitle(
+    pgnEvent: headers['Event'],
+    tourSlug: tourSlugTitle,
+    tourId: displayTourId,
+    site: headers['Site'],
+    fallback: 'Game Info',
+  );
+}
+
+DateTime? _parseEventInfoPgnDate(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null ||
+      trimmed.isEmpty ||
+      trimmed == '?' ||
+      trimmed.contains('?')) {
+    return null;
+  }
+
+  final parts = trimmed.split(RegExp(r'[.\-/]'));
+  if (parts.length < 3) return null;
+
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (year == null || month == null || day == null) return null;
+
+  return DateTime.tryParse(
+    '${year.toString().padLeft(4, '0')}-'
+    '${month.toString().padLeft(2, '0')}-'
+    '${day.toString().padLeft(2, '0')}',
+  );
+}
+
+DateTime? _eventInfoLookupDate(GamesTourModel game, String? pgn) {
+  return game.bucketDate ??
+      _parseEventInfoPgnDate(
+        parseEventInfoHeadersForTesting(pgn ?? game.pgn)['Date'],
+      );
+}
+
+String _normalizeEventInfoLookupText(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ');
+}
+
+String _slugifyEventInfoLookupText(String value) {
+  return _normalizeEventInfoLookupText(value).replaceAll(' ', '-');
+}
+
+int _scoreEventInfoTourMatch(Tour tour, String query, DateTime? gameDate) {
+  final normalizedQuery = _normalizeEventInfoLookupText(query);
+  final normalizedName = _normalizeEventInfoLookupText(tour.name);
+  final normalizedSlugTitle = _normalizeEventInfoLookupText(
+    StringUtils.slugToTitle(tour.slug),
+  );
+  final slugifiedQuery = _slugifyEventInfoLookupText(query);
+
+  var score = 0;
+  if (normalizedName == normalizedQuery) {
+    score += 100;
+  } else if (normalizedName.contains(normalizedQuery) ||
+      normalizedQuery.contains(normalizedName)) {
+    score += 45;
+  }
+
+  if (normalizedSlugTitle == normalizedQuery || tour.slug == slugifiedQuery) {
+    score += 80;
+  } else if (tour.slug.contains(slugifiedQuery) ||
+      normalizedSlugTitle.contains(normalizedQuery)) {
+    score += 35;
+  }
+
+  if (gameDate != null && tour.dates.isNotEmpty) {
+    final gameDay = DateUtils.dateOnly(gameDate);
+    final start = DateUtils.dateOnly(tour.dates.first);
+    final end = DateUtils.dateOnly(tour.dates.last);
+    if (!gameDay.isBefore(start) && !gameDay.isAfter(end)) {
+      score += 70;
+    } else if (gameDay.year == start.year || gameDay.year == end.year) {
+      score += 20;
+    }
+  }
+
+  return score;
+}
+
+Tour? _bestEventInfoTourMatch(
+  List<Tour> tours,
+  String query,
+  DateTime? gameDate,
+) {
+  if (tours.isEmpty) return null;
+
+  final ranked = tours.toList(growable: false)..sort((a, b) {
+    final scoreComparison = _scoreEventInfoTourMatch(
+      b,
+      query,
+      gameDate,
+    ).compareTo(_scoreEventInfoTourMatch(a, query, gameDate));
+    if (scoreComparison != 0) return scoreComparison;
+
+    final aDate = a.dates.isNotEmpty ? a.dates.first : DateTime(0);
+    final bDate = b.dates.isNotEmpty ? b.dates.first : DateTime(0);
+    return bDate.compareTo(aDate);
+  });
+
+  final best = ranked.first;
+  return _scoreEventInfoTourMatch(best, query, gameDate) > 0 ? best : null;
+}
+
+class _EventInfoTourLookupKey {
+  const _EventInfoTourLookupKey({required this.query, this.gameDate});
+
+  final String query;
+  final DateTime? gameDate;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _EventInfoTourLookupKey &&
+        other.query == query &&
+        other.gameDate == gameDate;
+  }
+
+  @override
+  int get hashCode => Object.hash(query, gameDate);
+}
+
+/// Provider to fetch tour info by tour ID, slug, or event name.
 final _tourInfoByIdProvider = FutureProvider.autoDispose.family<
   AboutTourModel?,
-  String
->((ref, tourId) async {
-  if (tourId.isEmpty) return null;
+  _EventInfoTourLookupKey
+>((ref, lookup) async {
+  final query = lookup.query.trim();
+  if (query.isEmpty) return null;
 
   final repo = ref.read(tourRepositoryProvider);
 
   try {
-    // 1. Try fetching by UUID first (exact match)
-    final uuidPattern = RegExp(
-      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-      caseSensitive: false,
-    );
-
-    if (uuidPattern.hasMatch(tourId.trim())) {
-      final tours = await repo.getToursByIds([tourId.trim()]);
-      if (tours.isNotEmpty) {
-        return AboutTourModel.fromTour(tours.first);
-      }
+    // Tour ids are not always UUIDs; Lichess broadcast ids are short strings.
+    final toursById = await repo.getToursByIds([query]);
+    if (toursById.isNotEmpty) {
+      return AboutTourModel.fromTour(toursById.first);
     }
 
-    // 2. Fallback: Try searching by name if it's not a UUID or not found by UUID
-    // This handles legacy games or games from Gamebase where we only have the name.
-    final searchResults = await repo.searchTours(
-      query: tourId.trim(),
-      limit: 1,
+    final slugQuery = _slugifyEventInfoLookupText(query);
+    final slugMatches = await repo.getToursBySlugs(
+      {query, slugQuery}.where((slug) => slug.isNotEmpty).toList(),
     );
-    if (searchResults.isNotEmpty) {
-      // Verify it's a reasonably close match (simple containment check)
-      final bestMatch = searchResults.first;
-      final normalizedQuery = tourId.trim().toLowerCase();
-      final normalizedMatch = bestMatch.name.toLowerCase();
+    final bestSlugMatch = _bestEventInfoTourMatch(
+      slugMatches,
+      query,
+      lookup.gameDate,
+    );
+    if (bestSlugMatch != null) {
+      return AboutTourModel.fromTour(bestSlugMatch);
+    }
 
-      if (normalizedMatch.contains(normalizedQuery) ||
-          normalizedQuery.contains(normalizedMatch)) {
-        return AboutTourModel.fromTour(bestMatch);
-      }
+    final searchResults = await repo.searchTours(query: query, limit: 20);
+    final bestMatch = _bestEventInfoTourMatch(
+      searchResults,
+      query,
+      lookup.gameDate,
+    );
+    if (bestMatch != null) {
+      return AboutTourModel.fromTour(bestMatch);
     }
   } catch (e) {
-    debugPrint('Failed to fetch tour info for $tourId: $e');
+    debugPrint('Failed to fetch tour info for $query: $e');
   }
   return null;
 });
@@ -14891,23 +15295,17 @@ class _EventInfoSheet extends ConsumerWidget {
 
   /// Parse headers from PGN
   Map<String, String> _parseHeadersFromPgn() {
-    final pgnString = pgn ?? game.pgn;
-    if (pgnString == null || pgnString.isEmpty) {
-      return {};
-    }
+    return parseEventInfoHeadersForTesting(pgn ?? game.pgn);
+  }
 
-    try {
-      final pgnGame = PgnGame.parsePgn(pgnString);
-      return pgnGame.headers;
-    } catch (e) {
-      // Fallback to regex parsing if dartchess fails
-      final headers = <String, String>{};
-      final matches = RegExp(r'\[(\w+)\s+"([^"]+)"\]').allMatches(pgnString);
-      for (final match in matches) {
-        headers[match.group(1)!] = match.group(2)!;
-      }
-      return headers;
-    }
+  String _fallbackEventName() {
+    return resolveEventInfoFallbackEventNameForTesting(game, pgn);
+  }
+
+  bool _shouldLookupFallbackEvent(String fallbackEventName) {
+    return fallbackEventName != 'Game Info' &&
+        _normalizeEventInfoLookupText(fallbackEventName) !=
+            _normalizeEventInfoLookupText(game.tourId);
   }
 
   /// Navigate to the tournament detail screen
@@ -14963,18 +15361,48 @@ class _EventInfoSheet extends ConsumerWidget {
     final tourDetail = ref.watch(tourDetailScreenProvider);
     final tourDetailAboutModel = tourDetail.valueOrNull?.aboutTourModel;
 
-    // If tourDetailScreenProvider doesn't have data, fetch independently by tourId
-    final tourInfoAsync = ref.watch(_tourInfoByIdProvider(game.tourId));
+    final lookupDate = _eventInfoLookupDate(game, pgn);
+
+    // If tourDetailScreenProvider doesn't have data, fetch independently by
+    // tour id first, then by the readable PGN/slug title if the id is not
+    // enough to resolve a tournament.
+    final tourInfoAsync = ref.watch(
+      _tourInfoByIdProvider(
+        _EventInfoTourLookupKey(query: game.tourId, gameDate: lookupDate),
+      ),
+    );
 
     // Use tourDetailAboutModel only if it matches the current game's tourId
     final matchesCachedTour =
         tourDetailAboutModel?.id.isNotEmpty == true &&
         tourDetailAboutModel?.id == game.tourId;
+    final fallbackEventName = _fallbackEventName();
+    final shouldLookupFallbackEvent =
+        !matchesCachedTour &&
+        !tourInfoAsync.isLoading &&
+        tourInfoAsync.valueOrNull == null &&
+        _shouldLookupFallbackEvent(fallbackEventName);
+    final fallbackTourInfoAsync =
+        shouldLookupFallbackEvent
+            ? ref.watch(
+              _tourInfoByIdProvider(
+                _EventInfoTourLookupKey(
+                  query: fallbackEventName,
+                  gameDate: lookupDate,
+                ),
+              ),
+            )
+            : const AsyncData<AboutTourModel?>(null);
+
     final aboutModel =
-        matchesCachedTour ? tourDetailAboutModel : tourInfoAsync.valueOrNull;
+        matchesCachedTour
+            ? tourDetailAboutModel
+            : tourInfoAsync.valueOrNull ?? fallbackTourInfoAsync.valueOrNull;
 
     // Check if we're still loading
-    final isLoading = !matchesCachedTour && tourInfoAsync.isLoading;
+    final isLoading =
+        !matchesCachedTour &&
+        (tourInfoAsync.isLoading || fallbackTourInfoAsync.isLoading);
 
     final locationService = ref.read(locationServiceProvider);
     final urlLauncher = ref.read(urlLauncherProvider);
@@ -15040,17 +15468,7 @@ class _EventInfoSheet extends ConsumerWidget {
   ) {
     final headers = _parseHeadersFromPgn();
 
-    // Determine event name. In TWIC player-profile routes, raw PGN Event can
-    // be a per-round/pairing label; prefer the canonical event from the game
-    // list when that happens.
-    final pgnEvent = headers['Event'];
-    final eventName = preferredTwicEventTitle(
-      pgnEvent: pgnEvent,
-      tourSlug: game.tourSlug,
-      tourId: game.tourId,
-      site: headers['Site'],
-      fallback: 'Game Info',
-    );
+    final eventName = _fallbackEventName();
 
     return ListView(
       controller: scrollController,

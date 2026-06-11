@@ -2,6 +2,7 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 // ignore_for_file: type=lint
+// ignore_for_file: invalid_use_of_protected_member
 // ignore_for_file: unused_element, unnecessary_cast, override_on_non_overriding_member
 // ignore_for_file: strict_raw_type, inference_failure_on_untyped_parameter
 
@@ -211,7 +212,7 @@ extension SavedAnalysisValueCopy<$R, $Out>
 
 abstract class SavedAnalysisCopyWith<$R, $In extends SavedAnalysis, $Out>
     implements ClassCopyWith<$R, $In, $Out> {
-  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>
+  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>
   get analysisState;
   MapCopyWith<$R, String, String, ObjectCopyWith<$R, String, String>>
   get variationComments;
@@ -249,7 +250,7 @@ class _SavedAnalysisCopyWithImpl<$R, $Out>
   late final ClassMapperBase<SavedAnalysis> $mapper =
       SavedAnalysisMapper.ensureInitialized();
   @override
-  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>>
+  MapCopyWith<$R, String, dynamic, ObjectCopyWith<$R, dynamic, dynamic>?>
   get analysisState => MapCopyWith(
     $value.analysisState,
     (v, t) => ObjectCopyWith(v, $identity, t),

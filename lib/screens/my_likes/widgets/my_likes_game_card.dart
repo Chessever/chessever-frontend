@@ -157,7 +157,7 @@ class _PremiumBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFB300),
+        color: kPrimaryColor,
         borderRadius: BorderRadius.circular(8.br),
         boxShadow: [
           BoxShadow(
