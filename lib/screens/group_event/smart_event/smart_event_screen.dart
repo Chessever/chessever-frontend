@@ -68,6 +68,14 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   int _index = 1;
   late final PageController _page = PageController(initialPage: _index);
 
+  // Search lives on the screen (not the Games tab) so the field can sit
+  // pinned above the tab switcher like the regular event view, and so the
+  // one query drives both the Games and Standings tabs.
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _query = '';
+  Timer? _searchDebounce;
+
   // Local tier filter: starts from the saved request's tier (first word so
   // "GM Rapid" defaults the filter to GM) and is mutated by the app bar
   // dropdown without leaving the screen.
@@ -93,12 +101,18 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _page.dispose();
     super.dispose();
   }
 
   void _select(int i) {
     if (_index == i) return;
+    // Drop the keyboard when switching tabs so the field and the keyboard
+    // collapse together instead of the keyboard hovering over About.
+    _searchFocusNode.unfocus();
     setState(() => _index = i);
     _page.animateToPage(
       i,
@@ -113,8 +127,8 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   /// .withTierSelection]) so naming, caption, Elo floor and favorite
   /// identity all follow the overridden config. The Games / Standings tabs
   /// load through [SmartEventRequest.withNeutralEloRange] and carry the
-  /// selected tier band in the query filter instead, so any tier — including
-  /// ones BELOW the saved floor — can actually fetch its games.
+  /// selected tier threshold in the query filter instead, so any tier —
+  /// including ones BELOW the saved floor — can actually fetch its games.
   SmartEventRequest get _effectiveRequest {
     var updated = _baselineRequest.withGameFilterOverrides(_filter);
     if (_tier != _initialTier(_baselineRequest)) {
@@ -124,9 +138,10 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   }
 
   /// Whether the user diverged from the criteria this smart event was
-  /// generated from — the dimensions a smart event is keyed on (tier band,
-  /// live/completed state, time control). Result / year / OTB-online / sort
-  /// tweaks are view-only narrowing and never dirty the config.
+  /// generated from — the dimensions a smart event is keyed on (tier
+  /// threshold, live/completed state, time control). Result / year /
+  /// OTB-online / sort tweaks are view-only narrowing and never dirty the
+  /// config.
   bool get _isConfigDirty {
     final seed = _baselineRequest.seedGameFilter();
     return _tier != _initialTier(_baselineRequest) ||
@@ -211,6 +226,85 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     navigator.pop();
   }
 
+  /// The pinned row: search field + filter button (+ view-mode toggle).
+  /// Lives at the screen level so it renders above the tab switcher; the
+  /// committed query travels to the tabs through [_SmartTierFilterScope].
+  Widget _buildSearchFilterBar(BuildContext context) {
+    return GameSearchFilterBar(
+      controller: _searchController,
+      focusNode: _searchFocusNode,
+      // The badge counts every root/override criterion that's narrowing the
+      // list — including the tier threshold picked in the app bar dropdown —
+      // so the red indicator mirrors the smart event's full active config.
+      currentFilter: _mergeTierIntoFilter(_filter, _tier) ?? _filter,
+      hintText: 'Search games',
+      onChanged: (value) {
+        // Debounce: every committed query is a server-side search across ALL
+        // games of the included events, so don't fire one per keystroke.
+        _searchDebounce?.cancel();
+        _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+          if (mounted) setState(() => _query = value.trim());
+        });
+      },
+      onClear: () {
+        _searchDebounce?.cancel();
+        setState(() {
+          _query = '';
+          _searchController.clear();
+        });
+      },
+      onFilterTap: _openFilterDialog,
+      trailing: GestureDetector(
+        onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+        child: Container(
+          decoration: BoxDecoration(
+            color: context.colors.background,
+            borderRadius: BorderRadius.circular(12.br),
+            border: Border.all(color: context.colors.surfaceRecessed),
+          ),
+          child: Center(
+            child: SvgPicture.asset(
+              SvgAsset.chase_grid,
+              width: 20.sp,
+              height: 20.sp,
+              colorFilter: ColorFilter.mode(
+                context.colors.textSecondary,
+                BlendMode.srcIn,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Every dimension is offered — including the ones that GENERATED this
+  /// smart event, which arrive pre-selected (seeded on the screen state) and
+  /// act as overrides of the event's config, applied + saved on confirmed
+  /// exit.
+  Future<void> _openFilterDialog() async {
+    final result = await showGameFilterDialog(
+      context: context,
+      // Level mirrors the app bar tier dropdown — seed it from the current
+      // tier so both override surfaces present one config.
+      currentFilter: _filter.copyWith(minRating: _tierFloor(_tier)),
+      showSortSection: true,
+      // Color filters by a target player's color; this aggregate has no
+      // target player, so the section would be inert.
+      showColorFilter: false,
+      // Smart events aggregate ongoing broadcasts — every game is from the
+      // current year, so a year range is redundant.
+      showYearFilter: false,
+    );
+    if (result != null && mounted) {
+      // The Level pick routes back into the tier dropdown (single owner of
+      // the Elo dimension); the threshold is re-merged per query by
+      // [_mergeTierIntoFilter].
+      _setFilter(result.copyWith(minRating: GameFilter.defaultMinRating));
+      _setTier(_tierForMinRating(result.minRating));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final horizontalPadding =
@@ -224,6 +318,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         filter: _filter,
         onFilterChanged: _setFilter,
         tabIndex: _index,
+        searchQuery: _query,
         child: PopScope(
           // A dirty config intercepts the pop (back button, system back,
           // swipe-back) so the changes can be confirmed-applied or discarded.
@@ -244,6 +339,22 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                     onApplyChanges: _applyConfigChanges,
                   ),
                   SizedBox(height: 8.h),
+                  // Search + filter pinned ABOVE the tab switcher — identical
+                  // placement to the regular event view, with the smart
+                  // event's extra filter button kept on the row.
+                  _PinnedSearchFilterBar(
+                    pageController: _page,
+                    fallbackPage: _index.toDouble(),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: horizontalPadding,
+                        right: horizontalPadding,
+                        top: 4.h,
+                        bottom: 8.h,
+                      ),
+                      child: _buildSearchFilterBar(context),
+                    ),
+                  ),
                   Padding(
                     padding: EdgeInsets.symmetric(
                       horizontal: horizontalPadding,
@@ -259,7 +370,10 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                   Expanded(
                     child: PageView(
                       controller: _page,
-                      onPageChanged: (i) => setState(() => _index = i),
+                      onPageChanged: (i) {
+                        if (_index != i) _searchFocusNode.unfocus();
+                        setState(() => _index = i);
+                      },
                       children: const [
                         _AboutTab(),
                         _GamesTab(),
@@ -290,6 +404,7 @@ class _SmartTierFilterScope extends InheritedWidget {
     required this.filter,
     required this.onFilterChanged,
     required this.tabIndex,
+    required this.searchQuery,
     required super.child,
   });
 
@@ -298,6 +413,11 @@ class _SmartTierFilterScope extends InheritedWidget {
   final GameFilter filter;
   final ValueChanged<GameFilter> onFilterChanged;
   final int tabIndex;
+
+  /// Committed (debounced) text of the screen-level search field. The Games
+  /// tab keys its server query on it; the Standings tab narrows player rows
+  /// by name with it.
+  final String searchQuery;
 
   static _SmartTierFilterScope of(BuildContext context) {
     final scope =
@@ -310,15 +430,70 @@ class _SmartTierFilterScope extends InheritedWidget {
   bool updateShouldNotify(_SmartTierFilterScope oldWidget) {
     return tier != oldWidget.tier ||
         filter != oldWidget.filter ||
-        tabIndex != oldWidget.tabIndex;
+        tabIndex != oldWidget.tabIndex ||
+        searchQuery != oldWidget.searchQuery;
   }
 }
 
-/// Tier bands keyed off the game's average Elo — the same scalar the smart
-/// event pipeline uses to build, filter and sort these events. Each tier
-/// covers its floor up to (exclusive) the next title's floor: CM 2200–2299,
-/// FM 2300–2399, IM 2400–2499. GM has no ceiling. An open-ended `>=` here
-/// would make CM ≈ All in strong fields, which reads as a dead dropdown.
+/// Mirrors the regular event view's pinned search bar: hidden on About
+/// (page 0), fully shown on Games/Standings (page 1+), with height and
+/// opacity following the swipe progress between them.
+class _PinnedSearchFilterBar extends StatelessWidget {
+  const _PinnedSearchFilterBar({
+    required this.pageController,
+    required this.fallbackPage,
+    required this.child,
+  });
+
+  final PageController pageController;
+  final double fallbackPage;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: pageController,
+      builder: (context, child) {
+        final page =
+            pageController.hasClients
+                ? (pageController.page ?? fallbackPage)
+                : fallbackPage;
+        final t = page.clamp(0.0, 1.0);
+        if (t <= 0.0) {
+          return const SizedBox.shrink();
+        }
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: t,
+            child: Opacity(opacity: t, child: child),
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+/// The server-bound filter: the user's dialog filter tightened by the
+/// selected tier threshold. The tier travels HERE (not in the request) so
+/// switching tiers refetches exactly that floor — including floors below the
+/// saved request's Elo floor.
+GameFilter? _mergeTierIntoFilter(GameFilter filter, String tier) {
+  final floor = _tierFloor(tier);
+  var merged = filter;
+  if (floor > merged.minRating) {
+    merged = merged.copyWith(minRating: floor);
+  }
+  return merged.hasActiveFilters ? merged : null;
+}
+
+/// Tier thresholds keyed off the game's average Elo — the same scalar the
+/// smart event pipeline uses to build, filter and sort these events. Every
+/// tier is an open-ended floor (CM 2200+, FM 2300+, IM 2400+, GM 2500+),
+/// matching the "+2200"-style chips in the filter dialog. Product decision
+/// (2026-06-11): a closed band like CM 2200–2299 surfaces games nobody asked
+/// for; every tier should behave like GM — that level and everything above.
 int _tierFloor(String tier) {
   switch (tier) {
     case 'GM':
@@ -331,19 +506,6 @@ int _tierFloor(String tier) {
       return 2200;
     default:
       return 0;
-  }
-}
-
-int? _tierCeiling(String tier) {
-  switch (tier) {
-    case 'IM':
-      return 2500;
-    case 'FM':
-      return 2400;
-    case 'CM':
-      return 2300;
-    default:
-      return null;
   }
 }
 
@@ -368,8 +530,7 @@ bool _gameMatchesTier(GamesTourModel game, String tier) {
   if (tier == 'All') return true;
   final avgElo = smartGameAverageElo(game);
   if (avgElo <= 0) return false;
-  final ceiling = _tierCeiling(tier);
-  return avgElo >= _tierFloor(tier) && (ceiling == null || avgElo < ceiling);
+  return avgElo >= _tierFloor(tier);
 }
 
 class _AppBar extends ConsumerWidget {
@@ -621,7 +782,7 @@ class _TitleSelectorState extends State<_TitleSelector>
     super.dispose();
   }
 
-  static const _tierOptions = <String>['GM', 'IM', 'FM', 'CM', 'All'];
+  static const _tierOptions = <String>['GM', 'IM', 'FM', 'CM'];
 
   void _open() {
     if (_isOpen) return;
@@ -681,8 +842,10 @@ class _TitleSelectorState extends State<_TitleSelector>
   }
 
   String _triggerLabel() {
-    // GM keeps the "+" (open-ended top tier); the others are bands.
-    return widget.selectedTier == 'GM' ? 'GM+' : widget.selectedTier;
+    // Every tier is an open-ended threshold now, so each gets the "+".
+    return widget.selectedTier == 'All'
+        ? widget.selectedTier
+        : '${widget.selectedTier}+';
   }
 
   @override
@@ -878,11 +1041,11 @@ class _TierOptionRow extends StatelessWidget {
       case 'GM':
         return 'Grandmaster · 2500+';
       case 'IM':
-        return 'International Master · 2400–2499';
+        return 'International Master · 2400+';
       case 'FM':
-        return 'FIDE Master · 2300–2399';
+        return 'FIDE Master · 2300+';
       case 'CM':
-        return 'Candidate Master · 2200–2299';
+        return 'Candidate Master · 2200+';
       case 'All':
       default:
         return 'All games';
@@ -938,41 +1101,6 @@ class _TierOptionRow extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Shared async scaffold so each tab renders consistent loading / error /
-/// empty states off the one cached provider.
-class _TabAsync extends ConsumerWidget {
-  const _TabAsync({required this.builder});
-
-  final Widget Function(SmartAggregateEvent event) builder;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final request = _SmartEventRequestScope.of(context);
-    final query = SmartEventGamesQuery(request: request);
-    final async = ref.watch(smartAggregateEventRepositoryProvider(query));
-    return async.when(
-      // Pull-to-refresh invalidates the whole family; keep the rendered
-      // content while the refetch is in flight instead of flashing a spinner.
-      skipLoadingOnRefresh: true,
-      skipLoadingOnReload: true,
-      data: (event) {
-        if (event.games.isEmpty) {
-          return const _EmptyState();
-        }
-        return builder(event);
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error:
-          (e, _) => GenericErrorWidget(
-            onRetry:
-                () => ref.invalidate(
-                  smartAggregateEventRepositoryProvider(query),
-                ),
-          ),
     );
   }
 }
@@ -1112,15 +1240,14 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   @override
   bool get wantKeepAlive => true;
 
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-  String _query = '';
-  Timer? _searchDebounce;
-
   /// The dialog filter is owned by the screen state (seeded from the smart
   /// event's generating criteria, applied + saved on confirmed exit); this
   /// tab reads and writes it through the scope.
   GameFilter get _filter => _SmartTierFilterScope.of(context).filter;
+
+  /// Search is owned by the screen too (the field sits pinned above the tab
+  /// switcher); this tab keys its server query on the committed text.
+  String get _query => _SmartTierFilterScope.of(context).searchQuery;
 
   /// Last successfully loaded aggregate. Tier switches, search keystrokes and
   /// filter edits re-key the query provider; rendering this while the new
@@ -1143,30 +1270,10 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     });
   }
 
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    _searchController.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  /// The server-bound filter: the user's dialog filter tightened by the
-  /// selected tier band. The tier travels HERE (not in the request) so
-  /// switching tiers refetches exactly that band — including bands below the
-  /// saved request's Elo floor.
-  GameFilter? _dataFilterForTier(String tier) {
-    final floor = _tierFloor(tier);
-    final ceiling = _tierCeiling(tier);
-    var merged = _filter;
-    if (floor > merged.minRating) {
-      merged = merged.copyWith(minRating: floor);
-    }
-    if (ceiling != null && ceiling - 1 < merged.maxRating) {
-      merged = merged.copyWith(maxRating: ceiling - 1);
-    }
-    return merged.hasActiveFilters ? merged : null;
-  }
+  /// The server-bound filter: the dialog filter tightened by the selected
+  /// tier threshold (see [_mergeTierIntoFilter]).
+  GameFilter? _dataFilterForTier(String tier) =>
+      _mergeTierIntoFilter(_filter, tier);
 
   @override
   Widget build(BuildContext context) {
@@ -1217,103 +1324,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
-          itemCount: games.isEmpty ? 2 : rows.length + 1,
+          itemCount: games.isEmpty ? 1 : rows.length,
           itemBuilder: (context, i) {
-            if (i == 0) {
-              return Padding(
-                padding: EdgeInsets.only(bottom: 12.sp),
-                child: GameSearchFilterBar(
-                  controller: _searchController,
-                  focusNode: _focusNode,
-                  // The badge counts every root/override criterion that's
-                  // narrowing the list — including the tier band picked in
-                  // the app bar dropdown — so the red indicator mirrors the
-                  // smart event's full active config.
-                  currentFilter: _dataFilterForTier(tier) ?? _filter,
-                  hintText: 'Search games',
-                  onChanged: (value) {
-                    // Debounce: every committed query is a server-side
-                    // search across ALL games of the included events, so
-                    // don't fire one per keystroke.
-                    _searchDebounce?.cancel();
-                    _searchDebounce = Timer(
-                      const Duration(milliseconds: 350),
-                      () {
-                        if (mounted) setState(() => _query = value.trim());
-                      },
-                    );
-                  },
-                  onClear: () {
-                    _searchDebounce?.cancel();
-                    setState(() {
-                      _query = '';
-                      _searchController.clear();
-                    });
-                  },
-                  onFilterTap: () async {
-                    final scope = _SmartTierFilterScope.of(context);
-                    // Every dimension is offered — including the ones that
-                    // GENERATED this smart event, which arrive pre-selected
-                    // (seeded on the screen state) and act as overrides of
-                    // the event's config, applied + saved on confirmed exit.
-                    final result = await showGameFilterDialog(
-                      context: context,
-                      // Level mirrors the app bar tier dropdown — seed it
-                      // from the current tier so both override surfaces
-                      // present one config.
-                      currentFilter: scope.filter.copyWith(
-                        minRating: _tierFloor(scope.tier),
-                      ),
-                      showSortSection: true,
-                      // Color filters by a target player's color; this
-                      // aggregate has no target player, so the section
-                      // would be inert.
-                      showColorFilter: false,
-                      // Smart events aggregate ongoing broadcasts — every
-                      // game is from the current year, so a year range is
-                      // redundant.
-                      showYearFilter: false,
-                    );
-                    if (result != null && mounted) {
-                      // The Level pick routes back into the tier dropdown
-                      // (single owner of the Elo dimension); the band is
-                      // re-merged per query by [_dataFilterForTier].
-                      scope.onFilterChanged(
-                        result.copyWith(minRating: GameFilter.defaultMinRating),
-                      );
-                      scope.onTierChanged(_tierForMinRating(result.minRating));
-                    }
-                  },
-                  trailing: GestureDetector(
-                    onTap:
-                        () =>
-                            ref
-                                .read(gamesListViewModeSwitcher)
-                                .toggleViewMode(),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: context.colors.background,
-                        borderRadius: BorderRadius.circular(12.br),
-                        border: Border.all(
-                          color: context.colors.surfaceRecessed,
-                        ),
-                      ),
-                      child: Center(
-                        child: SvgPicture.asset(
-                          SvgAsset.chase_grid,
-                          width: 20.sp,
-                          height: 20.sp,
-                          colorFilter: ColorFilter.mode(
-                            context.colors.textSecondary,
-                            BlendMode.srcIn,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
             if (games.isEmpty) {
               final hasNarrowingControls =
                   _query.isNotEmpty ||
@@ -1341,7 +1353,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                         ),
               );
             }
-            final row = rows[i - 1];
+            final row = rows[i];
             if (row.header != null) {
               final header = row.header!;
               return Padding(
@@ -1778,93 +1790,133 @@ class _AboutTabState extends ConsumerState<_AboutTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// Last successfully loaded aggregate. Filter / tier / search changes
+  /// re-key the query provider; rendering this while the new fetch is in
+  /// flight keeps the included tournaments + stats on screen instead of
+  /// flashing a spinner or a false empty state — mirrors the Games tab.
+  SmartAggregateEvent? _lastLoadedEvent;
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final request = _SmartEventRequestScope.of(context);
-    return _TabAsync(
-      builder: (event) {
-        final dateSpan = TimeUtils.formatDateRange(
-          event.dateStart,
-          event.dateEnd,
-        );
+    final scope = _SmartTierFilterScope.of(context);
+    // Same query key as the Games tab so the included tournaments, stats
+    // and live count narrow with the user's filter / tier / search. About
+    // is "what's currently in Games, summarized" — never a stale snapshot
+    // of the saved aggregate.
+    final query = SmartEventGamesQuery(
+      request: request.withNeutralEloRange(),
+      filter: _mergeTierIntoFilter(scope.filter, scope.tier),
+      searchQuery: scope.searchQuery,
+    );
+    final async = ref.watch(smartAggregateEventRepositoryProvider(query));
 
-        return ListView(
-          padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
-          children: [
-            Container(
-              padding: EdgeInsets.all(16.sp),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'This database gathers the strongest games from every '
-                    'ongoing broadcast into one place, so you never have to '
-                    'switch between tournaments.',
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary,
-                      height: 1.4,
-                    ),
-                  ),
-                  SizedBox(height: 16.h),
-                  Wrap(
-                    spacing: 10.w,
-                    runSpacing: 10.h,
-                    children: [
-                      _Stat(
-                        label: 'Tournaments',
-                        value: '${event.tournamentCount}',
-                      ),
-                      _Stat(
-                        label: 'Live games',
-                        value: '${event.liveGameCount}',
-                      ),
-                      if (event.avgElo > 0)
-                        _Stat(label: 'Avg ELO', value: 'Ø ${event.avgElo}'),
-                    ],
-                  ),
-                  if (dateSpan.isNotEmpty) ...[
-                    SizedBox(height: 14.h),
-                    _MetaRow(
-                      icon: Icons.calendar_today_rounded,
-                      text: dateSpan,
-                    ),
-                  ],
-                  if (event.timeControls.isNotEmpty) ...[
-                    SizedBox(height: 8.h),
-                    _MetaRow(
-                      icon: Icons.timer_outlined,
-                      text: event.timeControls.join(' · '),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            SizedBox(height: 20.h),
-            Text(
-              'Included tournaments',
-              style: AppTypography.textSmBold.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-            SizedBox(height: 10.h),
-            ...event.events.map(
-              (includedEvent) => Padding(
-                padding: EdgeInsets.only(bottom: 8.h),
-                child: _DismissibleIncludedEventCard(
-                  event: includedEvent,
-                  scopeId: request.dismissScopeId,
+    if (async.hasValue) {
+      _lastLoadedEvent = async.requireValue;
+    }
+    final event =
+        async.valueOrNull ?? (async.isLoading ? _lastLoadedEvent : null);
+
+    if (event == null) {
+      if (async.hasError) {
+        return GenericErrorWidget(
+          onRetry:
+              () => ref.invalidate(smartAggregateEventRepositoryProvider(query)),
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (event.events.isEmpty) {
+      final hasNarrowingControls =
+          scope.searchQuery.isNotEmpty ||
+          scope.filter.hasActiveFilters ||
+          scope.tier != 'All';
+      return _EmptyState(
+        message:
+            hasNarrowingControls
+                ? 'No tournaments match your filters'
+                : 'No games right now',
+      );
+    }
+
+    final dateSpan = TimeUtils.formatDateRange(event.dateStart, event.dateEnd);
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+      children: [
+        Container(
+          padding: EdgeInsets.all(16.sp),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            borderRadius: BorderRadius.circular(12.br),
+            border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This database gathers the strongest games from every '
+                'ongoing broadcast into one place, so you never have to '
+                'switch between tournaments.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textPrimary,
+                  height: 1.4,
                 ),
               ),
+              SizedBox(height: 16.h),
+              Wrap(
+                spacing: 10.w,
+                runSpacing: 10.h,
+                children: [
+                  _Stat(
+                    label: 'Tournaments',
+                    value: '${event.tournamentCount}',
+                  ),
+                  _Stat(
+                    label: 'Live games',
+                    value: '${event.liveGameCount}',
+                  ),
+                  if (event.avgElo > 0)
+                    _Stat(label: 'Avg ELO', value: 'Ø ${event.avgElo}'),
+                ],
+              ),
+              if (dateSpan.isNotEmpty) ...[
+                SizedBox(height: 14.h),
+                _MetaRow(
+                  icon: Icons.calendar_today_rounded,
+                  text: dateSpan,
+                ),
+              ],
+              if (event.timeControls.isNotEmpty) ...[
+                SizedBox(height: 8.h),
+                _MetaRow(
+                  icon: Icons.timer_outlined,
+                  text: event.timeControls.join(' · '),
+                ),
+              ],
+            ],
+          ),
+        ),
+        SizedBox(height: 20.h),
+        Text(
+          'Included tournaments',
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
+        ),
+        SizedBox(height: 10.h),
+        ...event.events.map(
+          (includedEvent) => Padding(
+            padding: EdgeInsets.only(bottom: 8.h),
+            child: _DismissibleIncludedEventCard(
+              event: includedEvent,
+              scopeId: request.dismissScopeId,
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2023,7 +2075,7 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
   }
 
   /// Keeps only events that contain at least one game whose average Elo
-  /// falls in the selected tier band. Classification is per-game, not
+  /// clears the selected tier threshold. Classification is per-game, not
   /// per-event: a CM-rated event that happens to include one GM-level game
   /// still shows up under the GM filter.
   List<GroupEventCardModel> _filterEventsByTier(
@@ -2068,6 +2120,10 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
 
   List<Widget> _buildStandingsRows(GroupEventCardModel event) {
     final standingsAsync = ref.watch(smartEventStandingsProvider(event.id));
+    // Same pinned search field as the Games tab — here it narrows the
+    // player rows by name, like the regular event view's standings search.
+    final query =
+        _SmartTierFilterScope.of(context).searchQuery.trim().toLowerCase();
     return standingsAsync.when(
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
@@ -2075,10 +2131,19 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
         if (standings.isEmpty) {
           return [_StandingsSectionStatus(message: 'No standings yet')];
         }
+        final visible =
+            query.isEmpty
+                ? standings
+                : standings
+                    .where((p) => p.name.toLowerCase().contains(query))
+                    .toList(growable: false);
+        if (visible.isEmpty) {
+          return [_StandingsSectionStatus(message: 'No matching players')];
+        }
         return [
           const FigmaStandingsHeader(showScore: true),
           SizedBox(height: 8.sp),
-          ...standings.map(
+          ...visible.map(
             (player) => FigmaPlayerCard(
               key: ValueKey(
                 'smart_standing_${event.id}_'
