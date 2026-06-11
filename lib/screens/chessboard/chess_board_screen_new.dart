@@ -7794,6 +7794,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final game = widget.game;
     debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
     if (!_isLikeableSource(game.source)) return;
+    if (_isOwnDatabaseGame(game)) {
+      debugPrint(
+        '[HeartFlight] like-trigger blocked own-database gameId=${game.gameId}',
+      );
+      return;
+    }
     if (_likeInteractionInProgress) {
       debugPrint(
         '[HeartFlight] like-trigger ignored in-flight gameId=${game.gameId}',
@@ -7948,7 +7954,34 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // Games opened from a library database or the Liked Games folder are
       // saved analyses; their like identity is the original sourceGameId
       // (see GamesTourModel.likeId), so they like/unlike like everywhere else.
+      // Own-database games are excluded separately in _isOwnDatabaseGame.
       source == GameSource.savedAnalysis;
+
+  /// True when the displayed game was opened from one of the user's own
+  /// library databases. Those games are not double-tap-likeable: the game is
+  /// already curated into the library, and a like would only mirror it into
+  /// the Liked Games folder as a confusing duplicate.
+  ///
+  /// Games opened from the Liked Games folder itself (My Likes) keep the
+  /// gesture so double-tap-unlike still works there, and shared/subscribed
+  /// databases (read-only, [SavedAnalysisData.analysisId] == null) are not
+  /// the user's own, so they stay likeable too.
+  bool _isOwnDatabaseGame(GamesTourModel game) {
+    if (game.source != GameSource.savedAnalysis) return false;
+    final saved =
+        ref
+            .read(
+              chessBoardScreenProviderNew(
+                ChessBoardProviderParams(game: game, index: widget.index),
+              ).notifier,
+            )
+            .savedAnalysisData;
+    if (saved?.analysisId == null) return false;
+    final likedFolderId = ref.read(likedGamesFolderProvider).valueOrNull?.id;
+    // Fail closed: if the Liked Games folder is unknown we cannot prove the
+    // game came from it, and every own-library open carries a folderId.
+    return likedFolderId == null || saved!.folderId != likedFolderId;
+  }
 
   @override
   Widget build(BuildContext context) {
