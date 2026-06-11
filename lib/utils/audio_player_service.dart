@@ -3,18 +3,17 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import 'package:chessever2/services/pip_service.dart';
 
-/// Sound effect types — used instead of raw AudioSource to avoid stale native
-/// handles after the SoLoud engine is torn down and reinitialized.
+/// Sound effect types used by the SoLoud audio path.
 enum SfxType { move, castling, check, checkmate, draw, promotion, takeover }
 
 class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
+  static const Duration _minimumAnyPlaySpacing = Duration(milliseconds: 60);
+  static const Duration _minimumSameSoundSpacing = Duration(milliseconds: 120);
 
-  // Note: These MUST NOT be `final` - they need to be reassignable
-  // after the native SoLoud engine is torn down and reinitialized
-  // (e.g., when app returns from background)
+  // Note: These MUST NOT be `final` - recovery reloads them after
+  // the native SoLoud engine is torn down and reinitialized.
   late AudioSource pieceMoveSfx;
   late AudioSource pieceCastlingSfx;
   late AudioSource pieceCheckSfx;
@@ -34,12 +33,9 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _initialized = false;
   bool _assetsLoaded = false;
   Future<void>? _initializing;
+  DateTime _lastPlayAt = DateTime.fromMillisecondsSinceEpoch(0);
+  SfxType? _lastPlayedType;
   bool _audioSessionConfigured = false;
-  // Set when the app is truly backgrounded (paused/detached) so the next resume
-  // can force-refresh Android audio. Android can return from background with
-  // SoLoud still reporting initialized while its native output session / asset
-  // handles no longer produce sound. Android-only; never read on iOS.
-  bool _needsAndroidResumeRefresh = false;
 
   /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
   Future<void> _configureAudioSession() async {
@@ -114,37 +110,46 @@ class AudioPlayerService with WidgetsBindingObserver {
     return SfxType.move;
   }
 
-  /// Play a sound effect by type. Resolves the native handle AFTER ensuring
-  /// the engine is initialized, preventing stale-handle issues.
-  ///
-  /// Fire-and-forget: each call plays independently. SoLoud mixes voices
-  /// natively, so SFX must NOT be serialized through a shared queue — doing so
-  /// couples every sound to the slowest/previous native op and lets a single
-  /// stalled init/recovery silence all subsequent moves.
+  /// Play a sound effect by type through flutter_soloud.
   void playSound(SfxType type) {
-    // While in PiP the move SFX is played natively (iOS/Android) from the poll,
-    // so suppress the Flutter path to avoid double sounds. On iOS the Dart
-    // isolate is suspended in PiP anyway, making this a no-op there.
-    if (PipService.instance.isInPip) return;
+    if (_shouldSkipForSpacing(type)) return;
     unawaited(_playWithRecovery(type));
   }
 
   /// Convenience: determine sound from SAN notation and play it.
   void playSfxForSan(String san) => playSound(sfxTypeForSan(san));
 
+  bool _shouldSkipForSpacing(SfxType type) {
+    final now = DateTime.now();
+    final elapsed = now.difference(_lastPlayAt);
+    if (elapsed < _minimumAnyPlaySpacing ||
+        (_lastPlayedType == type && elapsed < _minimumSameSoundSpacing)) {
+      return true;
+    }
+
+    _lastPlayedType = type;
+    _lastPlayAt = now;
+    return false;
+  }
+
   Future<void> _playWithRecovery(SfxType type) async {
     try {
       await initializeAndLoadAllAssets();
-      // The engine can die during the await gap above (Android backgrounding,
-      // iOS route change). Calling play() then throws SoLoudNotInitializedException
-      // — the 1169-user "MA" crash, surfaced to Sentry via SoLoud's logger.
-      // Re-check and funnel into recovery instead of letting play() throw.
+      // The engine can die during the await gap above (for example iOS route
+      // changes). Re-check and funnel into recovery instead of letting play()
+      // throw SoLoudNotInitializedException.
       if (!player.isInitialized) {
         throw StateError('SoLoud not initialized after init; forcing recovery');
       }
       // soloud 4.x: play() is sync — no await.
       player.play(_resolve(type));
     } catch (e, s) {
+      if (Platform.isAndroid) {
+        // Keep Android on the package's normal init/play lifecycle. Do not add
+        // an app-side teardown/reinit loop after a failed play.
+        debugPrint('⚠️ Android SoLoud playback failed: $e\n$s');
+        return;
+      }
       debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
       _teardownPlayer();
       try {
@@ -168,7 +173,10 @@ class AudioPlayerService with WidgetsBindingObserver {
       // match the native audio device/session even when SoLoud still reports
       // initialized after backgrounding. Always clear the flags so assets are
       // reloaded with fresh native handles — no stale-handle reuse.
-      if (player.isInitialized) {
+      if (Platform.isAndroid) {
+        _initialized = false;
+        _assetsLoaded = false;
+      } else if (player.isInitialized) {
         _teardownPlayer();
       } else {
         _initialized = false;
@@ -188,15 +196,7 @@ class AudioPlayerService with WidgetsBindingObserver {
     await _configureAudioSession();
 
     if (!player.isInitialized) {
-      if (Platform.isAndroid) {
-        await SoLoud.instance.init(
-          sampleRate: 48000,
-          bufferSize: 4096,
-          channels: Channels.stereo,
-        );
-      } else {
-        await SoLoud.instance.init();
-      }
+      await SoLoud.instance.init();
       // Re-apply after init just in case SoLoud native layer reset the category
       _audioSessionConfigured = false;
       await _configureAudioSession();
@@ -268,22 +268,6 @@ class AudioPlayerService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
     if (state == AppLifecycleState.resumed) {
-      if (Platform.isAndroid && _needsAndroidResumeRefresh) {
-        _needsAndroidResumeRefresh = false;
-        // Android can return from background with SoLoud still reporting
-        // initialized while its native output session / asset handles no longer
-        // produce sound, so play() silently no-ops. Force a fresh engine + asset
-        // load after a real background pause; transient inactive/hidden states
-        // are ignored. Fire-and-forget (NOT serialized through a queue): a move
-        // right after resume calls initializeAndLoadAllAssets() which awaits this
-        // same in-flight future before playing.
-        debugPrint(
-          '🎧 AudioPlayerService: Android resumed after background, refreshing audio engine',
-        );
-        unawaited(initializeAndLoadAllAssets(force: true));
-        return;
-      }
-
       // Otherwise only reinitialize if the native engine is actually gone.
       // Avoids unnecessary teardown→reinit cycles (esp. iOS) that create
       // windows of broken audio.
@@ -291,7 +275,7 @@ class AudioPlayerService with WidgetsBindingObserver {
         debugPrint(
           '🎧 AudioPlayerService: engine dead after resume, reinitializing',
         );
-        unawaited(initializeAndLoadAllAssets(force: true));
+        unawaited(initializeAndLoadAllAssets());
       } else {
         debugPrint(
           '🎧 AudioPlayerService: engine still alive after resume, no action',
@@ -305,12 +289,6 @@ class AudioPlayerService with WidgetsBindingObserver {
     // and tearing down there causes sound to disappear on Android.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      // Mark a real background so the next resume force-refreshes Android audio.
-      // inactive/hidden are transient (control center, split-screen, dialogs)
-      // and are intentionally NOT treated as background — no teardown there.
-      if (Platform.isAndroid) {
-        _needsAndroidResumeRefresh = true;
-      }
       // Do not deinit during normal lifecycle transitions. SoLoud's native
       // audio callback can still be mixing a short SFX while Dart receives
       // paused/detached, and tearing down then can corrupt the active voice.

@@ -223,6 +223,22 @@ String _currentLiveDayFilter() {
       'and(last_move_time.is.null,game_day.is.null,date_start.eq.$dateStr)';
 }
 
+String _yearLowerBoundFilter(int year) {
+  final startUtc = DateTime.utc(year).toIso8601String();
+  final dateStr = '$year-01-01';
+  return 'game_day.gte.$dateStr,'
+      'and(game_day.is.null,last_move_time.gte.$startUtc),'
+      'and(game_day.is.null,last_move_time.is.null,date_start.gte.$dateStr)';
+}
+
+String _yearUpperBoundFilter(int year) {
+  final nextYearUtc = DateTime.utc(year + 1).toIso8601String();
+  final nextYearDateStr = '${year + 1}-01-01';
+  return 'game_day.lt.$nextYearDateStr,'
+      'and(game_day.is.null,last_move_time.lt.$nextYearUtc),'
+      'and(game_day.is.null,last_move_time.is.null,date_start.lt.$nextYearDateStr)';
+}
+
 bool _isSameCalendarDay(DateTime left, DateTime right) {
   return left.year == right.year &&
       left.month == right.month &&
@@ -1188,6 +1204,93 @@ class GameRepository extends BaseRepository {
     }
   }
 
+  /// Get smart-event games from multiple tour IDs.
+  ///
+  /// This is the direct database-backed path for synthetic smart events. It
+  /// pushes every filter the schema can represent down to PostgREST. The smart
+  /// event's exact rating semantics are game-average based, while the DB stores
+  /// `player_max_rating`; [minAverageEloForPrefilter] is therefore only used as
+  /// a safe lower-bound prefilter and the exact average range is checked after
+  /// decoding by the provider.
+  ///
+  /// Pages through every matching row ([_tourGamesFetchPageSize] per request,
+  /// like [getGamesByTourId]) up to [limit] TOTAL rows. A single-page fetch
+  /// silently truncated broad filters to a shorter day span than narrow ones,
+  /// making "Classical" show fewer games than "Classical + GM" on older days.
+  Future<List<Games>> getSmartEventGamesFromTourIds({
+    required List<String> tourIds,
+    GameFilter? filter,
+    String? query,
+    int? minAverageEloForPrefilter,
+    int limit = 6000,
+    int offset = 0,
+  }) async {
+    if (tourIds.isEmpty) return <Games>[];
+
+    return handleApiCall(() async {
+      final tcDb = _timeControlDbValue(
+        filter?.timeControl ?? GameTimeControlFilter.all,
+      );
+      final selectCols =
+          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+      final trimmedQuery = query?.trim();
+
+      final jsonList = <String>[];
+      var pageOffset = offset;
+      var remaining = limit;
+
+      while (remaining > 0) {
+        final pageSize =
+            remaining > _tourGamesFetchPageSize
+                ? _tourGamesFetchPageSize
+                : remaining;
+
+        dynamic dbQuery = supabase
+            .from('games')
+            .select(selectCols)
+            .inFilter('tour_id', tourIds);
+
+        if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
+          dbQuery = dbQuery.or(
+            'name.ilike.%$trimmedQuery%,'
+            'player_white.ilike.%$trimmedQuery%,'
+            'player_black.ilike.%$trimmedQuery%,'
+            'eco.ilike.%$trimmedQuery%,'
+            'opening_name.ilike.%$trimmedQuery%',
+          );
+        }
+
+        dbQuery = _applySmartEventFilterChain(
+          query: dbQuery,
+          filter: filter,
+          tcDb: tcDb,
+          minAverageEloForPrefilter: minAverageEloForPrefilter,
+        );
+
+        final response = await dbQuery
+            .order('last_move_time', ascending: false, nullsFirst: false)
+            .order('game_day', ascending: false, nullsFirst: false)
+            .order('date_start', ascending: false, nullsFirst: false)
+            .order('player_max_rating', ascending: false, nullsFirst: false)
+            .range(pageOffset, pageOffset + pageSize - 1);
+
+        final responseList = response as List;
+        jsonList.addAll(responseList.map((item) => json.encode(item)));
+
+        if (!shouldFetchAnotherTourGamesPage(
+          responseList.length,
+          pageSize: pageSize,
+        )) {
+          break;
+        }
+        pageOffset += responseList.length;
+        remaining -= responseList.length;
+      }
+
+      return compute(_decodeGamesInIsolate, jsonList);
+    });
+  }
+
   /// Resolve the best tour to open for an event group.
   ///
   /// Priority:
@@ -1808,6 +1911,81 @@ class GameRepository extends BaseRepository {
       final idx = filter.color == GameColorFilter.white ? 0 : 1;
       query = query.eq('players->$idx->>fed', countryCode);
     }
+    return query;
+  }
+
+  dynamic _applySmartEventFilterChain({
+    required dynamic query,
+    required GameFilter? filter,
+    required String? tcDb,
+    required int? minAverageEloForPrefilter,
+  }) {
+    if (filter == null && minAverageEloForPrefilter == null) return query;
+
+    if (filter != null && filter.hasActiveFilters) {
+      switch (filter.live) {
+        case GameLiveFilter.live:
+          query = query.or('status.is.null,status.eq.*');
+          query = query.or(_currentLiveDayFilter());
+          break;
+        case GameLiveFilter.completed:
+          query = query.not('status', 'is', null).neq('status', '*');
+          break;
+        case GameLiveFilter.all:
+          break;
+      }
+
+      switch (filter.result) {
+        case GameResultFilter.whiteWins:
+          query = query.eq('status', '1-0');
+          break;
+        case GameResultFilter.blackWins:
+          query = query.eq('status', '0-1');
+          break;
+        case GameResultFilter.draw:
+          query = query.inFilter('status', _drawStatusValues);
+          break;
+        case GameResultFilter.all:
+          break;
+      }
+
+      if (tcDb != null) {
+        query = query.eq('tours.group_broadcasts.time_control', tcDb);
+      }
+
+      if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
+        query = query.ilike('eco', '${filter.eco.code}%');
+      }
+
+      if (filter.minYear != GameFilter.defaultMinYear) {
+        query = query.or(_yearLowerBoundFilter(filter.minYear));
+      }
+      if (filter.maxYear < DateTime.now().year) {
+        query = query.or(_yearUpperBoundFilter(filter.maxYear));
+      }
+
+      switch (filter.online) {
+        case GameOnlineFilter.online:
+          query = query.not('lichess_id', 'is', null);
+          break;
+        case GameOnlineFilter.otb:
+          query = query.filter('lichess_id', 'is', 'null');
+          break;
+        case GameOnlineFilter.all:
+          break;
+      }
+    }
+
+    final filterMinRating = filter?.minRating ?? GameFilter.defaultMinRating;
+    final safeMinRating =
+        minAverageEloForPrefilter != null &&
+                minAverageEloForPrefilter > filterMinRating
+            ? minAverageEloForPrefilter
+            : filterMinRating;
+    if (safeMinRating > GameFilter.defaultMinRating) {
+      query = query.gte('player_max_rating', safeMinRating);
+    }
+
     return query;
   }
 }

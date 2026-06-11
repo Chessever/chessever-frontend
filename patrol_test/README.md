@@ -240,6 +240,23 @@ Recommended Codemagic variables:
 - `E2E_TEST_PASSWORD`
 - `PATROL_DEVICE` when device selection must be explicit
 
+Flutter build steps in Codemagic should pass the app env vars through
+`--dart-define`, including `GAMEBASE_API_KEY`:
+
+```bash
+--dart-define=SUPABASE_URL="$SUPABASE_URL" \
+--dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+--dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+--dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+--dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" \
+--dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" \
+--dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" \
+--dart-define=AMPLITUDE="$AMPLITUDE" \
+--dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
+--dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
+--dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY"
+```
+
 Suggested smoke step:
 
 ```bash

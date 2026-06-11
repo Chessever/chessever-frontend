@@ -2,8 +2,12 @@ import urllib.request
 import urllib.parse
 import json
 
+import os
+
 BASE_URL = "https://service.chessever.com"
-API_KEY = "4e1b7d20-db18-41ae-8e48-5a35c127aeef"
+API_KEY = os.environ.get("GAMEBASE_API_KEY")
+if not API_KEY:
+    raise SystemExit("Set GAMEBASE_API_KEY before running this script.")
 headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 
 def test(fen, desc):

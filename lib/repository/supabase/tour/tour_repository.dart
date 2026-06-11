@@ -55,8 +55,24 @@ class TourRepository extends BaseRepository {
     });
   }
 
+  // Fetch multiple tours by their slugs.
+  Future<List<Tour>> getToursBySlugs(List<String> tourSlugs) async {
+    return handleApiCall(() async {
+      if (tourSlugs.isEmpty) {
+        return [];
+      }
+
+      final response = await supabase
+          .from('tours')
+          .select()
+          .inFilter('slug', tourSlugs);
+
+      return (response as List).map((json) => Tour.fromJson(json)).toList();
+    });
+  }
+
   /// Fetch tours for multiple group_broadcast IDs in a single query.
-  /// Returns a map of group_broadcast_id → List<Tour>.
+  /// Returns a map of `group_broadcast_id` to `List<Tour>`.
   Future<Map<String, List<Tour>>> getToursByGroupBroadcastIds(
     List<String> groupBroadcastIds,
   ) async {

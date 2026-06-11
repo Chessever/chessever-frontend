@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:flutter/material.dart';
@@ -392,48 +393,18 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     }
   }
 
-  Future<bool?> _showDeleteConfirmation(PlayerStandingModel player) {
-    return showDialog<bool>(
+  Future<bool?> _showDeleteConfirmation(PlayerStandingModel player) async {
+    final confirmed = await showSmoothConfirmDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          backgroundColor: context.colors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.br),
-          ),
-          title: Text(
-            'Remove from favorites?',
-            style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
-          ),
-          content: Text(
-            'Are you sure you want to remove ${player.name} from your favorites?',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(
-                'Cancel',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.7),
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-                _removeFavoritePlayer(player);
-              },
-              child: Text(
-                'Remove',
-                style: AppTypography.textSmMedium.copyWith(color: kRedColor),
-              ),
-            ),
-          ],
-        );
-      },
+      title: 'Remove from favorites?',
+      message:
+          'Are you sure you want to remove ${player.name} from your favorites?',
+      confirmText: 'Remove',
+      isDangerous: true,
     );
+    if (confirmed == true) {
+      _removeFavoritePlayer(player);
+    }
+    return confirmed;
   }
 }

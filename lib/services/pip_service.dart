@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,6 +16,8 @@ class PipService {
 
   final Set<PipModeChanged> _listeners = <PipModeChanged>{};
   bool _isInPip = false;
+  String? _lastSoundedMove;
+  String? _lastFen;
 
   bool get isInPip => _isInPip;
 
@@ -36,6 +39,7 @@ class PipService {
 
   Future<void> setActiveGame(Map<String, dynamic> payload) async {
     if (kIsWeb) return;
+    if (!_isInPip) _primeSfxBaseline(payload);
     try {
       await _channel.invokeMethod<void>(
         'setActiveGame',
@@ -48,6 +52,11 @@ class PipService {
 
   Future<void> updatePosition(Map<String, dynamic> payload) async {
     if (kIsWeb) return;
+    if (_isInPip) {
+      _playSfxForPipPayload(payload);
+    } else {
+      _primeSfxBaseline(payload);
+    }
     try {
       await _channel.invokeMethod<void>(
         'updatePosition',
@@ -112,8 +121,80 @@ class PipService {
           listener(isInPip);
         }
         break;
+      case 'playSfx':
+        _playSfxFromNative(call.arguments);
+        break;
       default:
         break;
     }
+  }
+
+  void _playSfxFromNative(Object? arguments) {
+    if (arguments is! Map) return;
+    final san = arguments['san'];
+    if (san is String && san.isNotEmpty) {
+      AudioPlayerService.instance.playSfxForSan(san);
+      return;
+    }
+
+    final type = switch (arguments['type']) {
+      'castling' => SfxType.castling,
+      'check' => SfxType.check,
+      'checkmate' => SfxType.checkmate,
+      'draw' => SfxType.draw,
+      'promotion' => SfxType.promotion,
+      'takeover' => SfxType.takeover,
+      _ => SfxType.move,
+    };
+    AudioPlayerService.instance.playSound(type);
+  }
+
+  void _primeSfxBaseline(Map<String, dynamic> payload) {
+    final move = _payloadMove(payload);
+    if (move != null) _lastSoundedMove = move;
+    final fen = payload['fen'];
+    if (fen is String && fen.isNotEmpty) _lastFen = fen;
+  }
+
+  void _playSfxForPipPayload(Map<String, dynamic> payload) {
+    final move = _payloadMove(payload);
+    final fen = payload['fen'];
+    if (payload['soundEnabled'] != true) {
+      _primeSfxBaseline(payload);
+      return;
+    }
+    if (move == null || move == _lastSoundedMove) {
+      if (fen is String && fen.isNotEmpty) _lastFen = fen;
+      return;
+    }
+
+    final san = payload['lastMoveSan'];
+    final previousFen = _lastFen;
+    _lastSoundedMove = move;
+    if (fen is String && fen.isNotEmpty) _lastFen = fen;
+
+    if (san is String && san.isNotEmpty) {
+      AudioPlayerService.instance.playSfxForSan(san);
+      return;
+    }
+
+    final captured = _fenPieceCount(fen) < _fenPieceCount(previousFen);
+    AudioPlayerService.instance.playSound(
+      captured ? SfxType.takeover : SfxType.move,
+    );
+  }
+
+  String? _payloadMove(Map<String, dynamic> payload) {
+    final move = payload['lastMoveUci'] ?? payload['lastMove'];
+    return move is String && move.isNotEmpty ? move : null;
+  }
+
+  int _fenPieceCount(Object? fen) {
+    if (fen is! String || fen.isEmpty) return 0;
+    return fen.split(' ').first.split('').where(_isFenPiece).length;
+  }
+
+  bool _isFenPiece(String char) {
+    return 'pnbrqkPNBRQK'.contains(char);
   }
 }

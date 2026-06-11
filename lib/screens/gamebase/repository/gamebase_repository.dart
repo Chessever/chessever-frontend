@@ -3,22 +3,33 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/models.dart';
 
+class GamebaseApiKeyMissingException implements Exception {
+  const GamebaseApiKeyMissingException();
+
+  @override
+  String toString() {
+    return 'Missing GAMEBASE_API_KEY. Generate a personal developer key from '
+        'https://chessever.com/developers and add it to .env.';
+  }
+}
+
 /// Repository for Gamebase API calls.
 /// Handles communication with the Chess Database API.
 class GamebaseRepository {
   GamebaseRepository({http.Client? client, String? baseUrl, String? apiKey})
     : _client = client ?? http.Client(),
       _baseUrl = baseUrl ?? 'https://service.chessever.com',
-      _apiKey = apiKey ?? const String.fromEnvironment('GAMEBASE_API_KEY');
+      _apiKey =
+          (apiKey ?? const String.fromEnvironment('GAMEBASE_API_KEY')).trim();
 
   final http.Client _client;
   final String _baseUrl;
   final String _apiKey;
 
-  Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    'X-API-Key': _apiKey,
-  };
+  Map<String, String> get _headers {
+    if (_apiKey.isEmpty) throw const GamebaseApiKeyMissingException();
+    return {'Content-Type': 'application/json', 'X-API-Key': _apiKey};
+  }
 
   /// Get move aggregates for a given FEN position.
   ///

@@ -33,20 +33,24 @@ class GamebaseData with GamebaseDataMappable {
   static const fromJson = GamebaseDataMapper.fromJson;
 }
 
+class MissingGamebaseApiKeyException implements Exception {
+  const MissingGamebaseApiKeyException();
+
+  @override
+  String toString() {
+    return 'Missing GAMEBASE_API_KEY. Generate a personal developer key from '
+        'https://chessever.com/developers and add it to .env.';
+  }
+}
+
 class GamebaseRepository {
   final Dio _dio;
   final String _apiKey;
   final String _baseUrl;
 
-  // NOTE: The backend requires an API key. Prefer supplying it via
-  // `--dart-define=GAMEBASE_API_KEY=...` (release) or `.env` (debug).
-  // This fallback preserves current behavior but should be removed once keys
-  // are fully externalized.
-  static const String _fallbackApiKey = '4e1b7d20-db18-41ae-8e48-5a35c127aeef';
-
   GamebaseRepository(this._dio, {String? baseUrl, String? apiKey})
     : _baseUrl = baseUrl ?? 'https://service.chessever.com',
-      _apiKey = apiKey ?? _resolveApiKey();
+      _apiKey = (apiKey ?? _resolveApiKey()).trim();
 
   static String _resolveApiKey() {
     const releaseKey = String.fromEnvironment(
@@ -64,7 +68,14 @@ class GamebaseRepository {
     } else {
       if (releaseKey.isNotEmpty) return releaseKey;
     }
-    return _fallbackApiKey;
+    return '';
+  }
+
+  bool get hasApiKey => _apiKey.isNotEmpty;
+
+  Map<String, String> get _headers {
+    if (!hasApiKey) throw const MissingGamebaseApiKeyException();
+    return {'X-API-Key': _apiKey, 'Accept': 'application/json'};
   }
 
   Future<GamebaseResponse> getMoveAggregates({
@@ -123,9 +134,7 @@ class GamebaseRepository {
       final response = await _dio.post(
         '$_baseUrl/api/game-position/aggregates/query',
         data: body,
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       if (kDebugMode) {
@@ -283,9 +292,7 @@ class GamebaseRepository {
       final response = await _dio.get(
         '$_baseUrl/api/player',
         queryParameters: queryParams,
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final List data = response.data['data'] ?? [];
@@ -309,9 +316,7 @@ class GamebaseRepository {
     try {
       final response = await _dio.get(
         '$_baseUrl/api/player/$id',
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       return GamebasePlayer.fromJson(response.data['data']);
@@ -324,9 +329,7 @@ class GamebaseRepository {
     try {
       final response = await _dio.get(
         '$_baseUrl/api/game/$id',
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       return GamebaseGame.fromJson(response.data['data']);
@@ -345,9 +348,7 @@ class GamebaseRepository {
       final response = await _dio.get(
         '$_baseUrl/api/game/$id',
         queryParameters: {'includePgn': true},
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final data = response.data['data'];
@@ -402,9 +403,7 @@ class GamebaseRepository {
       final response = await _dio.get(
         '$_baseUrl/api/eval',
         queryParameters: {'fen': normalizedFen},
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       if (response.data['status'] == 'success') {
@@ -444,9 +443,7 @@ class GamebaseRepository {
     try {
       final response = await _dio.get(
         '$_baseUrl/api/search/metadata',
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final data = response.data;
@@ -477,9 +474,7 @@ class GamebaseRepository {
       final response = await _dio.post(
         '$_baseUrl/api/search/query',
         data: body,
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final data = response.data;
@@ -533,9 +528,7 @@ class GamebaseRepository {
       final response = await _dio.get(
         '$_baseUrl/api/search',
         queryParameters: queryParams,
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final data = response.data;
@@ -591,9 +584,7 @@ class GamebaseRepository {
       final response = await _dio.get(
         '$_baseUrl/api/search/events',
         queryParameters: queryParams,
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final data = response.data;
@@ -672,9 +663,7 @@ class GamebaseRepository {
       final response = await _dio.get(
         '$_baseUrl/api/player/$playerId/events',
         queryParameters: queryParams,
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final data = response.data;
@@ -753,9 +742,7 @@ class GamebaseRepository {
     final response = await _dio.get(
       '$_baseUrl/api/player/$playerId/games',
       queryParameters: queryParams,
-      options: Options(
-        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-      ),
+      options: Options(headers: _headers),
     );
 
     return Map<String, dynamic>.from(response.data);
@@ -802,9 +789,7 @@ class GamebaseRepository {
     final response = await _dio.get(
       '$_baseUrl/api/player/$playerId/stats',
       queryParameters: queryParams,
-      options: Options(
-        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-      ),
+      options: Options(headers: _headers),
     );
 
     return Map<String, dynamic>.from(response.data);
@@ -882,9 +867,7 @@ class GamebaseRepository {
                   if (sortDirection != null)
                     'sortDirection': sortDirection.name,
                 },
-                options: Options(
-                  headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-                ),
+                options: Options(headers: _headers),
               )
               : await _dio.get(
                 '$_baseUrl/api/game-position/games',
@@ -908,9 +891,7 @@ class GamebaseRepository {
                   if (sortDirection != null)
                     'sortDirection': sortDirection.name,
                 },
-                options: Options(
-                  headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-                ),
+                options: Options(headers: _headers),
               );
 
       final data = response.data;
@@ -972,9 +953,7 @@ class GamebaseRepository {
           if (sortBy != null) 'sortBy': sortBy.name,
           if (sortDirection != null) 'sortDirection': sortDirection.name,
         },
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
+        options: Options(headers: _headers),
       );
 
       final data = response.data;

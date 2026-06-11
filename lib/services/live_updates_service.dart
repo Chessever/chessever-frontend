@@ -22,6 +22,8 @@ class LiveUpdatesService {
   /// a time; starting a new one evicts (ends) the previous.
   static const int _maxActive = 1;
 
+  final Set<String> _startingGameIds = <String>{};
+
   /// Most-recently-started active game (kept for back-compat callers).
   String? get activeGameId =>
       _activeGameIds.isEmpty ? null : _activeGameIds.last;
@@ -92,75 +94,88 @@ class LiveUpdatesService {
 
     final gameId = attributes['game_id'] as String?;
     if (gameId == null || gameId.isEmpty) return false;
-
-    final liveActivitiesReady = await setup();
-    if (defaultTargetPlatform == TargetPlatform.iOS && !liveActivitiesReady) {
+    if (_activeGameIds.contains(gameId)) return true;
+    if (!_startingGameIds.add(gameId)) {
       debugPrint(
-        '[LiveUpdates] iOS Live Activity was not started because ActivityKit push setup is not ready.',
+        '[LiveUpdates] Start already in flight for game: $gameId; skipping duplicate.',
       );
       return false;
     }
 
-    // Cap concurrent Live Activities at [_maxActive]; evict the oldest first.
-    await _evictOldestIfNeeded(gameId);
+    try {
+      final liveActivitiesReady = await setup();
+      if (defaultTargetPlatform == TargetPlatform.iOS && !liveActivitiesReady) {
+        debugPrint(
+          '[LiveUpdates] iOS Live Activity was not started because ActivityKit push setup is not ready.',
+        );
+        return false;
+      }
 
-    var started = false;
+      // Cap concurrent Live Activities at [_maxActive]; evict the oldest first.
+      await _evictOldestIfNeeded(gameId);
 
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      try {
-        debugPrint('[LiveUpdates] Starting iOS Live Activity: $activityId');
-        final response = await _liveActivitiesChannel
-            .invokeMethod<Map<Object?, Object?>>('startDefaultVerified', {
-              'activityId': activityId,
-              'attributes': attributes,
-              'content': content,
-            });
+      var started = false;
 
-        final startedOnDevice = response?['ok'] == true;
-        if (startedOnDevice) {
-          _trackActiveGame(gameId);
-          started = true;
-          debugPrint(
-            '[LiveUpdates] iOS Live Activity persisted for game: $gameId',
-          );
-          debugPrint(
-            '[LiveUpdates] iOS Live Activity update token present: ${response?['pushTokenPresent'] == true}',
-          );
-          debugPrint('[LiveUpdates] Native state: ${response?['activity']}');
-        } else {
-          debugPrint(
-            '[LiveUpdates] iOS Live Activity did not persist for game: $gameId',
-          );
-          debugPrint('[LiveUpdates] Native debug state: $response');
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        try {
+          debugPrint('[LiveUpdates] Starting iOS Live Activity: $activityId');
+          final response = await _liveActivitiesChannel
+              .invokeMethod<Map<Object?, Object?>>('startDefaultVerified', {
+                'activityId': activityId,
+                'attributes': attributes,
+                'content': content,
+              });
+
+          final startedOnDevice = response?['ok'] == true;
+          if (startedOnDevice) {
+            _trackActiveGame(gameId);
+            started = true;
+            debugPrint(
+              '[LiveUpdates] iOS Live Activity persisted for game: $gameId',
+            );
+            debugPrint(
+              '[LiveUpdates] iOS Live Activity update token present: ${response?['pushTokenPresent'] == true}',
+            );
+            debugPrint('[LiveUpdates] Native state: ${response?['activity']}');
+          } else {
+            debugPrint(
+              '[LiveUpdates] iOS Live Activity did not persist for game: $gameId',
+            );
+            debugPrint('[LiveUpdates] Native debug state: $response');
+          }
+        } catch (e, st) {
+          debugPrint('[LiveUpdates] iOS Live Activity failed: $e');
+          debugPrintStack(stackTrace: st);
         }
-      } catch (e, st) {
-        debugPrint('[LiveUpdates] iOS Live Activity failed: $e');
-        debugPrintStack(stackTrace: st);
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        // Android: post a local live notification immediately (mirrors the iOS
+        // on-device Live Activity start) so the widget shows the viewed position
+        // even for a finished game. The edge function then keeps it updated via
+        // push using the same per-game notification id.
+        try {
+          await _liveActivitiesChannel.invokeMethod('startLocalLiveActivity', {
+            'content': content,
+          });
+        } catch (e) {
+          debugPrint(
+            '[LiveUpdates] Android local live notification failed: $e',
+          );
+        }
+        _trackActiveGame(gameId);
+        started = true;
+        debugPrint(
+          '[LiveUpdates] Android live notification started for game: $gameId',
+        );
       }
-    } else if (defaultTargetPlatform == TargetPlatform.android) {
-      // Android: post a local live notification immediately (mirrors the iOS
-      // on-device Live Activity start) so the widget shows the viewed position
-      // even for a finished game. The edge function then keeps it updated via
-      // push using the same per-game notification id.
-      try {
-        await _liveActivitiesChannel.invokeMethod('startLocalLiveActivity', {
-          'content': content,
-        });
-      } catch (e) {
-        debugPrint('[LiveUpdates] Android local live notification failed: $e');
-      }
-      _trackActiveGame(gameId);
-      started = true;
-      debugPrint(
-        '[LiveUpdates] Android live notification started for game: $gameId',
-      );
-    }
 
-    // Register subscription in Supabase for server-side dispatch
-    if (started) {
-      await _registerSubscription(gameId, enabled: true);
+      // Register subscription in Supabase for server-side dispatch
+      if (started) {
+        await _registerSubscription(gameId, enabled: true);
+      }
+      return started;
+    } finally {
+      _startingGameIds.remove(gameId);
     }
-    return started;
   }
 
   Future<void> endLiveActivity(String activityId) async {
@@ -193,7 +208,10 @@ class LiveUpdatesService {
       }
     }
 
-    if (gameId != null) _activeGameIds.remove(gameId);
+    if (gameId != null) {
+      _activeGameIds.remove(gameId);
+      _startingGameIds.remove(gameId);
+    }
     await _registerSubscription(gameId, enabled: false);
   }
 
@@ -216,7 +234,7 @@ class LiveUpdatesService {
   }
 
   /// Convenience method to start live updates for a game when app goes to background.
-  Future<void> startForGame({
+  Future<bool> startForGame({
     required String gameId,
     required String userId,
     required String playerWhite,
@@ -324,7 +342,7 @@ class LiveUpdatesService {
         'follow_live': followLive ? 1 : 0,
       };
 
-      await startLiveActivity(
+      return startLiveActivity(
         activityId: activityId,
         attributes: attributes,
         content: content,
@@ -332,6 +350,7 @@ class LiveUpdatesService {
     } catch (e, st) {
       debugPrint('[LiveUpdates] Error in startForGame: $e');
       debugPrintStack(stackTrace: st);
+      return false;
     }
   }
 

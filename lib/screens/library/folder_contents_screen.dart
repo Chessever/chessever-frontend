@@ -24,6 +24,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -156,8 +157,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     // Premium gate fires only when a non-default filter or sort is applied;
     // Reset (pops a default filter) and Cancel never pop paywall.
-    final isPremiumChange =
-        result.hasActiveFilters || result.hasActiveSorts;
+    final isPremiumChange = result.hasActiveFilters || result.hasActiveSorts;
     if (isPremiumChange) {
       final unlocked = await requirePremiumGuard(context, ref);
       if (!unlocked || !mounted) return;
@@ -166,7 +166,6 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         .read(folderFilterProvider(_folderFilterKey).notifier)
         .applyFilter(result);
   }
-
 
   Future<void> _removeAnalysis(SavedAnalysis analysis) async {
     if (_removingIds.contains(analysis.id)) return;
@@ -184,7 +183,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
       if (!mounted) return;
       // Refresh the paginated list after removal.
-      ref.read(bookGamesPaginatedProvider(_currentPaginationKey).notifier).refresh();
+      ref
+          .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
+          .refresh();
       // Library home cards cache per-folder game counts; without this
       // invalidation they keep showing the pre-delete number until app restart.
       ref.invalidate(folderAnalysisCountProvider);
@@ -233,7 +234,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 await repository.createSavedAnalysis(restored);
                 if (!mounted) return;
                 ref
-                    .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
+                    .read(
+                      bookGamesPaginatedProvider(
+                        _currentPaginationKey,
+                      ).notifier,
+                    )
                     .refresh();
                 ref.invalidate(folderAnalysisCountProvider);
                 ref.invalidate(libraryFoldersStreamProvider);
@@ -323,7 +328,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       initialFolderId: widget.folder.id,
     );
     if (!mounted) return;
-    ref.read(bookGamesPaginatedProvider(_currentPaginationKey).notifier).refresh();
+    ref
+        .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
+        .refresh();
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
   }
@@ -379,7 +386,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
     if (!mounted) return;
     // Refresh in case games were saved into this folder from the sheet.
-    ref.read(bookGamesPaginatedProvider(_currentPaginationKey).notifier).refresh();
+    ref
+        .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
+        .refresh();
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
   }
@@ -495,10 +504,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     final dialogController = _ExportProgressController();
 
     // Show the progress dialog (non-dismissible) while export runs.
-    final dialogFuture = showDialog<void>(
+    final dialogFuture = showAlertModal<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _ExportProgressDialog(controller: dialogController),
+      child: _ExportProgressDialog(controller: dialogController),
     );
 
     List<FolderPgnFile>? files;
@@ -527,9 +536,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            error != null
-                ? 'Export failed: $error'
-                : 'Nothing to export here',
+            error != null ? 'Export failed: $error' : 'Nothing to export here',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -967,7 +974,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   Widget _buildEmptySearchState() {
     final hasActiveFilters =
-        ref.read(folderFilterProvider(_folderFilterKey)).filter.hasActiveFilters;
+        ref
+            .read(folderFilterProvider(_folderFilterKey))
+            .filter
+            .hasActiveFilters;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1077,65 +1087,60 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
             ? 'Exporting ${progress.processed} / ${progress.total} games...'
             : 'Preparing export...';
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: EdgeInsets.symmetric(horizontal: 24.w),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: 16.sp,
-                  height: 16.sp,
-                  child: const CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: kPrimaryColor,
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 16.sp,
+                height: 16.sp,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: kPrimaryColor,
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  label,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary,
                   ),
                 ),
-                SizedBox(width: 10.w),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 14.h),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4.br),
-              child: LinearProgressIndicator(
-                value: progress.total > 0 ? progress.fraction : null,
-                backgroundColor: context.colors.textPrimary.withValues(
-                  alpha: 0.08,
-                ),
-                valueColor: const AlwaysStoppedAnimation<Color>(kPrimaryColor),
-                minHeight: 6.h,
               ),
-            ),
-            SizedBox(height: 8.h),
-            Text(
-              progress.total > 0
-                  ? '${(progress.fraction * 100).toStringAsFixed(0)}%'
-                  : '',
-              style: AppTypography.textXsRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.55),
+            ],
+          ),
+          SizedBox(height: 14.h),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4.br),
+            child: LinearProgressIndicator(
+              value: progress.total > 0 ? progress.fraction : null,
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.08,
               ),
+              valueColor: const AlwaysStoppedAnimation<Color>(kPrimaryColor),
+              minHeight: 6.h,
             ),
-          ],
-        ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            progress.total > 0
+                ? '${(progress.fraction * 100).toStringAsFixed(0)}%'
+                : '',
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.55),
+            ),
+          ),
+        ],
       ),
     );
   }

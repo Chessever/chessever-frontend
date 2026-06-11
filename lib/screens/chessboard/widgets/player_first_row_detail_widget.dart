@@ -23,6 +23,7 @@ import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -906,61 +907,117 @@ void _showEditNameDialog(
   ValueChanged<String> onSave,
 ) {
   final controller = TextEditingController(text: currentName);
-  showDialog<void>(
+  showAlertModal<void>(
     context: context,
-    builder:
-        (context) => AlertDialog(
-          backgroundColor: context.colors.surface,
-          title: Text(
-            'Edit Player Name',
-            style: TextStyle(color: Colors.white, fontSize: 16.f),
+    child: Builder(
+      builder:
+          (dialogContext) => Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(20.sp),
+            decoration: BoxDecoration(
+              color: dialogContext.colors.surface,
+              borderRadius: BorderRadius.circular(16.br),
+              border: Border.all(
+                color: dialogContext.colors.textPrimary.withValues(alpha: 0.1),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Edit Player Name',
+                  style: AppTypography.textMdBold.copyWith(
+                    color: dialogContext.colors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: dialogContext.colors.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Player name',
+                    hintStyle: AppTypography.textSmRegular.copyWith(
+                      color: dialogContext.colors.textPrimary.withValues(
+                        alpha: 0.4,
+                      ),
+                    ),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(
+                        color: dialogContext.colors.textPrimary.withValues(
+                          alpha: 0.2,
+                        ),
+                      ),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(
+                        color: dialogContext.colors.textPrimary.withValues(
+                          alpha: 0.7,
+                        ),
+                      ),
+                    ),
+                  ),
+                  onSubmitted: (value) {
+                    final trimmed = value.trim();
+                    if (trimmed.isNotEmpty && trimmed != currentName) {
+                      onSave(trimmed);
+                    }
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+                SizedBox(height: 20.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: Text(
+                          'Cancel',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: dialogContext.colors.textPrimary.withValues(
+                              alpha: 0.6,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final trimmed = controller.text.trim();
+                          if (trimmed.isNotEmpty && trimmed != currentName) {
+                            onSave(trimmed);
+                          }
+                          Navigator.of(dialogContext).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: dialogContext.colors.textPrimary,
+                          foregroundColor: dialogContext.colors.textInverse,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.br),
+                          ),
+                        ),
+                        child: Text(
+                          'Save',
+                          style: AppTypography.textSmBold.copyWith(
+                            color: dialogContext.colors.textInverse,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            style: TextStyle(color: Colors.white, fontSize: 14.f),
-            decoration: InputDecoration(
-              hintText: 'Player name',
-              hintStyle: TextStyle(color: Colors.white38, fontSize: 14.f),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white24),
-              ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white70),
-              ),
-            ),
-            onSubmitted: (value) {
-              final trimmed = value.trim();
-              if (trimmed.isNotEmpty && trimmed != currentName) {
-                onSave(trimmed);
-              }
-              Navigator.of(context).pop();
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: Colors.white54, fontSize: 14.f),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                final trimmed = controller.text.trim();
-                if (trimmed.isNotEmpty && trimmed != currentName) {
-                  onSave(trimmed);
-                }
-                Navigator.of(context).pop();
-              },
-              child: Text(
-                'Save',
-                style: TextStyle(color: Colors.white, fontSize: 14.f),
-              ),
-            ),
-          ],
-        ),
-  );
+    ),
+  ).whenComplete(controller.dispose);
 }
 
 class _PlayerClock extends StatelessWidget {

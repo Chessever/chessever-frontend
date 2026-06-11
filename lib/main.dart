@@ -620,7 +620,7 @@ void _initializePostStartupServices() {
             final stockfish = StockfishSingleton();
             if (stockfish.requiresRecovery) {
               unawaited(stockfish.forceRecovery());
-            } else {
+            } else if (!Platform.isAndroid) {
               unawaited(stockfish.warmUp());
             }
           },
@@ -705,11 +705,13 @@ void _initializePostStartupServices() {
     task: () => AudioPlayerService.instance.initializeAndLoadAllAssets(),
   );
 
-  ForegroundTaskScheduler.schedule(
-    key: 'startup_stockfish_warmup',
-    delay: kStartupWarmupDelay + const Duration(seconds: 1),
-    task: () => StockfishSingleton().warmUp(),
-  );
+  if (!Platform.isAndroid) {
+    ForegroundTaskScheduler.schedule(
+      key: 'startup_stockfish_warmup',
+      delay: kStartupWarmupDelay + const Duration(seconds: 1),
+      task: () => StockfishSingleton().warmUp(),
+    );
+  }
 }
 
 class StartupGate extends ConsumerStatefulWidget {
