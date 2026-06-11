@@ -89,9 +89,9 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   late GameFilter _filter = widget.request.seedGameFilter();
 
   /// The last applied/saved identity of this smart event. Starts as the
-  /// opening request and is re-pointed every time an apply runs — so
-  /// dirty-tracking measures against what is actually persisted, not
-  /// against the (stale) opening request.
+  /// opening request and is re-pointed every time the user confirms an
+  /// apply — so dirty-tracking measures against what is actually persisted,
+  /// not against the (stale) opening request.
   late SmartEventRequest _baselineRequest = widget.request;
 
   static String _initialTier(SmartEventRequest request) {
@@ -149,8 +149,8 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         _filter.timeControl != seed.timeControl;
   }
 
-  // Overrides stay local while exploring; they're applied + saved
-  // automatically on the way out (back navigation or the save button).
+  // Overrides stay local until the user confirms them on the way out (back
+  // navigation or the save button) — nothing is persisted while exploring.
   void _setTier(String tier) {
     if (_tier == tier) return;
     setState(() => _tier = tier);
@@ -206,11 +206,22 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     );
   }
 
-  /// Back navigation with a dirty config: silently apply + save the new
-  /// configuration, then leave — no confirmation dialog.
-  Future<void> _applyChangesAndLeave() async {
+  /// Back navigation with a dirty config: confirm that the new configuration
+  /// gets applied + saved, or let the user discard it and leave as-is.
+  /// Dismissing the dialog (tap outside) stays on the screen.
+  Future<void> _confirmLeaveWithChanges() async {
     final navigator = Navigator.of(context);
-    await _applyConfigChanges();
+    final confirmed = await showSmoothConfirmDialog(
+      context: context,
+      title: 'Apply changes?',
+      message:
+          'You changed the filters this smart event was built from. '
+          'Leaving will apply and save the new configuration.',
+      confirmText: 'Apply & leave',
+      cancelText: 'Discard',
+    );
+    if (!mounted || confirmed == null) return;
+    if (confirmed) await _applyConfigChanges();
     if (!mounted) return;
     navigator.pop();
   }
@@ -269,8 +280,8 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
 
   /// Every dimension is offered — including the ones that GENERATED this
   /// smart event, which arrive pre-selected (seeded on the screen state) and
-  /// act as overrides of the event's config, applied + saved automatically
-  /// on exit.
+  /// act as overrides of the event's config, applied + saved on confirmed
+  /// exit.
   Future<void> _openFilterDialog() async {
     final result = await showGameFilterDialog(
       context: context,
@@ -310,10 +321,10 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         searchQuery: _query,
         child: PopScope(
           // A dirty config intercepts the pop (back button, system back,
-          // swipe-back) so the changes get applied + saved before leaving.
+          // swipe-back) so the changes can be confirmed-applied or discarded.
           canPop: !_isConfigDirty,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _applyChangesAndLeave();
+            if (!didPop) _confirmLeaveWithChanges();
           },
           child: Scaffold(
             backgroundColor: context.colors.background,
@@ -539,15 +550,38 @@ class _AppBar extends ConsumerWidget {
   final bool isDirty;
   final Future<void> Function() onApplyChanges;
 
-  /// Removal stays behind a confirmation (it's destructive — drops the
-  /// smart event from For You); saving and applying overrides do not.
-  Future<bool> _confirmRemoveFavorite(BuildContext context) async {
+  Future<bool> _confirmFavoriteChange(
+    BuildContext context, {
+    required bool isSaved,
+  }) async {
     final confirmed = await showSmoothConfirmDialog(
       context: context,
-      title: 'Remove ${request.displayName}?',
-      message: 'This will remove ${request.displayName} from your For You.',
-      confirmText: 'Remove',
-      isDangerous: true,
+      title:
+          isSaved
+              ? 'Remove ${request.displayName}?'
+              : 'Save ${request.displayName}?',
+      message:
+          isSaved
+              ? 'This will remove ${request.displayName} from your For You.'
+              : isDirty
+              ? 'Your changed filter configuration will be applied and '
+                  'saved — this adds ${request.displayName} to your '
+                  'For You tab.'
+              : 'This will add ${request.displayName} to your For You tab.',
+      confirmText: isSaved ? 'Remove' : 'Save',
+      isDangerous: isSaved,
+    );
+    return confirmed == true;
+  }
+
+  Future<bool> _confirmApplyChanges(BuildContext context) async {
+    final confirmed = await showSmoothConfirmDialog(
+      context: context,
+      title: 'Apply changes?',
+      message:
+          'Your new filter configuration will be applied and saved to '
+          '${request.displayName}.',
+      confirmText: 'Apply',
     );
     return confirmed == true;
   }
@@ -581,7 +615,7 @@ class _AppBar extends ConsumerWidget {
               color: context.colors.textPrimary,
             ),
             // maybePop so the screen's PopScope can intercept a dirty config
-            // and apply + save it before leaving.
+            // and offer to apply + save it.
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(child: Center(child: _AppBarTitle(request: request))),
@@ -608,24 +642,30 @@ class _AppBar extends ConsumerWidget {
               if (!allowed || !context.mounted) return;
 
               // Saved + overridden: the button applies + saves the new
-              // config onto the saved smart event, no confirmation.
+              // config onto the saved smart event (after confirmation).
               if (isSaved && isDirty) {
+                final confirmed = await _confirmApplyChanges(context);
+                if (!confirmed || !context.mounted) return;
                 await onApplyChanges();
                 return;
               }
 
+              final confirmed = await _confirmFavoriteChange(
+                context,
+                isSaved: isSaved,
+              );
+              if (!confirmed || !context.mounted) return;
+
               final notifier = ref.read(favoriteEventsProvider.notifier);
               if (isSaved) {
-                final confirmed = await _confirmRemoveFavorite(context);
-                if (!confirmed || !context.mounted) return;
                 await notifier.removeFavorite(savedRequest.favoriteEventId);
                 if (context.mounted) Navigator.of(context).pop();
                 return;
               }
 
-              // Unsaved: save straight away — overrides are persisted first
-              // (filter popup write-back) so the saved card and the
-              // generated cards reflect the same criteria.
+              // Unsaved + overridden: persist the new config first (filter
+              // popup write-back) so the saved card and the generated cards
+              // reflect the same criteria.
               if (isDirty) await onApplyChanges();
               await notifier.addFavorite(
                 eventId: request.favoriteEventId,
