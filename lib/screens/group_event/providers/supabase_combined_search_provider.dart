@@ -93,11 +93,22 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
         .catchError((_) => EnhancedSearchResult.empty()),
   ]);
 
-  final broadcasts = parallelResults[0] as List<GroupBroadcast>;
+  final rawBroadcasts = parallelResults[0] as List<GroupBroadcast>;
   final countryPlayerResults = parallelResults[1] as List<SearchResult>;
   final directPlayerResults = parallelResults[2] as List<SearchResult>;
   final localSearchCurrent = parallelResults[3] as EnhancedSearchResult;
   final localSearchPast = parallelResults[4] as EnhancedSearchResult;
+
+  // Country queries: FTS includes player names + federations in search_fts,
+  // so e.g. "norway" surfaces "… Championship for Prisoners" because a player
+  // there is from NOR. For a country term, the tournament list should be
+  // events whose NAME references the country.
+  final qLowerForFilter = trimmedQuery.toLowerCase();
+  final broadcasts = isCountrySearch
+      ? rawBroadcasts
+          .where((b) => b.name.toLowerCase().contains(qLowerForFilter))
+          .toList()
+      : rawBroadcasts;
 
   debugPrint(
     '[Search] Query: "$trimmedQuery", results: ${broadcasts.length} events, ${directPlayerResults.length} players',
@@ -242,10 +253,14 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
     if (localSearch.tournamentResults.isNotEmpty) {
       final existingIds = {for (final r in tournamentResults) r.tournament.id};
       for (final t in localSearch.tournamentResults) {
-        if (!existingIds.contains(t.tournament.id)) {
-          tournamentResults.add(t);
-          existingIds.add(t.tournament.id);
+        if (existingIds.contains(t.tournament.id)) continue;
+        // Country queries must hit the event name, not a player's federation.
+        if (isCountrySearch &&
+            !t.tournament.title.toLowerCase().contains(qLowerForFilter)) {
+          continue;
         }
+        tournamentResults.add(t);
+        existingIds.add(t.tournament.id);
       }
     }
 
