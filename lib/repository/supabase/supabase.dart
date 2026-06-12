@@ -1,15 +1,14 @@
-import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Helper function to get environment variables
-/// In debug mode: reads from .env file via dotenv
-/// In production: reads from CodeMagic environment variables
+/// Helper function to get environment variables.
+/// Prefer --dart-define/--dart-define-from-file values in every build mode.
+/// Local debug can fall back to dotenv only when a private workflow loads it.
 String _getEnv(String key) {
   final releaseValue = String.fromEnvironment(key);
-  if (E2eConfig.isEnabled && releaseValue.isNotEmpty) {
+  if (releaseValue.isNotEmpty) {
     return releaseValue;
   }
 

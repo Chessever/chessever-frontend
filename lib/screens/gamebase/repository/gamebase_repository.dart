@@ -9,7 +9,8 @@ class GamebaseApiKeyMissingException implements Exception {
   @override
   String toString() {
     return 'Missing GAMEBASE_API_KEY. Generate a personal developer key from '
-        'https://chessever.com/developers and add it to .env.';
+        'https://chessever.com/developers and pass it with --dart-define or '
+        '--dart-define-from-file.';
   }
 }
 

@@ -139,14 +139,15 @@ class AppsflyerService {
       'APPSFLYER_DEV_KEY',
       defaultValue: '',
     );
+    if (releaseKey.isNotEmpty) return releaseKey;
+
     if (kDebugMode) {
       final envKey = dotenv.env['APPSFLYER_DEV_KEY']?.trim();
       if (envKey != null && envKey.isNotEmpty) return envKey;
     }
-    if (releaseKey.isNotEmpty) return releaseKey;
 
     debugPrint(
-      '⚠️ APPSFLYER_DEV_KEY is missing. Add it to .env and --dart-define for CI.',
+      '⚠️ APPSFLYER_DEV_KEY is missing. Pass it with --dart-define or --dart-define-from-file.',
     );
     return '';
   }
