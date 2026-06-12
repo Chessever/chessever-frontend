@@ -11,6 +11,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
+import 'package:chessever2/widgets/search/search_scorer.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/utils/player_name_search.dart';
@@ -150,15 +151,22 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
 
   for (final gb in broadcasts) {
     final tourEventModel = GroupEventCardModel.fromGroupBroadcast(gb, liveIds);
-
-    tournamentResults.add(
-      SearchResult(
-        tournament: tourEventModel,
-        score: 100.0,
-        matchedText: gb.name,
-        type: SearchResultType.tournament,
-      ),
+    final tournamentMatch = SearchScorer.bestTournamentMatch(
+      query: trimmedQuery,
+      name: gb.name,
+      aliases: gb.search,
     );
+
+    if (tournamentMatch.score > 10.0) {
+      tournamentResults.add(
+        SearchResult(
+          tournament: tourEventModel,
+          score: tournamentMatch.score,
+          matchedText: tournamentMatch.matchedText,
+          type: SearchResultType.tournament,
+        ),
+      );
+    }
 
     // Note: We no longer create SearchPlayers from broadcast search terms
     // because they lack FIDE IDs. Player search results now come entirely
@@ -334,6 +342,24 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
       allPlayers.add(result.player!);
     }
   }
+
+  tournamentResults.sort((a, b) {
+    final scoreCompare = b.score.compareTo(a.score);
+    if (scoreCompare != 0) return scoreCompare;
+
+    final aDate = a.tournament.startDate;
+    final bDate = b.tournament.startDate;
+    if (aDate != null && bDate != null) {
+      final dateCompare = bDate.compareTo(aDate);
+      if (dateCompare != 0) return dateCompare;
+    } else if (aDate != null) {
+      return -1;
+    } else if (bDate != null) {
+      return 1;
+    }
+
+    return a.tournament.title.compareTo(b.tournament.title);
+  });
 
   final searchResult = EnhancedSearchResult(
     tournamentResults: tournamentResults,

@@ -2,7 +2,41 @@ import 'dart:math' as math;
 
 import 'package:chessever2/widgets/search/search_result_model.dart';
 
+class SearchScoreMatch {
+  const SearchScoreMatch({required this.score, required this.matchedText});
+
+  final double score;
+  final String matchedText;
+}
+
 class SearchScorer {
+  static const SearchScoreMatch noMatch = SearchScoreMatch(
+    score: 0,
+    matchedText: '',
+  );
+
+  static SearchScoreMatch bestTournamentMatch({
+    required String query,
+    required String name,
+    Iterable<String> aliases = const [],
+  }) {
+    var bestScore = calculateScore(query, name, SearchResultType.tournament);
+    var bestMatch = name;
+
+    for (final alias in aliases) {
+      if (!_isTournamentIdentityAlias(name, alias)) continue;
+
+      final score = calculateScore(query, alias, SearchResultType.tournament);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = alias;
+      }
+    }
+
+    if (bestScore <= 0) return noMatch;
+    return SearchScoreMatch(score: bestScore, matchedText: bestMatch);
+  }
+
   static double calculateScore(
     String query,
     String text,
@@ -37,12 +71,71 @@ class SearchScorer {
       score = _calculateFuzzyScore(queryLower, textLower);
     }
 
-    // Boost score for tournament name matches vs player matches
     if (type == SearchResultType.tournament) {
-      score *= 1.1; // Slight boost for tournament name matches
+      if (!_hasTournamentQueryIdentityMatch(queryLower, textLower)) {
+        return 0.0;
+      }
+
+      // Boost score for tournament name matches vs player matches.
+      score *= 1.1;
     }
 
     return score.clamp(0.0, 100.0);
+  }
+
+  static bool _hasTournamentQueryIdentityMatch(String query, String text) {
+    final queryTokens =
+        _normalizedTokens(
+          query,
+        ).where((token) => !_isYearToken(token)).toList();
+    final textTokens = _normalizedTokens(text);
+    if (queryTokens.isEmpty || textTokens.isEmpty) return false;
+
+    if (queryTokens.length == 1) {
+      return textTokens.any((textToken) {
+        return _tokensMatch(queryTokens.first, textToken);
+      });
+    }
+
+    return queryTokens.every((queryToken) {
+      return textTokens.any((textToken) {
+        return _tokensMatch(queryToken, textToken);
+      });
+    });
+  }
+
+  static bool _isTournamentIdentityAlias(String name, String alias) {
+    final nameTokens = _normalizedTokens(name);
+    final aliasTokens = _normalizedTokens(alias);
+    if (nameTokens.isEmpty || aliasTokens.isEmpty) return false;
+
+    final normalizedName = nameTokens.join(' ');
+    final normalizedAlias = aliasTokens.join(' ');
+    if (normalizedAlias == normalizedName) return true;
+    if (normalizedAlias.startsWith('$normalizedName ')) return true;
+
+    final requiredNameTokens =
+        nameTokens.where((token) => !_isYearToken(token)).toSet();
+    if (requiredNameTokens.isEmpty) return false;
+
+    final aliasTokenSet = aliasTokens.toSet();
+    return requiredNameTokens.every(aliasTokenSet.contains);
+  }
+
+  static bool _tokensMatch(String queryToken, String textToken) {
+    return textToken == queryToken || textToken.startsWith(queryToken);
+  }
+
+  static bool _isYearToken(String token) {
+    final year = int.tryParse(token);
+    return token.length == 4 && year != null && year >= 1800 && year <= 2200;
+  }
+
+  static List<String> _normalizedTokens(String value) {
+    final normalized =
+        value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+    if (normalized.isEmpty) return const [];
+    return normalized.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
   }
 
   static double _calculateFuzzyScore(String query, String text) {
@@ -77,7 +170,7 @@ class SearchScorer {
     final longer = s1.length > s2.length ? s1 : s2;
     final shorter = s1.length > s2.length ? s2 : s1;
 
-    if (longer.length == 0) return 1.0;
+    if (longer.isEmpty) return 1.0;
 
     final editDistance = _levenshteinDistance(longer, shorter);
     return (longer.length - editDistance) / longer.length;
