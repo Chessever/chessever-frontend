@@ -1,4 +1,6 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/smart_level_event.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -13,11 +15,13 @@ class AllEventsTabWidget extends ConsumerStatefulWidget {
     super.key,
     this.isLoadingMore = false,
     this.scrollController,
+    this.showSmartLevelEvent = false,
   });
   final List<GroupEventCardModel> filteredEvents;
   final ValueChanged<GroupEventCardModel> onSelect;
   final bool isLoadingMore;
   final ScrollController? scrollController;
+  final bool showSmartLevelEvent;
 
   @override
   ConsumerState<AllEventsTabWidget> createState() => _AllEventsTabWidgetState();
@@ -97,7 +101,14 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.filteredEvents.isEmpty) {
+    final levelTier =
+        widget.showSmartLevelEvent
+            ? SmartLevelTier.fromFilter(
+              ref.watch(currentPastAppliedFilterProvider),
+            )
+            : null;
+
+    if (widget.filteredEvents.isEmpty && levelTier == null) {
       return Center(
         child: Text(
           'No tournaments found',
@@ -114,13 +125,17 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
 
     // Use grid layout for tablets, list layout for phones
     if (isTablet && crossAxisCount > 1) {
-      return _buildTabletGridLayout(bottomPadding, crossAxisCount);
+      return _buildTabletGridLayout(bottomPadding, crossAxisCount, levelTier);
     }
 
-    return _buildPhoneListLayout(bottomPadding);
+    return _buildPhoneListLayout(bottomPadding, levelTier);
   }
 
-  Widget _buildTabletGridLayout(double bottomPadding, int crossAxisCount) {
+  Widget _buildTabletGridLayout(
+    double bottomPadding,
+    int crossAxisCount,
+    SmartLevelTier? levelTier,
+  ) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 24.sp,
@@ -129,6 +144,17 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
     return CustomScrollView(
       controller: widget.scrollController,
       slivers: [
+        if (levelTier != null)
+          SliverPadding(
+            padding: EdgeInsets.only(
+              left: horizontalPadding,
+              right: horizontalPadding,
+              bottom: 12.sp,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: SmartLevelEventCard(tier: levelTier),
+            ),
+          ),
         SliverPadding(
           padding: EdgeInsets.only(
             left: horizontalPadding,
@@ -155,7 +181,8 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
               padding: EdgeInsets.only(bottom: bottomPadding + 20),
               child: Center(
                 child: CircularProgressIndicator(
-                  color: context.isLightTheme ? kPrimaryColor : kBoardLightDefault,
+                  color:
+                      context.isLightTheme ? kPrimaryColor : kBoardLightDefault,
                 ),
               ),
             ),
@@ -164,7 +191,11 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
     );
   }
 
-  Widget _buildPhoneListLayout(double bottomPadding) {
+  Widget _buildPhoneListLayout(
+    double bottomPadding,
+    SmartLevelTier? levelTier,
+  ) {
+    final smartCardCount = levelTier != null ? 1 : 0;
     return ListView.builder(
       controller: widget.scrollController,
       padding: EdgeInsets.only(
@@ -172,9 +203,17 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
         right: 20.sp,
         bottom: bottomPadding + 12.sp,
       ),
-      itemCount: widget.filteredEvents.length + (widget.isLoadingMore ? 1 : 0),
+      itemCount:
+          widget.filteredEvents.length +
+          smartCardCount +
+          (widget.isLoadingMore ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == widget.filteredEvents.length) {
+        if (levelTier != null && index == 0) {
+          return SmartLevelEventCard(tier: levelTier);
+        }
+
+        final eventIndex = index - smartCardCount;
+        if (eventIndex == widget.filteredEvents.length) {
           return Padding(
             padding: EdgeInsets.only(bottom: bottomPadding + 20),
             child: const Center(
@@ -182,10 +221,10 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
             ),
           );
         }
-        final tourEventCardModel = widget.filteredEvents[index];
+        final tourEventCardModel = widget.filteredEvents[eventIndex];
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
-          child: _buildEventCard(tourEventCardModel, index),
+          child: _buildEventCard(tourEventCardModel, eventIndex),
         );
       },
     );

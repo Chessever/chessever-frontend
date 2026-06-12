@@ -24,6 +24,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final bool showFilter;
   final FocusNode? focusNode;
   final VoidCallback? onClearSearchField;
+  final ValueChanged<String>? onSubmitted;
   final int filterBadgeCount;
   final Key? textFieldKey;
   final Key? filterButtonKey;
@@ -43,6 +44,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.showFilter = true,
     this.focusNode,
     this.onClearSearchField,
+    this.onSubmitted,
     this.filterBadgeCount = 0,
     this.textFieldKey,
     this.filterButtonKey,
@@ -214,7 +216,7 @@ class _EnhancedRoundedSearchBarState
                         border: Border.all(
                           color:
                               _effectiveNode.hasFocus
-                                  ? kPrimaryColor.withOpacity(0.5)
+                                  ? kPrimaryColor.withValues(alpha: 0.5)
                                   : Colors.transparent,
                           width: 2.0,
                         ),
@@ -222,7 +224,9 @@ class _EnhancedRoundedSearchBarState
                             _effectiveNode.hasFocus
                                 ? [
                                   BoxShadow(
-                                    color: kPrimaryColor.withOpacity(0.15),
+                                    color: kPrimaryColor.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -287,6 +291,7 @@ class _EnhancedRoundedSearchBarState
               controller: widget.controller,
               focusNode: _effectiveNode,
               onCloseTap: _clearSearchAndHide,
+              onSubmitted: widget.onSubmitted,
               onOpenFilter: widget.onFilterTap,
               filterBadgeCount: widget.filterBadgeCount,
             ),

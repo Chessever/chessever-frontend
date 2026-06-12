@@ -4,6 +4,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
+import 'package:chessever2/screens/group_event/smart_opening_event.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
@@ -150,6 +151,18 @@ class GroupEventScreen extends HookConsumerWidget {
       });
     });
 
+    void openOpeningSmartEvent(String value) {
+      final openingQuery = SmartOpeningQuery.parse(value);
+      if (openingQuery == null) return;
+      FocusScope.of(context).unfocus();
+      HapticFeedbackService.buttonPress();
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SmartOpeningEventScreen(query: openingQuery),
+        ),
+      );
+    }
+
     void scrollActiveEventsTabToTop() {
       final ScrollController target;
       if (selectedTourEvent == GroupEventCategory.forYou) {
@@ -271,6 +284,7 @@ class GroupEventScreen extends HookConsumerWidget {
                           ref.refresh(groupEventScreenProvider);
                         }
                       },
+                      onSubmitted: openOpeningSmartEvent,
                       onTournamentSelected:
                           (t) => ref
                               .read(groupEventScreenProvider.notifier)
@@ -517,6 +531,9 @@ class GroupEventScreen extends HookConsumerWidget {
                                         ),
                                 isLoadingMore: isLoadingMore,
                                 scrollController: scrollController,
+                                showSmartLevelEvent:
+                                    currentCategory ==
+                                    GroupEventCategory.current,
                               ),
                             );
                           },
