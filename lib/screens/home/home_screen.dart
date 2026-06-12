@@ -20,6 +20,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
@@ -228,20 +229,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         key: _scaffoldKey,
         resizeToAvoidBottomInset: false,
         drawer: HamburgerMenu(callbacks: _menuCallbacks),
-        body: Row(
-          children: [
-            // Navigation rail for tablets
-            TabletNavRail(scaffoldKey: _scaffoldKey),
-            // Vertical divider
-            Container(width: 1, color: context.colors.divider),
-            // Main content
-            Expanded(
-              child: KeyedSubtree(
-                key: e2eKey(E2eIds.homeRoot),
-                child: BottomNavBarView(),
+        body: BillingIssueGate(
+          child: Row(
+            children: [
+              // Navigation rail for tablets
+              TabletNavRail(scaffoldKey: _scaffoldKey),
+              // Vertical divider
+              Container(width: 1, color: context.colors.divider),
+              // Main content
+              Expanded(
+                child: KeyedSubtree(
+                  key: e2eKey(E2eIds.homeRoot),
+                  child: BottomNavBarView(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -252,9 +255,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       resizeToAvoidBottomInset: false,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
       bottomNavigationBar: BottomNavBar(),
-      body: KeyedSubtree(
-        key: e2eKey(E2eIds.homeRoot),
-        child: BottomNavBarView(),
+      body: BillingIssueGate(
+        child: KeyedSubtree(
+          key: e2eKey(E2eIds.homeRoot),
+          child: BottomNavBarView(),
+        ),
       ),
     );
   }

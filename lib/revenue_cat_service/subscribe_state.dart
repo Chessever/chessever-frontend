@@ -119,38 +119,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final customerInfo = results[1] as CustomerInfo?;
       final backendEntitlement = results[2] as BackendEntitlementSnapshot?;
 
-      // Derive isSubscribed from customerInfo (no extra API call)
-      bool isSubscribed = false;
-      DateTime? expirationDate;
-      String? managementUrl;
-      bool willRenew = true;
-      String? provider;
-
-      if (customerInfo != null) {
-        // Check entitlements from the already-fetched customerInfo
-        final activeEntitlements = customerInfo.entitlements.active;
-        isSubscribed =
-            activeEntitlements.containsKey(
-              RevenueCatService.premiumEntitlement,
-            ) ||
-            activeEntitlements.isNotEmpty;
-
-        if (activeEntitlements.isNotEmpty) {
-          final entitlement = activeEntitlements.values.first;
-          if (entitlement.expirationDate != null) {
-            expirationDate = DateTime.tryParse(entitlement.expirationDate!);
-          }
-          willRenew = entitlement.willRenew;
-          provider = 'revenuecat';
-        }
-        managementUrl = customerInfo.managementURL;
-      }
+      final localSnapshot = _readLocalSnapshot(customerInfo);
 
       final merged = _mergeBackendEntitlement(
-        isSubscribed: isSubscribed,
-        expirationDate: expirationDate,
-        willRenew: willRenew,
-        provider: provider,
+        isSubscribed: localSnapshot.isSubscribed,
+        expirationDate: localSnapshot.expirationDate,
+        willRenew: localSnapshot.willRenew,
+        provider: localSnapshot.provider,
+        inBillingGracePeriod: localSnapshot.inBillingGracePeriod,
+        billingIssueDetectedAt: localSnapshot.billingIssueDetectedAt,
         backendEntitlement: backendEntitlement,
       );
 
@@ -159,9 +136,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         products: products,
         isLoading: false,
         expirationDate: merged.expirationDate,
-        managementUrl: managementUrl,
+        managementUrl: localSnapshot.managementUrl,
         willRenew: merged.willRenew,
         provider: merged.provider,
+        inBillingGracePeriod: merged.inBillingGracePeriod,
+        billingIssueDetectedAt: merged.billingIssueDetectedAt,
       );
 
       // Schedule expiration check if subscribed
@@ -189,37 +168,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final customerInfo = results[1] as CustomerInfo?;
       final backendEntitlement = results[2] as BackendEntitlementSnapshot?;
 
-      // Derive isSubscribed from customerInfo (no extra API call)
-      bool isSubscribed = false;
-      DateTime? expirationDate;
-      String? managementUrl;
-      bool willRenew = true;
-      String? provider;
-
-      if (customerInfo != null) {
-        final activeEntitlements = customerInfo.entitlements.active;
-        isSubscribed =
-            activeEntitlements.containsKey(
-              RevenueCatService.premiumEntitlement,
-            ) ||
-            activeEntitlements.isNotEmpty;
-
-        if (activeEntitlements.isNotEmpty) {
-          final entitlement = activeEntitlements.values.first;
-          if (entitlement.expirationDate != null) {
-            expirationDate = DateTime.tryParse(entitlement.expirationDate!);
-          }
-          willRenew = entitlement.willRenew;
-          provider = 'revenuecat';
-        }
-        managementUrl = customerInfo.managementURL;
-      }
+      final localSnapshot = _readLocalSnapshot(customerInfo);
 
       final merged = _mergeBackendEntitlement(
-        isSubscribed: isSubscribed,
-        expirationDate: expirationDate,
-        willRenew: willRenew,
-        provider: provider,
+        isSubscribed: localSnapshot.isSubscribed,
+        expirationDate: localSnapshot.expirationDate,
+        willRenew: localSnapshot.willRenew,
+        provider: localSnapshot.provider,
+        inBillingGracePeriod: localSnapshot.inBillingGracePeriod,
+        billingIssueDetectedAt: localSnapshot.billingIssueDetectedAt,
         backendEntitlement: backendEntitlement,
       );
 
@@ -228,9 +185,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         products: products,
         isLoading: false,
         expirationDate: merged.expirationDate,
-        managementUrl: managementUrl,
+        managementUrl: localSnapshot.managementUrl,
         willRenew: merged.willRenew,
         provider: merged.provider,
+        inBillingGracePeriod: merged.inBillingGracePeriod,
+        billingIssueDetectedAt: merged.billingIssueDetectedAt,
       );
 
       // Schedule expiration check if subscribed
@@ -241,6 +200,44 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       debugPrint('❌ Subscription refresh error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
+  }
+
+  _LocalEntitlementSnapshot _readLocalSnapshot(CustomerInfo? customerInfo) {
+    if (customerInfo == null) return const _LocalEntitlementSnapshot.empty();
+
+    final activeEntitlements = customerInfo.entitlements.active;
+    final isSubscribed =
+        activeEntitlements.containsKey(
+          RevenueCatService.premiumEntitlement,
+        ) ||
+        activeEntitlements.isNotEmpty;
+
+    DateTime? expirationDate;
+    bool willRenew = true;
+    String? provider;
+    DateTime? billingIssueDetectedAt;
+    if (activeEntitlements.isNotEmpty) {
+      final entitlement = activeEntitlements.values.first;
+      if (entitlement.expirationDate != null) {
+        expirationDate = DateTime.tryParse(entitlement.expirationDate!);
+      }
+      willRenew = entitlement.willRenew;
+      provider = 'revenuecat';
+      if (entitlement.billingIssueDetectedAt != null) {
+        billingIssueDetectedAt =
+            DateTime.tryParse(entitlement.billingIssueDetectedAt!);
+      }
+    }
+
+    return _LocalEntitlementSnapshot(
+      isSubscribed: isSubscribed,
+      expirationDate: expirationDate,
+      willRenew: willRenew,
+      provider: provider,
+      managementUrl: customerInfo.managementURL,
+      inBillingGracePeriod: billingIssueDetectedAt != null,
+      billingIssueDetectedAt: billingIssueDetectedAt,
+    );
   }
 
   /// Sync purchases with RevenueCat servers and update local state.
@@ -268,6 +265,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     DateTime? expirationDate;
     bool willRenew = true;
     String? activeProductId;
+    DateTime? billingIssueDetectedAt;
     if (customerInfo.entitlements.active.isNotEmpty) {
       final entitlement = customerInfo.entitlements.active.values.first;
       if (entitlement.expirationDate != null) {
@@ -275,6 +273,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       }
       willRenew = entitlement.willRenew;
       activeProductId = entitlement.productIdentifier;
+      if (entitlement.billingIssueDetectedAt != null) {
+        billingIssueDetectedAt =
+            DateTime.tryParse(entitlement.billingIssueDetectedAt!);
+      }
     }
 
     final previouslySubscribed = state.isSubscribed;
@@ -289,6 +291,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               : state.managementUrl,
       willRenew: isSubscribed ? willRenew : state.willRenew,
       provider: isSubscribed ? 'revenuecat' : state.provider,
+      // Only the RevenueCat-side billing-grace flag survives the listener
+      // update. Stripe past_due is re-read by _refreshBackendEntitlement so
+      // we don't clobber it here. When this listener fires for a non-RC
+      // user, keep the prior backend-derived flag.
+      inBillingGracePeriod:
+          isSubscribed
+              ? (billingIssueDetectedAt != null)
+              : state.inBillingGracePeriod,
+      billingIssueDetectedAt:
+          isSubscribed ? billingIssueDetectedAt : state.billingIssueDetectedAt,
     );
 
     // Log subscription status changes for debugging
@@ -321,6 +333,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     required DateTime? expirationDate,
     required bool willRenew,
     required String? provider,
+    required bool inBillingGracePeriod,
+    required DateTime? billingIssueDetectedAt,
     required BackendEntitlementSnapshot? backendEntitlement,
   }) {
     if (backendEntitlement?.isActive != true) {
@@ -329,6 +343,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         expirationDate: expirationDate,
         willRenew: willRenew,
         provider: provider,
+        inBillingGracePeriod: inBillingGracePeriod,
+        billingIssueDetectedAt: billingIssueDetectedAt,
       );
     }
 
@@ -337,6 +353,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       expirationDate: backendEntitlement!.expiresAt ?? expirationDate,
       willRenew: backendEntitlement.willRenew,
       provider: backendEntitlement.provider ?? provider,
+      // Honor either side: RC SDK flag (App Store / Play Store) OR backend
+      // past_due (Stripe / web). Whichever fires first wins so we surface
+      // the popup as soon as the platform tells us payment failed.
+      inBillingGracePeriod:
+          inBillingGracePeriod || backendEntitlement.inBillingGracePeriod,
+      billingIssueDetectedAt:
+          billingIssueDetectedAt ?? backendEntitlement.billingIssueDetectedAt,
     );
   }
 
@@ -350,6 +373,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         expirationDate: backendEntitlement.expiresAt,
         willRenew: backendEntitlement.willRenew,
         provider: backendEntitlement.provider,
+        // Don't drop a locally-detected billing issue when the backend says
+        // active — App Store grace periods are reported by the SDK long
+        // before the backend mirror gets the next sync.
+        inBillingGracePeriod:
+            state.inBillingGracePeriod || backendEntitlement.inBillingGracePeriod,
+        billingIssueDetectedAt: state.billingIssueDetectedAt ??
+            backendEntitlement.billingIssueDetectedAt,
       );
       if (backendEntitlement.expiresAt != null) {
         _scheduleExpirationCheck();
@@ -362,6 +392,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         isSubscribed: false,
         willRenew: false,
         provider: backendEntitlement.provider,
+        inBillingGracePeriod: false,
+        billingIssueDetectedAt: null,
       );
     }
   }
@@ -585,6 +617,18 @@ class SubscriptionState {
   /// False if user has cancelled (but may still have access until expirationDate).
   final bool willRenew;
 
+  /// True when the store reports a failed payment but the entitlement is
+  /// still active — i.e. the user is inside the platform's billing-retry
+  /// grace window. App Store gives ~16 days, Play ~7 days, Stripe is whatever
+  /// retry schedule we configured. Use this to nudge the user to update their
+  /// card BEFORE the entitlement flips to expired.
+  final bool inBillingGracePeriod;
+
+  /// When the billing issue was first detected (RC reports it on the
+  /// EntitlementInfo; Stripe surfaces it via past_due status). Null when no
+  /// billing issue. Used purely for display / copy.
+  final DateTime? billingIssueDetectedAt;
+
   SubscriptionState({
     this.isSubscribed = false,
     this.isLoading = false,
@@ -594,6 +638,8 @@ class SubscriptionState {
     this.managementUrl,
     this.provider,
     this.willRenew = true,
+    this.inBillingGracePeriod = false,
+    this.billingIssueDetectedAt,
   });
 
   SubscriptionState copyWith({
@@ -605,6 +651,8 @@ class SubscriptionState {
     String? managementUrl,
     String? provider,
     bool? willRenew,
+    bool? inBillingGracePeriod,
+    DateTime? billingIssueDetectedAt,
   }) {
     return SubscriptionState(
       isSubscribed: isSubscribed ?? this.isSubscribed,
@@ -615,6 +663,10 @@ class SubscriptionState {
       managementUrl: managementUrl ?? this.managementUrl,
       provider: provider ?? this.provider,
       willRenew: willRenew ?? this.willRenew,
+      inBillingGracePeriod:
+          inBillingGracePeriod ?? this.inBillingGracePeriod,
+      billingIssueDetectedAt:
+          billingIssueDetectedAt ?? this.billingIssueDetectedAt,
     );
   }
 }
@@ -625,12 +677,45 @@ class _MergedSubscription {
     required this.expirationDate,
     required this.willRenew,
     required this.provider,
+    required this.inBillingGracePeriod,
+    required this.billingIssueDetectedAt,
   });
 
   final bool isSubscribed;
   final DateTime? expirationDate;
   final bool willRenew;
   final String? provider;
+  final bool inBillingGracePeriod;
+  final DateTime? billingIssueDetectedAt;
+}
+
+class _LocalEntitlementSnapshot {
+  const _LocalEntitlementSnapshot({
+    required this.isSubscribed,
+    required this.expirationDate,
+    required this.willRenew,
+    required this.provider,
+    required this.managementUrl,
+    required this.inBillingGracePeriod,
+    required this.billingIssueDetectedAt,
+  });
+
+  const _LocalEntitlementSnapshot.empty()
+      : isSubscribed = false,
+        expirationDate = null,
+        willRenew = true,
+        provider = null,
+        managementUrl = null,
+        inBillingGracePeriod = false,
+        billingIssueDetectedAt = null;
+
+  final bool isSubscribed;
+  final DateTime? expirationDate;
+  final bool willRenew;
+  final String? provider;
+  final String? managementUrl;
+  final bool inBillingGracePeriod;
+  final DateTime? billingIssueDetectedAt;
 }
 
 class _PendingRedemption {

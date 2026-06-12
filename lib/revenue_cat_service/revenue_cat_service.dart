@@ -370,6 +370,9 @@ class BackendEntitlementSnapshot {
     this.expiresAt,
     this.willRenew = false,
     this.productId,
+    this.status,
+    this.inBillingGracePeriod = false,
+    this.billingIssueDetectedAt,
   });
 
   final bool isActive;
@@ -378,11 +381,27 @@ class BackendEntitlementSnapshot {
   final bool willRenew;
   final String? productId;
 
+  /// Raw lifecycle status from the backend mirror — 'active' / 'trialing' /
+  /// 'past_due' / 'canceled' / 'paused'. Kept for callers that want the raw
+  /// value; the convenience flag below is derived from it.
+  final String? status;
+
+  /// True when the backend reports a payment failure but the entitlement
+  /// is still honored (Stripe past_due, App Store/Play billing retry that
+  /// propagated through the RC webhook). The UI uses this to prompt the
+  /// user to update their card before access ends.
+  final bool inBillingGracePeriod;
+
+  /// When the billing failure was first observed by the backend. May be
+  /// null when the status flips to past_due without a precise timestamp.
+  final DateTime? billingIssueDetectedAt;
+
   factory BackendEntitlementSnapshot.fromJson(Map<String, dynamic> json) {
     final cancelAt = switch (json['cancel_at']) {
       String s => DateTime.tryParse(s),
       _ => null,
     };
+    final status = json['status'] as String?;
     return BackendEntitlementSnapshot(
       isActive: json['is_premium'] as bool? ?? false,
       provider: json['provider'] as String?,
@@ -392,6 +411,12 @@ class BackendEntitlementSnapshot {
       },
       willRenew: cancelAt == null,
       productId: json['product_id'] as String?,
+      status: status,
+      inBillingGracePeriod: status == 'past_due',
+      billingIssueDetectedAt: switch (json['billing_issue_detected_at']) {
+        String s => DateTime.tryParse(s),
+        _ => null,
+      },
     );
   }
 }
