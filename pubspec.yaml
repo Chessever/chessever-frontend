@@ -201,7 +201,7 @@ flutter:
     - assets/launch.webp
     - assets/app_icon.png
     # Keep .env out of app bundles. Use --dart-define-from-file=.env for local
-    # debug builds instead of shipping secrets as Flutter assets.
+    # debug builds instead of shipping personal keys as Flutter assets.
     # - .env
     - shorebird.yaml
 
