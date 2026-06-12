@@ -368,18 +368,25 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     if (backendEntitlement == null) return;
 
     if (backendEntitlement.isActive) {
+      // Stripe has no RC SDK signal on this device, so the backend is the
+      // single authority: take its flag verbatim — including clearing it
+      // once the card recovers. For store-billed subs (apple/google/
+      // revenuecat) the RC SDK often reports the billing issue before the
+      // backend mirror catches up, so there we keep whichever side fired.
+      final stripeAuthoritative = backendEntitlement.provider == 'stripe';
       state = state.copyWith(
         isSubscribed: true,
         expirationDate: backendEntitlement.expiresAt,
         willRenew: backendEntitlement.willRenew,
         provider: backendEntitlement.provider,
-        // Don't drop a locally-detected billing issue when the backend says
-        // active — App Store grace periods are reported by the SDK long
-        // before the backend mirror gets the next sync.
-        inBillingGracePeriod:
-            state.inBillingGracePeriod || backendEntitlement.inBillingGracePeriod,
-        billingIssueDetectedAt: state.billingIssueDetectedAt ??
-            backendEntitlement.billingIssueDetectedAt,
+        inBillingGracePeriod: stripeAuthoritative
+            ? backendEntitlement.inBillingGracePeriod
+            : (state.inBillingGracePeriod ||
+                backendEntitlement.inBillingGracePeriod),
+        billingIssueDetectedAt: stripeAuthoritative
+            ? backendEntitlement.billingIssueDetectedAt
+            : (state.billingIssueDetectedAt ??
+                backendEntitlement.billingIssueDetectedAt),
       );
       if (backendEntitlement.expiresAt != null) {
         _scheduleExpirationCheck();
