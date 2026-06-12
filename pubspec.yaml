@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 20.2.0+1572
+version: 20.3.0+1573
 
 environment:
   sdk: ^3.7.2
@@ -202,7 +202,7 @@ flutter:
     - assets/app_icon.png
     # Debug bundles .env so flutter_dotenv can load it. Release builds must
     # truncate .env to empty in CI before `flutter build` so secrets don't ship.
-    - .env
+    # - .env
     - shorebird.yaml
 
   # An image asset can refer to one or more resolution-specific "variants", see
