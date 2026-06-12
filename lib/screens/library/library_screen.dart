@@ -19,6 +19,7 @@ import 'package:chessever2/screens/library/discovery/studies_tab.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/revenue_cat_service/subscription_retention_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -436,7 +437,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           _studiesSearchDebounce?.cancel();
           _studiesSearchDebounce = Timer(
             const Duration(milliseconds: 350),
-            () => ref.read(studiesQueryProvider.notifier).setSearch(query.trim()),
+            () =>
+                ref.read(studiesQueryProvider.notifier).setSearch(query.trim()),
           );
         }
       },
@@ -484,11 +486,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // (and provider subscriptions) survive switching away and back.
     return IndexedStack(
       index: _activeTab.index,
-      children: [
-        _buildStudiesTab(),
-        _buildContent(),
-        _buildDiscoveryTab(),
-      ],
+      children: [_buildStudiesTab(), _buildContent(), _buildDiscoveryTab()],
     );
   }
 
@@ -553,6 +551,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             slivers: [
               SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+              if (ref.watch(subscriptionRetentionGraceProvider).valueOrNull
+                  case final grace?)
+                SliverToBoxAdapter(
+                  child: SubscriptionRetentionWarningBanner(grace: grace),
+                ),
               if (contentState.isLoading)
                 _buildLoadingSliver()
               else if (contentState.hasError)
@@ -659,7 +662,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             (context, index) => FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId ||
+              isFeatured:
+                  filteredFolders[index].id == kTwicBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),
@@ -679,7 +683,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             child: FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId ||
+              isFeatured:
+                  filteredFolders[index].id == kTwicBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),
