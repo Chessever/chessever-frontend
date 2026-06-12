@@ -6,6 +6,7 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
@@ -2203,9 +2204,10 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
   }
 }
 
-/// Event card heading a standings section. Tapping it (or the chevron badge)
-/// collapses or expands the standings underneath.
-class _StandingsEventHeaderCard extends StatelessWidget {
+/// Event card heading a standings section. Tapping the card opens the
+/// tournament; the chevron badge collapses or expands the standings
+/// underneath.
+class _StandingsEventHeaderCard extends ConsumerWidget {
   const _StandingsEventHeaderCard({
     required this.event,
     required this.scopeId,
@@ -2219,7 +2221,7 @@ class _StandingsEventHeaderCard extends StatelessWidget {
   final VoidCallback onToggle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -2227,7 +2229,10 @@ class _StandingsEventHeaderCard extends StatelessWidget {
           tourEventCardModel: event,
           forceCompactLayout: true,
           heroTagSuffix: 'smart_standings_$scopeId',
-          onTap: onToggle,
+          onTap:
+              () => ref
+                  .read(groupEventScreenProvider.notifier)
+                  .onSelectTournament(context: context, id: event.id),
         ),
         Positioned(
           top: -6,
@@ -2357,6 +2362,10 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
               tourEventCardModel: event,
               forceCompactLayout: true,
               heroTagSuffix: 'smart_about_$scopeId',
+              onTap:
+                  () => ref
+                      .read(groupEventScreenProvider.notifier)
+                      .onSelectTournament(context: context, id: event.id),
             ),
           ),
         ),
