@@ -53,26 +53,35 @@ SELECT DISTINCT ON (user_id)
   trial_end,
   product_id,
   interval,
-  (
+  is_premium
+FROM (
+  SELECT
+    *,
     (
-      status IN ('active','trialing')
-      AND (current_period_end IS NULL OR current_period_end > now())
-    )
-    OR (
-      status = 'past_due'
-      AND current_period_end IS NOT NULL
-      AND current_period_end > now()
-      AND (
-        provider <> 'stripe'
-        OR current_period_start IS NULL
-        OR current_period_start + interval '30 days' > now()
+      (
+        status IN ('active','trialing')
+        AND (current_period_end IS NULL OR current_period_end > now())
       )
-    )
-  ) AS is_premium
-FROM public.subscriptions
+      OR (
+        status = 'past_due'
+        AND current_period_end IS NOT NULL
+        AND current_period_end > now()
+        AND (
+          provider <> 'stripe'
+          OR current_period_start IS NULL
+          OR current_period_start + interval '30 days' > now()
+        )
+      )
+    ) AS is_premium
+  FROM public.subscriptions
+) s
+-- Rank by the computed flag first: if ANY of the user's rows grants
+-- premium (incl. past_due grace), the view must surface that row. The
+-- old status-based ranking let a stale 'active' row with an elapsed
+-- period mask a grace-granting past_due row.
 ORDER BY user_id,
+         is_premium DESC,
          (status IN ('active','trialing')) DESC,
-         (status = 'past_due') DESC,
          current_period_end DESC NULLS LAST,
          updated_at DESC;
 
