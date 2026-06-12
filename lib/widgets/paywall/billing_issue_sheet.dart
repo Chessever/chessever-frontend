@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -15,30 +16,30 @@ import 'package:url_launcher/url_launcher.dart';
 /// SharedPreferences key for the "Remind me later" snooze timestamp.
 const _kBillingIssueSnoozeKey = 'billing_issue_sheet_snoozed_until_ms';
 
-/// How long to wait after the user dismisses the sheet before showing it
-/// again. The popup is a nudge, not a wall — surfacing it every app open
-/// would feel hostile. 24h gives the user time to find their card and
-/// update it without our app interrupting them every session.
+/// How long to wait after the sheet closes (any way: button, swipe, barrier
+/// tap) before showing it again. The popup is a nudge, not a wall —
+/// surfacing it every app open would feel hostile. 24h gives the user time
+/// to find their card and update it without our app interrupting them every
+/// session.
 const _kSnoozeDuration = Duration(hours: 24);
 
-/// Imperatively show the billing-issue sheet from anywhere in the app.
-/// Returns `true` if the user tapped "Update payment method" and the
-/// management URL was launched, `false` otherwise.
-Future<bool> showBillingIssueSheet({
-  required BuildContext context,
-  required DateTime? expirationDate,
-  required String? managementUrl,
-}) async {
+/// chessever.com/account — where Stripe-billed users manage payment methods.
+/// RevenueCat's managementURL is null for subscriptions that don't exist in
+/// the device's store, so web-billed users need this web surface instead
+/// (same routing as manage_subscription_sheet.dart).
+final Uri _kAccountUrl = Uri.https('chessever.com', '/account');
+
+/// Imperatively show the billing-issue sheet. Reads provider, expiration and
+/// management URL live from [subscriptionProvider]. Returns `true` if the
+/// user tapped through to fix their payment method, `false` otherwise.
+Future<bool> showBillingIssueSheet({required BuildContext context}) async {
   final result = await showModalBottomSheet<bool>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder: (_) => _BillingIssueSheet(
-      expirationDate: expirationDate,
-      managementUrl: managementUrl,
-    ),
+    builder: (_) => const _BillingIssueSheet(),
   );
   return result ?? false;
 }
@@ -46,7 +47,7 @@ Future<bool> showBillingIssueSheet({
 /// Mount this near the top of an authenticated screen (e.g. HomeScreen). It
 /// silently watches the subscription provider and pops the billing-issue
 /// sheet once the user enters a billing-grace window, then snoozes itself
-/// for 24h after dismissal. The child renders unchanged.
+/// for 24h after the sheet closes. The child renders unchanged.
 class BillingIssueGate extends HookConsumerWidget {
   const BillingIssueGate({required this.child, super.key});
 
@@ -66,18 +67,12 @@ class BillingIssueGate extends HookConsumerWidget {
       // so devs aren't surprised by an unrelated popup.
       if (kDebugMode) return;
 
-      unawaited(
-        _maybeShowOnFirstFrame(
-          context: context,
-          expirationDate: next.expirationDate,
-          managementUrl: next.managementUrl,
-        ),
-      );
+      unawaited(_maybeShow(context));
     });
 
     // Also surface the popup on a cold start where the flag is already set
     // when this gate mounts (e.g. user reopens the app a day after first
-    // payment failure). Done once per build via post-frame.
+    // payment failure). Done once per mount via post-frame.
     final didCheckOnMount = useRef(false);
     final state = ref.read(subscriptionProvider);
     if (!didCheckOnMount.value &&
@@ -86,48 +81,36 @@ class BillingIssueGate extends HookConsumerWidget {
         !kDebugMode) {
       didCheckOnMount.value = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(
-          _maybeShowOnFirstFrame(
-            context: context,
-            expirationDate: state.expirationDate,
-            managementUrl: state.managementUrl,
-          ),
-        );
+        unawaited(_maybeShow(context));
       });
     }
 
     return child;
   }
 
-  Future<void> _maybeShowOnFirstFrame({
-    required BuildContext context,
-    required DateTime? expirationDate,
-    required String? managementUrl,
-  }) async {
+  Future<void> _maybeShow(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final snoozedUntilMs = prefs.getInt(_kBillingIssueSnoozeKey) ?? 0;
     if (DateTime.now().millisecondsSinceEpoch < snoozedUntilMs) return;
     if (!context.mounted) return;
-    await showBillingIssueSheet(
-      context: context,
-      expirationDate: expirationDate,
-      managementUrl: managementUrl,
-    );
+    await showBillingIssueSheet(context: context);
+    // Snooze regardless of HOW the sheet closed — swipe-down and barrier
+    // taps don't run the button handlers, and without this the popup would
+    // re-fire on the next cold start or layout remount.
+    final next = DateTime.now().add(_kSnoozeDuration).millisecondsSinceEpoch;
+    await prefs.setInt(_kBillingIssueSnoozeKey, next);
   }
 }
 
-class _BillingIssueSheet extends StatelessWidget {
-  const _BillingIssueSheet({
-    required this.expirationDate,
-    required this.managementUrl,
-  });
-
-  final DateTime? expirationDate;
-  final String? managementUrl;
+class _BillingIssueSheet extends ConsumerWidget {
+  const _BillingIssueSheet();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(subscriptionProvider);
+    final isStripe = state.provider == 'stripe';
     final topPadding = MediaQuery.of(context).padding.top;
+
     return Padding(
       padding: EdgeInsets.only(top: topPadding + 80.h),
       child: Container(
@@ -177,7 +160,7 @@ class _BillingIssueSheet extends StatelessWidget {
                 ),
                 SizedBox(height: 12.h),
                 Text(
-                  _bodyCopy(),
+                  _bodyCopy(state.expirationDate, isStripe: isStripe),
                   textAlign: TextAlign.center,
                   style: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textPrimary.withValues(alpha: 0.7),
@@ -186,39 +169,19 @@ class _BillingIssueSheet extends StatelessWidget {
                 ),
                 SizedBox(height: 24.h),
                 _PrimaryButton(
-                  label: 'Update payment method',
-                  onTap: () async {
-                    final url = managementUrl;
-                    if (url != null && url.isNotEmpty) {
-                      final uri = Uri.tryParse(url);
-                      if (uri != null) {
-                        // Mark "user took action" by snoozing too — once they
-                        // open the management screen we shouldn't pester
-                        // them on the very next foreground.
-                        await _snooze();
-                        if (context.mounted) {
-                          Navigator.of(context, rootNavigator: true).pop(true);
-                        }
-                        unawaited(launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                        ));
-                        return;
-                      }
-                    }
-                    if (context.mounted) {
-                      Navigator.of(context, rootNavigator: true).pop(false);
-                    }
-                  },
+                  label: isStripe
+                      ? 'Manage on chessever.com'
+                      : 'Update payment method',
+                  onTap: () => _openBillingManagement(
+                    context,
+                    isStripe: isStripe,
+                    managementUrl: state.managementUrl,
+                  ),
                 ),
                 SizedBox(height: 12.h),
                 TextButton(
-                  onPressed: () async {
-                    await _snooze();
-                    if (context.mounted) {
-                      Navigator.of(context, rootNavigator: true).pop(false);
-                    }
-                  },
+                  onPressed: () =>
+                      Navigator.of(context, rootNavigator: true).pop(false),
                   style: TextButton.styleFrom(
                     minimumSize: Size(double.infinity, 48.h),
                     foregroundColor:
@@ -237,16 +200,53 @@ class _BillingIssueSheet extends StatelessWidget {
     );
   }
 
-  String _bodyCopy() {
+  /// Same provider routing as manage_subscription_sheet.dart: Stripe subs
+  /// don't exist in the device's store (managementURL is null), so they go
+  /// to the web account page; store subs go to the store's subscription
+  /// screen, falling back to the OS subscription settings.
+  Future<void> _openBillingManagement(
+    BuildContext context, {
+    required bool isStripe,
+    required String? managementUrl,
+  }) async {
+    if (isStripe) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop(true);
+      }
+      unawaited(launchUrl(_kAccountUrl, mode: LaunchMode.externalApplication));
+      return;
+    }
+
+    if (managementUrl != null && managementUrl.isNotEmpty) {
+      final uri = Uri.tryParse(managementUrl);
+      if (uri != null) {
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop(true);
+        }
+        unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
+        return;
+      }
+    }
+
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop(true);
+    }
+    unawaited(AppSettings.openAppSettings(type: AppSettingsType.subscriptions));
+  }
+
+  String _bodyCopy(DateTime? expirationDate, {required bool isStripe}) {
+    final where = isStripe
+        ? 'Update your card at chessever.com/account'
+        : 'Update your card';
     final exp = expirationDate;
     if (exp == null) {
       return "We couldn't process your latest ChessEver Premium payment. "
-          'Update your card to keep your subscription active.';
+          '$where to keep your subscription active.';
     }
     final daysLeft = exp.difference(DateTime.now()).inDays;
     if (daysLeft <= 0) {
       return "We couldn't process your latest ChessEver Premium payment. "
-          'Update your card to restore your subscription.';
+          '$where to keep your Premium benefits.';
     }
     if (daysLeft == 1) {
       return "We couldn't process your latest ChessEver Premium payment. "
@@ -254,12 +254,6 @@ class _BillingIssueSheet extends StatelessWidget {
     }
     return "We couldn't process your latest ChessEver Premium payment. "
         "You'll lose Premium access in $daysLeft days unless you update your card.";
-  }
-
-  static Future<void> _snooze() async {
-    final prefs = await SharedPreferences.getInstance();
-    final next = DateTime.now().add(_kSnoozeDuration).millisecondsSinceEpoch;
-    await prefs.setInt(_kBillingIssueSnoozeKey, next);
   }
 }
 
