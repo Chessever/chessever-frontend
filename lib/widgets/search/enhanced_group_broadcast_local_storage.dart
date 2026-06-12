@@ -77,6 +77,10 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
         var bestTournamentMatch = gb.name;
 
         for (final searchTerm in gb.search) {
+          // Player names live in gb.search alongside tournament-name variants;
+          // scoring them as tournament matches lets fuzzy similarity
+          // (e.g. "norway" ~ "Nora") drag unrelated events to the tail.
+          if (_isPlayerName(searchTerm)) continue;
           final score = SearchScorer.calculateScore(
             queryLower,
             searchTerm,
