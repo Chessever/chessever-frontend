@@ -42,7 +42,7 @@ class _GamesListViewModeController {
         break;
     }
 
-    // Persist the new mode to Supabase via board settings
+    // Persist the new mode through board settings' device-local cache.
     _ref
         .read(boardSettingsProviderNew.notifier)
         .setGamesListViewModeIndex(newMode.index);

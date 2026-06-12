@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:chessever2/repository/engine_settings/models/engine_settings_model.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Enum to identify which engine component is making the analysis request
 enum EngineComponent {
@@ -369,7 +367,7 @@ class EngineSettings {
   }
 }
 
-/// Provider for managing engine settings with Supabase + SharedPreferences sync
+/// Provider for managing engine settings as device-local preferences.
 final engineSettingsProviderNew =
     AsyncNotifierProvider<EngineSettingsNotifierNew, EngineSettings>(
       EngineSettingsNotifierNew.new,
@@ -378,8 +376,6 @@ final engineSettingsProviderNew =
 class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   static const String _cacheKey = 'cached_engine_settings';
 
-  SupabaseClient get _supabase => Supabase.instance.client;
-
   @override
   Future<EngineSettings> build() async {
     return await _loadSettings();
@@ -387,58 +383,13 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<EngineSettings> _loadSettings() async {
     try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        debugPrint('[EngineSettings] No user logged in, returning defaults');
-        return const EngineSettings();
-      }
-
-      // Fetch from Supabase (source of truth)
-      final response =
-          await _supabase
-              .from('user_engine_settings')
-              .select()
-              .eq('user_id', userId)
-              .maybeSingle();
-
-      if (response == null) {
-        debugPrint(
-          '[EngineSettings] No settings found in Supabase, creating defaults',
-        );
-        // Save defaults to Supabase (upsert handles race conditions)
-        try {
-          await _saveToSupabase(const EngineSettings(), userId);
-        } catch (e) {
-          // Ignore duplicate errors - another process may have created it
-          debugPrint(
-            '[EngineSettings] Info: ${e.toString().contains('duplicate') ? 'Settings already exist' : 'Error creating defaults: $e'}',
-          );
-        }
-        return const EngineSettings();
-      }
-
-      final model = EngineSettingsModel.fromSupabase(response);
-      final settings = EngineSettings(
-        showEngineGauge: model.showEngineGauge,
-        showDepthOverlay: model.showDepthOverlay,
-        showPvArrows: model.showPvArrows,
-        showEngineAnalysis: model.showEngineAnalysis,
-        searchTimeIndex: model.searchTimeIndex,
-        principalVariationIndex: model.principalVariationIndex,
-        maxArrowsOnBoard: model.maxArrowsOnBoard,
-      );
-
-      // Cache locally
-      await _cacheSettings(settings);
-
-      debugPrint('[EngineSettings] Fetched settings from Supabase');
-      return settings;
-    } catch (e, st) {
-      debugPrint('[EngineSettings] Error fetching from Supabase: $e');
-      debugPrint('[EngineSettings] Stack: $st');
-
-      // Fallback to local cache
+      // Engine/UI preferences are device-local. Do not fetch them from
+      // Supabase, otherwise desktop and phone overwrite each other.
       return await _getCachedSettings();
+    } catch (e, st) {
+      debugPrint('[EngineSettings] Error loading local settings: $e');
+      debugPrint('[EngineSettings] Stack: $st');
+      return const EngineSettings();
     }
   }
 
@@ -552,18 +503,18 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     await _persist(newSettings);
   }
 
-  /// Refresh settings from Supabase
+  /// Refresh settings from the on-device cache.
   Future<void> refresh() async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _loadSettings());
   }
 
-  /// Sync settings from Supabase to local cache
+  /// Refresh device-local settings from the on-device cache.
   Future<void> syncFromSupabase() async {
-    debugPrint('[EngineSettings] Starting sync...');
+    debugPrint('[EngineSettings] Refreshing local settings...');
     try {
       await refresh();
-      debugPrint('[EngineSettings] Sync complete');
+      debugPrint('[EngineSettings] Local refresh complete');
     } catch (e, st) {
       debugPrint('[EngineSettings] Error syncing: $e');
       debugPrint('[EngineSettings] Stack: $st');
@@ -574,46 +525,13 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<void> _persist(EngineSettings settings) async {
     try {
-      // Cache locally FIRST so the UI stays responsive even if Supabase fails
+      // Cache locally FIRST so the UI stays responsive. Engine/UI
+      // preferences intentionally stay on this device because desktop and
+      // phone can need different analysis/layout defaults.
       await _cacheSettings(settings);
-
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        debugPrint(
-          '[EngineSettings] No user logged in, skipping Supabase persist',
-        );
-        return;
-      }
-
-      // Save to Supabase in background — don't block UI on network failure
-      unawaited(_saveToSupabase(settings, userId));
     } catch (e, st) {
       debugPrint('[EngineSettings] Error persisting settings: $e');
       debugPrint('[EngineSettings] Stack: $st');
-    }
-  }
-
-  Future<void> _saveToSupabase(EngineSettings settings, String userId) async {
-    try {
-      // Use upsert with onConflict to handle existing records
-      await _supabase.from('user_engine_settings').upsert(
-        {
-          'user_id': userId,
-          'show_engine_gauge': settings.showEngineGauge,
-          'show_depth_overlay': settings.showDepthOverlay,
-          'show_pv_arrows': settings.showPvArrows,
-          'show_engine_analysis': settings.showEngineAnalysis,
-          'search_time_index': settings.searchTimeIndex,
-          'principal_variation_index': settings.principalVariationIndex,
-          'max_arrows_on_board': settings.maxArrowsOnBoard,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        onConflict: 'user_id', // Specify conflict column
-      );
-      debugPrint('[EngineSettings] ✅ Saved to Supabase');
-    } catch (e) {
-      debugPrint('[EngineSettings] ❌ Error saving to Supabase: $e');
-      rethrow;
     }
   }
 
@@ -648,7 +566,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       final map = jsonDecode(json) as Map<String, dynamic>;
 
       // Check if cache has all required fields - if not, it's stale
-      // and we should return defaults (which triggers fresh Supabase fetch)
+      // and we should return defaults for the local device cache.
       if (!map.containsKey('maxArrowsOnBoard')) {
         debugPrint(
           '[EngineSettings] Cache is stale (missing fields), clearing and using defaults',
