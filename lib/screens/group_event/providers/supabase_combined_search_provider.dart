@@ -102,11 +102,12 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
   // Country queries: FTS includes player names + federations in search_fts,
   // so e.g. "norway" surfaces "… Championship for Prisoners" because a player
   // there is from NOR. For a country term, the tournament list should be
-  // events whose NAME references the country.
+  // events whose NAME references the country. Match on word-prefix so short
+  // codes ("us", "no") don't slip in via mid-word substrings ("August").
   final qLowerForFilter = trimmedQuery.toLowerCase();
   final broadcasts = isCountrySearch
       ? rawBroadcasts
-          .where((b) => b.name.toLowerCase().contains(qLowerForFilter))
+          .where((b) => _nameStartsWithToken(b.name, qLowerForFilter))
           .toList()
       : rawBroadcasts;
 
@@ -256,7 +257,7 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
         if (existingIds.contains(t.tournament.id)) continue;
         // Country queries must hit the event name, not a player's federation.
         if (isCountrySearch &&
-            !t.tournament.title.toLowerCase().contains(qLowerForFilter)) {
+            !_nameStartsWithToken(t.tournament.title, qLowerForFilter)) {
           continue;
         }
         tournamentResults.add(t);
@@ -482,6 +483,17 @@ String _normalizePlayerLookupName(String name) {
       .replaceAll(',', ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+}
+
+/// True when any whitespace/punctuation-separated word in `name` starts with
+/// `token` (lowercase). Avoids mid-word false positives like "us" → "August".
+bool _nameStartsWithToken(String name, String token) {
+  if (token.isEmpty) return true;
+  final lowered = name.toLowerCase();
+  for (final word in lowered.split(RegExp(r'[^a-z0-9]+'))) {
+    if (word.isNotEmpty && word.startsWith(token)) return true;
+  }
+  return false;
 }
 
 /// Detects ISO-2 country code from a user query.
