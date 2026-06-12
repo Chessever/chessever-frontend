@@ -23,18 +23,21 @@ This is a Flutter project for the Chessever application.
    ```
 3. Create a local env file. Do not commit it.
    ```bash
-   cp .env.e2e.example .env
-   # Fill in your own local values, including GAMEBASE_API_KEY from
-   # https://chessever.com/developers
+   cp .env.example .env
    ```
-4. Run the app with compile-time env values:
+4. Generate your personal Gamebase API key:
+   - Open https://chessever.com/account#developers
+   - Sign in with your ChessEver account
+   - Go to Developer API Keys and click Generate key
+   - Paste it into `.env` as `GAMEBASE_API_KEY=...`
+5. Run the app with compile-time env values:
    ```bash
    flutter run --dart-define-from-file=.env
    ```
 
-`.env` is intentionally not bundled as a Flutter asset. Use
-`--dart-define-from-file` for local debug runs and CI/release builds so API keys
-do not end up inside app assets.
+`.env.example` contains only public client config and empty personal-key slots.
+`.env` is intentionally ignored and is not bundled as a Flutter asset. Use
+`--dart-define-from-file` for local debug runs and CI/release builds.
 
 ## Mobile E2E Tests
 
