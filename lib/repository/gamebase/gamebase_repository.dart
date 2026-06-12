@@ -1,6 +1,5 @@
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:dio/dio.dart';
-import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/main.dart';
 import 'package:logarte/logarte.dart';
 import 'package:flutter/foundation.dart';
@@ -39,7 +38,8 @@ class MissingGamebaseApiKeyException implements Exception {
   @override
   String toString() {
     return 'Missing GAMEBASE_API_KEY. Generate a personal developer key from '
-        'https://chessever.com/developers and add it to .env.';
+        'https://chessever.com/developers and pass it with --dart-define or '
+        '--dart-define-from-file.';
   }
 }
 
@@ -58,7 +58,7 @@ class GamebaseRepository {
       defaultValue: '',
     );
 
-    if (E2eConfig.isEnabled && releaseKey.isNotEmpty) {
+    if (releaseKey.isNotEmpty) {
       return releaseKey;
     }
 

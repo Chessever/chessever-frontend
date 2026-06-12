@@ -21,10 +21,20 @@ This is a Flutter project for the Chessever application.
    ```bash
    flutter pub get
    ```
-3. Run the app:
+3. Create a local env file. Do not commit it.
    ```bash
-   flutter run
+   cp .env.e2e.example .env
+   # Fill in your own local values, including GAMEBASE_API_KEY from
+   # https://chessever.com/developers
    ```
+4. Run the app with compile-time env values:
+   ```bash
+   flutter run --dart-define-from-file=.env
+   ```
+
+`.env` is intentionally not bundled as a Flutter asset. Use
+`--dart-define-from-file` for local debug runs and CI/release builds so API keys
+do not end up inside app assets.
 
 ## Mobile E2E Tests
 

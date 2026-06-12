@@ -70,13 +70,14 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 /// Helper function to get environment variables.
 ///
-/// * In debug mode we load the `.env` file using `flutter_dotenv`.
-/// * In CI/production we expect the values to be provided via `--dart-define`
-///   flags (e.g. Codemagic build arguments).
+/// * Prefer compile-time values provided via `--dart-define` or
+///   `--dart-define-from-file`.
+/// * In local debug runs we can still read an already-loaded `.env` via
+///   `flutter_dotenv`, but `.env` must not be bundled as an app asset.
 ///   See [_releaseEnvValues] for the list of required keys.
 String _getEnv(String key) {
   final releaseValue = _releaseEnvValues[key];
-  if (E2eConfig.isEnabled && releaseValue != null && releaseValue.isNotEmpty) {
+  if (releaseValue != null && releaseValue.isNotEmpty) {
     return releaseValue;
   }
 
@@ -204,13 +205,17 @@ Future<void> main() async {
         return false; // Return false so the error continues to Sentry / runZonedGuarded
       };
 
-      // Load environment variables only for local debug runs.
-      // Patrol E2E uses --dart-define values because dotenv asset loading can
-      // block under the test host before the widget tree is ready.
+      // Local debug builds may provide values through --dart-define-from-file.
+      // If a developer still has a dotenv asset in a private local workflow,
+      // load it opportunistically, but never require bundling .env.
       if (kDebugMode && !E2eConfig.isEnabled) {
-        _e2eStartupLog('loading .env');
-        await dotenv.load(fileName: ".env");
-        _e2eStartupLog('.env loaded');
+        try {
+          _e2eStartupLog('loading .env');
+          await dotenv.load(fileName: ".env");
+          _e2eStartupLog('.env loaded');
+        } catch (_) {
+          _e2eStartupLog('.env not bundled; using dart-define values only');
+        }
       }
 
       // Sentry init with timeout - don't let it block app startup indefinitely

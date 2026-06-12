@@ -43,6 +43,18 @@ function isValidFideId(value: string): boolean {
   return /^[0-9]{4,12}$/.test(value);
 }
 
+function hasRefreshPermission(req: Request): boolean {
+  const expected = Deno.env.get("FIDE_PHOTO_REFRESH_TOKEN") ?? "";
+  if (!expected) return false;
+
+  const headerToken = req.headers.get("x-fide-photo-refresh-token") ?? "";
+  const authorization = req.headers.get("authorization") ?? "";
+  const [scheme, bearer] = authorization.split(" ");
+
+  return headerToken === expected ||
+    (scheme?.toLowerCase() === "bearer" && bearer === expected);
+}
+
 function toIsoAfter(msFromNow: number): string {
   return new Date(Date.now() + msFromNow).toISOString();
 }
@@ -186,12 +198,13 @@ Deno.serve(async (req: Request) => {
   try {
     const requestUrl = new URL(req.url);
     let fideId = requestUrl.searchParams.get("fide_id");
-    let forceRefresh = requestUrl.searchParams.get("force_refresh") === "true";
+    let requestedForceRefresh =
+      requestUrl.searchParams.get("force_refresh") === "true";
 
     if (!fideId && req.method === "POST") {
       const body = await req.json();
       fideId = typeof body?.fide_id === "string" ? body.fide_id : null;
-      forceRefresh = body?.force_refresh === true;
+      requestedForceRefresh = body?.force_refresh === true;
     }
 
     if (!fideId) {
@@ -200,6 +213,10 @@ Deno.serve(async (req: Request) => {
     if (!isValidFideId(fideId)) {
       return jsonResponse({ error: "Invalid fide_id format" }, 400);
     }
+    if (requestedForceRefresh && !hasRefreshPermission(req)) {
+      return jsonResponse({ error: "force_refresh is not allowed" }, 403);
+    }
+    const forceRefresh = requestedForceRefresh;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
