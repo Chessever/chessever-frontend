@@ -18,6 +18,7 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 String _formatGameCount(int count) {
   if (count == 0) return 'Empty folder';
@@ -54,9 +55,9 @@ class FolderCard extends ConsumerWidget {
   void _navigateToFolder(BuildContext context) {
     HapticFeedback.mediumImpact();
     if (folder.isLikedGames) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const MyLikesScreen()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const MyLikesScreen()));
       return;
     }
     Navigator.of(context).push(
@@ -226,23 +227,25 @@ class FolderCard extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(iconRadius),
                   ),
                   child: Center(
-                    child: isLiked
-                        ? Icon(
-                            Icons.favorite,
-                            size: svgSize,
-                            color: context.colors.danger,
-                          )
-                        : SvgWidget(
-                            SvgAsset.folderOutline,
-                            width: svgSize,
-                            height: svgSize,
-                            colorFilter: context.isLightTheme
-                                ? ColorFilter.mode(
-                                    context.colors.iconPrimary,
-                                    BlendMode.srcIn,
-                                  )
-                                : null,
-                          ),
+                    child:
+                        isLiked
+                            ? Icon(
+                              Icons.favorite,
+                              size: svgSize,
+                              color: context.colors.danger,
+                            )
+                            : SvgWidget(
+                              SvgAsset.folderOutline,
+                              width: svgSize,
+                              height: svgSize,
+                              colorFilter:
+                                  context.isLightTheme
+                                      ? ColorFilter.mode(
+                                        context.colors.iconPrimary,
+                                        BlendMode.srcIn,
+                                      )
+                                      : null,
+                            ),
                   ),
                 ),
                 // Shared link badge for subscribed books
@@ -296,19 +299,179 @@ class FolderCard extends ConsumerWidget {
             ),
 
             // Right arrow for protected collections (TWIC, Liked Games),
-            // 3-dot menu for user-owned books.
+            // plus a source-links affordance for the ChessEver master DB.
             if (isProtected)
-              Padding(
-                padding: EdgeInsets.only(left: 8.w),
-                child: Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: context.colors.textPrimary.withValues(alpha: 0.7),
-                  size: 20.sp,
-                  weight: 700,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isTwic)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        HapticFeedbackService.light();
+                        _showChessEverSourceLinksDialog(context);
+                      },
+                      child: Padding(
+                        padding: EdgeInsets.only(left: 8.w, right: 6.w),
+                        child: Icon(
+                          Icons.info_outline_rounded,
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.7,
+                          ),
+                          size: 20.sp,
+                        ),
+                      ),
+                    ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
+                    size: 20.sp,
+                    weight: 700,
+                  ),
+                ],
               )
             else
               _DotsMenuButton(onTap: () => _showOverlayMenu(context, ref)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showChessEverSourceLinksDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            backgroundColor: context.colors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.br),
+            ),
+            title: Text(
+              'ChessEver source databases',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Links',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary.withValues(alpha: 0.8),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                _buildSourceLink(
+                  dialogContext,
+                  'Lichess',
+                  'https://lichess.org/',
+                ),
+                _buildSourceLink(
+                  dialogContext,
+                  'TWIC',
+                  'https://theweekinchess.com/',
+                ),
+                _buildSourceLink(
+                  dialogContext,
+                  'Lumbra\'s Gigabase',
+                  'https://lumbrasgigabase.com/en/download-in-pgn-format-en/',
+                ),
+                _buildSourceLink(
+                  dialogContext,
+                  'ChessEver',
+                  'https://chessever.com/',
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(
+                  'Close',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary.withValues(alpha: 0.8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _launchDatabaseSource(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      if (!context.mounted) return;
+      HapticFeedbackService.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not open link',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final canOpen = await canLaunchUrl(uri);
+    if (!canOpen) {
+      if (!context.mounted) return;
+      HapticFeedbackService.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not open $url',
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Widget _buildSourceLink(BuildContext context, String label, String url) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 4.h),
+      child: TextButton(
+        onPressed: () async {
+          Navigator.of(context).pop();
+          await _launchDatabaseSource(context, url);
+        },
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          alignment: Alignment.centerLeft,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              url,
+              style: AppTypography.textXsRegular.copyWith(
+                color: kPrimaryColor.withValues(alpha: 0.9),
+              ),
+            ),
           ],
         ),
       ),
