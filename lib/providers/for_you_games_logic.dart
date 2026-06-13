@@ -128,9 +128,23 @@ ForYouEventGamesSnapshot buildForYouEventGamesSnapshot({
   List<String> manualPinnedIds = const [],
   List<String> autoPinnedIds = const [],
   List<String> unpinnedOverrideIds = const [],
+  DateTime? now,
 }) {
-  final primaryGames = _mapGames(selectedTourGames);
-  final actualLiveRoundIds = _actualLiveRoundIdsFromGameRows(selectedTourGames);
+  final effectiveNow = now ?? DateTime.now();
+  final currentSelectedTourGames = _excludeFutureGames(
+    selectedTourGames,
+    effectiveNow,
+  );
+  final currentGamesByTourId = {
+    for (final entry in gamesByTourId.entries)
+      entry.key: _excludeFutureGames(entry.value, effectiveNow),
+  };
+
+  final primaryGames = _mapGames(currentSelectedTourGames);
+  final actualLiveRoundIds = _actualLiveRoundIdsFromGameRows(
+    currentSelectedTourGames,
+    now: effectiveNow,
+  );
   final effectiveLiveRoundIds =
       actualLiveRoundIds.isNotEmpty ? actualLiveRoundIds : liveRoundIds;
   final isKnockoutTournament =
@@ -158,26 +172,37 @@ ForYouEventGamesSnapshot buildForYouEventGamesSnapshot({
           )
           .toList();
 
-  final processedRounds = _buildProcessedRounds(
-    selectedTour: selectedTour,
-    eventTours: eventTours,
-    baseRounds: baseRounds,
-    roundsByTourId: roundsByTourId,
-    gamesByTourId: gamesByTourId,
-    liveRoundIds: effectiveLiveRoundIds,
-    roundSortMeta: roundSortMeta,
-    primaryGames: primaryGames,
-    isKnockoutTournament: isKnockoutTournament,
-  );
+  final processedRounds =
+      _buildProcessedRounds(
+            selectedTour: selectedTour,
+            eventTours: eventTours,
+            baseRounds: baseRounds,
+            roundsByTourId: roundsByTourId,
+            gamesByTourId: currentGamesByTourId,
+            liveRoundIds: effectiveLiveRoundIds,
+            roundSortMeta: roundSortMeta,
+            primaryGames: primaryGames,
+            isKnockoutTournament: isKnockoutTournament,
+          )
+          .where(
+            (round) =>
+                !_isFutureForYouRound(
+                  round: round,
+                  roundSortMeta: roundSortMeta,
+                  liveRoundIds: effectiveLiveRoundIds,
+                  now: effectiveNow,
+                ),
+          )
+          .toList();
 
   _sortRounds(processedRounds, roundSortMeta);
 
   final gamesByRound = _buildGamesByRound(
     selectedTour: selectedTour,
     processedRounds: processedRounds,
-    selectedTourGames: selectedTourGames,
+    selectedTourGames: currentSelectedTourGames,
     selectedTourSortedGames: sortedPrimaryGames,
-    gamesByTourId: gamesByTourId,
+    gamesByTourId: currentGamesByTourId,
     isKnockoutTournament: isKnockoutTournament,
     pinnedIds: pinnedIds,
   );
@@ -320,8 +345,43 @@ List<GamesTourModel> _mapGames(List<Games> games) {
   return models;
 }
 
-List<String> _actualLiveRoundIdsFromGameRows(List<Games> games) {
-  final now = DateTime.now();
+List<Games> _excludeFutureGames(List<Games> games, DateTime now) {
+  return games
+      .where((game) => !_isFutureGame(game, now))
+      .toList(growable: false);
+}
+
+bool _isFutureGame(Games game, DateTime now) {
+  final gameDay = game.gameDay;
+  if (gameDay != null && _isAfterToday(gameDay, now)) {
+    return true;
+  }
+
+  final lastMoveTime = game.lastMoveTime;
+  if (lastMoveTime != null && lastMoveTime.isAfter(now)) {
+    return true;
+  }
+
+  if (GameStatus.fromString(game.status).isOngoing) {
+    return false;
+  }
+
+  return false;
+}
+
+bool _isAfterToday(DateTime value, DateTime now) {
+  final localValue = value.toLocal();
+  final localNow = now.toLocal();
+  final valueDay = DateTime(localValue.year, localValue.month, localValue.day);
+  final today = DateTime(localNow.year, localNow.month, localNow.day);
+  return valueDay.isAfter(today);
+}
+
+List<String> _actualLiveRoundIdsFromGameRows(
+  List<Games> games, {
+  DateTime? now,
+}) {
+  final effectiveNow = now ?? DateTime.now();
   final activityByRound = <String, DateTime?>{};
 
   for (final game in games) {
@@ -335,8 +395,8 @@ List<String> _actualLiveRoundIdsFromGameRows(List<Games> games) {
 
     final activity = game.lastMoveTime;
     if (activity == null ||
-        activity.isAfter(now.add(const Duration(minutes: 2))) ||
-        now.difference(activity) > _kActualLiveGameActivityWindow) {
+        activity.isAfter(effectiveNow.add(const Duration(minutes: 2))) ||
+        effectiveNow.difference(activity) > _kActualLiveGameActivityWindow) {
       continue;
     }
 
@@ -628,6 +688,23 @@ Map<String, List<GamesTourModel>> _buildGamesByRound({
   final selectedStageId = '$kKnockoutStagePrefix-${selectedTour.id}';
   result[selectedStageId] = _pinOnlySort(selectedTourSortedGames, pinnedIds);
   return result;
+}
+
+bool _isFutureForYouRound({
+  required GamesAppBarModel round,
+  required Map<String, _RoundSortMeta> roundSortMeta,
+  required List<String> liveRoundIds,
+  required DateTime now,
+}) {
+  if (liveRoundIds.contains(round.id) ||
+      round.roundStatus == RoundStatus.live ||
+      round.roundStatus == RoundStatus.ongoing ||
+      round.roundStatus == RoundStatus.completed) {
+    return false;
+  }
+
+  final startsAt = _roundEventDateTime(round, roundSortMeta);
+  return startsAt != null && startsAt.isAfter(now);
 }
 
 List<GamesAppBarModel> _visibleRounds({
