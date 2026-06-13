@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -25,12 +26,14 @@ class GameCard extends ConsumerWidget {
     required this.onPinToggle,
     required this.pinnedIds,
     required this.onTap,
+    this.onShare,
     this.allowStockfishFallback = true,
     super.key,
   });
 
   final MatchWithComparison matchComparison;
-  final void Function(GamesTourModel game) onPinToggle;
+  final FutureOr<void> Function(GamesTourModel game) onPinToggle;
+  final FutureOr<void> Function(GamesTourModel game)? onShare;
   final List<String> pinnedIds;
   final Function() onTap;
   final bool allowStockfishFallback;
@@ -56,27 +59,28 @@ class GameCard extends ConsumerWidget {
     // settings page _SettingCard: faint divider border + soft shadow. The
     // inner sections already round to 12br, so the outer wrapper matches.
     // Dark theme is unchanged — no wrapper.
-    final wrapped = context.isLightTheme
-        ? DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12.br),
-              border: Border.all(
-                color: context.colors.divider.withValues(alpha: 0.5),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: context.colors.shadow,
-                  blurRadius: 10,
-                  offset: const Offset(0, 1),
+    final wrapped =
+        context.isLightTheme
+            ? DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(
+                  color: context.colors.divider.withValues(alpha: 0.5),
                 ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12.br),
-              child: body,
-            ),
-          )
-        : body;
+                boxShadow: [
+                  BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 10,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.br),
+                child: body,
+              ),
+            )
+            : body;
 
     return TappableScale(
       onTap: () {
@@ -133,14 +137,21 @@ class GameCard extends ConsumerWidget {
           isPinned: isPinned,
           onDismiss: () => Navigator.of(buildContext).pop(),
           onPinToggle: () {
-            onPinToggle(matchComparison.game);
-            Future.microtask(() {
+            Future<void>(() async {
+              await onPinToggle(matchComparison.game);
               if (!buildContext.mounted) return;
               Navigator.pop(buildContext);
             });
           },
           onShare: () {
+            final share = onShare;
             Navigator.pop(buildContext);
+            if (share != null) {
+              Future<void>(() async {
+                if (!context.mounted) return;
+                await share(matchComparison.game);
+              });
+            }
           },
         );
       },
@@ -265,19 +276,21 @@ class _TopSection extends ConsumerWidget {
       height: 60.h,
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
-        color: isLight ? context.colors.surface : context.colors.textPrimaryMuted,
+        color:
+            isLight ? context.colors.surface : context.colors.textPrimaryMuted,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(12.br),
           topRight: Radius.circular(12.br),
         ),
-        border: isLight
-            ? Border(
-                bottom: BorderSide(
-                  color: context.colors.divider.withValues(alpha: 0.6),
-                  width: 1,
-                ),
-              )
-            : null,
+        border:
+            isLight
+                ? Border(
+                  bottom: BorderSide(
+                    color: context.colors.divider.withValues(alpha: 0.6),
+                    width: 1,
+                  ),
+                )
+                : null,
       ),
       child: Row(
         children: [
@@ -336,7 +349,8 @@ class _CenterContent extends ConsumerWidget {
       return Center(
         child: StatusText(
           status: 'VS',
-          color: isLight ? context.colors.textSecondary : context.colors.surface,
+          color:
+              isLight ? context.colors.textSecondary : context.colors.surface,
         ),
       );
     }
@@ -470,9 +484,8 @@ class _GamesRound extends ConsumerWidget {
     // a translucent-light bg, original kBlackColor / surface tokens read OK.
     final isLight = context.isLightTheme;
     final nameColor = isLight ? context.colors.textPrimary : kBlackColor;
-    final ratingColor = isLight
-        ? context.colors.textSecondary
-        : context.colors.surface;
+    final ratingColor =
+        isLight ? context.colors.textSecondary : context.colors.surface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -753,7 +766,9 @@ class _LastMoveNotation extends StatelessWidget {
     return Center(
       child: Text(
         displayText,
-        style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+        style: AppTypography.textXsMedium.copyWith(
+          color: context.colors.textPrimary,
+        ),
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
@@ -864,7 +879,9 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                           child: Container(
-                            color: context.colors.background.withValues(alpha: 0.72),
+                            color: context.colors.background.withValues(
+                              alpha: 0.72,
+                            ),
                           ),
                         ),
                       ),

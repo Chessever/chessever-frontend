@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -17,7 +19,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   final List<GamesTourModel> orderedGames;
   final int gameIndex;
   final List<String> pinnedIds;
-  final void Function(GamesTourModel game) onPinToggle;
+  final FutureOr<void> Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
   final LiveGamesBatchKey? liveBatchKey;

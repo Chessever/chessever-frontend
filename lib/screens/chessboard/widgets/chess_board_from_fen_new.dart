@@ -163,7 +163,7 @@ final _resolvedFenProvider = Provider.autoDispose
 ///
 /// Resolves PGN data via a 3-tier fallback (local → Supabase → Gamebase)
 /// before opening the overlay, so that GIF export has move history.
-Future<void> _showShareOverlay(
+Future<void> showGameShareOverlay(
   BuildContext context,
   WidgetRef ref,
   GamesTourModel game,
@@ -400,7 +400,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   final GamesTourModel gamesTourModel;
   final VoidCallback onChanged;
   final List<String> pinnedIds;
-  final void Function(GamesTourModel game) onPinToggle;
+  final FutureOr<void> Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
   final LiveGamesBatchKey? liveBatchKey;
@@ -466,16 +466,15 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                   child: ContextPopupMenu(
                     isPinned: isPinned,
                     onPinToggle: () {
-                      onPinToggle(gamesTourModel);
-
-                      Future.microtask(() {
+                      Future<void>(() async {
+                        await onPinToggle(gamesTourModel);
                         if (!buildContext.mounted) return;
                         Navigator.pop(buildContext);
                       });
                     },
                     onShare: () {
                       Navigator.pop(buildContext);
-                      _showShareOverlay(context, ref, gamesTourModel);
+                      showGameShareOverlay(context, ref, gamesTourModel);
                     },
                   ),
                 ),
@@ -547,7 +546,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   final GamesTourModel gamesTourModel;
   final VoidCallback onChanged;
   final List<String> pinnedIds;
-  final void Function(GamesTourModel game) onPinToggle;
+  final FutureOr<void> Function(GamesTourModel game) onPinToggle;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
   final LiveGamesBatchKey? liveBatchKey;
@@ -607,16 +606,19 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                           child: ContextPopupMenu(
                             isPinned: isPinned,
                             onPinToggle: () {
-                              onPinToggle(gamesTourModel);
-
-                              Future.microtask(() {
+                              Future<void>(() async {
+                                await onPinToggle(gamesTourModel);
                                 if (!buildContext.mounted) return;
                                 Navigator.pop(buildContext);
                               });
                             },
                             onShare: () {
                               Navigator.pop(buildContext);
-                              _showShareOverlay(context, ref, gamesTourModel);
+                              showGameShareOverlay(
+                                context,
+                                ref,
+                                gamesTourModel,
+                              );
                             },
                           ),
                         ),
@@ -660,16 +662,19 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                           child: ContextPopupMenu(
                             isPinned: isPinned,
                             onPinToggle: () {
-                              onPinToggle(gamesTourModel);
-
-                              Future.microtask(() {
+                              Future<void>(() async {
+                                await onPinToggle(gamesTourModel);
                                 if (!buildContext.mounted) return;
                                 Navigator.pop(buildContext);
                               });
                             },
                             onShare: () {
                               Navigator.pop(buildContext);
-                              _showShareOverlay(context, ref, gamesTourModel);
+                              showGameShareOverlay(
+                                context,
+                                ref,
+                                gamesTourModel,
+                              );
                             },
                           ),
                         ),
@@ -1154,26 +1159,27 @@ class _ChessBoardWidget extends ConsumerWidget {
           // Light theme: layered drop shadow grounds the board on the
           // light-grey scaffold (Principle 3 — shadows over borders). Dark
           // theme keeps the original soft kBoardLightGrey shadow.
-          boxShadow: context.isLightTheme
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 1,
-                    offset: const Offset(0, 1),
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: kBoardLightGrey.withValues(alpha: 0.5),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+          boxShadow:
+              context.isLightTheme
+                  ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 1,
+                      offset: const Offset(0, 1),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                  : [
+                    BoxShadow(
+                      color: kBoardLightGrey.withValues(alpha: 0.5),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
         ),
         child: AbsorbPointer(
           child: Chessboard.fixed(
