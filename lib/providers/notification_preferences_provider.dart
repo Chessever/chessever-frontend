@@ -16,7 +16,7 @@ class NotificationPreferences {
   final bool dailyDigest;
   final bool callToActionAlerts;
   final bool bookUpdateAlerts;
-  // Favourite Players time-control filters (opt-out — default true)
+  // Favourite Players time-control filters (opt-out; blitz defaults off)
   final bool fpClassical;
   final bool fpRapid;
   final bool fpBlitz;
@@ -88,7 +88,7 @@ class NotificationPreferences {
     bookUpdateAlerts: true,
     fpClassical: true,
     fpRapid: true,
-    fpBlitz: true,
+    fpBlitz: false,
     seClassical: true,
     seRapid: true,
     seBlitz: true,

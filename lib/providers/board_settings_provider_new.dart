@@ -37,8 +37,8 @@ class BoardSettingsNew {
         true, // Use chess piece symbols (♔♕♖♗♘) instead of letters
     this.showCoordinates = true,
     this.rawPgnMode = false,
-    this.pipModeIndex = 0, // PipMode.off (default)
-    this.liveActivityModeIndex = 0, // LiveActivityMode.off (default)
+    this.pipModeIndex = 1, // PipMode.live (default)
+    this.liveActivityModeIndex = 1, // LiveActivityMode.live (default)
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -67,14 +67,14 @@ class BoardSettingsNew {
   final bool rawPgnMode;
 
   /// Picture-in-Picture eligibility, stored as the PipMode index
-  /// (0=off, 1=completed, 2=live, 3=both). Premium-gated.
+  /// (0=off, 1=live).
   final int pipModeIndex;
 
   /// Picture-in-Picture mode as an enum.
   PipMode get pipMode => PipModeInfo.fromIndex(pipModeIndex);
 
   /// Live Activity / live-notification eligibility, stored as the
-  /// LiveActivityMode index (0=off, 1=live, 2=all).
+  /// LiveActivityMode index (0=off, 1=live).
   final int liveActivityModeIndex;
 
   /// Live Activity mode as an enum.
@@ -246,8 +246,11 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         rawPgnMode: model.rawPgnMode,
         // pip_mode isn't part of BoardSettingsModel's mapper; read it straight
         // from the row so we don't need to regenerate the dart_mappable code.
-        pipModeIndex: (response['pip_mode'] as int?) ?? 0,
-        liveActivityModeIndex: (response['live_activity_mode'] as int?) ?? 0,
+        // Older rows without live-widget preferences should start on live games.
+        pipModeIndex: (response['pip_mode'] as int?) ?? PipMode.live.index,
+        liveActivityModeIndex:
+            (response['live_activity_mode'] as int?) ??
+            LiveActivityMode.live.index,
       );
 
       // Cache locally
@@ -390,9 +393,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
   Future<void> toggleShowCoordinates(bool value) async {
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
     final newSettings = currentState.copyWith(showCoordinates: value);
-    debugPrint(
-      '🔤 BoardSettings: Coordinates ${value ? 'shown' : 'hidden'}',
-    );
+    debugPrint('🔤 BoardSettings: Coordinates ${value ? 'shown' : 'hidden'}');
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -535,8 +536,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         useFigurine: map['useFigurine'] as bool? ?? true,
         showCoordinates: map['showCoordinates'] as bool? ?? true,
         rawPgnMode: map['rawPgnMode'] as bool? ?? false,
-        pipModeIndex: map['pipModeIndex'] as int? ?? 0,
-        liveActivityModeIndex: map['liveActivityModeIndex'] as int? ?? 0,
+        pipModeIndex: map['pipModeIndex'] as int? ?? PipMode.live.index,
+        liveActivityModeIndex:
+            map['liveActivityModeIndex'] as int? ?? LiveActivityMode.live.index,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;
