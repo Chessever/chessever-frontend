@@ -81,6 +81,7 @@ Games _makeGame({
   String? lastMove = 'e2e4',
   DateTime? lastMoveTime,
   DateTime? dateStart,
+  DateTime? gameDay,
 }) {
   return Games(
     id: id,
@@ -94,6 +95,7 @@ Games _makeGame({
     lastMove: lastMove,
     lastMoveTime: lastMoveTime,
     dateStart: dateStart,
+    gameDay: gameDay,
   );
 }
 
@@ -300,6 +302,96 @@ void main() {
         ]);
       },
     );
+
+    test('excludes future scheduled games from Smart Event snapshots', () {
+      final now = DateTime.now();
+      final futureRoundOne = now.add(const Duration(days: 4));
+      final futureRoundTwo = now.add(const Duration(days: 18));
+      final tour = _makeTour(
+        id: 'tour-1',
+        name: 'Smart Event',
+        dates: [now.subtract(const Duration(days: 1)), futureRoundTwo],
+      );
+      final rounds = [
+        _makeRound(
+          id: 'round-today',
+          tourId: 'tour-1',
+          name: 'Today',
+          startsAt: now.subtract(const Duration(hours: 2)),
+        ),
+        _makeRound(
+          id: 'round-jun-16',
+          tourId: 'tour-1',
+          name: 'Future round one',
+          startsAt: futureRoundOne,
+        ),
+        _makeRound(
+          id: 'round-jun-30',
+          tourId: 'tour-1',
+          name: 'Future round two',
+          startsAt: futureRoundTwo,
+        ),
+      ];
+      final games = [
+        _makeGame(
+          id: 'today-g1',
+          roundId: 'round-today',
+          roundSlug: 'round-today',
+          tourId: 'tour-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(minutes: 5)),
+          gameDay: DateTime(now.year, now.month, now.day),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+        _makeGame(
+          id: 'future-jun-16',
+          roundId: 'round-jun-16',
+          roundSlug: 'round-jun-16',
+          tourId: 'tour-1',
+          boardNr: 1,
+          gameDay: DateTime(
+            futureRoundOne.year,
+            futureRoundOne.month,
+            futureRoundOne.day,
+          ),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+        _makeGame(
+          id: 'future-jun-30',
+          roundId: 'round-jun-30',
+          roundSlug: 'round-jun-30',
+          tourId: 'tour-1',
+          boardNr: 1,
+          gameDay: DateTime(
+            futureRoundTwo.year,
+            futureRoundTwo.month,
+            futureRoundTwo.day,
+          ),
+          players: [
+            _player(name: 'E', fideId: 5),
+            _player(name: 'F', fideId: 6),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: rounds,
+        roundsByTourId: {'tour-1': rounds},
+        selectedTourGames: games,
+        gamesByTourId: {'tour-1': games},
+        liveRoundIds: const [],
+        pinnedIds: const [],
+        now: now,
+      );
+
+      expect(snapshot.visibleGames.map((game) => game.gameId), ['today-g1']);
+    });
 
     test('actual live game rows override stale live round ids', () {
       final now = DateTime.now();
