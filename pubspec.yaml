@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 19.17.0+1570
+version: 19.18.0+1571
 
 environment:
   sdk: ^3.7.2
@@ -150,6 +150,7 @@ dependencies:
   # Android ACTION_VIEW intent-filters).
   file_picker: ^8.1.4
   receive_sharing_intent: ^1.8.1
+  lottie: ^3.3.3
 
 dev_dependencies:
   flutter_test:
@@ -197,11 +198,10 @@ flutter:
     - assets/svgs/
     - assets/svgs/hamburger/
     - assets/pngs/
+    - assets/lottie/
     - assets/sfx/
     - assets/launch.webp
     - assets/app_icon.png
-    # Keep .env out of app bundles. Use --dart-define-from-file=.env for local
-    # debug builds instead of shipping personal keys as Flutter assets.
     # - .env
     - shorebird.yaml
 

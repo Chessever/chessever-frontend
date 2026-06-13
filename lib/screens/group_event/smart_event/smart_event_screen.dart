@@ -7,6 +7,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_standings_provider.dart';
@@ -2357,6 +2358,10 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
               tourEventCardModel: event,
               forceCompactLayout: true,
               heroTagSuffix: 'smart_about_$scopeId',
+              onTap:
+                  () => ref
+                      .read(groupEventScreenProvider.notifier)
+                      .onSelectTournament(context: context, id: event.id),
             ),
           ),
         ),

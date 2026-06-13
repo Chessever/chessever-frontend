@@ -516,14 +516,24 @@ String? _detectCountryIsoCode(String query) {
     return isoFromFide;
   }
 
-  // Name match
-  final byName = countryService.findByName(trimmed);
-  if (byName != null) return byName.countryCode;
+  // Name match — case-insensitive. CountryService.findByName compares names
+  // with EXACT case (country.name == name), so "norway" (how users actually
+  // type it) misses "Norway" and returns null. That disables country-search
+  // filtering entirely, letting unrelated events (player-federation FTS hits,
+  // fuzzy local matches) leak into the results. Compare lower-cased instead.
+  final allCountries = countryService.getAll();
+  final lowerName = trimmed.toLowerCase();
+  for (final country in allCountries) {
+    if (country.name.toLowerCase() == lowerName) return country.countryCode;
+  }
 
-  // Try words split
+  // Try words split (also case-insensitive) e.g. "norway chess" -> Norway.
   for (final part in trimmed.split(RegExp(r'[ ,]+'))) {
-    final byPart = countryService.findByName(part);
-    if (byPart != null) return byPart.countryCode;
+    if (part.isEmpty) continue;
+    final lowerPart = part.toLowerCase();
+    for (final country in allCountries) {
+      if (country.name.toLowerCase() == lowerPart) return country.countryCode;
+    }
   }
 
   return null;

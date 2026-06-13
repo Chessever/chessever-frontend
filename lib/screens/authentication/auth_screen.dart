@@ -7,7 +7,7 @@ import 'package:chessever2/services/att_prompt_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/lottie_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/app_button.dart';
@@ -19,6 +19,7 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:lottie/lottie.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_screen_provider.dart';
 
@@ -90,13 +91,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     child: Center(
                       child: Hero(
                         tag: 'premium-icon',
-                        child: Image.asset(
-                          PngAsset.chesseverIcon,
+                        child: _AnimatedBrandLogo(
                           height: 180.sp,
                           width: 340.sp,
-                          cacheWidth:
-                              (340 * MediaQuery.devicePixelRatioOf(context))
-                                  .toInt(),
                         ),
                       ),
                     ),
@@ -141,13 +138,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   children: [
                     Hero(
                       tag: 'premium-icon',
-                      child: Image.asset(
-                        PngAsset.chesseverIcon,
+                      child: _AnimatedBrandLogo(
                         height: 160.sp,
                         width: 300.sp,
-                        cacheWidth:
-                            (300 * MediaQuery.devicePixelRatioOf(context))
-                                .toInt(),
                       ),
                     ),
                   ],
@@ -191,13 +184,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 children: [
                   Hero(
                     tag: 'premium-icon',
-                    child: Image.asset(
-                      PngAsset.chesseverIcon,
+                    child: const _AnimatedBrandLogo(
                       height: 156,
                       width: 295,
-                      cacheWidth:
-                          (295 * MediaQuery.devicePixelRatioOf(context))
-                              .toInt(),
                     ),
                   ),
                 ],
@@ -643,6 +632,63 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Animated ChessEver brand mark for the auth screen.
+///
+/// Plays the assemble sequence once on mount, then loops only the idle
+/// segment (gentle breathing + a periodic glow pulse) so the logo never
+/// re-assembles distractingly while the user lingers on login. Renders with a
+/// transparent background over [BlurBackground]. [width]/[height] define the
+/// box; the square animation is letterboxed inside via [BoxFit.contain], so it
+/// matches the previous static logo's visual size.
+class _AnimatedBrandLogo extends StatefulWidget {
+  const _AnimatedBrandLogo({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  State<_AnimatedBrandLogo> createState() => _AnimatedBrandLogoState();
+}
+
+class _AnimatedBrandLogoState extends State<_AnimatedBrandLogo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(vsync: this);
+
+  // Fraction of the timeline where the entrance finishes and the idle begins.
+  // Source animation is 180 frames; the pop-in settles by frame ~54.
+  static const double _idleStart = 54 / 180;
+
+  void _onLoaded(LottieComposition composition) {
+    _controller.duration = composition.duration;
+    _controller.forward(from: 0).whenComplete(() {
+      if (!mounted) return;
+      _controller.repeat(
+        min: _idleStart,
+        max: 1.0,
+        period: composition.duration * (1 - _idleStart),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Lottie.asset(
+      LottieAsset.chesseverLogo,
+      controller: _controller,
+      width: widget.width,
+      height: widget.height,
+      fit: BoxFit.contain,
+      onLoaded: _onLoaded,
     );
   }
 }
