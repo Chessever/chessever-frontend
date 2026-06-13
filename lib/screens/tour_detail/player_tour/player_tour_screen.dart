@@ -105,7 +105,6 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const FigmaStandingsHeader(showScore: true),
               Expanded(child: _StandingsList(controller: _scrollController)),
             ],
           ),
