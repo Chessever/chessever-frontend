@@ -1579,7 +1579,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   bool _isPipEligible(GamesTourModel game) {
     // PiP is free for everyone; eligibility depends only on the chosen mode.
     final mode =
-        ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.off;
+        ref.read(boardSettingsProviderNew).valueOrNull?.pipMode ?? PipMode.live;
     switch (mode) {
       case PipMode.off:
         return false;
@@ -1921,7 +1921,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Live Activity mode gate (off / live / all), mirrors PiP.
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final liveActivityMode =
-        boardSettings?.liveActivityMode ?? LiveActivityMode.off;
+        boardSettings?.liveActivityMode ?? LiveActivityMode.live;
     if (liveActivityMode == LiveActivityMode.off) return;
 
     final isOngoing = game.gameStatus.isOngoing;
