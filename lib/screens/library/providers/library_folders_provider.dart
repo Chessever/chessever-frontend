@@ -68,16 +68,29 @@ final childLibraryFoldersProvider = Provider.autoDispose
       return all.where((f) => f.parentId == parentId).toList();
     });
 
+/// True when a folder can be picked by manual save/import flows.
+///
+/// The special Liked Games / My Likes database is system-managed and should
+/// only receive games through the explicit like/unlike action, never through
+/// generic save or PGN import destination pickers.
+bool isManualLibrarySaveTarget(LibraryFolder folder) {
+  return folder.id != kTwicBookId &&
+      !folder.isSubscribed &&
+      !folder.isLikedGames &&
+      folder.isDatabase;
+}
+
+List<LibraryFolder> manualLibrarySaveTargets(Iterable<LibraryFolder> folders) {
+  return folders.where(isManualLibrarySaveTarget).toList();
+}
+
 /// Top 3 most recently updated databases for quick selection
 final recentDatabasesProvider = Provider.autoDispose<List<LibraryFolder>>((
   ref,
 ) {
   final all = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
-  // Quick-pick is databases only: exclude TWIC, organization folders, and the
-  // special Liked Games folder. Sort by updatedAt desc.
-  final owned = all
-      .where((f) => f.id != kTwicBookId && f.isDatabase && !f.isLikedGames)
-      .toList();
+  // Exclude TWIC, subscribed books, folders, and the system-managed My Likes.
+  final owned = manualLibrarySaveTargets(all);
   owned.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   return owned.take(3).toList();
 });

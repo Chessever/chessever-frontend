@@ -204,12 +204,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
-      final ownedBookCount =
-          folders
-              .where(
-                (f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase,
-              )
-              .length;
+      final ownedBookCount = manualLibrarySaveTargets(folders).length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
@@ -406,10 +401,13 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     final rootFolders = ref.watch(rootLibraryFoldersProvider);
     final allFolders =
         ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
+    final manualSaveFolders = manualLibrarySaveTargets(allFolders);
     final selectedFolders =
-        allFolders
-            .where((f) => _selectedFolderIds.contains(f.id) && f.isDatabase)
+        manualSaveFolders
+            .where((f) => _selectedFolderIds.contains(f.id))
             .toList();
+    final visibleRootFolders =
+        rootFolders.where(isManualLibrarySaveTarget).toList();
 
     return Material(
       type: MaterialType.transparency,
@@ -441,7 +439,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
               child: IgnorePointer(
                 ignoring: _isSaving,
                 child:
-                    rootFolders.isEmpty
+                    visibleRootFolders.isEmpty
                         ? Padding(
                           padding: EdgeInsets.all(24.sp),
                           child: Text(
@@ -457,9 +455,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         : ListView.builder(
                           shrinkWrap: true,
                           padding: EdgeInsets.symmetric(horizontal: 16.w),
-                          itemCount: rootFolders.length,
+                          itemCount: visibleRootFolders.length,
                           itemBuilder: (context, index) {
-                            final folder = rootFolders[index];
+                            final folder = visibleRootFolders[index];
                             return _ExpandableFolderTile(
                               folder: folder,
                               isSelected: _selectedFolderIds.contains(
@@ -682,7 +680,11 @@ class _ExpandableFolderTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final children = ref.watch(childLibraryFoldersProvider(folder.id));
+    final children =
+        ref
+            .watch(childLibraryFoldersProvider(folder.id))
+            .where(isManualLibrarySaveTarget)
+            .toList();
     final hasChildren = children.isNotEmpty;
 
     return Column(
@@ -782,10 +784,12 @@ class _FolderSelectionTile extends StatelessWidget {
                   : (folder.parentId == null
                       ? Icons.folder_rounded
                       : Icons.folder_open_rounded),
-              color: folder.isLikedGames
-                  ? context.colors.danger
-                  : context.colors.textPrimary
-                      .withValues(alpha: isSmall ? 0.6 : 1.0),
+              color:
+                  folder.isLikedGames
+                      ? context.colors.danger
+                      : context.colors.textPrimary.withValues(
+                        alpha: isSmall ? 0.6 : 1.0,
+                      ),
               size: isSmall ? 20.sp : 24.sp,
             ),
             SizedBox(width: 12.w),

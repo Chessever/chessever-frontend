@@ -173,12 +173,7 @@ class _ImportPgnToFolderPageState
     final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
-      final ownedBookCount =
-          folders
-              .where(
-                (f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase,
-              )
-              .length;
+      final ownedBookCount = manualLibrarySaveTargets(folders).length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
@@ -392,7 +387,7 @@ class _ImportPgnToFolderPageState
               (folders) =>
                   folders
                       .where((f) => _selectedFolderIds.contains(f.id))
-                      .where((f) => !f.isSubscribed && f.isDatabase)
+                      .where(isManualLibrarySaveTarget)
                       .toList(),
         ) ??
         [];
@@ -434,11 +429,8 @@ class _ImportPgnToFolderPageState
                 ignoring: _isSaving,
                 child: foldersAsync.when(
                   data: (folders) {
-                    // Only owned (not subscribed) folders can receive writes.
-                    final writable =
-                        folders
-                            .where((f) => !f.isSubscribed && f.isDatabase)
-                            .toList();
+                    // Only normal user databases can receive manual imports.
+                    final writable = manualLibrarySaveTargets(folders);
                     if (writable.isEmpty) {
                       return Padding(
                         padding: EdgeInsets.all(20.sp),

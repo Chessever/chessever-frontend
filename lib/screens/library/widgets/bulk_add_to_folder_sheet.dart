@@ -207,12 +207,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
     final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
-      final ownedBookCount =
-          folders
-              .where(
-                (f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase,
-              )
-              .length;
+      final ownedBookCount = manualLibrarySaveTargets(folders).length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
@@ -571,12 +566,9 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
         foldersAsync.whenOrNull(
           data:
               (folders) =>
-                  folders
-                      .where(
-                        (f) =>
-                            _selectedFolderIds.contains(f.id) && f.isDatabase,
-                      )
-                      .toList(),
+                  manualLibrarySaveTargets(
+                    folders,
+                  ).where((f) => _selectedFolderIds.contains(f.id)).toList(),
         ) ??
         [];
 
@@ -615,7 +607,8 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
                 ignoring: _isSaving,
                 child: foldersAsync.when(
                   data: (folders) {
-                    if (folders.isEmpty) {
+                    final writable = manualLibrarySaveTargets(folders);
+                    if (writable.isEmpty) {
                       return Padding(
                         padding: EdgeInsets.all(20.sp),
                         child: Text(
@@ -629,7 +622,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
                         ),
                       );
                     }
-                    final sortedFolders = _sortFoldersHierarchically(folders);
+                    final sortedFolders = _sortFoldersHierarchically(writable);
                     return ListView.separated(
                       shrinkWrap: true,
                       padding: EdgeInsets.symmetric(horizontal: 16.w),
