@@ -42,18 +42,21 @@ class PushNotificationsService {
     await LiveUpdatesService.instance.setup();
 
     // Apply opt-in state based on local preference and current OS permission.
-    // This prevents release builds from forcing users into opt-out when iOS
-    // permission is already granted but no local preference exists yet.
+    // Missing local preference means the app default is ON: new users should be
+    // eligible for push/live updates as soon as OS permission is granted. Only an
+    // explicit in-app opt-out should call OneSignal optOut().
     final hasPermission = OneSignal.Notifications.permission;
     final storedEnabled = await _loadLocalEnabledNullable();
+    final enabledByDefault = storedEnabled ?? true;
 
-    if (storedEnabled == null && hasPermission) {
+    if (storedEnabled == null) {
       await _persistLocalEnabled(true);
       await _syncPreferenceToSupabase(true);
+    }
+
+    if (enabledByDefault && hasPermission) {
       OneSignal.User.pushSubscription.optIn();
-    } else if (storedEnabled == true && hasPermission) {
-      OneSignal.User.pushSubscription.optIn();
-    } else {
+    } else if (!enabledByDefault) {
       OneSignal.User.pushSubscription.optOut();
     }
 
@@ -184,7 +187,7 @@ class PushNotificationsService {
   }
 
   Future<bool> _loadLocalEnabled() async {
-    return await _loadLocalEnabledNullable() ?? false;
+    return await _loadLocalEnabledNullable() ?? true;
   }
 
   Future<bool?> _loadLocalEnabledNullable() async {
@@ -248,7 +251,7 @@ class PushNotificationsService {
               'book_update_alerts': true,
               'fp_classical': true,
               'fp_rapid': true,
-              'fp_blitz': true,
+              'fp_blitz': false,
               'se_classical': true,
               'se_rapid': true,
               'se_blitz': true,
