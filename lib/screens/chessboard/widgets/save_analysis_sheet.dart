@@ -161,6 +161,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   String? _initialFolderId;
   bool _hasAppliedInitialFolder = false;
   bool _canAdoptLikedAnalysis = false;
+  bool _editingLikedAnalysis = false;
 
   // Duplicate-as-new mode: only meaningful when _isEditMode is true. When on,
   // save inserts a new row (and re-points the open board to the copy) instead
@@ -184,6 +185,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       _existingAnalysisId = saved!.analysisId;
       _existingSourceGameId = saved.sourceGameId;
       _initialFolderId = saved.folderId;
+      _editingLikedAnalysis = _savedDataMatchesLoadedLike(saved);
       final dynamicTags = ref.read(likedGameTagsProvider(_likeId));
       if (dynamicTags.isNotEmpty) {
         _selectedTag = dynamicTags.first;
@@ -228,10 +230,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         _isEditMode = true;
         _existingAnalysisId = liked.id;
         _existingSourceGameId = liked.sourceGameId;
+        _editingLikedAnalysis = true;
         if (_initialFolderId != liked.folderId) {
           _initialFolderId = liked.folderId;
           _hasAppliedInitialFolder = false;
         }
+      } else if (_existingAnalysisId == liked.id) {
+        _editingLikedAnalysis = true;
       }
       final tags = _effectiveTagsFor(liked);
       _selectedTag = tags.isEmpty ? null : tags.first;
@@ -250,6 +255,26 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     if (pending != null) return pending;
     final dynamicTags = ref.read(likedGameTagsProvider(_likeId));
     return dynamicTags.isNotEmpty ? dynamicTags : liked.tags;
+  }
+
+  bool _savedDataMatchesLoadedLike(SavedAnalysisData saved) {
+    final analysisId = saved.analysisId;
+    if (analysisId == null || analysisId.isEmpty) return false;
+
+    final likedFolderId = ref.read(likedGamesFolderProvider).valueOrNull?.id;
+    if (likedFolderId != null && saved.folderId == likedFolderId) {
+      return true;
+    }
+
+    final likedRows = ref.read(likedGamesProvider).valueOrNull;
+    return likedRows?.any((analysis) => analysis.id == analysisId) ?? false;
+  }
+
+  bool get _willSaveSeparateFromLikedAnalysis {
+    if (!_editingLikedAnalysis) return false;
+    if (_isCreatingNewFolder) return true;
+    final folder = _selectedFolder;
+    return folder != null && !folder.isLikedGames;
   }
 
   void _applyInitialDynamicTags() {
@@ -407,8 +432,12 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     // Updates overwrite the existing row; inserts (new analysis OR a duplicate
     // forked from an existing one) add a row and count against the free-tier
     // cap, so gate them through canSaveMoreGames.
+    final saveSeparateFromLiked = _willSaveSeparateFromLikedAnalysis;
     final isInsert =
-        !_isEditMode || _existingAnalysisId == null || _isDuplicateMode;
+        !_isEditMode ||
+        _existingAnalysisId == null ||
+        _isDuplicateMode ||
+        saveSeparateFromLiked;
     if (isInsert) {
       final allowed = await canSaveMoreGames(context, gamesToAdd: 1);
       if (!allowed || !mounted) return;
@@ -538,7 +567,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           userId: userId,
           folderId: targetFolderId,
           title: title,
-          sourceGameId: state.game.gameId,
+          sourceGameId: state.game.likeId,
           sourceTournamentId: state.game.tourId,
           chessGame: analysisGame,
           analysisState: analysisStateJson,
@@ -611,9 +640,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   child: Text(
                     _isDuplicateMode
                         ? 'Saved a copy'
-                        : (_isEditMode
-                            ? 'Game updated'
-                            : 'Analysis saved successfully'),
+                        : (saveSeparateFromLiked
+                            ? 'Saved to database'
+                            : (_isEditMode
+                                ? 'Game updated'
+                                : 'Analysis saved successfully')),
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
                     ),
@@ -642,7 +673,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           final verb =
               _isDuplicateMode
                   ? 'duplicate'
-                  : (_isEditMode ? 'update' : 'save');
+                  : (_isEditMode && !saveSeparateFromLiked ? 'update' : 'save');
           _errorMessage = 'Failed to $verb: ${e.toString()}';
           _isSaving = false;
         });
@@ -656,6 +687,21 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   /// the game from that database (when the game actually lives there).
   Future<void> _handleFolderTap(LibraryFolder folder) async {
     if (_isSaving) return;
+    if (folder.isLikedGames) {
+      final isLiked = await _resolveCurrentLikeState();
+      if (!mounted) return;
+      if (isLiked == null) {
+        setState(() {
+          _errorMessage = "Couldn't load My Likes. Please try again.";
+        });
+        HapticFeedback.lightImpact();
+        return;
+      }
+      if (!isLiked) {
+        await _handleLikeFromSheet();
+        return;
+      }
+    }
     if (_selectedFolder?.id != folder.id) {
       setState(() {
         _selectedFolder = folder;
@@ -665,6 +711,67 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       return;
     }
     await _removeGameFromFolder(folder);
+  }
+
+  Future<bool?> _resolveCurrentLikeState() async {
+    var likedAsync = ref.read(likedGamesProvider);
+    if (!likedAsync.hasValue) {
+      setState(() {
+        _isSaving = true;
+        _errorMessage = null;
+      });
+      try {
+        await ref.read(likedGamesProvider.future);
+      } catch (_) {}
+      if (!mounted) return null;
+      likedAsync = ref.read(likedGamesProvider);
+      setState(() {
+        _isSaving = false;
+      });
+    }
+
+    final likedList = likedAsync.valueOrNull;
+    if (likedList == null) return null;
+    return likedList.any((analysis) => analysis.sourceGameId == _likeId);
+  }
+
+  Future<void> _handleLikeFromSheet() async {
+    if (!_canManageLike) {
+      setState(() {
+        _errorMessage = "This database game can't be liked from here.";
+      });
+      HapticFeedback.lightImpact();
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    final nowLiked = await ref
+        .read(likedGamesProvider.notifier)
+        .toggle(widget.config.state.game);
+
+    ref.invalidate(folderAnalysisCountProvider);
+    ref.invalidate(libraryFoldersStreamProvider);
+
+    if (!mounted) return;
+    if (nowLiked) {
+      _applyLikedAnalysis(
+        _findLikedAnalysis(ref.read(likedGamesProvider).valueOrNull),
+        notify: false,
+      );
+      HapticFeedback.mediumImpact();
+    } else {
+      HapticFeedback.lightImpact();
+    }
+    setState(() {
+      if (!nowLiked) {
+        _errorMessage = "Couldn't like game. Please try again.";
+      }
+      _isSaving = false;
+    });
   }
 
   /// Deselects [folder] and removes the game from it. For the Liked Games
@@ -727,6 +834,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         _existingAnalysisId = null;
         _existingSourceGameId = null;
         _initialFolderId = null;
+        _editingLikedAnalysis = false;
         // Don't let the folder-list pre-select logic re-select the row we
         // just emptied on the next data build.
         _hasAppliedInitialFolder = true;
@@ -918,6 +1026,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   }
 
   Widget _buildHeader() {
+    final saveSeparateFromLiked = _willSaveSeparateFromLikedAnalysis;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24.w),
       child: Column(
@@ -944,7 +1053,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   ),
                 ),
                 child: Icon(
-                  _isDuplicateMode
+                  _isDuplicateMode || saveSeparateFromLiked
                       ? Icons.content_copy_rounded
                       : (_isEditMode
                           ? Icons.edit_rounded
@@ -959,7 +1068,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isDuplicateMode
+                      _isDuplicateMode || saveSeparateFromLiked
                           ? 'Save as Copy'
                           : (_isEditMode
                               ? 'Edit Game Details'
@@ -973,9 +1082,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     Text(
                       _isDuplicateMode
                           ? 'Fork into a new database'
-                          : (_isEditMode
-                              ? 'Update title, folder & metadata'
-                              : 'Keep your variations & comments'),
+                          : (saveSeparateFromLiked
+                              ? 'Keep the like and save to a database'
+                              : (_isEditMode
+                                  ? 'Update title, folder & metadata'
+                                  : 'Keep your variations & comments')),
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textPrimary.withValues(
                           alpha: 0.5,
@@ -987,7 +1098,10 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               ),
             ],
           ),
-          if (_isEditMode) ...[SizedBox(height: 16.h), _buildModeToggle()],
+          if (_isEditMode && !_editingLikedAnalysis) ...[
+            SizedBox(height: 16.h),
+            _buildModeToggle(),
+          ],
         ],
       ),
     );
@@ -1448,9 +1562,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     if (source == GameSource.savedAnalysis) {
       final saved =
           ref
-              .read(
-                chessBoardScreenProviderNew(widget.config.params).notifier,
-              )
+              .read(chessBoardScreenProviderNew(widget.config.params).notifier)
               .savedAnalysisData;
       if (saved?.analysisId != null) {
         final likedFolderId =
@@ -1844,6 +1956,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           final match = folders.where((f) => f.id == initialId).toList();
           if (match.isNotEmpty) {
             final folder = match.first;
+            if (folder.isLikedGames) {
+              _editingLikedAnalysis = true;
+            }
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && _selectedFolder == null) {
                 setState(() => _selectedFolder = folder);
@@ -2153,6 +2268,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     final hasValidNewFolderName =
         _isCreatingNewFolder && trimmedNewFolderName.isNotEmpty;
     final canSave = !_isSaving && (hasValidNewFolderName || hasExistingFolder);
+    final saveSeparateFromLiked = _willSaveSeparateFromLikedAnalysis;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -2251,7 +2367,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      _isDuplicateMode
+                                      _isDuplicateMode || saveSeparateFromLiked
                                           ? Icons.content_copy_rounded
                                           : (_isEditMode
                                               ? Icons.check_rounded
@@ -2268,9 +2384,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                       canSave
                                           ? (_isDuplicateMode
                                               ? 'Save Copy'
-                                              : (_isEditMode
-                                                  ? 'Update Game'
-                                                  : 'Save Analysis'))
+                                              : (saveSeparateFromLiked
+                                                  ? 'Save to Database'
+                                                  : (_isEditMode
+                                                      ? 'Update Game'
+                                                      : 'Save Analysis')))
                                           : _isCreatingNewFolder
                                           ? 'Name your folder'
                                           : 'Select a Folder',

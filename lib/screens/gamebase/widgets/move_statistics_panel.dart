@@ -8,7 +8,9 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:intl/intl.dart';
 
 import '../../../theme/app_theme.dart';
@@ -49,7 +51,8 @@ class MoveStatisticsPanel extends ConsumerWidget {
     );
     // Mirror `requirePremiumGuard`: bypass in debug so engineers can exercise
     // deep positions without a live RevenueCat subscription.
-    final pastFreeLimit = state.currentMoveNumber > kFreeExplorerMoveNumberLimit;
+    final pastFreeLimit =
+        state.currentMoveNumber > kFreeExplorerMoveNumberLimit;
     final showGate = pastFreeLimit && !isSubscribed && !kDebugMode;
     // True when the current position is the last free step — the next ply
     // would land past move 10. Used to paywall *before* navigating into the
@@ -60,11 +63,10 @@ class MoveStatisticsPanel extends ConsumerWidget {
         !kDebugMode &&
         state.currentMoveNumber >= kFreeExplorerMoveNumberLimit;
 
-    if (state.isLoading && !hasStaleData && !showGate) {
-      return  Center(
-        child: CircularProgressIndicator(color: context.colors.textPrimary, strokeWidth: 2),
-      );
-    }
+    // First load (or a position change that cleared the table) shows the same
+    // header+rows scaffold with shimmering skeleton rows instead of a centered
+    // spinner — keeps the layout stable and matches the app's shimmer style.
+    final showSkeleton = state.isLoading && !hasStaleData && !showGate;
 
     if (state.error != null && !showGate) {
       return Center(
@@ -85,7 +87,10 @@ class MoveStatisticsPanel extends ConsumerWidget {
           padding: EdgeInsets.all(16.sp),
           child: Text(
             'No games found for this position',
-            style: TextStyle(color: context.colors.textSecondary, fontSize: 14.f),
+            style: TextStyle(
+              color: context.colors.textSecondary,
+              fontSize: 14.f,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -96,7 +101,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (state.isLoading)
-           LinearProgressIndicator(
+          LinearProgressIndicator(
             minHeight: 2,
             color: context.colors.textPrimary,
             backgroundColor: Colors.transparent,
@@ -135,9 +140,9 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   'Games',
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    color: context.colors.textSecondary,
+                    color: kPrimaryColor,
                     fontSize: 11.f,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -160,45 +165,79 @@ class MoveStatisticsPanel extends ConsumerWidget {
         Divider(color: context.colors.divider, height: 1),
         // Move list
         Expanded(
-          child: ListView.separated(
-            padding: EdgeInsets.zero,
-            itemCount:
-                state.moveAggregates.isEmpty && showGate
-                    ? 5
-                    : state.moveAggregates.length,
-            separatorBuilder:
-                (_, __) =>
-                    Divider(color: context.colors.divider, height: 1, indent: 12.sp),
-            itemBuilder: (context, index) {
-              if (state.moveAggregates.isEmpty && showGate) {
-                return const _MoveStatisticsPlaceholderRow();
-              }
-              final aggregate = state.moveAggregates[index];
-              return _MoveStatisticsRow(
-                aggregate: aggregate,
-                currentFen: state.currentFen,
-                exploredMoves: state.exploredMoves,
-                filters: state.filters,
-                onTap: () async {
-                  if (showGate) {
-                    await requirePremiumGuard(context, ref);
-                    return;
-                  }
-                  if (nextStepCrossesLimit) {
-                    final unlocked = await requirePremiumGuard(context, ref);
-                    if (!unlocked) return;
-                  }
-                  if (onMove != null) {
-                    onMove!(aggregate.uci);
-                  } else {
-                    ref
-                        .read(gamebaseExplorerProvider.notifier)
-                        .makeMove(aggregate.uci);
-                  }
-                },
-              );
-            },
-          ),
+          child:
+              showSkeleton
+                  ? Skeletonizer(
+                    enabled: true,
+                    // Match the app-wide loading shimmer: a low-alpha, inactive
+                    // grey sweep (see `chess_board_screen_new.dart` variant cards).
+                    effect: ShimmerEffect(
+                      baseColor: context.colors.textPrimary.withValues(
+                        alpha: 0.05,
+                      ),
+                      highlightColor: context.colors.textPrimary.withValues(
+                        alpha: 0.1,
+                      ),
+                      duration: const Duration(milliseconds: 1500),
+                    ),
+                    child: ListView.separated(
+                      padding: EdgeInsets.zero,
+                      itemCount: 7,
+                      separatorBuilder:
+                          (_, __) => Divider(
+                            color: context.colors.divider,
+                            height: 1,
+                            indent: 12.sp,
+                          ),
+                      itemBuilder:
+                          (_, index) => _MoveStatisticsSkeletonRow(seed: index),
+                    ),
+                  )
+                  : ListView.separated(
+                    padding: EdgeInsets.zero,
+                    itemCount:
+                        state.moveAggregates.isEmpty && showGate
+                            ? 5
+                            : state.moveAggregates.length,
+                    separatorBuilder:
+                        (_, __) => Divider(
+                          color: context.colors.divider,
+                          height: 1,
+                          indent: 12.sp,
+                        ),
+                    itemBuilder: (context, index) {
+                      if (state.moveAggregates.isEmpty && showGate) {
+                        return const _MoveStatisticsPlaceholderRow();
+                      }
+                      final aggregate = state.moveAggregates[index];
+                      return _MoveStatisticsRow(
+                        aggregate: aggregate,
+                        currentFen: state.currentFen,
+                        exploredMoves: state.exploredMoves,
+                        filters: state.filters,
+                        onTap: () async {
+                          if (showGate) {
+                            await requirePremiumGuard(context, ref);
+                            return;
+                          }
+                          if (nextStepCrossesLimit) {
+                            final unlocked = await requirePremiumGuard(
+                              context,
+                              ref,
+                            );
+                            if (!unlocked) return;
+                          }
+                          if (onMove != null) {
+                            onMove!(aggregate.uci);
+                          } else {
+                            ref
+                                .read(gamebaseExplorerProvider.notifier)
+                                .makeMove(aggregate.uci);
+                          }
+                        },
+                      );
+                    },
+                  ),
         ),
       ],
     );
@@ -212,7 +251,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                 child: Container(
-                  color: Colors.black.withOpacity(0.4),
+                  color: Colors.black.withValues(alpha: 0.4),
                   child: GestureDetector(
                     onTap: () => requirePremiumGuard(context, ref),
                     behavior: HitTestBehavior.opaque,
@@ -298,6 +337,74 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
   }
 }
 
+/// Shimmering skeleton row shown during first load / position change. Mirrors
+/// the real [_MoveStatisticsRow] column geometry so swapping in live data
+/// causes no layout shift; the wrapping [Skeletonizer] paints the grey shimmer
+/// over these leaves.
+class _MoveStatisticsSkeletonRow extends StatelessWidget {
+  const _MoveStatisticsSkeletonRow({required this.seed});
+
+  final int seed;
+
+  @override
+  Widget build(BuildContext context) {
+    const sans = ['Nf3', 'e4', 'Bb5', 'd4', 'c4', 'Nc3', 'Bc4'];
+    const counts = ['1.2M', '430k', '88k', '21k', '9.4k', '3.1k', '740'];
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _kMoveColumnWidth.w,
+            child: Row(
+              children: [
+                Text(
+                  '12.',
+                  style: TextStyle(fontSize: 12.f, fontWeight: FontWeight.w500),
+                ),
+                SizedBox(width: 4.w),
+                Text(
+                  sans[seed % sans.length],
+                  style: TextStyle(fontSize: 14.f, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          Expanded(
+            child: Container(
+              height: 14.h,
+              decoration: BoxDecoration(
+                color: context.colors.textPrimary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16.br),
+              ),
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          SizedBox(
+            width: _kGamesColumnWidth.w,
+            child: Text(
+              counts[seed % counts.length],
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 12.f, fontWeight: FontWeight.w700),
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          SizedBox(
+            width: _kLastColumnWidth.w,
+            child: Text(
+              '2024',
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 12.f),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Individual row showing move statistics.
 class _MoveStatisticsRow extends ConsumerWidget {
   const _MoveStatisticsRow({
@@ -340,6 +447,25 @@ class _MoveStatisticsRow extends ConsumerWidget {
       fontSize: 14.f,
       fontWeight: FontWeight.w500,
     );
+
+    void openGames() {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        builder:
+            (_) => PositionGamesSheet(
+              fen: currentFen,
+              moves: exploredMoves,
+              uci: aggregate.uci,
+              filters: filters,
+              title: 'Games for $moveNumberLabel$sanMove',
+            ),
+      );
+    }
 
     return InkWell(
       onTap: onTap,
@@ -397,53 +523,63 @@ class _MoveStatisticsRow extends ConsumerWidget {
             SizedBox(width: _kColumnGap.sp),
             SizedBox(
               width: _kGamesColumnWidth.w,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Flexible(
-                    child: Text(
-                      aggregate.formattedTotal,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        color: context.colors.textSecondary,
-                        fontSize: 12.f,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 1.sp),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints.tightFor(
-                      width: 20.w,
-                      height: 20.h,
-                    ),
-                    icon: Icon(
-                      Icons.list_alt_rounded,
-                      color: context.colors.textSecondary,
-                      size: 15.ic,
-                    ),
-                    tooltip: 'Games',
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        backgroundColor: Colors.transparent,
-                        isScrollControlled: true,
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.88,
-                        ),
-                        builder:
-                            (_) => PositionGamesSheet(
-                              fen: currentFen,
-                              moves: exploredMoves,
-                              uci: aggregate.uci,
-                              filters: filters,
-                              title: 'Games for $moveNumberLabel$sanMove',
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Tooltip(
+                      message: 'Games',
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: openGames,
+                          borderRadius: BorderRadius.circular(20.br),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8.w,
+                              vertical: 4.h,
                             ),
-                      );
-                    },
-                  ),
-                ],
+                            decoration: BoxDecoration(
+                              color: kPrimaryColor.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(20.br),
+                              border: Border.all(
+                                color: kPrimaryColor.withValues(alpha: 0.45),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    aggregate.formattedTotal,
+                                    textAlign: TextAlign.right,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: kPrimaryColor,
+                                      fontSize: 12.f,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 4.w),
+                                Icon(
+                                  Icons.list_alt_rounded,
+                                  color: kPrimaryColor,
+                                  size: 15.ic,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .scaleXY(
+                      begin: 1.0,
+                      end: 1.04,
+                      duration: 1200.ms,
+                      curve: Curves.easeInOut,
+                    ),
               ),
             ),
             SizedBox(width: _kColumnGap.sp),
@@ -452,7 +588,10 @@ class _MoveStatisticsRow extends ConsumerWidget {
               child: Text(
                 _formatLastPlayed(aggregate.lastPlayed),
                 textAlign: TextAlign.right,
-                style: TextStyle(color: context.colors.textSecondary, fontSize: 12.f),
+                style: TextStyle(
+                  color: context.colors.textSecondary,
+                  fontSize: 12.f,
+                ),
               ),
             ),
           ],
@@ -632,7 +771,9 @@ class _ExplorerPremiumGate extends ConsumerWidget {
             Text(
               'Theory ends here. Prep doesn’t.',
               textAlign: TextAlign.center,
-              style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textLgBold.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(height: 8.h),
             Text(
@@ -650,10 +791,7 @@ class _ExplorerPremiumGate extends ConsumerWidget {
             GestureDetector(
               onTap: () => requirePremiumGuard(context, ref),
               child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 24.w,
-                  vertical: 12.h,
-                ),
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12.br),
                   gradient: LinearGradient(
