@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/animated_brand_logo.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -32,6 +33,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     // Pre-cache SVGs to improve performance in the app
     unawaited(SvgAsset.preCacheAll(context));
     _runInitialization();
+    // Lift the native splash once the first Flutter frame is painted so the
+    // animated brand mark is visible while initialization runs. The native
+    // splash and this screen share the same gradient background, so the
+    // hand-off is seamless (no flash). Routing later calls remove() again,
+    // which is a harmless no-op.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FlutterNativeSplash.remove();
+    });
   }
 
   Future<void> _runInitialization() async {
@@ -108,6 +117,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                   (MediaQuery.sizeOf(context).height *
                           MediaQuery.devicePixelRatioOf(context))
                       .toInt(),
+            ),
+
+            // Animated ChessEver brand mark, centred in the splash gradient.
+            // Plays the piece-assemble during initialization; the resting frame
+            // is identical to the app logo.
+            Center(
+              child: AnimatedBrandLogo(width: 220.w, height: 220.w, showWordmark: true),
             ),
 
             // Error UI overlay (only visible when there's an error)

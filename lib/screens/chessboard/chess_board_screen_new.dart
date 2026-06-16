@@ -36,6 +36,7 @@ import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
+import 'package:chessever2/screens/chessboard/utils/chess_board_teaching_eligibility.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -92,6 +93,8 @@ import 'package:motor/motor.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
@@ -872,6 +875,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _checkAndShowWalkthrough(BuildContext context) async {
+    if (!_canShowTeachingsForCurrentGame()) return;
+
     final prefs = ref.read(sharedPreferencesRepository);
     final dontShow = await prefs.getBool(_kWalkthroughDontShowKey) ?? false;
     final lastShownMs = await prefs.getInt(_kWalkthroughShownDateKey);
@@ -924,7 +929,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (!mounted ||
         _liveWidgetsIntroShown ||
         _showTutorialOverlay ||
-        _showLikeTutorial) {
+        _showLikeTutorial ||
+        !_canShowTeachingsForCurrentGame()) {
       return;
     }
 
@@ -945,7 +951,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (!mounted ||
         _liveWidgetsIntroShown ||
         _showTutorialOverlay ||
-        _showLikeTutorial) {
+        _showLikeTutorial ||
+        !_canShowTeachingsForCurrentGame()) {
       return;
     }
 
@@ -980,7 +987,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// guard before showing, so this is safe to call unconditionally after
   /// step 1 dismisses.
   void _requestSwitchViewsTutorial() {
-    if (!mounted) return;
+    if (!mounted || !_canShowTeachingsForCurrentGame()) return;
     ref
         .read(analysisSwitchViewsTutorialRequestProvider.notifier)
         .update((v) => v + 1);
@@ -1001,7 +1008,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// request fires (after Switch Views dismisses or is skipped). Self-gates on
   /// its own prefs so it isn't shown more than once per 7 days.
   Future<void> _maybeStartLikeTutorial() async {
-    if (!mounted || _showLikeTutorial || _showTutorialOverlay) return;
+    if (!mounted ||
+        _showLikeTutorial ||
+        _showTutorialOverlay ||
+        !_canShowTeachingsForCurrentGame()) {
+      return;
+    }
 
     final prefs = ref.read(sharedPreferencesRepository);
     final dontShow = await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false;
@@ -1054,6 +1066,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_maybeShowLiveWidgetsIntro(context));
     });
+  }
+
+  bool _canShowTeachingsForCurrentGame() {
+    if (widget.games.isEmpty) return false;
+
+    final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
+    final fallbackGame = _resolveGameForIndex(safeIndex);
+    final params = _createParams(fallbackGame, safeIndex);
+    final providerGame =
+        ref.read(chessBoardScreenProviderNew(params)).valueOrNull?.game;
+
+    return shouldShowChessBoardTeachingsForGame(providerGame ?? fallbackGame);
   }
 
   GamesTourModel _preferFresherGameSnapshot({
@@ -3778,11 +3802,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
                 isLoading: widget.isLoading,
               ),
       actions: [
-        SizedBox(width: 4.sp),
-        // Event info button (hidden when navigating from library for position analysis)
-        // Uses delayed show on tablets to prevent phantom tap dismissals
-        if (!widget.hideEventInfo)
-          IconButton(
+        // Right after a fresh like, these action icons hand over to the tag
+        // chip (see [LikeTagChip] / tagChipOfferProvider) via a spring-driven
+        // width hand-off — icons peel away right→left while the chip grows in
+        // from the right — then run in reverse when the chip resolves/elapses.
+        _TagAwareAppBarActions(
+          isActivePage: widget.isActivePage,
+          actions: <Widget>[
+              // Event info button (hidden when navigating from library for position analysis)
+              // Uses delayed show on tablets to prevent phantom tap dismissals
+              if (!widget.hideEventInfo)
+                IconButton(
             icon: Icon(
               Icons.info_outline_rounded,
               color: context.colors.textPrimary,
@@ -4022,8 +4052,188 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   ),
                 ],
           ),
+        ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Choreographs the AppBar's hand-over between its action [actions] and the
+/// post-like [LikeTagChip].
+///
+/// Rather than cross-fading the whole cluster as one blob, a single spring
+/// ([motor]'s [SingleMotionBuilder], zero-bounce so the width can't overshoot)
+/// runs from 0 (icons) to 1 (chip). Off that one progress value:
+///   * the action icons collapse their footprint and peel away right→left in a
+///     quick stagger — the rightmost clears first, opening the lane the chip
+///     slides in from;
+///   * the chip's footprint grows in lock-step from the right edge, so the
+///     row's total width moves *monotonically* from icons-width to chip-width.
+/// Because the cluster's width changes smoothly every frame, the AppBar
+/// re-lays-out its title and the game-selector chip on the left glides to its
+/// new position with no snap. Reverse runs the same spring backwards when the
+/// offer closes (tag picked or countdown elapsed).
+///
+/// Listens to the shared [tagChipOfferProvider] (the bridge the board's
+/// double-tap handler writes to on heart-land). Gated on [isActivePage] so only
+/// the foreground board's toolbar reacts inside the games PageView.
+class _TagAwareAppBarActions extends ConsumerStatefulWidget {
+  const _TagAwareAppBarActions({
+    required this.isActivePage,
+    required this.actions,
+  });
+
+  final bool isActivePage;
+  final List<Widget> actions;
+
+  @override
+  ConsumerState<_TagAwareAppBarActions> createState() =>
+      _TagAwareAppBarActionsState();
+}
+
+class _TagAwareAppBarActionsState
+    extends ConsumerState<_TagAwareAppBarActions> {
+  /// Retained through the exit spring so the chip can animate *out* after its
+  /// offer has already closed; released once the spring settles back at rest.
+  TagOffer? _lastOffer;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = ref.read(tagChipOfferProvider);
+    return ValueListenableBuilder<TagOffer?>(
+      valueListenable: controller.current,
+      builder: (context, offer, _) {
+        if (offer != null) _lastOffer = offer;
+        final showChip = widget.isActivePage && offer != null;
+        final effective = showChip ? offer : _lastOffer;
+
+        return SingleMotionBuilder(
+          // Zero-bounce smooth spring: the cluster width must not overshoot, or
+          // the title chip on the left would jitter as it re-lays-out. A touch
+          // longer than the iOS default for a calmer, more deliberate hand-off.
+          motion: const CupertinoMotion.smooth(
+            duration: Duration(milliseconds: 460),
+          ),
+          value: showChip ? 1.0 : 0.0,
+          onAnimationStatusChanged: (status) {
+            // Settled back at rest after an exit → fully release the chip so it
+            // unmounts (disposes its countdown + overlay).
+            if (!showChip &&
+                status == AnimationStatus.dismissed &&
+                _lastOffer != null) {
+              setState(() => _lastOffer = null);
+            }
+          },
+          builder:
+              (context, t, _) =>
+                  _build(context, t.clamp(0.0, 1.0), effective),
+        );
+      },
+    );
+  }
+
+  Widget _build(BuildContext context, double t, TagOffer? offer) {
+    // True rest with no live offer: render the plain action row untouched so
+    // nothing about hit-testing (esp. the tablet-safe popup) changes.
+    if (offer == null && t <= 0.0001) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(width: 4.sp),
+          ...widget.actions,
+          SizedBox(width: 4.sp),
+        ],
+      );
+    }
+
+    // One eased progress shared by both sides so their footprints are
+    // complementary → the total width interpolates straight from icons to chip.
+    final r = Curves.easeInOutCubic.transform(t);
+    final iconsFactor = 1.0 - r;
+    final chipFactor = r;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // A small, growing gap so the arriving chip never crowds the title chip.
+        SizedBox(width: 4.sp + 6.w * r),
+        if (iconsFactor > 0.001)
+          ClipRect(
+            child: Align(
+              // Clip from the right so the rightmost icon is hidden first —
+              // matching the right→left peel of the staggered fades below.
+              alignment: Alignment.centerLeft,
+              widthFactor: iconsFactor,
+              heightFactor: 1.0,
+              child: _StaggeredActions(progress: r, items: widget.actions),
+            ),
+          ),
+        if (offer != null && chipFactor > 0.001)
+          ClipRect(
+            child: Align(
+              // Reveal from the right edge so the chip reads as emerging from
+              // where the toolbar lived, growing leftward into place.
+              alignment: Alignment.centerRight,
+              widthFactor: chipFactor,
+              heightFactor: 1.0,
+              child: Opacity(
+                // Fade slightly ahead of the width reveal so the chip reads as
+                // a solid object arriving, not a thin sliver being unmasked.
+                opacity:
+                    Curves.easeOut.transform(((r - 0.25) / 0.75).clamp(0.0, 1.0)),
+                child: Padding(
+                  padding: EdgeInsets.only(right: 8.w),
+                  child: LikeTagChip(
+                    key: ValueKey<int>(offer.token),
+                    offer: offer,
+                  ),
+                ),
+              ),
+            ),
+          ),
         SizedBox(width: 4.sp),
       ],
+    );
+  }
+}
+
+/// Lays the AppBar [items] in a row and, as [progress] (0→1) advances, peels
+/// them away right→left: each fades, shrinks and drifts a hair, the rightmost
+/// leading the wave. At rest (progress 0) every item is identity — untouched
+/// and fully interactive. Transforms are paint-only, so the row keeps a stable
+/// layout width and the footprint collapse is owned solely by the parent's
+/// [Align.widthFactor].
+class _StaggeredActions extends StatelessWidget {
+  const _StaggeredActions({required this.progress, required this.items});
+
+  final double progress;
+  final List<Widget> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = items.length;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [for (var i = 0; i < n; i++) _peel(i, n, items[i])],
+    );
+  }
+
+  Widget _peel(int i, int n, Widget child) {
+    if (progress <= 0.0) return child; // rest: untouched + tappable
+    // Position counted from the right; the rightmost (0) leaves first.
+    final fromRight = n - 1 - i;
+    const window = 0.34;
+    final start = fromRight * 0.07;
+    final local = ((progress - start) / window).clamp(0.0, 1.0);
+    final gone = Curves.easeIn.transform(local); // 0 = visible, 1 = gone
+    final vis = 1.0 - gone;
+    return Opacity(
+      opacity: vis,
+      child: Transform.translate(
+        offset: Offset(gone * 7.w, 0),
+        child: Transform.scale(scale: 1.0 - 0.3 * gone, child: child),
+      ),
     );
   }
 }
@@ -6445,6 +6655,7 @@ class _AnalysisGameBody extends ConsumerWidget {
             movesDisplay: movesDisplay,
             gamebaseDisplay: gamebaseDisplay,
             syncWithGamebaseToggle: showGamebaseButton,
+            teachingsEnabled: shouldShowChessBoardTeachingsForGame(state.game),
           );
         }
 
@@ -7833,6 +8044,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       // No haptic for unlike (intentional asymmetry per user feedback).
       HapticFeedback.mediumImpact();
       anchor.start(); // save button slot receives the incoming heart flight
+      // The tag chip is offered once the flying heart has DOCKED (see
+      // _runFlight) — not on a fixed timer — so the toolbar hands over to the
+      // chip only after the heart has finished landing on the save button.
     }
 
     _burstController.spawn(
@@ -7846,6 +8060,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           from: tapGlobal,
           anchor: anchor,
           interactionToken: interactionToken,
+          game: game,
         );
       },
     );
@@ -7872,6 +8087,25 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
   }
 
+  /// After a fresh like, hand the AppBar's action icons over to the tag chip
+  /// (see [LikeTagChip]). A chosen tag is written onto the liked game's saved
+  /// analysis; letting the chip's countdown elapse leaves it untagged (tagging
+  /// is optional). Pre-fills with any tag the game already carries so re-likes
+  /// read back continuously.
+  ///
+  /// The chip itself owns the write + dismissal; this only opens the offer.
+  void _offerTagAfterLike(GamesTourModel game) {
+    final liked = ref.read(likedGamesProvider).valueOrNull ?? const [];
+    String? initialTag;
+    for (final a in liked) {
+      if (a.sourceGameId == game.likeId) {
+        if (a.tags.isNotEmpty) initialTag = a.tags.first;
+        break;
+      }
+    }
+    ref.read(tagChipOfferProvider).open(game.likeId, initialTag);
+  }
+
   void _removeFlyingHeartEntry() {
     _flyingHeartEntry?.remove();
     _flyingHeartEntry = null;
@@ -7890,6 +8124,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     required Offset from,
     required LikeFlightAnchor anchor,
     required int interactionToken,
+    required GamesTourModel game,
   }) {
     // Dock onto the small heart BADGE, not the whole save slot — so the big
     // heart lands exactly where, and at the same size as, the little heart it
@@ -7898,12 +8133,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final target = badgeRect ?? anchor.saveButtonGlobalRect();
     debugPrint('[HeartFlight] _runFlight from=$from target=${target?.center}');
     if (target == null) {
-      // No slot to fly to — just complete the chain.
+      // No slot to fly to — just complete the chain, then still offer the tag
+      // chip (no save button to dock onto, but the like succeeded).
       anchor.land();
       Future.delayed(const Duration(milliseconds: 600), () {
         if (!mounted) return;
         if (interactionToken != _likeInteractionToken) return;
         anchor.reset();
+      });
+      Future.delayed(const Duration(milliseconds: 220), () {
+        if (!mounted) return;
+        if (interactionToken != _likeInteractionToken) return;
+        _offerTagAfterLike(game);
       });
       return;
     }
@@ -7939,6 +8180,13 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
                 if (!mounted) return;
                 if (interactionToken != _likeInteractionToken) return;
                 anchor.reset();
+              });
+              // Heart has docked — hand the toolbar over to the tag chip after
+              // a short beat so the "click into place" reads first.
+              Future.delayed(const Duration(milliseconds: 280), () {
+                if (!mounted) return;
+                if (interactionToken != _likeInteractionToken) return;
+                _offerTagAfterLike(game);
               });
             },
           ),
@@ -8628,11 +8876,13 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
     required this.movesDisplay,
     required this.gamebaseDisplay,
     required this.syncWithGamebaseToggle,
+    required this.teachingsEnabled,
   });
 
   final Widget movesDisplay;
   final Widget gamebaseDisplay;
   final bool syncWithGamebaseToggle;
+  final bool teachingsEnabled;
 
   @override
   ConsumerState<_AnalysisSwipePanels> createState() =>
@@ -8673,6 +8923,14 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
     _swipeController.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnalysisSwipePanels oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.teachingsEnabled && _showTutorialOverlay) {
+      _onWalkthroughFinished();
+    }
   }
 
   void _setupSwipeAnimation() {
@@ -8731,7 +8989,7 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
   }
 
   Future<void> _maybeStartSwitchViewsTutorial() async {
-    if (!mounted || _showTutorialOverlay) return;
+    if (!mounted || _showTutorialOverlay || !widget.teachingsEnabled) return;
 
     final prefs = ref.read(sharedPreferencesRepository);
     final dontShow =
@@ -8853,6 +9111,7 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
     ref.listen<int>(analysisSwitchViewsTutorialRequestProvider, (_, next) {
       if (next <= _lastTutorialRequest) return;
       _lastTutorialRequest = next;
+      if (!widget.teachingsEnabled) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _maybeStartSwitchViewsTutorial();
       });

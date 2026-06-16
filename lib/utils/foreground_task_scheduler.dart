@@ -8,6 +8,19 @@ const Duration kForegroundRefreshDelay = Duration(milliseconds: 700);
 const Duration kForegroundHeavyRefreshDelay = Duration(milliseconds: 1100);
 const Duration kStartupWarmupDelay = Duration(seconds: 2);
 
+/// Delay before warming up the SoLoud audio engine on startup.
+///
+/// SoLoud's native init (engine spin-up + extracting the SFX assets to temp
+/// files) briefly stalls the main thread. At the old 2s delay that stall landed
+/// on the splash→auth brand-logo *assemble* (splash holds ~3s, the auth logo
+/// assembles right after), and because the logo's [AnimationController] is
+/// wall-clock driven, the stall made it skip frames — a visible "jump" + FPS
+/// dip at the end of the assemble. Audio is one-time and isn't needed until a
+/// board move (well past any startup flow), so we push it past the entrance
+/// animations; by ~6s the logo is in its idle loop where sub-pixel motion hides
+/// any stall.
+const Duration kAudioWarmupDelay = Duration(seconds: 6);
+
 /// Defers non-visual foreground work until after the first resumed frame.
 ///
 /// Resume events arrive before the app has painted its first foreground frame.

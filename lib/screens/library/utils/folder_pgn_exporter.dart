@@ -2,6 +2,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/utils/pgn_link_rebrand.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 
 /// Branded metadata headers appended to every exported game.
@@ -203,7 +204,10 @@ String _serializeAnalysis(
   }
 
   final branded = analysis.chessGame.copyWith(metadata: md);
-  return exportGameToPgn(branded);
+  // `Site` is overridden above, but broadcast-sourced games also carry Lichess
+  // links in secondary tags (GameURL/BroadcastURL/ChapterURL/Annotator); strip
+  // those too so exported databases stay Lichess-free.
+  return rebrandPgnLinks(exportGameToPgn(branded));
 }
 
 /// Serializes an arbitrary in-memory list of [SavedAnalysis] into a single

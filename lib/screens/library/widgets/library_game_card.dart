@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -26,6 +27,7 @@ class LibraryGameCard extends ConsumerWidget {
     this.eco,
     this.date,
     this.showRound = true,
+    this.tags = const <String>[],
   });
 
   final GamesTourModel game;
@@ -35,6 +37,7 @@ class LibraryGameCard extends ConsumerWidget {
   final String? eco;
   final DateTime? date;
   final bool showRound;
+  final List<String> tags;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,6 +56,9 @@ class LibraryGameCard extends ConsumerWidget {
     final timeControlIcon = _getTimeControlIcon(game, displayEventName);
     final displayEco = eco ?? game.eco ?? ''; // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);
+
+    final visibleTags =
+        tags.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
 
     return TappableScale(
       onTap: () {
@@ -137,39 +143,64 @@ class LibraryGameCard extends ConsumerWidget {
                     bottom: Radius.circular(12.br),
                   ),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Left: time control icon + event name
-                    Image.asset(timeControlIcon, width: 14.sp, height: 14.sp),
-                    SizedBox(width: 4.w),
-                    Expanded(
-                      child: Text(
-                        displayEventName,
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary,
+                    Row(
+                      children: [
+                        // Left: time control icon + event name
+                        Image.asset(
+                          timeControlIcon,
+                          width: 14.sp,
+                          height: 14.sp,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        SizedBox(width: 4.w),
+                        Expanded(
+                          child: Text(
+                            displayEventName,
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // ECO code (only if available)
+                        if (showRound && displayEco.isNotEmpty) ...[
+                          SizedBox(width: 8.w),
+                          Text(
+                            displayEco,
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ],
+                        // Date (always right-most)
+                        if (displayDate.isNotEmpty) ...[
+                          SizedBox(width: 8.w),
+                          Text(
+                            displayDate,
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    // ECO code (only if available)
-                    if (showRound && displayEco.isNotEmpty) ...[
-                      SizedBox(width: 8.w),
-                      Text(
-                        displayEco,
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary,
-                        ),
-                      ),
-                    ],
-                    // Date (always right-most)
-                    if (displayDate.isNotEmpty) ...[
-                      SizedBox(width: 8.w),
-                      Text(
-                        displayDate,
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary,
-                        ),
+                    if (visibleTags.isNotEmpty) ...[
+                      SizedBox(height: 6.h),
+                      Wrap(
+                        spacing: 6.w,
+                        runSpacing: 5.h,
+                        children: [
+                          for (final tag in visibleTags.take(3))
+                            _LibraryTagChip(label: tag),
+                          if (visibleTags.length > 3)
+                            _LibraryTagChip(
+                              label: '+${visibleTags.length - 3}',
+                              accent: context.colors.textSecondary,
+                            ),
+                        ],
                       ),
                     ],
                   ],
@@ -218,6 +249,51 @@ class LibraryGameCard extends ConsumerWidget {
   String _formatDate(DateTime? date) {
     if (date == null) return '';
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+}
+
+class _LibraryTagChip extends StatelessWidget {
+  const _LibraryTagChip({required this.label, this.accent});
+
+  final String label;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final tag = likeTagByLabel(label);
+    final color = accent ?? tag?.color ?? context.colors.textSecondary;
+
+    return Container(
+      constraints: BoxConstraints(maxWidth: 160.w),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999.br),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6.w,
+            height: 6.w,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          SizedBox(width: 5.w),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+                fontSize: 10.sp,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
@@ -44,6 +45,14 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   /// Collapsed liked-at date sections, keyed by `yyyy-MM-dd`.
   final Set<String> _collapsedDates = {};
 
+  /// Last successfully-loaded view + tag counts. Kept so a reload (e.g. after
+  /// swipe-to-remove invalidates the providers) keeps rendering the current
+  /// content instead of flashing the full-page spinner and collapsing the
+  /// chip row. The removed card has already animated itself out (keyed
+  /// [SwipeActionCard]); the fresh data just omits it.
+  MyLikesData? _lastData;
+  Map<String, int> _lastTagCounts = const <String, int>{};
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +66,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     // state reflect the current day (both derive from DateTime.now() at build).
     if (state == AppLifecycleState.resumed && mounted) {
       ref.invalidate(myLikesViewProvider);
+      ref.invalidate(myLikesTagCountsProvider);
     }
   }
 
@@ -106,8 +116,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     );
     if (result == null || !mounted) return;
 
-    final isPremiumChange =
-        result.hasActiveFilters || result.hasActiveSorts;
+    final isPremiumChange = result.hasActiveFilters || result.hasActiveSorts;
     if (isPremiumChange) {
       final unlocked = await requirePremiumGuard(context, ref);
       if (!unlocked || !mounted) return;
@@ -120,6 +129,16 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     setState(() {
       if (!_collapsedDates.remove(dateKey)) _collapsedDates.add(dateKey);
     });
+  }
+
+  void _selectTagFilter(String? tag) {
+    final current = ref.read(myLikesFilterProvider).selectedTag;
+    if (current == tag) return;
+    HapticFeedback.selectionClick();
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    ref.read(myLikesFilterProvider.notifier).selectTag(tag);
   }
 
   Future<void> _openAnalysis(SavedAnalysis analysis) async {
@@ -154,7 +173,10 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     final removed = await ref
         .read(likedGamesProvider.notifier)
         .removeAnalysis(analysis);
-    if (!removed && mounted) {
+    if (removed) {
+      ref.invalidate(myLikesViewProvider);
+      ref.invalidate(myLikesTagCountsProvider);
+    } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -173,6 +195,23 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   @override
   Widget build(BuildContext context) {
     final viewAsync = ref.watch(myLikesViewProvider);
+    // Keep the last good data across reloads: a swipe-remove invalidates the
+    // view, and dropping to the spinner here is what made the whole page (chip
+    // row included) blink out and back. Once we have data we keep showing it;
+    // only a cold first load (or an error with nothing cached) leaves it.
+    final data = viewAsync.valueOrNull ?? _lastData;
+    if (viewAsync.valueOrNull != null) {
+      _lastData = viewAsync.valueOrNull;
+    }
+
+    final Widget body;
+    if (data != null) {
+      body = _buildBody(data);
+    } else if (viewAsync.hasError) {
+      body = _buildErrorState(viewAsync.error.toString());
+    } else {
+      body = _buildLoadingState();
+    }
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -181,13 +220,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         child: Column(
           children: [
             _buildHeader(),
-            Expanded(
-              child: viewAsync.when(
-                data: _buildBody,
-                loading: () => _buildLoadingState(),
-                error: (error, _) => _buildErrorState(error.toString()),
-              ),
-            ),
+            Expanded(child: body),
           ],
         ),
       ),
@@ -209,7 +242,11 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
               size: 20.sp,
             ),
           ),
-          Icon(Icons.favorite_rounded, color: context.colors.danger, size: 20.sp),
+          Icon(
+            Icons.favorite_rounded,
+            color: context.colors.danger,
+            size: 20.sp,
+          ),
           SizedBox(width: 8.w),
           Text(
             'My Likes',
@@ -266,9 +303,11 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     );
     // Resolve to false when the snackbar dismisses without the Upgrade
     // action being tapped — caller proceeds with the unlocked slice.
-    unawaited(controller.closed.then((_) {
-      if (!completer.isCompleted) completer.complete(false);
-    }));
+    unawaited(
+      controller.closed.then((_) {
+        if (!completer.isCompleted) completer.complete(false);
+      }),
+    );
     return completer.future;
   }
 
@@ -301,13 +340,14 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     if (subscription.isSubscribed || subscription.isLoading) {
       analyses = allAnalyses;
     } else {
-      analyses = allAnalyses.where((a) {
-        return !isLikedGameLocked(
-          a.createdAt.toLocal(),
-          isSubscribed: subscription.isSubscribed,
-          subscriptionLoading: subscription.isLoading,
-        );
-      }).toList();
+      analyses =
+          allAnalyses.where((a) {
+            return !isLikedGameLocked(
+              a.createdAt.toLocal(),
+              isSubscribed: subscription.isSubscribed,
+              subscriptionLoading: subscription.isLoading,
+            );
+          }).toList();
       final lockedCount = allAnalyses.length - analyses.length;
       if (lockedCount > 0) {
         final proceed = await _promptExportUpgrade(lockedCount);
@@ -377,9 +417,10 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
 
       if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
-      final origin = box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : const Rect.fromLTWH(0, 0, 1, 1);
+      final origin =
+          box != null
+              ? box.localToGlobal(Offset.zero) & box.size
+              : const Rect.fromLTWH(0, 0, 1, 1);
 
       await Share.shareXFiles(
         xFiles,
@@ -407,6 +448,8 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   Widget _buildBody(MyLikesData data) {
     if (data.isEmpty) return _buildEmptyState();
 
+    final selectedTag = ref.watch(myLikesFilterProvider).selectedTag;
+
     Widget content = CustomScrollView(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(
@@ -416,13 +459,24 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-            child: _buildSearchBar(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSearchBar(),
+                _buildTagQuickFilters(data.totalLiked),
+              ],
+            ),
           ),
         ),
         if (data.hasNoMatches)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: _buildNoMatchesState(),
+            child: _buildNoMatchesState(
+              subtitle:
+                  selectedTag == null
+                      ? 'Try adjusting your search or filters'
+                      : 'Try another tag or clear the tag filter',
+            ),
           )
         else
           _buildSectionsSliver(data),
@@ -433,7 +487,9 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     if (ResponsiveHelper.isTablet) {
       content = Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
           child: content,
         ),
       );
@@ -450,6 +506,53 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       onChanged: _onSearchChanged,
       onClear: _clearSearch,
       onFilterTap: _showFilterDialog,
+    );
+  }
+
+  Widget _buildTagQuickFilters(int totalLiked) {
+    final selectedTag = ref.watch(myLikesFilterProvider).selectedTag;
+    // Retain the last counts through a reload so the chip row doesn't collapse
+    // and snap back when a swipe-remove re-derives the tag counts.
+    final liveCounts = ref.watch(myLikesTagCountsProvider).valueOrNull;
+    if (liveCounts != null) {
+      _lastTagCounts = liveCounts;
+    }
+    final counts = liveCounts ?? _lastTagCounts;
+    if (counts.isEmpty && selectedTag == null) {
+      return const SizedBox.shrink();
+    }
+
+    final chips = <Widget>[
+      _LikeTagFilterChip(
+        label: 'All',
+        count: totalLiked,
+        selected: selectedTag == null,
+        color: context.colors.textPrimary,
+        onTap: () => _selectTagFilter(null),
+      ),
+    ];
+
+    for (final tag in kLikeTags) {
+      final count = counts[tag.label] ?? 0;
+      if (count == 0 && selectedTag != tag.label) continue;
+      chips.add(
+        _LikeTagFilterChip(
+          label: tag.label,
+          count: count,
+          selected: selectedTag == tag.label,
+          color: tag.color,
+          onTap: () => _selectTagFilter(tag.label),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(top: 12.h),
+      // Wrap (not a horizontal ListView): a scrolling strip always chops the
+      // overflow chip at the viewport edge — and long labels make that common.
+      // Wrapping flows chips onto extra rows so every one shows in full, with
+      // no horizontal cut-off whatever the chip count or label length.
+      child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
     );
   }
 
@@ -553,7 +656,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
   }
 
-  Widget _buildNoMatchesState() {
+  Widget _buildNoMatchesState({String? subtitle}) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -572,7 +675,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           ),
           SizedBox(height: 6.h),
           Text(
-            'Try adjusting your search or filters',
+            subtitle ?? 'Try adjusting your search or filters',
             style: AppTypography.textSmRegular.copyWith(
               color: context.colors.textPrimary.withValues(alpha: 0.55),
             ),
@@ -625,8 +728,11 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
             ),
             SizedBox(height: 20.h),
             TextButton(
-              onPressed:
-                  () => ref.read(likedGamesProvider.notifier).refresh(),
+              onPressed: () {
+                ref.invalidate(myLikesViewProvider);
+                ref.invalidate(myLikesTagCountsProvider);
+                ref.read(likedGamesProvider.notifier).refresh();
+              },
               child: Text(
                 'Retry',
                 style: AppTypography.textSmMedium.copyWith(
@@ -635,6 +741,115 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LikeTagFilterChip extends StatelessWidget {
+  const _LikeTagFilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final t = selected ? 1.0 : 0.0;
+    final background =
+        Color.lerp(
+          colors.textPrimary.withValues(alpha: 0.05),
+          color.withValues(alpha: 0.18),
+          t,
+        )!;
+    final borderColor =
+        Color.lerp(
+          colors.textPrimary.withValues(alpha: 0.1),
+          color.withValues(alpha: 0.75),
+          t,
+        )!;
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      scale: selected ? 1.03 : 1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20.br),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            height: 40.h,
+            padding: EdgeInsets.symmetric(horizontal: 12.w),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(20.br),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8.w,
+                  height: 8.w,
+                  decoration: BoxDecoration(
+                    color:
+                        selected
+                            ? color
+                            : color.withValues(alpha: label == 'All' ? 0.5 : 1),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                SizedBox(width: 7.w),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color:
+                        selected
+                            ? colors.textPrimary
+                            : colors.textPrimary.withValues(alpha: 0.72),
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+                SizedBox(width: 7.w),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                  decoration: BoxDecoration(
+                    color:
+                        selected
+                            ? color.withValues(alpha: 0.18)
+                            : colors.textPrimary.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(999.br),
+                  ),
+                  child: Text(
+                    count.toString(),
+                    style: AppTypography.textXsMedium.copyWith(
+                      color:
+                          selected
+                              ? colors.textPrimary
+                              : colors.textPrimary.withValues(alpha: 0.55),
+                      fontSize: 10.sp,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

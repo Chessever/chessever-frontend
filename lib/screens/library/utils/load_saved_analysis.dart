@@ -45,7 +45,7 @@ Future<void> loadSavedAnalysis(
   final savedAnalysisData = createSavedAnalysisData(resolvedAnalysis);
 
   // Navigate to chess board with saved analysis data
-  Navigator.of(context).push(
+  await Navigator.of(context).push(
     MaterialPageRoute(
       builder:
           (_) => ChessBoardScreenNew(
@@ -103,7 +103,7 @@ Future<void> loadSavedAnalysisWithSwiping(
   // Create SavedAnalysisData for the tapped game only
   final savedAnalysisData = savedAnalysesDataByIndex[tappedIndex];
 
-  Navigator.of(context).push(
+  await Navigator.of(context).push(
     MaterialPageRoute(
       builder:
           (_) => ChessBoardScreenNew(
@@ -141,6 +141,7 @@ SavedAnalysisData createSavedAnalysisData(SavedAnalysis analysis) {
     lastViewedPosition: analysis.lastViewedPosition,
     title: analysis.title,
     folderId: analysis.folderId,
+    tags: analysis.tags,
   );
 }
 
@@ -156,6 +157,7 @@ SavedAnalysisData createReadOnlySavedAnalysisData(SavedAnalysis analysis) {
     movePointer: null,
     isBoardFlipped: false,
     lastViewedPosition: analysis.lastViewedPosition,
+    tags: analysis.tags,
   );
 }
 

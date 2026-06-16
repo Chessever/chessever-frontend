@@ -545,6 +545,33 @@ class LibraryRepository extends BaseRepository {
         return SavedAnalysis.fromSupabase(response);
       });
 
+  /// Update only the user-facing classification tags for a saved analysis.
+  ///
+  /// Immediate tag changes should not write a stale chess tree, comments, or
+  /// folder selection back over the row, so this intentionally patches the
+  /// smallest server surface needed for the liked-games tag picker.
+  Future<SavedAnalysis> updateSavedAnalysisTags({
+    required String analysisId,
+    required List<String> tags,
+  }) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final response =
+        await supabase
+            .from('user_saved_analyses')
+            .update({
+              'tags': tags,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', analysisId)
+            .eq('user_id', userId)
+            .select()
+            .single();
+
+    return SavedAnalysis.fromSupabase(response);
+  });
+
   /// Update last opened timestamp
   Future<void> updateLastOpened(String analysisId) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
@@ -712,8 +739,14 @@ class LibraryRepository extends BaseRepository {
   PostgrestFilterBuilder<T> _applyBookFilters<T>(
     PostgrestFilterBuilder<T> query,
     GameFilter filter,
-    String search,
-  ) {
+    String search, {
+    String? tag,
+  }) {
+    final normalizedTag = tag?.trim();
+    if (normalizedTag != null && normalizedTag.isNotEmpty) {
+      query = query.contains('tags', [normalizedTag]);
+    }
+
     final term = _sanitizeOrTerm(search);
     if (term.isNotEmpty) {
       query = query.or(
@@ -780,12 +813,84 @@ class LibraryRepository extends BaseRepository {
     return ordered.order('created_at', ascending: false);
   }
 
+  /// My Likes query for the read screen.
+  ///
+  /// Tag/search/filter/sort all run in Supabase/PostgREST against the full
+  /// liked-games folder. This keeps tag filtering correct if the UI later
+  /// pages the list instead of loading every liked row locally.
+  Future<List<SavedAnalysis>> getLikedAnalysesForView({
+    required String folderId,
+    required GameFilter filter,
+    String search = '',
+    String? tag,
+  }) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    var query = supabase
+        .from('user_saved_analyses')
+        .select()
+        .eq('user_id', userId)
+        .eq('folder_id', folderId);
+    query = _applyBookFilters(query, filter, search, tag: tag);
+
+    final response = await _orderBook(query, filter);
+
+    return (response as List)
+        .map((json) => SavedAnalysis.fromSupabase(json))
+        .toList();
+  });
+
+  /// Exact count of all liked games in the current user's liked-games folder.
+  Future<int> getOwnedAnalysisCountInFolder(String folderId) =>
+      handleApiCall(() async {
+        final userId = supabase.auth.currentUser?.id;
+        if (userId == null) throw Exception('User not authenticated');
+
+        return supabase
+            .from('user_saved_analyses')
+            .count(CountOption.exact)
+            .eq('user_id', userId)
+            .eq('folder_id', folderId);
+      });
+
+  /// Counts persisted tags in a folder, fetching only the `tags` column instead
+  /// of full PGN/analysis payloads.
+  Future<Map<String, int>> getTagCountsInFolder({
+    required String folderId,
+    bool isSubscribed = false,
+  }) => handleApiCall(() async {
+    var query = supabase
+        .from('user_saved_analyses')
+        .select('tags')
+        .eq('folder_id', folderId);
+    if (!isSubscribed) {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+      query = query.eq('user_id', userId);
+    }
+    final response = await query;
+
+    final counts = <String, int>{};
+    for (final row in (response as List)) {
+      final tags = row['tags'];
+      if (tags is! List) continue;
+      for (final tag in tags) {
+        final label = tag?.toString().trim();
+        if (label == null || label.isEmpty) continue;
+        counts[label] = (counts[label] ?? 0) + 1;
+      }
+    }
+    return counts;
+  });
+
   /// Paginated query for folder contents (owned folders).
   /// Filter/sort applied server-side over the whole folder.
   Future<List<SavedAnalysis>> getSavedAnalysesPaginated({
     required String folderId,
     required GameFilter filter,
     String search = '',
+    String? tag,
     int limit = 30,
     int offset = 0,
   }) => handleApiCall(() async {
@@ -797,7 +902,7 @@ class LibraryRepository extends BaseRepository {
         .select()
         .eq('user_id', userId)
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search);
+    query = _applyBookFilters(query, filter, search, tag: tag);
 
     final response = await _orderBook(
       query,
@@ -814,6 +919,7 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
+    String? tag,
     int limit = 30,
     int offset = 0,
   }) => handleApiCall(() async {
@@ -821,7 +927,7 @@ class LibraryRepository extends BaseRepository {
         .from('user_saved_analyses')
         .select()
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search);
+    query = _applyBookFilters(query, filter, search, tag: tag);
 
     final response = await _orderBook(
       query,
@@ -838,6 +944,7 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
+    String? tag,
   }) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -847,7 +954,7 @@ class LibraryRepository extends BaseRepository {
         .count(CountOption.exact)
         .eq('user_id', userId)
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search);
+    query = _applyBookFilters(query, filter, search, tag: tag);
     return await query;
   });
 
@@ -856,12 +963,13 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
+    String? tag,
   }) => handleApiCall(() async {
     var query = supabase
         .from('user_saved_analyses')
         .count(CountOption.exact)
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search);
+    query = _applyBookFilters(query, filter, search, tag: tag);
     return await query;
   });
 

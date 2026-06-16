@@ -14,13 +14,29 @@ class PushNotificationsService {
   static const String _notificationsPromptedKey = 'notifications_prompted_once';
 
   bool _initialized = false;
+  Future<void>? _initializeFuture;
   bool _permissionRequestInFlight = false;
   String? _pendingUserId;
   final List<void Function(OSPushSubscriptionChangedState)>
   _pendingPushObservers = [];
 
-  Future<void> initialize({required String appId}) async {
-    if (_initialized) return;
+  Future<void> initialize({required String appId}) {
+    if (_initialized) return Future.value();
+    final existingInitializeFuture = _initializeFuture;
+    if (existingInitializeFuture != null) {
+      return existingInitializeFuture;
+    }
+
+    final initializeFuture = _initialize(appId).whenComplete(() {
+      if (!_initialized) {
+        _initializeFuture = null;
+      }
+    });
+    _initializeFuture = initializeFuture;
+    return initializeFuture;
+  }
+
+  Future<void> _initialize(String appId) async {
     final normalizedAppId = appId.trim();
     if (normalizedAppId.isEmpty) {
       debugPrint(
@@ -83,6 +99,17 @@ class PushNotificationsService {
     debugPrint('[PushNotifications] OneSignal initialized.');
   }
 
+  Future<void> _waitForInitializeIfPending() async {
+    final initializeFuture = _initializeFuture;
+    if (_initialized || initializeFuture == null) return;
+
+    try {
+      await initializeFuture;
+    } catch (_) {
+      // Initialization failures should not make permission checks crash startup.
+    }
+  }
+
   /// Read the current OneSignal subscription ID — used by RevenueCatService.logIn
   /// to re-tag the RC customer profile when a new user signs in on the same
   /// device. The subscription ID itself is device-scoped, so it doesn't change
@@ -111,6 +138,7 @@ class PushNotificationsService {
   bool get hasPermission => _initialized && OneSignal.Notifications.permission;
 
   Future<bool> requestPermissionWithDialog() async {
+    await _waitForInitializeIfPending();
     if (!_initialized) return false;
     if (_permissionRequestInFlight) {
       return OneSignal.Notifications.permission;
@@ -134,9 +162,10 @@ class PushNotificationsService {
   }
 
   /// Request permission only if not already granted.
-  /// Safe to call repeatedly — no-ops if permission is already granted,
-  /// and on iOS the OS dialog only shows once regardless.
+  /// Safe to call repeatedly: it only opens the native prompt when the OS says
+  /// it can still be shown, so denied users are not bounced to Settings.
   Future<void> requestPermissionIfNotGranted() async {
+    await _waitForInitializeIfPending();
     if (!_initialized) return;
     if (OneSignal.Notifications.permission) {
       final enabled = await _loadLocalEnabledNullable();
@@ -149,8 +178,14 @@ class PushNotificationsService {
       return;
     }
 
-    final prompted = await _loadPromptedOnce();
-    if (prompted) return;
+    final canRequest = await OneSignal.Notifications.canRequest();
+    if (!canRequest) {
+      await _persistLocalEnabled(false);
+      await _persistPromptedOnce();
+      await _syncPreferenceToSupabase(false);
+      OneSignal.User.pushSubscription.optOut();
+      return;
+    }
 
     await requestPermissionWithDialog();
   }
@@ -202,15 +237,6 @@ class PushNotificationsService {
       await db.setBool(_notificationsEnabledKey, enabled);
     } catch (_) {
       // Local storage failure isn't critical.
-    }
-  }
-
-  Future<bool> _loadPromptedOnce() async {
-    try {
-      final db = AppDatabase.instance;
-      return await db.getBool(_notificationsPromptedKey) ?? false;
-    } catch (_) {
-      return false;
     }
   }
 

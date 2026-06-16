@@ -9,9 +9,9 @@ import 'package:flutter/material.dart';
 const String kLiveWidgetsIntroSeenKey = 'live_widgets_intro_seen';
 
 /// A large, one-time intro that teaches BOTH live-game widgets — Picture-in-
-/// Picture and the Live Activity / lock-screen card — each with a phone mockup
-/// and how to turn it on. [onOpenSettings] runs after the dialog closes when the
-/// user taps "Open Settings"; the caller routes to the notification settings.
+/// Picture and the Live Activity / lock-screen card — each with a phone mockup.
+/// [onOpenSettings] runs after the dialog closes when the user taps
+/// "Manage Settings"; the caller routes to the notification settings.
 Future<void> showLiveWidgetsIntroDialog(
   BuildContext context, {
   required VoidCallback onOpenSettings,
@@ -104,8 +104,8 @@ Future<void> showLiveWidgetsIntroDialog(
                               'A floating mini-board that stays on top of other '
                               'apps and follows the game live.',
                           steps: const [
-                            'Turn it on in Settings → Notifications → '
-                                'Picture in Picture.',
+                            'It is enabled by default for live games when your '
+                                'device supports Picture in Picture.',
                             'Open a live game, then leave the app — the board '
                                 'keeps playing in a floating window.',
                           ],
@@ -170,7 +170,7 @@ Future<void> showLiveWidgetsIntroDialog(
                             onOpenSettings();
                           },
                           child: Text(
-                            'Open Settings',
+                            'Manage Settings',
                             style: AppTypography.textSmBold.copyWith(
                               color: Colors.black,
                             ),

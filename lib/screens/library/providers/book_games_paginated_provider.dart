@@ -46,12 +46,14 @@ class BookPaginationKey {
   final bool isSubscribed;
   final GameFilter filter;
   final String search;
+  final String? tag;
 
   const BookPaginationKey({
     required this.folderId,
     this.isSubscribed = false,
     required this.filter,
     this.search = '',
+    this.tag,
   });
 
   @override
@@ -61,11 +63,41 @@ class BookPaginationKey {
           folderId == other.folderId &&
           isSubscribed == other.isSubscribed &&
           filter == other.filter &&
-          search == other.search;
+          search == other.search &&
+          tag == other.tag;
 
   @override
-  int get hashCode => Object.hash(folderId, isSubscribed, filter, search);
+  int get hashCode => Object.hash(folderId, isSubscribed, filter, search, tag);
 }
+
+class FolderTagCountsKey {
+  const FolderTagCountsKey({
+    required this.folderId,
+    required this.isSubscribed,
+  });
+
+  final String folderId;
+  final bool isSubscribed;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FolderTagCountsKey &&
+          folderId == other.folderId &&
+          isSubscribed == other.isSubscribed;
+
+  @override
+  int get hashCode => Object.hash(folderId, isSubscribed);
+}
+
+final folderTagCountsProvider = FutureProvider.autoDispose
+    .family<Map<String, int>, FolderTagCountsKey>((ref, key) async {
+      final repo = ref.watch(libraryRepositoryProvider);
+      return repo.getTagCountsInFolder(
+        folderId: key.folderId,
+        isSubscribed: key.isSubscribed,
+      );
+    });
 
 /// Paginated book games provider.
 ///
@@ -101,6 +133,7 @@ class BookGamesNotifier
           folderId: key.folderId,
           filter: key.filter,
           search: key.search,
+          tag: key.tag,
           limit: kBookPageSize,
           offset: offset,
         ),
@@ -109,6 +142,7 @@ class BookGamesNotifier
             folderId: key.folderId,
             filter: key.filter,
             search: key.search,
+            tag: key.tag,
           ),
       ]);
       page = results[0] as List<SavedAnalysis>;
@@ -119,6 +153,7 @@ class BookGamesNotifier
           folderId: key.folderId,
           filter: key.filter,
           search: key.search,
+          tag: key.tag,
           limit: kBookPageSize,
           offset: offset,
         ),
@@ -127,6 +162,7 @@ class BookGamesNotifier
             folderId: key.folderId,
             filter: key.filter,
             search: key.search,
+            tag: key.tag,
           ),
       ]);
       page = results[0] as List<SavedAnalysis>;

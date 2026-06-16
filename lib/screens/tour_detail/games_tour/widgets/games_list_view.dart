@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
@@ -74,6 +77,15 @@ class GamesListView extends ConsumerWidget {
       isKnockoutTournament,
       matchGroupsByRound,
     );
+
+    // Realtime fan-in: instead of one Supabase channel PER card (which blows
+    // the per-client channel rate limit — `ChannelRateLimitReached` — and
+    // silently kills live updates, leaving only the slow poll), every game in a
+    // round shares ONE batched `.inFilter` channel. Each card still rebuilds
+    // individually (it selects only its own gameId from the shared update map),
+    // so updates stay per-card and instant. Chunked so one channel's `in`
+    // filter never grows unbounded on huge rounds.
+    final liveBatchKeyByGameId = _buildLiveBatchKeys(gamesByRound);
 
     final itemCount = _computeItemCount(
       gamesListViewMode,
@@ -213,6 +225,7 @@ class GamesListView extends ConsumerWidget {
                             lookup,
                             orderedGamesList,
                             matchGroupsByRound,
+                            liveBatchKeyByGameId,
                           )
                           : _buildCardRow(
                             context,
@@ -220,6 +233,7 @@ class GamesListView extends ConsumerWidget {
                             lookup,
                             orderedGamesList,
                             matchGroupsByRound,
+                            liveBatchKeyByGameId,
                           ),
                 );
                 // TABLET: Wrap with SizedBox to provide bounded width
@@ -268,6 +282,7 @@ class GamesListView extends ConsumerWidget {
     _GameRowData item,
     List<GamesTourModel> orderedGamesList,
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
+    Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
   ) {
     final game1Widget = _buildGridGame(
       context,
@@ -277,6 +292,7 @@ class GamesListView extends ConsumerWidget {
       orderedGamesList,
       matchGroupsByRound,
       item.fixedBottomSide1,
+      liveBatchKeyByGameId,
     );
 
     final game2Widget =
@@ -289,6 +305,7 @@ class GamesListView extends ConsumerWidget {
               orderedGamesList,
               matchGroupsByRound,
               item.fixedBottomSide2,
+              liveBatchKeyByGameId,
             )
             : null;
 
@@ -321,10 +338,12 @@ class GamesListView extends ConsumerWidget {
     List<GamesTourModel> orderedGamesList,
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Side? fixedBottomSide,
+    Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
   ) {
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${game.gameId}'),
       game: game,
+      liveBatchKey: liveBatchKeyByGameId[game.gameId],
       orderedGames: orderedGamesList,
       gameIndex: globalIndex,
       onChangedWithLiveGames:
@@ -364,6 +383,7 @@ class GamesListView extends ConsumerWidget {
     _GameRowData item,
     List<GamesTourModel> orderedGamesList,
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
+    Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
   ) {
     // Create modified gamesData with correct orderedGames for multi-stage knockouts
     final modifiedGamesData = GamesScreenModel(
@@ -373,6 +393,7 @@ class GamesListView extends ConsumerWidget {
 
     return GameCardWrapperWidget(
       game: item.game1,
+      liveBatchKey: liveBatchKeyByGameId[item.game1.gameId],
       gamesData: modifiedGamesData,
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
@@ -424,6 +445,43 @@ class GamesListView extends ConsumerWidget {
       );
     }
   }
+}
+
+/// Max games per batched realtime channel. Supabase `postgres_changes` `in`
+/// filters and per-channel payloads stay healthy well within this; chunking
+/// guarantees a single huge round can't build one oversized channel.
+const int _kLiveBatchChunkSize = 25;
+
+/// Builds the gameId → shared [LiveGamesBatchKey] map for the whole list.
+///
+/// Every game in a round is assigned a chunked batch key so the round's games
+/// share a handful of realtime channels instead of one channel per card. This
+/// is what keeps the app under Supabase's per-client channel limit while still
+/// delivering per-move updates (each card selects its own row from the shared
+/// channel's update map).
+Map<String, LiveGamesBatchKey> _buildLiveBatchKeys(
+  Map<String, List<GamesTourModel>> gamesByRound,
+) {
+  final result = <String, LiveGamesBatchKey>{};
+  for (final entry in gamesByRound.entries) {
+    final roundId = entry.key;
+    final games = entry.value;
+    if (games.isEmpty) continue;
+    final chunkCount = (games.length / _kLiveBatchChunkSize).ceil();
+    for (var chunk = 0; chunk < chunkCount; chunk++) {
+      final start = chunk * _kLiveBatchChunkSize;
+      final end = math.min(start + _kLiveBatchChunkSize, games.length);
+      final chunkGames = games.sublist(start, end);
+      final key = LiveGamesBatchKey(
+        scopeId: 'tour_round:$roundId:$chunk',
+        gameIds: chunkGames.map((game) => game.gameId),
+      );
+      for (final game in chunkGames) {
+        result[game.gameId] = key;
+      }
+    }
+  }
+  return result;
 }
 
 int _computeItemCount(

@@ -7,6 +7,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'package:chessever2/repository/supabase/settings/settings.dart';
 import 'package:chessever2/repository/supabase/settings/settings_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
@@ -40,14 +41,13 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
   final resolver = ref.read(_strictLiveGroupBroadcastResolverProvider);
   final settingsRepository = ref.read(settingsRepositoryProvider);
   final controller = StreamController<List<String>>();
-  final configuredLiveEntriesStream =
-      settingsRepository.subscribeToLiveGroupBroadcastIds();
-  final liveRoundIdsStream = settingsRepository.subscribeToLiveRoundIds();
+  final settingsStream = settingsRepository.subscribeToSettings();
   var configuredLiveEntries = const <String>[];
   var liveRoundIds = const <String>[];
-  var hasConfiguredSnapshot = false;
-  var hasLiveRoundsSnapshot = false;
+  var hasSettingsSnapshot = false;
+  var refreshedAfterRealtimeInterruption = false;
   var resolveRequestId = 0;
+  var settingsSnapshotVersion = 0;
   List<String>? lastResolvedIds;
 
   void emit(List<String> nextIds) {
@@ -80,7 +80,7 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
   }
 
   Future<void> emitResolvedIds() async {
-    if (!hasConfiguredSnapshot || !hasLiveRoundsSnapshot) {
+    if (!hasSettingsSnapshot) {
       return;
     }
 
@@ -97,40 +97,66 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
     emit(resolvedIds);
   }
 
+  void applySettingsSnapshot(Settings? settings) {
+    settingsSnapshotVersion += 1;
+    configuredLiveEntries = List<String>.unmodifiable(
+      settings?.liveGroupBroadcastIds ?? const <String>[],
+    );
+    liveRoundIds = List<String>.unmodifiable(
+      settings?.liveRoundIds ?? const <String>[],
+    );
+    hasSettingsSnapshot = true;
+    refreshedAfterRealtimeInterruption = false;
+    unawaited(emitResolvedIds());
+  }
+
+  Future<void> refreshSettingsSnapshot(String reason) async {
+    final requestSnapshotVersion = settingsSnapshotVersion;
+    try {
+      final settings = await settingsRepository.getSettings();
+      if (controller.isClosed ||
+          requestSnapshotVersion != settingsSnapshotVersion) {
+        return;
+      }
+      applySettingsSnapshot(settings);
+    } catch (error, stackTrace) {
+      if (_isRecoverableRealtimeSettingsStreamError(error)) {
+        debugPrint(
+          '[StrictLiveEvents] Settings snapshot refresh skipped after $reason; keeping cached live IDs: $error',
+        );
+      } else {
+        _logStrictLiveResolveIssue(
+          'settings snapshot refresh after $reason',
+          error,
+          stackTrace,
+        );
+      }
+
+      if (!hasSettingsSnapshot) {
+        hasSettingsSnapshot = true;
+        unawaited(emitResolvedIds());
+      }
+    }
+  }
+
   // Unblock first-load callers immediately; strict IDs will stream in later.
   emit(const <String>[]);
 
-  final configuredSubscription = configuredLiveEntriesStream.listen(
-    (nextConfiguredLiveEntries) {
-      configuredLiveEntries = List<String>.unmodifiable(
-        nextConfiguredLiveEntries,
-      );
-      hasConfiguredSnapshot = true;
-      unawaited(emitResolvedIds());
-    },
-    onError: (Object error, StackTrace stackTrace) {
-      _logStrictLiveResolveIssue(
-        'configured live IDs stream',
-        error,
-        stackTrace,
-      );
-      hasConfiguredSnapshot = true;
-      configuredLiveEntries = const <String>[];
-      unawaited(emitResolvedIds());
-    },
-  );
+  unawaited(refreshSettingsSnapshot('startup'));
 
-  final liveRoundsSubscription = liveRoundIdsStream.listen(
-    (nextLiveRoundIds) {
-      liveRoundIds = List<String>.unmodifiable(nextLiveRoundIds);
-      hasLiveRoundsSnapshot = true;
-      unawaited(emitResolvedIds());
-    },
+  final settingsSubscription = settingsStream.listen(
+    applySettingsSnapshot,
     onError: (Object error, StackTrace stackTrace) {
-      _logStrictLiveResolveIssue('live round IDs stream', error, stackTrace);
-      hasLiveRoundsSnapshot = true;
-      liveRoundIds = const <String>[];
-      unawaited(emitResolvedIds());
+      if (_isRecoverableRealtimeSettingsStreamError(error)) {
+        if (!refreshedAfterRealtimeInterruption) {
+          refreshedAfterRealtimeInterruption = true;
+          unawaited(refreshSettingsSnapshot('realtime interruption'));
+        }
+        return;
+      }
+
+      _logStrictLiveResolveIssue('settings stream', error, stackTrace);
+      unawaited(refreshSettingsSnapshot('stream error'));
     },
   );
 
@@ -140,13 +166,23 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
 
   ref.onDispose(() {
     refreshTimer.cancel();
-    unawaited(configuredSubscription.cancel());
-    unawaited(liveRoundsSubscription.cancel());
+    unawaited(settingsSubscription.cancel());
     unawaited(controller.close());
   });
 
   return controller.stream;
 });
+
+@visibleForTesting
+bool isRecoverableRealtimeSettingsStreamError(Object error) =>
+    _isRecoverableRealtimeSettingsStreamError(error);
+
+bool _isRecoverableRealtimeSettingsStreamError(Object error) {
+  final message = error.toString();
+  return message.contains('RealtimeSubscribeException') &&
+      (message.contains('RealtimeSubscribeStatus.channelError') ||
+          message.contains('RealtimeSubscribeStatus.timedOut'));
+}
 
 class _StrictLiveGroupBroadcastResolver {
   const _StrictLiveGroupBroadcastResolver({
@@ -241,7 +277,9 @@ void _logStrictLiveResolveIssue(
   StackTrace stackTrace,
 ) {
   if (isExpectedLiveResolveError(error)) {
-    debugPrint('[StrictLiveEvents] $label unavailable (offline/transient): $error');
+    debugPrint(
+      '[StrictLiveEvents] $label unavailable (offline/transient): $error',
+    );
     return;
   }
   debugPrint('[StrictLiveEvents] Failed to $label: $error\n$stackTrace');

@@ -1,5 +1,5 @@
-import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
+import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
@@ -60,15 +60,29 @@ class MyLikesData {
 /// Favorites games tab exposes (apply/clear filter, search/clear) so the same
 /// [GameFilter] dialog drives both.
 class MyLikesFilterState {
-  const MyLikesFilterState({required this.filter, required this.searchQuery});
+  const MyLikesFilterState({
+    required this.filter,
+    required this.searchQuery,
+    this.selectedTag,
+  });
 
   final GameFilter filter;
   final String searchQuery;
+  final String? selectedTag;
 
   MyLikesFilterState copyWith({GameFilter? filter, String? searchQuery}) {
     return MyLikesFilterState(
       filter: filter ?? this.filter,
       searchQuery: searchQuery ?? this.searchQuery,
+      selectedTag: selectedTag,
+    );
+  }
+
+  MyLikesFilterState withSelectedTag(String? tag) {
+    return MyLikesFilterState(
+      filter: filter,
+      searchQuery: searchQuery,
+      selectedTag: tag,
     );
   }
 }
@@ -79,18 +93,30 @@ class MyLikesFilterNotifier extends StateNotifier<MyLikesFilterState> {
         MyLikesFilterState(filter: GameFilter.defaultFilter(), searchQuery: ''),
       );
 
-  void applyFilter(GameFilter filter) =>
-      state = state.copyWith(filter: filter);
+  void applyFilter(GameFilter filter) => state = state.copyWith(filter: filter);
   void clearFilter() =>
       state = state.copyWith(filter: GameFilter.defaultFilter());
   void searchGames(String query) => state = state.copyWith(searchQuery: query);
   void clearSearch() => state = state.copyWith(searchQuery: '');
+  void selectTag(String? tag) => state = state.withSelectedTag(tag);
 }
 
-final myLikesFilterProvider =
-    StateNotifierProvider.autoDispose<MyLikesFilterNotifier, MyLikesFilterState>(
-      (ref) => MyLikesFilterNotifier(),
-    );
+final myLikesFilterProvider = StateNotifierProvider.autoDispose<
+  MyLikesFilterNotifier,
+  MyLikesFilterState
+>((ref) => MyLikesFilterNotifier());
+
+final myLikesTagCountsProvider = FutureProvider.autoDispose<Map<String, int>>((
+  ref,
+) async {
+  final repo = ref.watch(libraryRepositoryProvider);
+  // Re-derive the counts whenever the liked list changes (a like/unlike or a
+  // tag write), so the quick-filter chips stay current even while the screen
+  // is already open — not only on a fresh navigation.
+  ref.watch(likedGamesProvider);
+  final folder = await ref.watch(likedGamesFolderProvider.future);
+  return repo.getTagCountsInFolder(folderId: folder.id);
+});
 
 /// Whether a free user may NOT open a game liked at [likedAt].
 ///
@@ -126,141 +152,80 @@ List<MapEntry<String, List<MyLikesEntry>>> groupEntriesByLikedAt(
   return keys.map((k) => MapEntry(k, grouped[k]!)).toList();
 }
 
-int _ratingFromMetadata(MyLikesEntry entry, String key) {
-  final value = entry.analysis.chessGame.metadata[key];
-  if (value is num) return value.toInt();
-  final text = value?.toString() ?? '';
-  final digits = RegExp(r'\d+').firstMatch(text)?.group(0);
-  return int.tryParse(digits ?? '') ?? 0;
-}
-
-int _sortValue(MyLikesEntry entry, GamebaseSortField field) {
-  switch (field) {
-    case GamebaseSortField.whiteElo:
-      return _ratingFromMetadata(entry, 'WhiteElo');
-    case GamebaseSortField.blackElo:
-      return _ratingFromMetadata(entry, 'BlackElo');
-    case GamebaseSortField.avgElo:
-      final white = _ratingFromMetadata(entry, 'WhiteElo');
-      final black = _ratingFromMetadata(entry, 'BlackElo');
-      if (white > 0 && black > 0) return ((white + black) / 2).round();
-      return white > 0 ? white : black;
-    case GamebaseSortField.date:
-      // Use game-played date when available, fall back to liked-at.
-      final raw =
-          entry.analysis.chessGame.metadata['Date']?.toString().trim() ?? '';
-      if (raw.isNotEmpty && raw != '????.??.??') {
-        final normalized = raw.replaceAll('.', '-').replaceAll('?', '01');
-        final parsed = DateTime.tryParse(normalized);
-        if (parsed != null) return parsed.millisecondsSinceEpoch;
-      }
-      return entry.likedAt.millisecondsSinceEpoch;
-  }
-}
-
-bool _matchesSearch(MyLikesEntry entry, String queryLower) {
-  final md = entry.analysis.chessGame.metadata;
-  final haystack = <String>[
-    entry.analysis.title,
-    entry.game.whitePlayer.name,
-    entry.game.blackPlayer.name,
-    md['Event']?.toString() ?? '',
-    entry.game.eco ?? '',
-    entry.game.openingName ?? '',
-  ];
-  return haystack.any((field) => field.toLowerCase().contains(queryLower));
-}
-
-/// The My Likes view, derived from the liked games, the active filter/search,
-/// and the subscription state. Returns [AsyncValue] mirroring the liked-games
-/// load. All filtering and grouping is client-side over the in-memory list.
-final myLikesViewProvider = Provider.autoDispose<AsyncValue<MyLikesData>>((ref) {
-  final likedAsync = ref.watch(likedGamesProvider);
+/// The My Likes view, derived from a fresh Supabase query over the liked-games
+/// folder plus the active filter/search/tag and subscription state. Filtering
+/// is intentionally not performed over the already-downloaded liked-games cache.
+final myLikesViewProvider = FutureProvider.autoDispose<MyLikesData>((
+  ref,
+) async {
+  final repo = ref.watch(libraryRepositoryProvider);
   final filterState = ref.watch(myLikesFilterProvider);
   final subscription = ref.watch(subscriptionProvider);
+  final folder = await ref.watch(likedGamesFolderProvider.future);
 
-  return likedAsync.whenData((analyses) {
-    var entries =
-        analyses
-            .map(
-              (analysis) => MyLikesEntry(
-                analysis: analysis,
-                // Local time so "Today"/the 7-day window match the user's day,
-                // not UTC (created_at parses as UTC from Supabase).
-                game: savedAnalysisToCardGame(analysis),
-                likedAt: analysis.createdAt.toLocal(),
-                isLocked: isLikedGameLocked(
-                  analysis.createdAt.toLocal(),
-                  isSubscribed: subscription.isSubscribed,
-                  subscriptionLoading: subscription.isLoading,
-                ),
+  // Filter + sort are premium-only. While the subscription is still resolving
+  // (cold start) we treat the user as subscribed so we don't wipe a real
+  // premium user's saved filter for a frame. Tag filtering is a separate
+  // liked-game classification and remains available to everyone.
+  final canFilterAndSort = subscription.isSubscribed || subscription.isLoading;
+  final effectiveFilter =
+      canFilterAndSort ? filterState.filter : GameFilter.defaultFilter();
+
+  final results = await Future.wait([
+    repo.getLikedAnalysesForView(
+      folderId: folder.id,
+      filter: effectiveFilter,
+      search: filterState.searchQuery,
+      tag: filterState.selectedTag,
+    ),
+    repo.getOwnedAnalysisCountInFolder(folder.id),
+  ]);
+
+  final analyses = results[0] as List<SavedAnalysis>;
+  final total = results[1] as int;
+
+  final entries =
+      analyses
+          .map(
+            (analysis) => MyLikesEntry(
+              analysis: analysis,
+              // Local time so "Today"/the 7-day window match the user's day,
+              // not UTC (created_at parses as UTC from Supabase).
+              game: savedAnalysisToCardGame(analysis),
+              likedAt: analysis.createdAt.toLocal(),
+              isLocked: isLikedGameLocked(
+                analysis.createdAt.toLocal(),
+                isSubscribed: subscription.isSubscribed,
+                subscriptionLoading: subscription.isLoading,
               ),
-            )
-            .toList();
+            ),
+          )
+          .toList();
 
-    final total = entries.length;
+  // Sort override is already applied in Supabase. Keep the synthetic bucket so
+  // a sorted list reads as one ordered result instead of being regrouped by day.
+  final sorts = effectiveFilter.sorts;
+  final List<MapEntry<String, List<MyLikesEntry>>> sections;
+  if (sorts.isNotEmpty) {
+    sections =
+        entries.isEmpty
+            ? const <MapEntry<String, List<MyLikesEntry>>>[]
+            : [MapEntry('__sorted__', entries)];
+  } else {
+    sections = groupEntriesByLikedAt(entries);
+  }
 
-    final query = filterState.searchQuery.trim().toLowerCase();
-    if (query.isNotEmpty) {
-      entries = entries.where((e) => _matchesSearch(e, query)).toList();
+  final openable = <SavedAnalysis>[];
+  for (final section in sections) {
+    for (final entry in section.value) {
+      if (!entry.isLocked) openable.add(entry.analysis);
     }
+  }
 
-    // Filter + sort are premium-only. While the subscription is still
-    // resolving (cold start) we treat the user as subscribed so we don't
-    // wipe a real premium user's saved filter for a frame.
-    final canFilterAndSort =
-        subscription.isSubscribed || subscription.isLoading;
-
-    if (canFilterAndSort && filterState.filter.hasActiveFilters) {
-      final games = entries.map((e) => e.game).toList();
-      final keptIds =
-          GameFilterHelper.applyFilter(
-            games,
-            filterState.filter,
-            playerNameQuery: query.isNotEmpty ? query : null,
-          ).map((g) => g.gameId).toSet();
-      entries = entries.where((e) => keptIds.contains(e.game.gameId)).toList();
-    }
-
-    // Sort override (premium only). When a multi-key sort is set, flatten the
-    // date sections into a single bucket so the chosen order is visible at a
-    // glance instead of being shuffled inside per-day groups. Criteria apply
-    // in order (index 0 primary, later entries break ties).
-    final sorts = canFilterAndSort
-        ? filterState.filter.sorts
-        : const <GameSortCriterion>[];
-    final List<MapEntry<String, List<MyLikesEntry>>> sections;
-    if (sorts.isNotEmpty) {
-      final sorted = List<MyLikesEntry>.from(entries)..sort((a, b) {
-        for (final sort in sorts) {
-          final comparison =
-              _sortValue(a, sort.field).compareTo(_sortValue(b, sort.field));
-          final directed = sort.direction == GamebaseSortDirection.asc
-              ? comparison
-              : -comparison;
-          if (directed != 0) return directed;
-        }
-        return b.likedAt.compareTo(a.likedAt);
-      });
-      sections = sorted.isEmpty
-          ? const <MapEntry<String, List<MyLikesEntry>>>[]
-          : [MapEntry('__sorted__', sorted)];
-    } else {
-      sections = groupEntriesByLikedAt(entries);
-    }
-
-    final openable = <SavedAnalysis>[];
-    for (final section in sections) {
-      for (final entry in section.value) {
-        if (!entry.isLocked) openable.add(entry.analysis);
-      }
-    }
-
-    return MyLikesData(
-      sections: sections,
-      openableAnalyses: openable,
-      totalLiked: total,
-      visibleCount: entries.length,
-    );
-  });
+  return MyLikesData(
+    sections: sections,
+    openableAnalyses: openable,
+    totalLiked: total,
+    visibleCount: entries.length,
+  );
 });

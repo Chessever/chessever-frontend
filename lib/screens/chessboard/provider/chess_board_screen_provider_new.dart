@@ -3510,6 +3510,7 @@ class ChessBoardScreenNotifierNew
     required String analysisId,
     required String title,
     String? folderId,
+    List<String> tags = const <String>[],
   }) {
     final currentState = state.valueOrNull;
     savedAnalysisData = SavedAnalysisData(
@@ -3527,6 +3528,7 @@ class ChessBoardScreenNotifierNew
       lastViewedPosition: currentState?.analysisState.currentMoveIndex ?? 0,
       title: title,
       folderId: folderId,
+      tags: tags,
     );
     // Snapshot current game tree so auto-save doesn't immediately re-save
     final analysisGame = currentState?.analysisState.game;
@@ -3549,6 +3551,41 @@ class ChessBoardScreenNotifierNew
       });
     }
     debugPrint('🎯 ChessBoard[$index]: Attached saved analysis ID=$analysisId');
+  }
+
+  /// Forget the library analysis this board was editing. Used when the game is
+  /// removed from its database via the save sheet: auto-save and manual update
+  /// both key off `savedAnalysisData?.analysisId`, so nulling it (and cancelling
+  /// the pending timer) stops them targeting the now-deleted row.
+  void detachSavedAnalysis() {
+    _autoSaveTimer?.cancel();
+    savedAnalysisData = null;
+    final currentState = state.valueOrNull;
+    if (currentState != null &&
+        currentState.autoSaveStatus != AutoSaveStatus.idle) {
+      state = AsyncValue.data(
+        currentState.copyWith(autoSaveStatus: AutoSaveStatus.idle),
+      );
+    }
+    debugPrint('🎯 ChessBoard[$index]: Detached saved analysis');
+  }
+
+  void updateSavedAnalysisTagsSnapshot(List<String> tags) {
+    final current = savedAnalysisData;
+    if (current == null) return;
+    savedAnalysisData = SavedAnalysisData(
+      analysisId: current.analysisId,
+      sourceGameId: current.sourceGameId,
+      chessGame: current.chessGame,
+      variationComments: current.variationComments,
+      moveNags: current.moveNags,
+      movePointer: current.movePointer,
+      isBoardFlipped: current.isBoardFlipped,
+      lastViewedPosition: current.lastViewedPosition,
+      title: current.title,
+      folderId: current.folderId,
+      tags: List<String>.unmodifiable(tags),
+    );
   }
 
   /// Performs an immediate save update to the existing library analysis.
@@ -3586,7 +3623,7 @@ class ChessBoardScreenNotifierNew
         variationComments: currentState.variationComments,
         moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
-        tags: const [],
+        tags: savedAnalysisData?.tags ?? const <String>[],
         isFavorite: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -3678,7 +3715,7 @@ class ChessBoardScreenNotifierNew
         variationComments: currentState.variationComments,
         moveNags: currentState.moveNags,
         lastViewedPosition: currentState.analysisState.currentMoveIndex,
-        tags: const [],
+        tags: savedAnalysisData?.tags ?? const <String>[],
         isFavorite: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -3768,6 +3805,7 @@ class ChessBoardScreenNotifierNew
     required int lastViewedPosition,
     String? title,
     String? folderId,
+    List<String>? tags,
   }) {
     _lastAutoSavedGameJson = gameJson;
     final current = savedAnalysisData;
@@ -3787,6 +3825,7 @@ class ChessBoardScreenNotifierNew
       lastViewedPosition: lastViewedPosition,
       title: title ?? current.title,
       folderId: folderId ?? current.folderId,
+      tags: tags ?? current.tags,
     );
   }
 
@@ -7449,6 +7488,9 @@ class SavedAnalysisData {
   /// Folder ID the analysis belongs to (for auto-save updates)
   final String? folderId;
 
+  /// User-facing classification tags persisted on the saved analysis.
+  final List<String> tags;
+
   const SavedAnalysisData({
     this.analysisId,
     this.sourceGameId,
@@ -7460,6 +7502,7 @@ class SavedAnalysisData {
     required this.lastViewedPosition,
     this.title,
     this.folderId,
+    this.tags = const <String>[],
   });
 }
 

@@ -26,15 +26,51 @@ final likedGamesProvider =
       LikedGamesNotifier.new,
     );
 
+/// Immediate per-game tag selection while the canonical liked row is being
+/// created or updated. `null` means "use the saved row"; an empty list means
+/// "explicitly cleared".
+final likedGamePendingTagsProvider =
+    StateProvider.family<List<String>?, String>((ref, likeId) => null);
+
+/// Dynamic selected tags for a liked game. The pending value wins while a write
+/// is in flight, so reopening UI surfaces shows the user's last tap immediately
+/// instead of waiting on Supabase or a provider reload.
+final likedGameTagsProvider = Provider.family<List<String>, String>((
+  ref,
+  likeId,
+) {
+  final pending = ref.watch(likedGamePendingTagsProvider(likeId));
+  if (pending != null) return pending;
+
+  final list = ref.watch(likedGamesProvider).valueOrNull;
+  final analysis = list?.firstWhereOrNull((a) => a.sourceGameId == likeId);
+  return analysis?.tags ?? const <String>[];
+});
+
 class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   LibraryRepository get _repo => ref.read(libraryRepositoryProvider);
 
   /// In-flight per-game-id toggle calls, so rapid re-taps don't race.
   final Set<String> _inFlight = <String>{};
 
+  /// Per-likeId future for the currently-running toggle. A tag chosen in the
+  /// post-like tag chip can fire before the optimistic liked row exists in
+  /// `state` (the like's PGN resolve + insert is still running), so the tag
+  /// write awaits this before looking for the row — otherwise it finds nothing
+  /// and is silently dropped.
+  final Map<String, Future<void>> _toggleOps = <String, Future<void>>{};
+
+  /// Per-game tag writes are queued so rapid chip taps persist in order and the
+  /// last visible selection is also the final server value.
+  final Map<String, Future<bool>> _tagWriteChains = <String, Future<bool>>{};
+
   @override
   Future<List<SavedAnalysis>> build() async {
-    ref.onDispose(_inFlight.clear);
+    ref.onDispose(() {
+      _inFlight.clear();
+      _tagWriteChains.clear();
+      _toggleOps.clear();
+    });
     final folder = await ref.watch(likedGamesFolderProvider.future);
     final all = await _repo.getSavedAnalyses(folderId: folder.id);
     return all;
@@ -58,12 +94,16 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       return isLiked(likeId);
     }
 
+    // Publish this toggle's lifetime synchronously (before the first await) so a
+    // tag write started while the like is mid-flight can wait for the liked row
+    // to be created instead of racing ahead of the optimistic insert.
+    final op = Completer<void>();
+    _toggleOps[likeId] = op.future;
+
     try {
       final folder = await ref.read(likedGamesFolderProvider.future);
       final list = List<SavedAnalysis>.from(state.valueOrNull ?? const []);
-      final existing = list.firstWhereOrNull(
-        (a) => a.sourceGameId == likeId,
-      );
+      final existing = list.firstWhereOrNull((a) => a.sourceGameId == likeId);
 
       if (existing != null) {
         // OPTIMISTIC unlike
@@ -101,10 +141,18 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       state = AsyncValue.data(list);
 
       final created = await _repo.createSavedAnalysis(analysis);
+      final localTags =
+          (state.valueOrNull ?? const <SavedAnalysis>[])
+              .firstWhereOrNull((a) => a.id.isEmpty && a.sourceGameId == likeId)
+              ?.tags;
+      final displayCreated =
+          localTags != null && localTags.isNotEmpty
+              ? created.copyWith(tags: localTags)
+              : created;
       final reconciled =
           List<SavedAnalysis>.from(state.valueOrNull ?? const [])
             ..removeWhere((a) => a.id.isEmpty && a.sourceGameId == likeId)
-            ..insert(0, created);
+            ..insert(0, displayCreated);
       state = AsyncValue.data(reconciled);
       return true;
     } catch (e) {
@@ -113,6 +161,10 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       return isLiked(likeId);
     } finally {
       _inFlight.remove(likeId);
+      if (identical(_toggleOps[likeId], op.future)) {
+        _toggleOps.remove(likeId);
+      }
+      op.complete();
     }
   }
 
@@ -230,6 +282,125 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
       await _reload();
       return false;
     }
+  }
+
+  /// Sets the classification [tags] on the liked game identified by [likeId]
+  /// (its `sourceGameId`). Additive — only touches the existing `tags` column,
+  /// nothing else about the saved analysis changes.
+  ///
+  /// Called moments after a like, so the persisted row may not exist yet (the
+  /// optimistic insert still carries a placeholder id while the create POST is
+  /// in flight). We briefly wait for a row with a real id before writing, so
+  /// the tag lands on the server record and survives the toggle's reconcile.
+  /// No-op if the game isn't (or stops being) liked.
+  Future<bool> setTagsForLikeId(String likeId, List<String> tags) {
+    final normalized = List<String>.unmodifiable(tags.take(1));
+    ref.read(likedGamePendingTagsProvider(likeId).notifier).state = normalized;
+    _applyOptimisticTags(likeId, normalized);
+
+    final previous = _tagWriteChains[likeId] ?? Future<bool>.value(true);
+    final write = previous
+        .catchError((Object _, StackTrace __) => false)
+        .then((_) => _persistTagsForLikeId(likeId, normalized));
+
+    _tagWriteChains[likeId] = write;
+    unawaited(
+      write.whenComplete(() {
+        if (identical(_tagWriteChains[likeId], write)) {
+          _tagWriteChains.remove(likeId);
+        }
+      }),
+    );
+    return write;
+  }
+
+  Future<bool> _persistTagsForLikeId(String likeId, List<String> tags) async {
+    final target = await _waitForPersistedLike(likeId);
+    if (target == null) {
+      ref.read(likedGamePendingTagsProvider(likeId).notifier).state = null;
+      return false;
+    }
+
+    try {
+      final updated = await _repo.updateSavedAnalysisTags(
+        analysisId: target.id,
+        tags: tags,
+      );
+      _replaceAnalysis(updated);
+      ref.read(likedGamePendingTagsProvider(likeId).notifier).state = null;
+      return true;
+    } catch (e) {
+      debugPrint('[LikedGames] setTagsForLikeId failed: $e');
+      await _reload();
+      ref.read(likedGamePendingTagsProvider(likeId).notifier).state = null;
+      return false;
+    }
+  }
+
+  Future<SavedAnalysis?> _waitForPersistedLike(String likeId) async {
+    // A like for this game may still be in flight — its row gets inserted only
+    // after a (possibly networked) PGN resolve. Wait for that toggle to settle
+    // so the persisted row, with a real id, exists before we try to tag it.
+    // Without this the early `!anyMatch` bail below fires and the tag is lost.
+    final inFlightToggle = _toggleOps[likeId];
+    if (inFlightToggle != null) {
+      try {
+        await inFlightToggle;
+      } catch (_) {}
+    }
+
+    for (var attempt = 0; attempt < 12; attempt++) {
+      final current = state.valueOrNull;
+      if (current == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        continue;
+      }
+
+      final target = current.firstWhereOrNull(
+        (a) => a.sourceGameId == likeId && a.id.isNotEmpty,
+      );
+      if (target != null) return target;
+      // If the game isn't liked at all (no matching id-less placeholder
+      // either), there's nothing to tag — bail out early.
+      final anyMatch = current.any((a) => a.sourceGameId == likeId);
+      if (!anyMatch) return null;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+
+    return (state.valueOrNull ?? const <SavedAnalysis>[]).firstWhereOrNull(
+      (a) => a.sourceGameId == likeId && a.id.isNotEmpty,
+    );
+  }
+
+  bool _applyOptimisticTags(String likeId, List<String> tags) {
+    final list = state.valueOrNull;
+    if (list == null) return false;
+
+    var changed = false;
+    final now = DateTime.now();
+    final updated = <SavedAnalysis>[
+      for (final analysis in list)
+        if (analysis.sourceGameId == likeId)
+          () {
+            changed = true;
+            return analysis.copyWith(tags: tags, updatedAt: now);
+          }()
+        else
+          analysis,
+    ];
+    if (changed) {
+      state = AsyncValue.data(updated);
+    }
+    return changed;
+  }
+
+  void _replaceAnalysis(SavedAnalysis updated) {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    state = AsyncValue.data([
+      for (final analysis in list)
+        analysis.id == updated.id ? updated : analysis,
+    ]);
   }
 
   Future<void> _reload() async {

@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
@@ -13,7 +16,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 
@@ -93,10 +95,9 @@ class GroupEventMatchCard extends ConsumerWidget {
                       children: [
                         if (country1.isNotEmpty) ...[
                           CountryFlag.fromCountryCode(
-country1,
-  theme: ImageTheme(height: 12.h,
-                            width: 16.w,),
-),
+                            country1,
+                            theme: ImageTheme(height: 12.h, width: 16.w),
+                          ),
                           SizedBox(width: 4.w),
                         ],
                         Expanded(
@@ -173,10 +174,9 @@ country1,
                         if (country2.isNotEmpty) ...[
                           SizedBox(width: 4.w),
                           CountryFlag.fromCountryCode(
-country2,
-  theme: ImageTheme(height: 12.h,
-                            width: 16.w,),
-),
+                            country2,
+                            theme: ImageTheme(height: 12.h, width: 16.w),
+                          ),
                         ],
                       ],
                     ),
@@ -203,7 +203,10 @@ country2,
                     ? Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(height: 10.h, color: context.colors.background),
+                        Container(
+                          height: 10.h,
+                          color: context.colors.background,
+                        ),
                         _buildGamesList(context, ref),
                       ],
                     )
@@ -234,6 +237,7 @@ country2,
     final gameIndexMap = {
       for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
     };
+    final liveBatchKeyByGameId = _groupEventLiveBatchKeys(fullGamesList);
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -256,6 +260,7 @@ country2,
                   ref,
                   matchWithComparison,
                   gameIndexMap[matchWithComparison.game.gameId] ?? -1,
+                  liveBatchKeyByGameId,
                 ),
               ),
               if (game2 != null)
@@ -265,6 +270,7 @@ country2,
                     ref,
                     game2,
                     gameIndexMap[game2.game.gameId] ?? -1,
+                    liveBatchKeyByGameId,
                   ),
                 )
               else
@@ -284,6 +290,12 @@ country2,
     final gameIndexMap = {
       for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
     };
+    // Share ONE batched realtime channel per chunk across all match cards in
+    // this event instead of one channel per card (per-card channels blow
+    // Supabase's per-client limit → ChannelRateLimitReached → updates die back
+    // to the slow poll). Keys are content-stable, so cards dedupe to the same
+    // channel.
+    final liveBatchKeyByGameId = _groupEventLiveBatchKeys(fullGamesList);
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -298,6 +310,7 @@ country2,
           padding: EdgeInsets.only(bottom: 12.sp),
           child: GameCardWrapperWidget(
             game: matchWithComparison.game,
+            liveBatchKey: liveBatchKeyByGameId[matchWithComparison.game.gameId],
             gamesData: GamesScreenModel(
               gamesTourModels: fullGamesList,
               pinnedGamedIs: gamesData.pinnedGamedIs,
@@ -316,6 +329,7 @@ country2,
     WidgetRef ref,
     MatchWithComparison matchWithComparison,
     int gameIndex,
+    Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
   ) {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = gamesData.gamesTourModels;
@@ -323,6 +337,7 @@ country2,
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${matchWithComparison.game.gameId}'),
       game: matchWithComparison.game,
+      liveBatchKey: liveBatchKeyByGameId[matchWithComparison.game.gameId],
       orderedGames: fullGamesList,
       gameIndex: gameIndex,
       onChangedWithLiveGames:
@@ -343,5 +358,31 @@ country2,
                 sourceTourId: matchWithComparison.game.tourId,
               ),
     );
+  }
+
+  /// gameId → shared chunked [LiveGamesBatchKey] over the whole event game set.
+  /// Content-stable (same scope + sorted ids → equal key), so every match card
+  /// in the event resolves to the same batched realtime channels instead of
+  /// opening one channel per card.
+  static Map<String, LiveGamesBatchKey> _groupEventLiveBatchKeys(
+    List<GamesTourModel> games,
+  ) {
+    const chunkSize = 25;
+    final result = <String, LiveGamesBatchKey>{};
+    if (games.isEmpty) return result;
+    final chunkCount = (games.length / chunkSize).ceil();
+    for (var chunk = 0; chunk < chunkCount; chunk++) {
+      final start = chunk * chunkSize;
+      final end = math.min(start + chunkSize, games.length);
+      final chunkGames = games.sublist(start, end);
+      final key = LiveGamesBatchKey(
+        scopeId: 'group_event_match:$chunk',
+        gameIds: chunkGames.map((game) => game.gameId),
+      );
+      for (final game in chunkGames) {
+        result[game.gameId] = key;
+      }
+    }
+    return result;
   }
 }

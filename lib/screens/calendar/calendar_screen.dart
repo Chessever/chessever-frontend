@@ -42,6 +42,21 @@ final calendarFilterModeProvider = StateProvider<CalendarFilterMode>((ref) {
   return CalendarFilterMode.all;
 });
 
+/// Orders months so the current month leads when viewing the current year,
+/// letting users jump straight to what's relevant now. Earlier months wrap to
+/// the end (e.g. June → ... → Dec, Jan → ... → May). Past/future years stay in
+/// plain chronological order since no month is "current" in them.
+List<MonthEventsSummary> orderMonthsByRelevance(
+  List<MonthEventsSummary> months,
+  int selectedYear,
+) {
+  final now = DateTime.now();
+  if (selectedYear != now.year) return months;
+  final pivot = months.indexWhere((m) => m.monthNumber == now.month);
+  if (pivot <= 0) return months;
+  return [...months.sublist(pivot), ...months.sublist(0, pivot)];
+}
+
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
 
@@ -333,7 +348,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             child: ref
                 .watch(calendarScreenProvider)
                 .when(
-                  data: (data) {
+                  data: (rawData) {
+                    final data = orderMonthsByRelevance(
+                      rawData,
+                      ref.watch(selectedYearProvider),
+                    );
                     if (isListMode) {
                       return _buildEventList(data);
                     }

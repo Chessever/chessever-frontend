@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/pgn_link_rebrand.dart';
 import 'package:dartchess/dartchess.dart';
 
 typedef SharePgnFetcher = Future<String?> Function(String gameId);
@@ -141,8 +142,10 @@ Future<String> resolveGameSharePgn({
   String? firstUsable(String? candidate) {
     final trimmed = _trimmedOrNull(candidate);
     if (trimmed == null) return null;
-    fallback ??= trimmed;
-    return pgnHasMoves(trimmed) ? trimmed : null;
+    // Strip Lichess host references before this PGN ever leaves the app.
+    final branded = rebrandPgnLinks(trimmed);
+    fallback ??= branded;
+    return pgnHasMoves(branded) ? branded : null;
   }
 
   final analysisPgn =

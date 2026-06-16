@@ -37,7 +37,7 @@ class BoardSettingsNew {
         true, // Use chess piece symbols (♔♕♖♗♘) instead of letters
     this.showCoordinates = true,
     this.rawPgnMode = false,
-    this.pipModeIndex = 0, // PipMode.off (default)
+    this.pipModeIndex = 1, // PipMode.live (default)
     this.liveActivityModeIndex = 0, // LiveActivityMode.off (default)
   });
 
@@ -67,7 +67,7 @@ class BoardSettingsNew {
   final bool rawPgnMode;
 
   /// Picture-in-Picture eligibility, stored as the PipMode index
-  /// (0=off, 1=completed, 2=live, 3=both). Premium-gated.
+  /// (0=off, 1=live). Defaults to live when the device supports PiP.
   final int pipModeIndex;
 
   /// Picture-in-Picture mode as an enum.
@@ -246,7 +246,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         rawPgnMode: model.rawPgnMode,
         // pip_mode isn't part of BoardSettingsModel's mapper; read it straight
         // from the row so we don't need to regenerate the dart_mappable code.
-        pipModeIndex: (response['pip_mode'] as int?) ?? 0,
+        pipModeIndex: (response['pip_mode'] as int?) ?? 1,
         liveActivityModeIndex: (response['live_activity_mode'] as int?) ?? 0,
       );
 
@@ -535,7 +535,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         useFigurine: map['useFigurine'] as bool? ?? true,
         showCoordinates: map['showCoordinates'] as bool? ?? true,
         rawPgnMode: map['rawPgnMode'] as bool? ?? false,
-        pipModeIndex: map['pipModeIndex'] as int? ?? 0,
+        pipModeIndex: map['pipModeIndex'] as int? ?? 1,
         liveActivityModeIndex: map['liveActivityModeIndex'] as int? ?? 0,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');

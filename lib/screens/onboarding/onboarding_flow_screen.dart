@@ -120,7 +120,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                         if (!context.mounted) return;
                         unawaited(
                           PushNotificationsService.instance
-                              .requestPermissionWithDialog(),
+                              .requestPermissionIfNotGranted(),
                         );
                       }
 
@@ -195,7 +195,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                         if (!E2eConfig.suppressInterruptivePrompts) {
                           unawaited(
                             PushNotificationsService.instance
-                                .requestPermissionWithDialog(),
+                                .requestPermissionIfNotGranted(),
                           );
                         }
 
@@ -315,7 +315,9 @@ class _AuthStep extends HookWidget {
                           'Create an account to access all features',
                           textAlign: TextAlign.center,
                           style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.6),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.6,
+                            ),
                           ),
                         )
                         .animate(delay: 300.ms)
@@ -400,8 +402,8 @@ class _UnlockVisual extends HookWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    kPrimaryColor.withOpacity(0.2),
-                    kPrimaryColor.withOpacity(0.0),
+                    kPrimaryColor.withValues(alpha: 0.2),
+                    kPrimaryColor.withValues(alpha: 0.0),
                   ],
                 ),
               ),
@@ -414,14 +416,14 @@ class _UnlockVisual extends HookWidget {
             height: 72.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: context.colors.surface.withOpacity(0.9),
+              color: context.colors.surface.withValues(alpha: 0.9),
               border: Border.all(
-                color: kPrimaryColor.withOpacity(0.3),
+                color: kPrimaryColor.withValues(alpha: 0.3),
                 width: 2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: kPrimaryColor.withOpacity(0.2),
+                  color: kPrimaryColor.withValues(alpha: 0.2),
                   blurRadius: 20,
                   spreadRadius: 3,
                 ),
@@ -475,8 +477,10 @@ class _FeaturesList extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.br),
-        color: context.colors.surface.withOpacity(0.5),
-        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+        color: context.colors.surface.withValues(alpha: 0.5),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -528,7 +532,7 @@ class _FeatureItem extends StatelessWidget {
           height: 34.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha: 0.15),
           ),
           child: Center(child: Icon(icon, size: 18.ic, color: color)),
         ),
@@ -541,7 +545,9 @@ class _FeatureItem extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
               Text(
                 subtitle,
@@ -668,7 +674,9 @@ class _AuthenticatedUserStep extends HookWidget {
                                 'Welcome back,',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.textMdRegular.copyWith(
-                                  color: context.colors.textPrimary.withValues(alpha: 0.6),
+                                  color: context.colors.textPrimary.withValues(
+                                    alpha: 0.6,
+                                  ),
                                 ),
                               )
                               .animate(delay: 200.ms)
@@ -701,9 +709,9 @@ class _AuthenticatedUserStep extends HookWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(16.br),
-                                  color: kGreenColor.withOpacity(0.08),
+                                  color: kGreenColor.withValues(alpha: 0.08),
                                   border: Border.all(
-                                    color: kGreenColor.withOpacity(0.2),
+                                    color: kGreenColor.withValues(alpha: 0.2),
                                   ),
                                 ),
                                 child: Row(
@@ -714,7 +722,9 @@ class _AuthenticatedUserStep extends HookWidget {
                                       height: 32.h,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: kGreenColor.withOpacity(0.15),
+                                        color: kGreenColor.withValues(
+                                          alpha: 0.15,
+                                        ),
                                       ),
                                       child: Icon(
                                         Icons.check_rounded,
@@ -731,14 +741,21 @@ class _AuthenticatedUserStep extends HookWidget {
                                           Text(
                                             'Your preferences are saved',
                                             style: AppTypography.textSmMedium
-                                                .copyWith(color: context.colors.textPrimary),
+                                                .copyWith(
+                                                  color:
+                                                      context
+                                                          .colors
+                                                          .textPrimary,
+                                                ),
                                           ),
                                           Text(
                                             'Synced across all your devices',
                                             style: AppTypography.textXsRegular
                                                 .copyWith(
-                                                  color: context.colors.textPrimary
-                                                      .withOpacity(0.5),
+                                                  color: context
+                                                      .colors
+                                                      .textPrimary
+                                                      .withValues(alpha: 0.5),
                                                 ),
                                           ),
                                         ],
@@ -803,7 +820,8 @@ class _AuthenticatedUserStep extends HookWidget {
                                   Text(
                                     'Your chess journey continues',
                                     style: AppTypography.textXsRegular.copyWith(
-                                      color: context.colors.textPrimary.withValues(alpha: 0.4),
+                                      color: context.colors.textPrimary
+                                          .withValues(alpha: 0.4),
                                     ),
                                   ),
                                 ],
@@ -856,8 +874,8 @@ class _UserAvatarVisual extends HookWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    kGreenColor.withOpacity(0.18),
-                    kGreenColor.withOpacity(0.0),
+                    kGreenColor.withValues(alpha: 0.18),
+                    kGreenColor.withValues(alpha: 0.0),
                   ],
                 ),
               ),
@@ -871,7 +889,7 @@ class _UserAvatarVisual extends HookWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: kGreenColor.withOpacity(0.15),
+                color: kGreenColor.withValues(alpha: 0.15),
                 width: 1,
               ),
             ),
@@ -883,14 +901,14 @@ class _UserAvatarVisual extends HookWidget {
             height: 110.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: context.colors.surface.withOpacity(0.9),
+              color: context.colors.surface.withValues(alpha: 0.9),
               border: Border.all(
-                color: kGreenColor.withOpacity(0.4),
+                color: kGreenColor.withValues(alpha: 0.4),
                 width: 2.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: kGreenColor.withOpacity(0.2),
+                  color: kGreenColor.withValues(alpha: 0.2),
                   blurRadius: 30,
                   spreadRadius: 5,
                 ),
@@ -920,10 +938,17 @@ class _UserAvatarVisual extends HookWidget {
                 color: kGreenColor,
                 border: Border.all(color: context.colors.background, width: 3),
                 boxShadow: [
-                  BoxShadow(color: kGreenColor.withOpacity(0.4), blurRadius: 8),
+                  BoxShadow(
+                    color: kGreenColor.withValues(alpha: 0.4),
+                    blurRadius: 8,
+                  ),
                 ],
               ),
-              child: Icon(Icons.check_rounded, size: 18.ic, color: context.colors.textPrimary),
+              child: Icon(
+                Icons.check_rounded,
+                size: 18.ic,
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -978,7 +1003,7 @@ class _AmbientGlowPainter extends CustomPainter {
     // Primary glow - subtle movement
     final paint1 =
         Paint()
-          ..color = kPrimaryColor.withOpacity(0.08 + (animation * 0.04))
+          ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
 
     canvas.drawCircle(
@@ -995,7 +1020,7 @@ class _AmbientGlowPainter extends CustomPainter {
         Paint()
           ..color = const Color(
             0xFF08647F,
-          ).withOpacity(0.06 + (animation * 0.03))
+          ).withValues(alpha: 0.06 + (animation * 0.03))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
 
     canvas.drawCircle(
@@ -1059,10 +1084,11 @@ class _ParticlePainter extends CustomPainter {
           particle.x +
           math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
 
-      final paint = Paint()
-        ..color = Colors.white.withValues(
-          alpha: particle.opacity * (1 - y.abs() * 0.5),
-        );
+      final paint =
+          Paint()
+            ..color = Colors.white.withValues(
+              alpha: particle.opacity * (1 - y.abs() * 0.5),
+            );
 
       canvas.drawCircle(
         Offset(x * size.width, y * size.height),
@@ -1112,7 +1138,10 @@ class _PageIndicator extends StatelessWidget {
             height: 4.h,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2.br),
-              color: isActive ? kPrimaryColor : context.colors.textPrimary.withValues(alpha: 0.12),
+              color:
+                  isActive
+                      ? kPrimaryColor
+                      : context.colors.textPrimary.withValues(alpha: 0.12),
             ),
           ),
         );
@@ -1373,7 +1402,10 @@ class _GlobeVisual extends StatelessWidget {
     return Container(
       width: 100.w,
       height: 100.h,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: context.colors.surface),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: context.colors.surface,
+      ),
       child: countryState.when(
         loading:
             () => Center(
@@ -1520,7 +1552,10 @@ class _PrimaryButton extends HookWidget {
           height: 52.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color: onTap != null ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.2),
+            color:
+                onTap != null
+                    ? context.colors.textPrimary
+                    : context.colors.textPrimary.withValues(alpha: 0.2),
           ),
           child: Center(
             child:
@@ -1539,7 +1574,9 @@ class _PrimaryButton extends HookWidget {
                         color:
                             onTap != null
                                 ? context.colors.textInverse
-                                : context.colors.textPrimary.withValues(alpha: 0.5),
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.5,
+                                ),
                       ),
                     ),
           ),
@@ -1548,4 +1585,3 @@ class _PrimaryButton extends HookWidget {
     );
   }
 }
-

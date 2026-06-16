@@ -1,11 +1,12 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 GamesAppBarModel _round({
   required String id,
   required String name,
-  required DateTime startsAt,
+  required DateTime? startsAt,
   required RoundStatus status,
 }) {
   return GamesAppBarModel(
@@ -20,6 +21,18 @@ List<String> _ids(List<GamesAppBarModel> rounds) =>
     rounds.map((round) => round.id).toList(growable: false);
 
 void main() {
+  group('GamesAppBarModel.status', () {
+    test('treats backend live ids as live even when startsAt is missing', () {
+      final status = GamesAppBarModel.status(
+        currentId: 'round-3',
+        startsAt: null,
+        liveRound: const ['round-3'],
+      );
+
+      expect(status, RoundStatus.live);
+    });
+  });
+
   group('sortRoundsForDisplay', () {
     test('keeps all-upcoming preconfigured rounds in ascending order', () {
       final now = DateTime(2026, 3, 29, 10);
@@ -190,6 +203,38 @@ void main() {
 
       expect(_ids(sorted), ['r13', 'r12', 'r11', 'r10']);
     });
+
+    test('keeps a live generic round first when its start time is missing', () {
+      final now = DateTime(2026, 6, 16, 15, 30);
+      final rounds = [
+        _round(
+          id: 'r1',
+          name: 'Round 1',
+          startsAt: now.subtract(const Duration(minutes: 30)),
+          status: RoundStatus.completed,
+        ),
+        _round(
+          id: 'r2',
+          name: 'Round 2',
+          startsAt: now.subtract(const Duration(minutes: 15)),
+          status: RoundStatus.completed,
+        ),
+        _round(
+          id: 'r3',
+          name: 'Round 3',
+          startsAt: null,
+          status: RoundStatus.live,
+        ),
+      ];
+
+      final sorted = sortRoundsForDisplay(
+        rounds,
+        resolveDate: (round) => round.startsAt,
+        now: now,
+      );
+
+      expect(_ids(sorted), ['r3', 'r2', 'r1']);
+    });
   });
 
   group('pickPreferredRoundForSelection', () {
@@ -323,6 +368,119 @@ void main() {
       );
 
       expect(selected?.id, 'r12');
+    });
+
+    test('selects a live round even when its start time is missing', () {
+      final now = DateTime(2026, 6, 16, 15, 30);
+      final rounds = [
+        _round(
+          id: 'r1',
+          name: 'Round 1',
+          startsAt: now.subtract(const Duration(minutes: 30)),
+          status: RoundStatus.completed,
+        ),
+        _round(
+          id: 'r2',
+          name: 'Round 2',
+          startsAt: now.subtract(const Duration(minutes: 15)),
+          status: RoundStatus.completed,
+        ),
+        _round(
+          id: 'r3',
+          name: 'Round 3',
+          startsAt: null,
+          status: RoundStatus.live,
+        ),
+      ];
+
+      final selected = pickPreferredRoundForSelection(
+        rounds,
+        resolveDate: (round) => round.startsAt,
+        hasGames: (_) => true,
+        now: now,
+      );
+
+      expect(selected?.id, 'r3');
+    });
+  });
+
+  group('selectRoundIdAfterLiveRoundsChanged', () {
+    test('switches from the current auto-selected round to the live round', () {
+      final now = DateTime(2026, 6, 16, 19);
+      final selected = selectRoundIdAfterLiveRoundsChanged(
+        models: [
+          _round(
+            id: 'round-1',
+            name: 'Round 1',
+            startsAt: now.subtract(const Duration(minutes: 20)),
+            status: RoundStatus.completed,
+          ),
+          _round(
+            id: 'round-2',
+            name: 'Round 2',
+            startsAt: now,
+            status: RoundStatus.live,
+          ),
+        ],
+        currentSelectedId: 'round-1',
+        stickySelection: null,
+        hasGames: (_) => true,
+        resolveDate: (round) => round.startsAt,
+      );
+
+      expect(selected, 'round-2');
+    });
+
+    test('does not override an explicit user-selected round', () {
+      final now = DateTime(2026, 6, 16, 19);
+      final selected = selectRoundIdAfterLiveRoundsChanged(
+        models: [
+          _round(
+            id: 'round-1',
+            name: 'Round 1',
+            startsAt: now.subtract(const Duration(minutes: 20)),
+            status: RoundStatus.completed,
+          ),
+          _round(
+            id: 'round-2',
+            name: 'Round 2',
+            startsAt: now,
+            status: RoundStatus.live,
+          ),
+        ],
+        currentSelectedId: 'round-1',
+        stickySelection: (id: 'round-1', userSelected: true),
+        hasGames: (_) => true,
+        resolveDate: (round) => round.startsAt,
+      );
+
+      expect(selected, 'round-1');
+    });
+
+    test('keeps the current round until the live round has games', () {
+      final now = DateTime(2026, 6, 16, 19);
+      final selected = selectRoundIdAfterLiveRoundsChanged(
+        models: [
+          _round(
+            id: 'round-1',
+            name: 'Round 1',
+            startsAt: now.subtract(const Duration(minutes: 20)),
+            status: RoundStatus.completed,
+          ),
+          _round(
+            id: 'round-2',
+            name: 'Round 2',
+            startsAt: now,
+            status: RoundStatus.live,
+          ),
+        ],
+        currentSelectedId: 'round-1',
+        stickySelection: null,
+        hasGames: (roundId) => roundId == 'round-1',
+        resolveDate: (round) => round.startsAt,
+      );
+
+      expect(selected, 'round-1');
     });
   });
 }

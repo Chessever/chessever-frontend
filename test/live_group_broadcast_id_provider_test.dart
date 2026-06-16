@@ -20,6 +20,9 @@ class _SilentSettingsRepository implements SettingsRepository {
   Future<Settings?> getSettings() async => null;
 
   @override
+  Stream<Settings?> subscribeToSettings() => const Stream<Settings?>.empty();
+
+  @override
   Stream<List<String>> subscribeToLiveGroupBroadcastIds() =>
       const Stream<List<String>>.empty();
 
@@ -31,42 +34,115 @@ class _SilentSettingsRepository implements SettingsRepository {
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
+class _StreamingSettingsRepository implements SettingsRepository {
+  final StreamController<Settings?> _controller =
+      StreamController<Settings?>.broadcast();
+
+  Settings? currentSettings;
+
+  @override
+  Future<Settings?> getSettings() async => currentSettings;
+
+  @override
+  Stream<Settings?> subscribeToSettings() => _controller.stream;
+
+  void add(Settings? settings) {
+    currentSettings = settings;
+    _controller.add(settings);
+  }
+
+  void addError(Object error) {
+    _controller.addError(error, StackTrace.current);
+  }
+
+  Future<void> dispose() => _controller.close();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
 class _FakeGroupBroadcastRepository implements GroupBroadcastRepository {
+  _FakeGroupBroadcastRepository({this.broadcasts = const []});
+
+  final List<GroupBroadcast> broadcasts;
+
   @override
   Future<List<GroupBroadcast>> getGroupBroadcastsByIdsOrNames(
     List<String> identifiers,
-  ) async => <GroupBroadcast>[];
+  ) async {
+    return broadcasts
+        .where(
+          (broadcast) =>
+              identifiers.contains(broadcast.id) ||
+              identifiers.contains(broadcast.name),
+        )
+        .toList(growable: false);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _FakeTourRepository implements TourRepository {
+  _FakeTourRepository({this.tours = const []});
+
+  final List<Tour> tours;
+
   @override
   Future<Map<String, List<Tour>>> getToursByGroupBroadcastIds(
     List<String> groupBroadcastIds,
-  ) async => <String, List<Tour>>{};
+  ) async {
+    final result = <String, List<Tour>>{};
+    for (final groupBroadcastId in groupBroadcastIds) {
+      result[groupBroadcastId] = tours
+          .where((tour) => tour.groupBroadcastId == groupBroadcastId)
+          .toList(growable: false);
+    }
+    return result;
+  }
 
   @override
-  Future<List<Tour>> getToursByIds(List<String> tourIds) async => <Tour>[];
+  Future<List<Tour>> getToursByIds(List<String> tourIds) async {
+    return tours
+        .where((tour) => tourIds.contains(tour.id))
+        .toList(growable: false);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _FakeRoundRepository implements RoundRepository {
+  _FakeRoundRepository({this.rounds = const []});
+
+  final List<Round> rounds;
+
   @override
-  Future<List<Round>> getRoundsByIds(List<String> roundIds) async => <Round>[];
+  Future<List<Round>> getRoundsByIds(List<String> roundIds) async {
+    return rounds
+        .where((round) => roundIds.contains(round.id))
+        .toList(growable: false);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _FakeGameRepository implements GameRepository {
+  _FakeGameRepository({this.latestMoveTimesByRoundId = const {}});
+
+  final Map<String, DateTime> latestMoveTimesByRoundId;
+
   @override
   Future<Map<String, DateTime>> getLatestLastMoveTimesByRoundIds(
     List<String> roundIds,
-  ) async => <String, DateTime>{};
+  ) async {
+    return {
+      for (final roundId in roundIds)
+        if (latestMoveTimesByRoundId[roundId] != null)
+          roundId: latestMoveTimesByRoundId[roundId]!,
+    };
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -127,6 +203,32 @@ Round _round({
   );
 }
 
+Settings _settings({
+  List<String> liveGroupBroadcastIds = const <String>[],
+  List<String> liveRoundIds = const <String>[],
+}) {
+  return Settings(
+    id: 1,
+    createdAt: DateTime(2026, 4, 9, 10),
+    liveGroupBroadcastIds: liveGroupBroadcastIds,
+    liveTourIds: const <String>[],
+    liveRoundIds: liveRoundIds,
+  );
+}
+
+Future<void> _pumpUntil(
+  bool Function() condition, {
+  String Function()? reason,
+}) async {
+  for (var i = 0; i < 100; i += 1) {
+    if (condition()) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+  fail(reason?.call() ?? 'condition was not met');
+}
+
 void main() {
   group('liveGroupBroadcastIdsProvider', () {
     test(
@@ -155,6 +257,104 @@ void main() {
         );
       },
     );
+
+    test(
+      'keeps the last live ids when Supabase realtime reports a channel error',
+      () async {
+        final now = DateTime.now();
+        final broadcast = _broadcast(
+          id: 'event-1',
+          name: 'Event One',
+          start: now.subtract(const Duration(days: 1)),
+          end: now.add(const Duration(days: 1)),
+        );
+        final tour = _tour(id: 'tour-1', groupBroadcastId: broadcast.id);
+        final round = _round(
+          id: 'round-1',
+          tourId: tour.id,
+          startsAt: now.subtract(const Duration(minutes: 45)),
+        );
+        final settingsRepository = _StreamingSettingsRepository();
+        final container = ProviderContainer(
+          overrides: [
+            settingsRepositoryProvider.overrideWithValue(settingsRepository),
+            groupBroadcastRepositoryProvider.overrideWithValue(
+              _FakeGroupBroadcastRepository(broadcasts: [broadcast]),
+            ),
+            tourRepositoryProvider.overrideWithValue(
+              _FakeTourRepository(tours: [tour]),
+            ),
+            roundRepositoryProvider.overrideWithValue(
+              _FakeRoundRepository(rounds: [round]),
+            ),
+            gameRepositoryProvider.overrideWithValue(
+              _FakeGameRepository(
+                latestMoveTimesByRoundId: {
+                  round.id: now.subtract(const Duration(minutes: 5)),
+                },
+              ),
+            ),
+          ],
+        );
+        final emittedIds = <List<String>>[];
+        final subscription = container.listen<AsyncValue<List<String>>>(
+          liveGroupBroadcastIdsProvider,
+          (_, next) => next.whenData(emittedIds.add),
+          fireImmediately: true,
+        );
+        addTearDown(subscription.close);
+        addTearDown(container.dispose);
+        addTearDown(settingsRepository.dispose);
+
+        await _pumpUntil(
+          () => emittedIds.any((ids) => ids.isEmpty),
+          reason: () => 'initial fallback was not emitted',
+        );
+
+        settingsRepository.add(
+          _settings(
+            liveGroupBroadcastIds: [broadcast.id],
+            liveRoundIds: [round.id],
+          ),
+        );
+
+        await _pumpUntil(
+          () => emittedIds.any(
+            (ids) => ids.length == 1 && ids.single == broadcast.id,
+          ),
+          reason: () => 'live event id was not emitted; emitted=$emittedIds',
+        );
+
+        settingsRepository.addError(
+          Exception(
+            'RealtimeSubscribeException(status: '
+            'RealtimeSubscribeStatus.channelError, details: null)',
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(container.read(liveGroupBroadcastIdsProvider).valueOrNull, [
+          broadcast.id,
+        ]);
+        expect(emittedIds.last, [broadcast.id]);
+      },
+    );
+
+    test('classifies Supabase realtime subscribe errors as recoverable', () {
+      expect(
+        isRecoverableRealtimeSettingsStreamError(
+          Exception(
+            'RealtimeSubscribeException(status: '
+            'RealtimeSubscribeStatus.channelError, details: null)',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        isRecoverableRealtimeSettingsStreamError(Exception('PostgREST failed')),
+        isFalse,
+      );
+    });
   });
 
   group('computeStrictLiveGroupBroadcastIds', () {
@@ -306,10 +506,7 @@ void main() {
         isExpectedLiveResolveError(const SocketException('connect failed')),
         isTrue,
       );
-      expect(
-        isExpectedLiveResolveError(TimeoutException('slow')),
-        isTrue,
-      );
+      expect(isExpectedLiveResolveError(TimeoutException('slow')), isTrue);
     });
 
     test('treats genuinely unexpected errors as not expected', () {

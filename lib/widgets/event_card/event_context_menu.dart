@@ -5,6 +5,7 @@ import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/pgn_link_rebrand.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:flutter/material.dart';
@@ -194,7 +195,7 @@ Future<void> _copyEventPgn({
         final pgn = g.pgn;
         if (pgn == null || pgn.trim().isEmpty) continue;
         if (copied > 0) pgnBuffer.write('\n\n');
-        pgnBuffer.write(pgn.trim());
+        pgnBuffer.write(rebrandPgnLinks(pgn.trim()));
         copied++;
       }
 

@@ -23,7 +23,6 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
-import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -59,14 +58,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         AttPromptService.instance.ensurePrompted(context, showExplainer: false);
       }
       if (!E2eConfig.suppressInterruptivePrompts) {
-        // Plan B: request notification permission if not already granted.
-        // Delayed to avoid clashing with onboarding or other early dialogs.
-        Future.delayed(const Duration(seconds: 5), () {
-          if (!mounted) return;
-          unawaited(
-            PushNotificationsService.instance.requestPermissionIfNotGranted(),
-          );
-        });
         Future.delayed(const Duration(seconds: 8), () {
           if (!mounted) return;
           unawaited(

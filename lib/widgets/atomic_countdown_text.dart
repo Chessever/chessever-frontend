@@ -31,6 +31,13 @@ class AtomicCountdownText extends ConsumerWidget {
     final useClockSeconds = clockSeconds != null;
     final useCalculatedTime =
         !useClockSeconds && moveTime != null && moveTime!.isNotEmpty;
+    final hasCentisecondClock = clockCentiseconds > 0;
+    final hasAnyClockSource =
+        useClockSeconds || useCalculatedTime || hasCentisecondClock;
+
+    if (!hasAnyClockSource) {
+      return Text('--:--', style: style);
+    }
 
     // Only watch dateTimeProvider if clock is actively counting down
     if (!isActive || lastMoveTime == null) {

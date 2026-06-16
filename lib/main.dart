@@ -60,6 +60,7 @@ import 'services/pgn_file_intake_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/providers/notification_permission_prompt_provider.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver =
@@ -706,7 +707,10 @@ void _initializePostStartupServices() {
 
   ForegroundTaskScheduler.schedule(
     key: 'startup_audio_assets',
-    delay: kStartupWarmupDelay,
+    // Past the splash→auth brand-logo assemble so SoLoud's native init stall
+    // can't make the wall-clock logo controller skip frames. See
+    // [kAudioWarmupDelay].
+    delay: kAudioWarmupDelay,
     task: () => AudioPlayerService.instance.initializeAndLoadAllAssets(),
   );
 
@@ -992,6 +996,7 @@ class MyApp extends HookConsumerWidget {
     const themeMode = ThemeMode.dark;
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
+    ref.watch(notificationPermissionPromptProvider);
 
     // Listen to auth state changes to set AppsFlyer Customer User ID and
     // ensure the install/launch event fires. startSdk is idempotent — for

@@ -52,11 +52,11 @@ class GamesAppBarModel extends Equatable {
   }) {
     final now = DateTime.now();
 
-    if (startsAt == null) return RoundStatus.upcoming;
-
     if (liveRound.isNotEmpty && liveRound.contains(currentId)) {
       return RoundStatus.live;
     }
+
+    if (startsAt == null) return RoundStatus.upcoming;
 
     if (startsAt.isBefore(now) || startsAt.isAtSameMomentAs(now)) {
       // Day-boundary fix: a round that started at 23:50 must not flip to

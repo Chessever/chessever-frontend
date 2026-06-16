@@ -74,18 +74,24 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     }
   }
 
+  // Per-MOVE updates for visible games come from batched Supabase Realtime
+  // channels (see liveGameCardProvider / LiveGamesBatchKey), NOT this poll.
+  // This timer is only a slow safety net for set-level changes the per-game
+  // streams don't cover: newly added games, round rollovers, completions that
+  // arrive while a card is off-screen. Keep the historical 10s cadence, while
+  // per-move updates still come from realtime instead of this poll.
+  static const Duration _safetyNetInterval = Duration(seconds: 10);
+
   void _startPeriodicRefresh() {
     _stopPeriodicRefresh();
 
-    // Check for new rounds/games every 10 seconds
-    // This handles: new games, status changes, game completions
-    // Realtime updates for visible games are handled by liveGameCardProvider
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    _refreshTimer = Timer.periodic(_safetyNetInterval, (_) async {
       await _checkForNewGames();
     });
 
     debugPrint(
-      '🔥 GamesTourNotifier: Started periodic refresh (10s interval) for tour $tourId',
+      '🔥 GamesTourNotifier: Started safety-net refresh '
+      '(${_safetyNetInterval.inSeconds}s interval) for tour $tourId',
     );
   }
 
@@ -132,11 +138,11 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           continue;
         }
 
-        if (_hasGameChanged(current, fresh)) {
+        if (_hasSafetyNetChange(current, fresh)) {
           hasChanges = true;
         }
 
-        mergedGames.add(_mergeGameSnapshots(current, fresh));
+        mergedGames.add(_mergeSafetyNetSnapshot(current, fresh));
       }
 
       // Check for removed games
@@ -156,31 +162,21 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     }
   }
 
-  bool _hasGameChanged(Games current, Games fresh) {
-    return current.status != fresh.status ||
-        current.lastMove != fresh.lastMove ||
-        current.fen != fresh.fen ||
-        current.lastMoveTime != fresh.lastMoveTime ||
-        current.lastClockWhite != fresh.lastClockWhite ||
-        current.lastClockBlack != fresh.lastClockBlack;
+  bool _hasSafetyNetChange(Games current, Games fresh) {
+    // Per-move fields (FEN/PGN/last_move/clocks) are intentionally excluded
+    // here. Visible cards receive those through batched realtime streams; if
+    // the poll writes them into the parent list every 10s, the whole Games tab
+    // rebuilds and can disturb scrolling. The poll only owns set-level changes
+    // plus status/round movement for off-screen cards.
+    return (fresh.status != null && current.status != fresh.status) ||
+        current.roundId != fresh.roundId ||
+        current.roundSlug != fresh.roundSlug;
   }
 
-  Games _mergeGameSnapshots(Games current, Games fresh) {
-    final currentMoveTime = current.lastMoveTime;
-    final freshMoveTime = fresh.lastMoveTime;
-    final useFreshMove =
-        currentMoveTime == null ||
-        (freshMoveTime != null && freshMoveTime.isAfter(currentMoveTime));
-
-    return fresh.copyWith(
-      fen: useFreshMove ? fresh.fen : current.fen,
-      lastMove: useFreshMove ? fresh.lastMove : current.lastMove,
-      lastMoveTime: useFreshMove ? freshMoveTime : currentMoveTime,
-      lastClockWhite:
-          useFreshMove ? fresh.lastClockWhite : current.lastClockWhite,
-      lastClockBlack:
-          useFreshMove ? fresh.lastClockBlack : current.lastClockBlack,
-      pgn: useFreshMove ? fresh.pgn : current.pgn,
+  Games _mergeSafetyNetSnapshot(Games current, Games fresh) {
+    return current.copyWith(
+      roundId: fresh.roundId,
+      roundSlug: fresh.roundSlug,
       status: fresh.status ?? current.status,
     );
   }

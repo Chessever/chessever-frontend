@@ -5,6 +5,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
 import 'package:chessever2/screens/library/providers/folder_filter_provider.dart';
@@ -56,6 +57,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   // Overrides widget.folder.name after an in-place rename so the header
   // reflects the new name without needing to pop/reopen.
   String? _overrideFolderName;
+  Map<String, int> _lastTagCounts = const <String, int>{};
 
   bool get _isSubscribed => widget.folder.isSubscribed;
   bool get _isFolder => widget.folder.isFolder;
@@ -64,6 +66,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   String get _currentFolderName => _overrideFolderName ?? widget.folder.name;
 
   String get _folderFilterKey => widget.folder.id;
+
+  FolderTagCountsKey get _tagCountsKey => FolderTagCountsKey(
+    folderId: widget.folder.id,
+    isSubscribed: _isSubscribed,
+  );
 
   /// Pagination key derived from the live filter/sort/search + premium state.
   /// Filter/sort are premium-only, so free users always query with the default
@@ -81,6 +88,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       isSubscribed: _isSubscribed,
       filter: effectiveFilter,
       search: filterState.searchQuery.trim(),
+      tag: filterState.selectedTag,
     );
   }
 
@@ -136,6 +144,28 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     ref.read(folderFilterProvider(_folderFilterKey).notifier).clearSearch();
   }
 
+  void _selectTagFilter(String? tag) {
+    final current =
+        ref.read(folderFilterProvider(_folderFilterKey)).selectedTag;
+    final trimmed = tag?.trim();
+    final next = trimmed == null || trimmed.isEmpty ? null : trimmed;
+    if (current == next) return;
+    HapticFeedbackService.light();
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    ref.read(folderFilterProvider(_folderFilterKey).notifier).selectTag(next);
+  }
+
+  Future<void> _refreshCurrentBook({bool includeTagCounts = true}) async {
+    await ref
+        .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
+        .refresh();
+    if (includeTagCounts) {
+      ref.invalidate(folderTagCountsProvider(_tagCountsKey));
+    }
+  }
+
   Future<void> _showFilterDialog() async {
     HapticFeedbackService.buttonPress();
     final current = ref.read(folderFilterProvider(_folderFilterKey)).filter;
@@ -183,9 +213,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
       if (!mounted) return;
       // Refresh the paginated list after removal.
-      ref
-          .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
-          .refresh();
+      unawaited(_refreshCurrentBook());
       // Library home cards cache per-folder game counts; without this
       // invalidation they keep showing the pre-delete number until app restart.
       ref.invalidate(folderAnalysisCountProvider);
@@ -233,13 +261,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 );
                 await repository.createSavedAnalysis(restored);
                 if (!mounted) return;
-                ref
-                    .read(
-                      bookGamesPaginatedProvider(
-                        _currentPaginationKey,
-                      ).notifier,
-                    )
-                    .refresh();
+                unawaited(_refreshCurrentBook());
                 ref.invalidate(folderAnalysisCountProvider);
                 ref.invalidate(libraryFoldersStreamProvider);
               } catch (_) {
@@ -328,9 +350,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       initialFolderId: widget.folder.id,
     );
     if (!mounted) return;
-    ref
-        .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
-        .refresh();
+    unawaited(_refreshCurrentBook());
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
   }
@@ -386,9 +406,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
     if (!mounted) return;
     // Refresh in case games were saved into this folder from the sheet.
-    ref
-        .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
-        .refresh();
+    unawaited(_refreshCurrentBook());
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
   }
@@ -648,7 +666,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         ),
       ),
       child: Column(
-        children: [_buildHeader(context, bookAsync), _buildSearchBar()],
+        children: [
+          _buildHeader(context, bookAsync),
+          _buildSearchBar(),
+          if (_isDatabase) _buildTagQuickFilters(),
+        ],
       ),
     );
   }
@@ -782,6 +804,74 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
   }
 
+  Widget _buildTagQuickFilters() {
+    final selectedTag =
+        ref.watch(folderFilterProvider(_folderFilterKey)).selectedTag;
+    final liveCounts =
+        ref.watch(folderTagCountsProvider(_tagCountsKey)).valueOrNull;
+    if (liveCounts != null) {
+      _lastTagCounts = liveCounts;
+    }
+    final counts = liveCounts ?? _lastTagCounts;
+    if (counts.isEmpty && selectedTag == null) {
+      return const SizedBox.shrink();
+    }
+
+    final chips = <Widget>[
+      _DatabaseTagFilterChip(
+        label: 'All',
+        selected: selectedTag == null,
+        color: context.colors.textPrimary,
+        onTap: () => _selectTagFilter(null),
+      ),
+    ];
+
+    final canonicalLabels = <String>{};
+    for (final tag in kLikeTags) {
+      canonicalLabels.add(tag.label);
+      final count = counts[tag.label] ?? 0;
+      if (count == 0 && selectedTag != tag.label) continue;
+      chips.add(
+        _DatabaseTagFilterChip(
+          label: tag.label,
+          count: count,
+          selected: selectedTag == tag.label,
+          color: tag.color,
+          onTap: () => _selectTagFilter(tag.label),
+        ),
+      );
+    }
+
+    final legacyTags =
+        counts.entries
+            .where((entry) => !canonicalLabels.contains(entry.key))
+            .toList()
+          ..sort((a, b) {
+            final byCount = b.value.compareTo(a.value);
+            return byCount != 0 ? byCount : a.key.compareTo(b.key);
+          });
+    for (final entry in legacyTags) {
+      if (entry.value == 0 && selectedTag != entry.key) continue;
+      chips.add(
+        _DatabaseTagFilterChip(
+          label: entry.key,
+          count: entry.value,
+          selected: selectedTag == entry.key,
+          color: context.colors.textSecondary,
+          onTap: () => _selectTagFilter(entry.key),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
+      ),
+    );
+  }
+
   Widget _buildSavedGames(
     AsyncValue<PaginatedBookState> bookAsync,
     String query,
@@ -794,9 +884,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     return RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
-        await ref
-            .read(bookGamesPaginatedProvider(_currentPaginationKey).notifier)
-            .refresh();
+        await _refreshCurrentBook();
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
@@ -814,6 +902,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               subscription.isSubscribed || subscription.isLoading;
           final hasActiveFilters =
               canFilterAndSort && filterState.filter.hasActiveFilters;
+          final hasActiveTag = filterState.selectedTag != null;
 
           // Child folders aren't part of the games query, so filter them by the
           // search term here for display.
@@ -827,12 +916,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               childFolders.isEmpty &&
               !bookState.hasMore &&
               query.isEmpty &&
-              !hasActiveFilters) {
+              !hasActiveFilters &&
+              !hasActiveTag) {
             return _buildEmptySavedState();
           }
           if (filteredAnalyses.isEmpty &&
               filteredFolders.isEmpty &&
-              (query.isNotEmpty || hasActiveFilters)) {
+              (query.isNotEmpty || hasActiveFilters || hasActiveTag)) {
             return _buildEmptySearchState();
           }
 
@@ -869,8 +959,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     padding: EdgeInsets.only(bottom: 12.h),
                     child: BookSavedGameCard(
                       analysis: analysis,
-                      onTap: () {
-                        loadSavedAnalysisWithSwiping(
+                      onTap: () async {
+                        await loadSavedAnalysisWithSwiping(
                           context,
                           filteredAnalyses,
                           analysisIndex,
@@ -892,12 +982,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     behavior: SwipeActionBehavior.dismiss,
                     child: BookSavedGameCard(
                       analysis: analysis,
-                      onTap: () {
-                        loadSavedAnalysisWithSwiping(
+                      onTap: () async {
+                        await loadSavedAnalysisWithSwiping(
                           context,
                           filteredAnalyses,
                           analysisIndex,
                         );
+                        if (!mounted) return;
+                        await _refreshCurrentBook();
                       },
                     ),
                   ),
@@ -973,17 +1065,15 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildEmptySearchState() {
-    final hasActiveFilters =
-        ref
-            .read(folderFilterProvider(_folderFilterKey))
-            .filter
-            .hasActiveFilters;
+    final state = ref.read(folderFilterProvider(_folderFilterKey));
+    final hasActiveFilters = state.filter.hasActiveFilters;
+    final hasActiveTag = state.selectedTag != null;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            hasActiveFilters
+            hasActiveFilters || hasActiveTag
                 ? Icons.filter_alt_off_outlined
                 : Icons.search_off_rounded,
             size: 64.sp,
@@ -991,14 +1081,16 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           ),
           SizedBox(height: 16.h),
           Text(
-            hasActiveFilters ? 'No matching games' : 'No matches found',
+            hasActiveFilters || hasActiveTag
+                ? 'No matching games'
+                : 'No matches found',
             style: AppTypography.textMdMedium.copyWith(
               color: context.colors.textPrimary,
             ),
           ),
           SizedBox(height: 8.h),
           Text(
-            hasActiveFilters
+            hasActiveFilters || hasActiveTag
                 ? 'Try adjusting your search or filters'
                 : 'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
@@ -1006,6 +1098,115 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DatabaseTagFilterChip extends StatelessWidget {
+  const _DatabaseTagFilterChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+    this.count,
+  });
+
+  final String label;
+  final int? count;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final background =
+        selected
+            ? color.withValues(alpha: 0.18)
+            : colors.textPrimary.withValues(alpha: 0.05);
+    final borderColor =
+        selected
+            ? color.withValues(alpha: 0.75)
+            : colors.textPrimary.withValues(alpha: 0.1);
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      scale: selected ? 1.03 : 1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20.br),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            height: 38.h,
+            padding: EdgeInsets.symmetric(horizontal: 12.w),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(20.br),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8.w,
+                  height: 8.w,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: label == 'All' ? 0.72 : 1),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                SizedBox(width: 7.w),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: 170.w),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color:
+                          selected
+                              ? colors.textPrimary
+                              : colors.textPrimary.withValues(alpha: 0.72),
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (count != null) ...[
+                  SizedBox(width: 7.w),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.w,
+                      vertical: 2.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          selected
+                              ? color.withValues(alpha: 0.18)
+                              : colors.textPrimary.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(999.br),
+                    ),
+                    child: Text(
+                      count.toString(),
+                      style: AppTypography.textXsMedium.copyWith(
+                        color:
+                            selected
+                                ? colors.textPrimary
+                                : colors.textPrimary.withValues(alpha: 0.55),
+                        fontSize: 10.sp,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
