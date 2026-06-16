@@ -28,6 +28,7 @@ class LibraryGameCard extends ConsumerWidget {
     this.date,
     this.showRound = true,
     this.tags = const <String>[],
+    this.reserveTagSlot = false,
   });
 
   final GamesTourModel game;
@@ -38,6 +39,11 @@ class LibraryGameCard extends ConsumerWidget {
   final DateTime? date;
   final bool showRound;
   final List<String> tags;
+
+  /// When true, the tag row keeps its height even with no tags, so every card
+  /// in a database list stays the same size. Used by saved-analysis lists
+  /// (My Database, My Likes); left false for gamebase/import cards.
+  final bool reserveTagSlot;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -187,21 +193,32 @@ class LibraryGameCard extends ConsumerWidget {
                         ],
                       ],
                     ),
-                    if (visibleTags.isNotEmpty) ...[
+                    if (reserveTagSlot || visibleTags.isNotEmpty) ...[
                       SizedBox(height: 6.h),
-                      Wrap(
-                        spacing: 6.w,
-                        runSpacing: 5.h,
-                        children: [
-                          for (final tag in visibleTags.take(3))
-                            _LibraryTagChip(label: tag),
-                          if (visibleTags.length > 3)
-                            _LibraryTagChip(
-                              label: '+${visibleTags.length - 3}',
-                              accent: context.colors.textSecondary,
-                            ),
-                        ],
-                      ),
+                      if (visibleTags.isNotEmpty)
+                        Wrap(
+                          spacing: 6.w,
+                          runSpacing: 5.h,
+                          children: [
+                            for (final tag in visibleTags.take(3))
+                              _LibraryTagChip(label: tag),
+                            if (visibleTags.length > 3)
+                              _LibraryTagChip(
+                                label: '+${visibleTags.length - 3}',
+                                accent: context.colors.textSecondary,
+                              ),
+                          ],
+                        )
+                      else
+                        // No tags: reserve exactly one chip-row of height so
+                        // cards stay uniformly sized across the list.
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Opacity(
+                            opacity: 0,
+                            child: _LibraryTagChip(label: ' '),
+                          ),
+                        ),
                     ],
                   ],
                 ),

@@ -20,6 +20,7 @@ class BookSavedGameCard extends StatelessWidget {
       game: game,
       eventName: eventName,
       tags: analysis.tags,
+      reserveTagSlot: true,
       onTap: onTap ?? () => loadSavedAnalysis(context, analysis),
     );
   }

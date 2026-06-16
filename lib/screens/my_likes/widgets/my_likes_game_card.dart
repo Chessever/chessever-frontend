@@ -54,6 +54,8 @@ class MyLikesGameCard extends ConsumerWidget {
       eventName: _eventName(analysis),
       eco: game.eco,
       date: game.lastMoveTime,
+      tags: analysis.tags,
+      reserveTagSlot: true,
       onTap: isLocked ? () => _handleLockedTap(context, ref) : onOpen,
     );
 
