@@ -18,7 +18,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Compile-time environment values injected via `--dart-define`.
 const Map<String, String> _releaseEnvValues = {
@@ -50,6 +49,37 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
   late final SupabaseClient _supabase;
   late final SessionManager _sessionManager;
   StreamSubscription<AuthState>? _authSubscription;
+
+  @override
+  bool updateShouldNotify(
+    AsyncValue<AppAuthState> previous,
+    AsyncValue<AppAuthState> next,
+  ) {
+    final previousState = previous.valueOrNull;
+    final nextState = next.valueOrNull;
+    if (previousState != null && nextState != null) {
+      return !_isSameAuthState(previousState, nextState);
+    }
+
+    return super.updateShouldNotify(previous, next);
+  }
+
+  bool _isSameAuthState(AppAuthState previous, AppAuthState next) {
+    return previous.status == next.status &&
+        previous.errorMessage == next.errorMessage &&
+        _isSameUser(previous.user, next.user);
+  }
+
+  bool _isSameUser(AppUser? previous, AppUser? next) {
+    if (previous == null || next == null) return previous == next;
+
+    return previous.id == next.id &&
+        previous.email == next.email &&
+        previous.displayName == next.displayName &&
+        previous.avatarUrl == next.avatarUrl &&
+        previous.createdAt == next.createdAt &&
+        previous.isAnonymous == next.isAnonymous;
+  }
 
   @override
   FutureOr<AppAuthState> build() async {
@@ -535,39 +565,51 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
   Future<void> signOut() async {
     state = const AsyncValue.data(AppAuthState.loading());
 
-    bool remoteSignOutSucceeded = false;
+    bool supabaseSignOutSucceeded = false;
     String? signOutErrorReason;
 
     try {
       await _signOutGoogle();
 
       await _supabase.auth.signOut();
-      remoteSignOutSucceeded = true;
+      supabaseSignOutSucceeded = true;
     } catch (e, st) {
       signOutErrorReason = e.toString();
       await ref.read(errorLoggerProvider).logError(e, st);
-      final rawMessage = _exceptionMessage(e);
-      final message =
-          rawMessage.isEmpty
-              ? 'Failed to sign out. Please try again.'
-              : rawMessage;
-      // Log the error but continue with local sign-out to avoid sticky sessions.
-      state = AsyncValue.data(AppAuthState.error(message));
-    } finally {
-      // Always clear local session to prevent silent re-auth on next launch
-      try {
-        await _supabase.auth.signOut(scope: SignOutScope.local);
-      } catch (_) {
-        // Best-effort: ignore local sign-out failures
+      if (_supabase.auth.currentSession == null) {
+        supabaseSignOutSucceeded = true;
+      } else {
+        final rawMessage = _exceptionMessage(e);
+        final message =
+            rawMessage.isEmpty
+                ? 'Failed to sign out. Please try again.'
+                : rawMessage;
+        // Log the error but continue with local sign-out to avoid sticky sessions.
+        state = AsyncValue.data(AppAuthState.error(message));
       }
-      await _sessionManager.clearLocalStorage();
-      state = const AsyncValue.data(AppAuthState.unauthenticated());
+    } finally {
+      if (!supabaseSignOutSucceeded) {
+        var localSignOutSucceeded = false;
+        // Best-effort local cleanup if Supabase sign-out did not complete.
+        try {
+          await _supabase.auth.signOut(scope: SignOutScope.local);
+          supabaseSignOutSucceeded = true;
+          localSignOutSucceeded = true;
+        } catch (_) {
+          // Best-effort: ignore local sign-out failures
+        }
+        if (!localSignOutSucceeded) {
+          await _sessionManager.clearLocalStorage();
+          state = const AsyncValue.data(AppAuthState.unauthenticated());
+        }
+      }
+
       unawaited(
         AnalyticsService.instance.trackAuthEvent(
           action: 'sign_out',
           method: 'manual',
-          success: remoteSignOutSucceeded,
-          reason: remoteSignOutSucceeded ? null : signOutErrorReason,
+          success: supabaseSignOutSucceeded,
+          reason: supabaseSignOutSucceeded ? null : signOutErrorReason,
         ),
       );
     }
@@ -683,8 +725,8 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         await _ensureGoogleInitialized();
         // 1. Get ID Token natively
         final account = await _googleSignIn.authenticate();
-        final tokenData = await account?.authentication;
-        final idToken = tokenData?.idToken;
+        final tokenData = account.authentication;
+        final idToken = tokenData.idToken;
 
         if (idToken == null) {
           throw Exception('Failed to get Google ID token.');
@@ -833,13 +875,13 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       state = AsyncValue.data(AppAuthState.authenticated(user));
       return user;
     } on TimeoutException {
-      await sub?.cancel();
+      await sub.cancel();
       state = const AsyncValue.data(
         AppAuthState.error('Sign in timed out. Please try again.'),
       );
       throw Exception('Linking timed out. Please try again.');
     } catch (e) {
-      await sub?.cancel();
+      await sub.cancel();
       rethrow;
     }
   }

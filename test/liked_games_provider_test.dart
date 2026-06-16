@@ -328,6 +328,36 @@ void main() {
     ]);
   });
 
+  test('tag writes are normalized and capped at three labels', () async {
+    final game = _game();
+    final repository = _FakeLibraryRepository(
+      initial: [_savedAnalysis(game: game, id: 'saved-1')],
+    );
+    final container = _container(repository);
+    addTearDown(container.dispose);
+
+    await container.read(likedGamesProvider.future);
+    final notifier = container.read(likedGamesProvider.notifier);
+
+    final update = notifier.setTagsForLikeId(game.likeId, const [
+      ' Trap ',
+      'Beautiful Mate',
+      'Trap',
+      'Blunder',
+      'Sacrifice',
+    ]);
+
+    const expectedTags = ['Trap', 'Beautiful Mate', 'Blunder'];
+    expect(container.read(likedGameTagsProvider(game.likeId)), expectedTags);
+    expect(await update, isTrue);
+
+    expect(repository.tagUpdates.single, expectedTags);
+    expect(
+      container.read(likedGamesProvider).valueOrNull!.single.tags,
+      expectedTags,
+    );
+  });
+
   test('pending tag is visible before liked list finishes loading', () async {
     final game = _game();
     final repository = _FakeLibraryRepository(

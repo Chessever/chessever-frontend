@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -42,7 +43,7 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -1234,12 +1235,20 @@ class _GamesTab extends ConsumerStatefulWidget {
 }
 
 class _GamesTabState extends ConsumerState<_GamesTab>
-    with AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
   // Keep the tab alive when the PageView swaps it offscreen: disposal would
   // drop the autoDispose aggregate provider (full refetch on return) plus
   // the search text, scroll offset and collapsed sections.
   @override
   bool get wantKeepAlive => true;
+
+  static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
+
+  Timer? _scrollIdleTimer;
+  bool _routeSubscribed = false;
+  bool _routeIsCurrent = true;
+  bool _appIsResumed = true;
+  bool _isScrolling = false;
 
   /// The dialog filter is owned by the screen state (seeded from the smart
   /// event's generating criteria, applied + saved on confirmed exit); this
@@ -1260,6 +1269,129 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   /// Favorites games tabs.
   final Set<String> _collapsedDates = {};
 
+  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route == null) return;
+    routeObserver.subscribe(this, route);
+    _routeSubscribed = true;
+    _routeIsCurrent = route.isCurrent;
+  }
+
+  @override
+  void dispose() {
+    if (_routeSubscribed) {
+      routeObserver.unsubscribe(this);
+    }
+    _scrollIdleTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didPush() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPopNext() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPushNext() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didPop() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    _setAppResumed(state == AppLifecycleState.resumed);
+  }
+
+  void _setRouteActive(bool isActive) {
+    if (!mounted || _routeIsCurrent == isActive) return;
+    setState(() {
+      _routeIsCurrent = isActive;
+      if (!isActive) {
+        _isScrolling = false;
+      }
+    });
+    if (!isActive) {
+      _scrollIdleTimer?.cancel();
+    }
+  }
+
+  void _setAppResumed(bool isResumed) {
+    if (!mounted || _appIsResumed == isResumed) return;
+    setState(() {
+      _appIsResumed = isResumed;
+      if (!isResumed) {
+        _isScrolling = false;
+      }
+    });
+    if (!isResumed) {
+      _scrollIdleTimer?.cancel();
+    }
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    if (notification is ScrollEndNotification) {
+      _scheduleScrollIdle();
+      return false;
+    }
+
+    if (notification is UserScrollNotification &&
+        notification.direction == ScrollDirection.idle) {
+      _scheduleScrollIdle();
+      return false;
+    }
+
+    if (notification is ScrollStartNotification ||
+        notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification ||
+        notification is UserScrollNotification) {
+      _markScrolling();
+    }
+
+    return false;
+  }
+
+  void _markScrolling() {
+    if (!_isScrolling && mounted) {
+      setState(() => _isScrolling = true);
+    }
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markScrollIdle);
+  }
+
+  void _scheduleScrollIdle() {
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markScrollIdle);
+  }
+
+  void _markScrollIdle() {
+    if (!mounted || !_isScrolling) return;
+    setState(() => _isScrolling = false);
+  }
+
   void _toggleDateSection(String dateKey) {
     HapticFeedback.lightImpact();
     setState(() {
@@ -1279,8 +1411,13 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final tabScope = _SmartTierFilterScope.of(context);
+    if (!_isActiveOnScreen || tabScope.tabIndex != 1) {
+      return const SizedBox.shrink();
+    }
     final request = _SmartEventRequestScope.of(context);
-    final tier = _SmartTierFilterScope.of(context).tier;
+    final tier = tabScope.tier;
+    final allowStockfishFallback = !_isScrolling;
     final smartQuery = SmartEventGamesQuery(
       request: request.withNeutralEloRange(),
       filter: _dataFilterForTier(tier),
@@ -1313,105 +1450,113 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       final gridColumns =
           ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
       final rows = _buildDayRows(games, gridColumns: isGrid ? gridColumns : 1);
-      return RefreshIndicator(
-        color: kPrimaryColor,
-        backgroundColor: context.colors.surface,
-        onRefresh: () async {
-          // Refresh every tab's slice of the aggregate, not just this query.
-          ref.invalidate(smartAggregateEventRepositoryProvider);
-        },
-        child: ListView.builder(
-          padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          itemCount: games.isEmpty ? 1 : rows.length,
-          itemBuilder: (context, i) {
-            if (games.isEmpty) {
-              final hasNarrowingControls =
-                  _query.isNotEmpty ||
-                  _filter.hasActiveFilters ||
-                  _SmartTierFilterScope.of(context).tier != 'All';
-              // A tier switch / filter edit / committed search re-keys the
-              // query; while the new fetch is in flight the stale aggregate
-              // may filter down to nothing. That's "loading", not "no
-              // results" — shimmer instead of a false empty state.
-              return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                child:
-                    async.isLoading
-                        ? const _GameCardShimmerColumn(
-                          key: ValueKey('smart_games_filter_shimmer'),
-                        )
-                        : _EmptyState(
-                          key: const ValueKey('smart_games_filter_empty'),
-                          message:
-                              hasNarrowingControls
-                                  ? 'No games match your filters'
-                                  : 'No games right now',
+      return NotificationListener<ScrollNotification>(
+        onNotification: _handleScrollNotification,
+        child: RefreshIndicator(
+          color: kPrimaryColor,
+          backgroundColor: context.colors.surface,
+          onRefresh: () async {
+            // Refresh every tab's slice of the aggregate, not just this query.
+            ref.invalidate(smartAggregateEventRepositoryProvider);
+          },
+          child: ListView.builder(
+            key: PageStorageKey<String>('smart_event_games_${request.scopeId}'),
+            padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            itemCount: games.isEmpty ? 1 : rows.length,
+            itemBuilder: (context, i) {
+              if (games.isEmpty) {
+                final hasNarrowingControls =
+                    _query.isNotEmpty ||
+                    _filter.hasActiveFilters ||
+                    _SmartTierFilterScope.of(context).tier != 'All';
+                // A tier switch / filter edit / committed search re-keys the
+                // query; while the new fetch is in flight the stale aggregate
+                // may filter down to nothing. That's "loading", not "no
+                // results" — shimmer instead of a false empty state.
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  child:
+                      async.isLoading
+                          ? const _GameCardShimmerColumn(
+                            key: ValueKey('smart_games_filter_shimmer'),
+                          )
+                          : _EmptyState(
+                            key: const ValueKey('smart_games_filter_empty'),
+                            message:
+                                hasNarrowingControls
+                                    ? 'No games match your filters'
+                                    : 'No games right now',
+                          ),
+                );
+              }
+              final row = rows[i];
+              if (row.header != null) {
+                final header = row.header!;
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: _DateHeader(
+                    dateLabel: _formatDateHeader(header.dateKey),
+                    gameCount: header.gameCount,
+                    isExpanded: !_collapsedDates.contains(header.dateKey),
+                    onToggle: () => _toggleDateSection(header.dateKey),
+                  ),
+                );
+              }
+              if (row.gridGames != null) {
+                final rowGames = row.gridGames!;
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: row.isLastInSection ? 16.h : 12.h,
+                  ),
+                  child: Row(
+                    children: [
+                      for (int j = 0; j < gridColumns; j++) ...[
+                        if (j > 0) SizedBox(width: 12.sp),
+                        Expanded(
+                          child:
+                              j < rowGames.length
+                                  ? _buildGridGame(
+                                    rowGames[j],
+                                    games,
+                                    gamesData,
+                                    liveBatchKey,
+                                    allowStockfishFallback,
+                                  )
+                                  : const SizedBox.shrink(),
                         ),
+                      ],
+                    ],
+                  ),
+                );
+              }
+              final game = row.game!;
+              final gameIndex = games.indexWhere(
+                (g) => g.gameId == game.gameId,
               );
-            }
-            final row = rows[i];
-            if (row.header != null) {
-              final header = row.header!;
-              return Padding(
-                padding: EdgeInsets.only(bottom: 12.h),
-                child: _DateHeader(
-                  dateLabel: _formatDateHeader(header.dateKey),
-                  gameCount: header.gameCount,
-                  isExpanded: !_collapsedDates.contains(header.dateKey),
-                  onToggle: () => _toggleDateSection(header.dateKey),
-                ),
-              );
-            }
-            if (row.gridGames != null) {
-              final rowGames = row.gridGames!;
               return Padding(
                 padding: EdgeInsets.only(
                   bottom: row.isLastInSection ? 16.h : 12.h,
                 ),
-                child: Row(
-                  children: [
-                    for (int j = 0; j < gridColumns; j++) ...[
-                      if (j > 0) SizedBox(width: 12.sp),
-                      Expanded(
-                        child:
-                            j < rowGames.length
-                                ? _buildGridGame(
-                                  rowGames[j],
-                                  games,
-                                  gamesData,
-                                  liveBatchKey,
-                                )
-                                : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ],
+                child: GameCardWrapperWidget(
+                  key: ValueKey('smart_${game.gameId}'),
+                  game: game,
+                  gamesData: gamesData,
+                  gameIndex: gameIndex < 0 ? 0 : gameIndex,
+                  isChessBoardVisible: viewMode == GamesListViewMode.chessBoard,
+                  viewSource: ChessboardView.tour,
+                  onReturnFromChessboard: (_) {},
+                  liveBatchKey: liveBatchKey,
+                  allowStockfishFallback: allowStockfishFallback,
+                  onBeforeOpen: () => _guardGameOpen(context),
                 ),
               );
-            }
-            final game = row.game!;
-            final gameIndex = games.indexWhere((g) => g.gameId == game.gameId);
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: row.isLastInSection ? 16.h : 12.h,
-              ),
-              child: GameCardWrapperWidget(
-                key: ValueKey('smart_${game.gameId}'),
-                game: game,
-                gamesData: gamesData,
-                gameIndex: gameIndex < 0 ? 0 : gameIndex,
-                isChessBoardVisible: viewMode == GamesListViewMode.chessBoard,
-                viewSource: ChessboardView.tour,
-                onReturnFromChessboard: (_) {},
-                liveBatchKey: liveBatchKey,
-                onBeforeOpen: () => _guardGameOpen(context),
-              ),
-            );
-          },
+            },
+          ),
         ),
       );
     }
@@ -1534,6 +1679,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     List<GamesTourModel> games,
     GamesScreenModel gamesData,
     LiveGamesBatchKey? liveBatchKey,
+    bool allowStockfishFallback,
   ) {
     final gameIndex = games.indexWhere((g) => g.gameId == game.gameId);
     final safeIndex = gameIndex < 0 ? 0 : gameIndex;
@@ -1544,6 +1690,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       gameIndex: safeIndex,
       pinnedIds: gamesData.pinnedGamedIs,
       liveBatchKey: liveBatchKey,
+      allowStockfishFallback: allowStockfishFallback,
       onPinToggle:
           (g) async => await ref
               .read(gamesTourScreenProvider.notifier)
@@ -1823,7 +1970,8 @@ class _AboutTabState extends ConsumerState<_AboutTab>
       if (async.hasError) {
         return GenericErrorWidget(
           onRetry:
-              () => ref.invalidate(smartAggregateEventRepositoryProvider(query)),
+              () =>
+                  ref.invalidate(smartAggregateEventRepositoryProvider(query)),
         );
       }
       return const Center(child: CircularProgressIndicator());
@@ -1875,20 +2023,14 @@ class _AboutTabState extends ConsumerState<_AboutTab>
                     label: 'Tournaments',
                     value: '${event.tournamentCount}',
                   ),
-                  _Stat(
-                    label: 'Live games',
-                    value: '${event.liveGameCount}',
-                  ),
+                  _Stat(label: 'Live games', value: '${event.liveGameCount}'),
                   if (event.avgElo > 0)
                     _Stat(label: 'Avg ELO', value: 'Ø ${event.avgElo}'),
                 ],
               ),
               if (dateSpan.isNotEmpty) ...[
                 SizedBox(height: 14.h),
-                _MetaRow(
-                  icon: Icons.calendar_today_rounded,
-                  text: dateSpan,
-                ),
+                _MetaRow(icon: Icons.calendar_today_rounded, text: dateSpan),
               ],
               if (event.timeControls.isNotEmpty) ...[
                 SizedBox(height: 8.h),

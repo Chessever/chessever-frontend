@@ -455,6 +455,30 @@ class LibraryRepository extends BaseRepository {
     return SavedAnalysis.fromSupabase(response.first);
   });
 
+  /// Get all saved copies of a source game, across every database.
+  ///
+  /// The save sheet uses this to render database cards as independent
+  /// checkboxes: each folder can contain its own `user_saved_analyses` row for
+  /// the same source game, and add/remove actions must target that row's id.
+  Future<List<SavedAnalysis>> getSavedAnalysesBySourceGame({
+    required String sourceGameId,
+  }) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final response = await supabase
+        .from('user_saved_analyses')
+        .select()
+        .eq('user_id', userId)
+        .eq('source_game_id', sourceGameId)
+        .order('updated_at', ascending: false)
+        .order('created_at', ascending: false);
+
+    return (response as List)
+        .map((json) => SavedAnalysis.fromSupabase(json))
+        .toList();
+  });
+
   /// Create a new saved analysis
   Future<SavedAnalysis> createSavedAnalysis(SavedAnalysis analysis) =>
       handleApiCall(() async {
@@ -744,6 +768,9 @@ class LibraryRepository extends BaseRepository {
   }) {
     final normalizedTag = tag?.trim();
     if (normalizedTag != null && normalizedTag.isNotEmpty) {
+      // Supabase Dart maps this to PostgREST `tags=cs.{...}` / SQL `tags @>`.
+      // Keep tag chips server-side and array-aware so multi-tag games match
+      // every selected single-tag filter.
       query = query.contains('tags', [normalizedTag]);
     }
 

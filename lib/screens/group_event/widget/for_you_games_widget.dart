@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
@@ -73,10 +74,13 @@ class ForYouGamesWidget extends ConsumerStatefulWidget {
 }
 
 class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
-    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
   final Set<String> _animatedEventIds = <String>{};
   final Set<String> _animatedGameIds = <String>{};
   Timer? _scrollIdleTimer;
+  bool _routeSubscribed = false;
+  bool _routeIsCurrent = true;
+  bool _appIsResumed = true;
   bool _isScrolling = false;
 
   @override
@@ -87,9 +91,23 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route == null) return;
+    routeObserver.subscribe(this, route);
+    _routeSubscribed = true;
+    _routeIsCurrent = route.isCurrent;
+  }
+
+  @override
   void dispose() {
     _animatedEventIds.clear();
     _animatedGameIds.clear();
+    if (_routeSubscribed) {
+      routeObserver.unsubscribe(this);
+    }
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
     widget.scrollController.removeListener(_onScroll);
@@ -98,22 +116,84 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   @override
+  void didPush() {
+    _setRouteActive(true, refreshNow: true);
+  }
+
+  @override
+  void didPopNext() {
+    _setRouteActive(true, refreshNow: true);
+  }
+
+  @override
+  void didPushNext() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didPop() {
+    _setRouteActive(false);
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state != AppLifecycleState.resumed) {
       ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
+      _setAppResumed(false);
       return;
     }
     if (!mounted) return;
 
+    _setAppResumed(true);
     ForegroundTaskScheduler.schedule(
       key: 'for_you_games_resume_$hashCode',
       task: _refreshRealtimeGamesNow,
     );
   }
 
+  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+
+  void _setRouteActive(bool isActive, {bool refreshNow = false}) {
+    if (!mounted) return;
+    if (_routeIsCurrent != isActive) {
+      setState(() {
+        _routeIsCurrent = isActive;
+        if (!isActive) {
+          _isScrolling = false;
+        }
+      });
+    }
+    if (!isActive) {
+      _stopTransientWork();
+    } else if (refreshNow) {
+      _refreshRealtimeGamesNow();
+    }
+  }
+
+  void _setAppResumed(bool isResumed) {
+    if (!mounted) return;
+    if (_appIsResumed != isResumed) {
+      setState(() {
+        _appIsResumed = isResumed;
+        if (!isResumed) {
+          _isScrolling = false;
+        }
+      });
+    }
+    if (!isResumed) {
+      _stopTransientWork();
+    }
+  }
+
+  void _stopTransientWork() {
+    ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
+    _scrollIdleTimer?.cancel();
+  }
+
   void _refreshRealtimeGamesNow() {
     if (!mounted) return;
+    if (!_isActiveOnScreen) return;
     final route = ModalRoute.of(context);
     if (route?.isCurrent != true) return;
     final selected = ref.read(selectedGroupCategoryProvider);
@@ -159,9 +239,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     super.build(context); // required by AutomaticKeepAliveClientMixin
 
     // If PageView keeps this page around briefly while swiping, drop all
-    // expensive provider subscriptions until For You is selected again.
+    // expensive provider subscriptions until For You is visible again.
     final selectedCategory = ref.watch(selectedGroupCategoryProvider);
-    if (selectedCategory != GroupEventCategory.forYou) {
+    if (selectedCategory != GroupEventCategory.forYou || !_isActiveOnScreen) {
       return const SizedBox.shrink();
     }
 

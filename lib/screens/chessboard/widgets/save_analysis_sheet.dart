@@ -146,6 +146,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   late TextEditingController _dayController;
 
   LibraryFolder? _selectedFolder;
+  final Map<String, LibraryFolder> _selectedFoldersById = {};
+  final Set<String> _selectedFolderIds = <String>{};
+  final Map<String, SavedAnalysis> _savedAnalysesByFolderId = {};
   bool _isSaving = false;
   String? _errorMessage;
   bool _isCreatingNewFolder = false;
@@ -159,7 +162,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   String? _existingAnalysisId;
   String? _existingSourceGameId;
   String? _initialFolderId;
-  bool _hasAppliedInitialFolder = false;
+  bool _hasLoadedSavedDestinations = false;
+  bool _isLoadingSavedDestinations = false;
   bool _canAdoptLikedAnalysis = false;
   bool _editingLikedAnalysis = false;
 
@@ -168,10 +172,10 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   // of overwriting the existing analysis.
   bool _isDuplicateMode = false;
 
-  /// Single classification tag for this game (the My-Likes taxonomy). Persisted
-  /// into `SavedAnalysis.tags` as a one-element list; pre-filled from the liked
-  /// row when the game is already liked.
-  String? _selectedTag;
+  /// Classification tags for this game (the My-Likes taxonomy). Persisted into
+  /// `SavedAnalysis.tags`; pre-filled from the liked row when the game is
+  /// already liked.
+  List<String> _selectedTags = const <String>[];
 
   @override
   void initState() {
@@ -188,9 +192,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       _editingLikedAnalysis = _savedDataMatchesLoadedLike(saved);
       final dynamicTags = ref.read(likedGameTagsProvider(_likeId));
       if (dynamicTags.isNotEmpty) {
-        _selectedTag = dynamicTags.first;
+        _selectedTags = normalizeLikeTagLabels(dynamicTags);
       } else if (saved.tags.isNotEmpty) {
-        _selectedTag = saved.tags.first;
+        _selectedTags = normalizeLikeTagLabels(saved.tags);
       }
     } else {
       // Parity with opening from My Likes: when the game wasn't opened *as* a
@@ -211,6 +215,100 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   }
 
   String get _likeId => widget.config.state.game.likeId;
+
+  String get _saveSourceGameId => _existingSourceGameId ?? _likeId;
+
+  void _selectFolder(LibraryFolder folder, {SavedAnalysis? analysis}) {
+    _selectedFolderIds.add(folder.id);
+    _selectedFoldersById[folder.id] = folder;
+    _selectedFolder = folder;
+    if (analysis != null && analysis.folderId != null) {
+      _savedAnalysesByFolderId[analysis.folderId!] = analysis;
+    }
+  }
+
+  void _deselectFolder(LibraryFolder folder) {
+    _selectedFolderIds.remove(folder.id);
+    _selectedFoldersById.remove(folder.id);
+    if (_selectedFolder?.id == folder.id) {
+      _selectedFolder =
+          _selectedFolderIds.isEmpty
+              ? null
+              : _selectedFoldersById[_selectedFolderIds.last];
+    }
+  }
+
+  bool _isFolderSelected(LibraryFolder folder) {
+    return _selectedFolderIds.contains(folder.id);
+  }
+
+  SavedAnalysis? _preferredSavedAnalysis(List<SavedAnalysis> analyses) {
+    if (analyses.isEmpty) return null;
+
+    final existingId = _existingAnalysisId;
+    if (existingId != null) {
+      for (final analysis in analyses) {
+        if (analysis.id == existingId) return analysis;
+      }
+    }
+
+    for (final analysis in analyses) {
+      final folderId = analysis.folderId;
+      if (folderId == null) continue;
+      final folder = _selectedFoldersById[folderId];
+      if (folder != null && !folder.isLikedGames) return analysis;
+    }
+
+    return analyses.first;
+  }
+
+  Future<void> _loadSavedDestinations(List<LibraryFolder> folders) async {
+    if (_hasLoadedSavedDestinations || _isLoadingSavedDestinations) return;
+    _isLoadingSavedDestinations = true;
+
+    try {
+      final savedCopies = await ref
+          .read(libraryRepositoryProvider)
+          .getSavedAnalysesBySourceGame(sourceGameId: _saveSourceGameId);
+      if (!mounted) return;
+
+      final foldersById = {for (final folder in folders) folder.id: folder};
+      setState(() {
+        for (final analysis in savedCopies) {
+          final folderId = analysis.folderId;
+          if (folderId == null) continue;
+          _savedAnalysesByFolderId[folderId] = analysis;
+          final folder = foldersById[folderId];
+          if (folder == null) continue;
+          _selectFolder(folder, analysis: analysis);
+          if (folder.isLikedGames) {
+            _editingLikedAnalysis = true;
+          }
+        }
+
+        final initialId = _initialFolderId;
+        if (initialId != null) {
+          final initialFolder = foldersById[initialId];
+          if (initialFolder != null) {
+            _selectFolder(initialFolder);
+            if (initialFolder.isLikedGames) {
+              _editingLikedAnalysis = true;
+            }
+          }
+        }
+
+        _hasLoadedSavedDestinations = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hasLoadedSavedDestinations = true;
+        _errorMessage = "Couldn't load existing database selections.";
+      });
+    } finally {
+      _isLoadingSavedDestinations = false;
+    }
+  }
 
   SavedAnalysis? _findLikedAnalysis(List<SavedAnalysis>? likedList) {
     if (likedList == null) return null;
@@ -233,14 +331,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         _editingLikedAnalysis = true;
         if (_initialFolderId != liked.folderId) {
           _initialFolderId = liked.folderId;
-          _hasAppliedInitialFolder = false;
         }
       } else if (_existingAnalysisId == liked.id) {
         _editingLikedAnalysis = true;
       }
+      final folderId = liked.folderId;
+      if (folderId != null) {
+        _savedAnalysesByFolderId[folderId] = liked;
+        _selectedFolderIds.add(folderId);
+      }
       final tags = _effectiveTagsFor(liked);
-      _selectedTag = tags.isEmpty ? null : tags.first;
-      _updateBoardSavedAnalysisTagSnapshot(_selectedTag);
+      _selectedTags = normalizeLikeTagLabels(tags);
+      _updateBoardSavedAnalysisTagSnapshot(_selectedTags);
     }
 
     if (notify && mounted) {
@@ -273,8 +375,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   bool get _willSaveSeparateFromLikedAnalysis {
     if (!_editingLikedAnalysis) return false;
     if (_isCreatingNewFolder) return true;
-    final folder = _selectedFolder;
-    return folder != null && !folder.isLikedGames;
+    return _selectedFolderIds.any(
+      (folderId) => _selectedFoldersById[folderId]?.isLikedGames == false,
+    );
   }
 
   void _applyInitialDynamicTags() {
@@ -282,8 +385,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     final dynamicTags = ref.read(likedGameTagsProvider(_likeId));
     if (pending == null && dynamicTags.isEmpty) return;
 
-    _selectedTag = dynamicTags.isEmpty ? null : dynamicTags.first;
-    _updateBoardSavedAnalysisTagSnapshot(_selectedTag);
+    _selectedTags = normalizeLikeTagLabels(dynamicTags);
+    _updateBoardSavedAnalysisTagSnapshot(_selectedTags);
   }
 
   void _initializeControllers() {
@@ -408,16 +511,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         HapticFeedback.lightImpact();
         return;
       }
-    } else if (_selectedFolder == null) {
+    } else if (_selectedFoldersById.isEmpty) {
       // user_saved_analyses.folder_id is NOT NULL at the DB layer; saving
       // without a folder used to succeed at insert and then orphan the row
       // (visible only via SQL, still counting toward the free-tier limit).
       setState(() {
-        _errorMessage = 'Pick a folder to save into';
+        _errorMessage = 'Pick at least one database to save into';
       });
       HapticFeedback.lightImpact();
       return;
-    } else if (!_selectedFolder!.isDatabase) {
+    } else if (_selectedFoldersById.values.any(
+      (folder) => !folder.isDatabase,
+    )) {
       // Library hierarchy: a Folder holds Databases, a Database holds Games.
       // A game can therefore only be saved into a database — the special
       // "Liked Games" collection is itself a games-only database, so it
@@ -433,13 +538,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     // forked from an existing one) add a row and count against the free-tier
     // cap, so gate them through canSaveMoreGames.
     final saveSeparateFromLiked = _willSaveSeparateFromLikedAnalysis;
-    final isInsert =
-        !_isEditMode ||
-        _existingAnalysisId == null ||
-        _isDuplicateMode ||
-        saveSeparateFromLiked;
-    if (isInsert) {
-      final allowed = await canSaveMoreGames(context, gamesToAdd: 1);
+    final insertCount =
+        _isCreatingNewFolder
+            ? 1
+            : _selectedFoldersById.keys
+                .where(
+                  (folderId) =>
+                      _isDuplicateMode ||
+                      !_savedAnalysesByFolderId.containsKey(folderId),
+                )
+                .length;
+    if (insertCount > 0) {
+      final allowed = await canSaveMoreGames(context, gamesToAdd: insertCount);
       if (!allowed || !mounted) return;
     }
 
@@ -460,7 +570,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       // the hierarchy (Folder holds databases, Database holds games). Never a
       // root orphan, and never parented under another database or the special
       // Liked Games collection (databases can't contain nodes).
-      String? targetFolderId = _selectedFolder?.id;
+      final targetFoldersById = Map<String, LibraryFolder>.from(
+        _selectedFoldersById,
+      );
       if (_isCreatingNewFolder) {
         final newFolderName = _newFolderNameController.text.trim();
         final nodes = await repository.getFolders();
@@ -480,7 +592,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           parentId: parentFolder.id,
           nodeType: LibraryFolder.nodeTypeDatabase,
         );
-        targetFolderId = newFolder.id;
+        targetFoldersById[newFolder.id] = newFolder;
+        _selectFolder(newFolder);
       }
 
       final state = widget.config.state;
@@ -537,67 +650,115 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         'move_pointer': state.analysisState.movePointer,
         'is_board_flipped': state.isBoardFlipped,
       };
+      final selectedTags = normalizeLikeTagLabels(_selectedTags);
 
-      String resolvedAnalysisId;
-      if (!isInsert) {
-        // Update existing library analysis instead of creating a new row.
+      final savedResults = <SavedAnalysis>[];
+      for (final entry in targetFoldersById.entries) {
+        final targetFolderId = entry.key;
+        final targetFolder = entry.value;
+        var existing =
+            _isDuplicateMode ? null : _savedAnalysesByFolderId[targetFolderId];
+
+        if (targetFolder.isLikedGames && existing == null) {
+          existing = _findLikedAnalysis(
+            ref.read(likedGamesProvider).valueOrNull,
+          );
+          if (existing == null) {
+            await ref
+                .read(likedGamesProvider.notifier)
+                .toggle(widget.config.state.game);
+            existing = _findLikedAnalysis(
+              ref.read(likedGamesProvider).valueOrNull,
+            );
+          }
+          if (existing != null && existing.folderId != null) {
+            _savedAnalysesByFolderId[existing.folderId!] = existing;
+          }
+        }
+
+        if (existing != null) {
+          // Update this database's existing copy.
+          final savedAnalysis = SavedAnalysis(
+            id: existing.id,
+            userId: userId,
+            folderId: targetFolderId,
+            title: title,
+            sourceGameId: existing.sourceGameId ?? _saveSourceGameId,
+            sourceTournamentId: state.game.tourId,
+            chessGame: analysisGame,
+            analysisState: analysisStateJson,
+            variationComments: state.variationComments,
+            moveNags: state.moveNags,
+            lastViewedPosition: state.analysisState.currentMoveIndex,
+            tags: selectedTags,
+            notes: existing.notes,
+            isFavorite: existing.isFavorite,
+            createdAt: existing.createdAt,
+            updatedAt: DateTime.now(),
+          );
+          final updated = await repository.updateSavedAnalysis(savedAnalysis);
+          _savedAnalysesByFolderId[targetFolderId] = updated;
+          savedResults.add(updated);
+          continue;
+        }
+
         final savedAnalysis = SavedAnalysis(
-          id: _existingAnalysisId!,
+          id: '', // Will be generated by database
           userId: userId,
           folderId: targetFolderId,
           title: title,
-          sourceGameId: _existingSourceGameId ?? state.game.likeId,
+          sourceGameId: _saveSourceGameId,
           sourceTournamentId: state.game.tourId,
           chessGame: analysisGame,
           analysisState: analysisStateJson,
           variationComments: state.variationComments,
           moveNags: state.moveNags,
           lastViewedPosition: state.analysisState.currentMoveIndex,
-          tags: _selectedTag == null ? const [] : [_selectedTag!],
-          notes: null,
-          isFavorite: false,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        await repository.updateSavedAnalysis(savedAnalysis);
-        resolvedAnalysisId = _existingAnalysisId!;
-      } else {
-        final savedAnalysis = SavedAnalysis(
-          id: '', // Will be generated by database
-          userId: userId,
-          folderId: targetFolderId,
-          title: title,
-          sourceGameId: state.game.likeId,
-          sourceTournamentId: state.game.tourId,
-          chessGame: analysisGame,
-          analysisState: analysisStateJson,
-          variationComments: state.variationComments,
-          lastViewedPosition: state.analysisState.currentMoveIndex,
-          tags: _selectedTag == null ? const [] : [_selectedTag!],
+          tags: selectedTags,
           notes: null,
           isFavorite: false,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
         final created = await repository.createSavedAnalysis(savedAnalysis);
-        resolvedAnalysisId = created.id;
+        _savedAnalysesByFolderId[targetFolderId] = created;
+        savedResults.add(created);
       }
 
       // Library home cards show per-folder counts; without invalidating the
       // count family + folder stream they stay stale after a save.
       ref.invalidate(folderAnalysisCountProvider);
       ref.invalidate(libraryFoldersStreamProvider);
+      unawaited(ref.read(likedGamesProvider.notifier).refresh());
 
       // Refresh provider's snapshot so auto-save uses the latest title/folder
-      // and treats current tree as the saved baseline.
-      ref
-          .read(chessBoardScreenProviderNew(widget.config.params).notifier)
-          .attachSavedAnalysisId(
-            analysisId: resolvedAnalysisId,
-            title: title,
-            folderId: targetFolderId,
-            tags: _selectedTag == null ? const <String>[] : [_selectedTag!],
-          );
+      // and treats current tree as the saved baseline. A board can only attach
+      // one row, so prefer the row it was already editing, then a normal
+      // database copy, then My Likes.
+      final attached = _preferredSavedAnalysis(savedResults);
+      if (attached != null) {
+        _existingAnalysisId = attached.id;
+        _existingSourceGameId = attached.sourceGameId;
+        _initialFolderId = attached.folderId;
+        _isEditMode = true;
+        _isDuplicateMode = false;
+        final attachedFolder =
+            attached.folderId == null
+                ? null
+                : targetFoldersById[attached.folderId!];
+        if (attachedFolder != null) {
+          _selectedFolder = attachedFolder;
+          _editingLikedAnalysis = attachedFolder.isLikedGames;
+        }
+        ref
+            .read(chessBoardScreenProviderNew(widget.config.params).notifier)
+            .attachSavedAnalysisId(
+              analysisId: attached.id,
+              title: title,
+              folderId: attached.folderId,
+              tags: selectedTags,
+            );
+      }
 
       if (mounted && context.mounted) {
         HapticFeedback.mediumImpact();
@@ -698,13 +859,16 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         return;
       }
       if (!isLiked) {
-        await _handleLikeFromSheet();
+        final didLike = await _handleLikeFromSheet();
+        if (didLike && mounted) {
+          setState(() => _selectFolder(folder));
+        }
         return;
       }
     }
-    if (_selectedFolder?.id != folder.id) {
+    if (!_isFolderSelected(folder)) {
       setState(() {
-        _selectedFolder = folder;
+        _selectFolder(folder);
         _errorMessage = null;
       });
       HapticFeedback.selectionClick();
@@ -735,13 +899,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     return likedList.any((analysis) => analysis.sourceGameId == _likeId);
   }
 
-  Future<void> _handleLikeFromSheet() async {
+  Future<bool> _handleLikeFromSheet() async {
     if (!_canManageLike) {
       setState(() {
         _errorMessage = "This database game can't be liked from here.";
       });
       HapticFeedback.lightImpact();
-      return;
+      return false;
     }
 
     setState(() {
@@ -756,7 +920,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     ref.invalidate(folderAnalysisCountProvider);
     ref.invalidate(libraryFoldersStreamProvider);
 
-    if (!mounted) return;
+    if (!mounted) return nowLiked;
     if (nowLiked) {
       _applyLikedAnalysis(
         _findLikedAnalysis(ref.read(likedGamesProvider).valueOrNull),
@@ -772,6 +936,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       }
       _isSaving = false;
     });
+    return nowLiked;
   }
 
   /// Deselects [folder] and removes the game from it. For the Liked Games
@@ -780,20 +945,22 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   /// pick on a brand-new game) just clears the selection — nothing to delete.
   Future<void> _removeGameFromFolder(LibraryFolder folder) async {
     final isLikedFolder = folder.isLikedGames;
+    final persistedAnalysis = _savedAnalysesByFolderId[folder.id];
     final livesHere =
-        _isEditMode &&
-        _existingAnalysisId != null &&
-        _initialFolderId == folder.id;
+        persistedAnalysis != null ||
+        (_isEditMode &&
+            _existingAnalysisId != null &&
+            _initialFolderId == folder.id);
 
     // Card reads as unselected immediately, regardless of what follows.
     setState(() {
-      _selectedFolder = null;
+      _deselectFolder(folder);
       _errorMessage = null;
     });
 
     final removeFromLiked =
         isLikedFolder && ref.read(isGameLikedProvider(_likeId));
-    final removeAnalysis = !isLikedFolder && livesHere;
+    final removeAnalysis = (!isLikedFolder || !removeFromLiked) && livesHere;
     if (!removeFromLiked && !removeAnalysis) {
       // Nothing persisted in this folder — a plain deselect.
       HapticFeedback.selectionClick();
@@ -815,29 +982,75 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       } else {
         await ref
             .read(libraryRepositoryProvider)
-            .deleteSavedAnalysis(_existingAnalysisId!);
+            .deleteSavedAnalysis(persistedAnalysis?.id ?? _existingAnalysisId!);
       }
 
-      // The game no longer lives in a database via this sheet: drop edit mode
-      // and detach the board's saved snapshot so auto-save won't recreate the
-      // row we just deleted.
-      ref
-          .read(chessBoardScreenProviderNew(widget.config.params).notifier)
-          .detachSavedAnalysis();
+      _savedAnalysesByFolderId.remove(folder.id);
       ref.invalidate(folderAnalysisCountProvider);
       ref.invalidate(libraryFoldersStreamProvider);
+      unawaited(ref.read(likedGamesProvider.notifier).refresh());
+
+      final removedAttachedRow =
+          _existingAnalysisId != null &&
+          (_existingAnalysisId == persistedAnalysis?.id ||
+              (_initialFolderId == folder.id && persistedAnalysis == null));
+      final replacement =
+          removedAttachedRow
+              ? _preferredSavedAnalysis(
+                _savedAnalysesByFolderId.values
+                    .where(
+                      (analysis) =>
+                          analysis.folderId != null &&
+                          _selectedFolderIds.contains(analysis.folderId),
+                    )
+                    .toList(),
+              )
+              : null;
+
+      if (removedAttachedRow && replacement != null) {
+        _existingAnalysisId = replacement.id;
+        _existingSourceGameId = replacement.sourceGameId;
+        _initialFolderId = replacement.folderId;
+        ref
+            .read(chessBoardScreenProviderNew(widget.config.params).notifier)
+            .attachSavedAnalysisId(
+              analysisId: replacement.id,
+              title: replacement.title,
+              folderId: replacement.folderId,
+              tags: replacement.tags,
+            );
+      } else if (removedAttachedRow) {
+        // No selected saved copy remains: drop edit mode and detach the board's
+        // saved snapshot so auto-save won't recreate the row we just deleted.
+        ref
+            .read(chessBoardScreenProviderNew(widget.config.params).notifier)
+            .detachSavedAnalysis();
+      }
 
       if (!mounted) return;
       setState(() {
-        _isEditMode = false;
-        _isDuplicateMode = false;
-        _existingAnalysisId = null;
-        _existingSourceGameId = null;
-        _initialFolderId = null;
-        _editingLikedAnalysis = false;
+        if (removedAttachedRow && replacement == null) {
+          _isEditMode = false;
+          _isDuplicateMode = false;
+          _existingAnalysisId = null;
+          _existingSourceGameId = null;
+          _initialFolderId = null;
+        } else if (replacement != null) {
+          _isEditMode = true;
+          _isDuplicateMode = false;
+          _selectedFolder =
+              replacement.folderId == null
+                  ? null
+                  : _selectedFoldersById[replacement.folderId!];
+        }
+        _editingLikedAnalysis =
+            _selectedFolder?.isLikedGames == true ||
+            _selectedFolderIds.any(
+              (folderId) =>
+                  _selectedFoldersById[folderId]?.isLikedGames == true,
+            );
         // Don't let the folder-list pre-select logic re-select the row we
         // just emptied on the next data build.
-        _hasAppliedInitialFolder = true;
         _isSaving = false;
       });
 
@@ -871,7 +1084,6 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     setState(() {
       _isCreatingNewFolder = !_isCreatingNewFolder;
       if (_isCreatingNewFolder) {
-        _selectedFolder = null;
         Future.delayed(const Duration(milliseconds: 100), () {
           if (mounted) {
             _newFolderNameFocusNode.requestFocus();
@@ -890,10 +1102,12 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         // allowed, but starting with the originating folder pre-selected is a
         // foot-gun (looks like an update target).
         _selectedFolder = null;
+        _selectedFolderIds.clear();
+        _selectedFoldersById.clear();
       } else {
         // Returning to update mode: re-apply the originating folder pre-select
         // on the next data build.
-        _hasAppliedInitialFolder = false;
+        _hasLoadedSavedDestinations = false;
       }
       _errorMessage = null;
     });
@@ -1593,7 +1807,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   letterSpacing: 0.3,
                 ),
               ),
-              if (_selectedTag != null)
+              if (_selectedTags.isNotEmpty)
                 GestureDetector(
                   onTap:
                       _isSaving
@@ -1616,16 +1830,22 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             runSpacing: 8.h,
             children: [
               for (final tag in kLikeTags)
-                _TagChip(
-                  tag: tag,
-                  selected: _selectedTag == tag.label,
-                  onTap:
-                      _isSaving
-                          ? null
-                          : () {
-                            _handleTagSelection(tag.label);
-                          },
-                ),
+                () {
+                  final selected = _selectedTags.contains(tag.label);
+                  final disabled =
+                      !selected && _selectedTags.length >= kMaxLikeTagsPerGame;
+                  return _TagChip(
+                    tag: tag,
+                    selected: selected,
+                    disabled: disabled,
+                    onTap:
+                        _isSaving || disabled
+                            ? null
+                            : () {
+                              _handleTagSelection(tag.label);
+                            },
+                  );
+                }(),
             ],
           ),
         ],
@@ -1636,24 +1856,25 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   Future<void> _handleTagSelection(String? tag) async {
     if (_isSaving) return;
 
-    final nextTag = tag == null || _selectedTag == tag ? null : tag;
-    final nextTags = nextTag == null ? const <String>[] : [nextTag];
+    final nextTags = _nextSelectedTags(tag);
+    if (_sameTagLabels(_selectedTags, nextTags)) return;
+
     HapticFeedback.selectionClick();
     setState(() {
-      _selectedTag = nextTag;
+      _selectedTags = nextTags;
       _errorMessage = null;
     });
-    _updateBoardSavedAnalysisTagSnapshot(nextTag);
+    _updateBoardSavedAnalysisTagSnapshot(nextTags);
 
     // Tags persist immediately only for liked games (the Liked Games row). For
     // an own-database game in edit mode the tag rides along with the next Save
     // (see _handleSave), so don't push it through the liked-games path here.
     if (!_canManageLike) return;
 
-    // A tag only has meaning on a liked game, so choosing one for a game that
+    // Tags only have meaning on a liked game, so choosing tags for a game that
     // isn't liked yet implies the like. Fire it first — setTagsForLikeId waits
     // for the in-flight toggle before writing.
-    if (nextTag != null && !ref.read(isGameLikedProvider(_likeId))) {
+    if (nextTags.isNotEmpty && !ref.read(isGameLikedProvider(_likeId))) {
       unawaited(
         ref.read(likedGamesProvider.notifier).toggle(widget.config.state.game),
       );
@@ -1664,31 +1885,51 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         .setTagsForLikeId(_likeId, nextTags);
     if (persisted || !mounted) return;
 
-    final latestTags = ref.read(likedGameTagsProvider(_likeId));
+    final latestTags = normalizeLikeTagLabels(
+      ref.read(likedGameTagsProvider(_likeId)),
+    );
     setState(() {
-      _selectedTag = latestTags.isEmpty ? null : latestTags.first;
-      _errorMessage = "Couldn't update tag. Please try again.";
+      _selectedTags = latestTags;
+      _errorMessage = "Couldn't update tags. Please try again.";
     });
-    _updateBoardSavedAnalysisTagSnapshot(_selectedTag);
+    _updateBoardSavedAnalysisTagSnapshot(_selectedTags);
   }
 
   void _applySelectedTags(List<String> tags) {
-    final nextTag = tags.isEmpty ? null : tags.first;
-    if (_selectedTag == nextTag) return;
+    final nextTags = normalizeLikeTagLabels(tags);
+    if (_sameTagLabels(_selectedTags, nextTags)) return;
     if (!mounted) {
-      _selectedTag = nextTag;
+      _selectedTags = nextTags;
       return;
     }
-    setState(() => _selectedTag = nextTag);
-    _updateBoardSavedAnalysisTagSnapshot(nextTag);
+    setState(() => _selectedTags = nextTags);
+    _updateBoardSavedAnalysisTagSnapshot(nextTags);
   }
 
-  void _updateBoardSavedAnalysisTagSnapshot(String? tag) {
+  List<String> _nextSelectedTags(String? tag) {
+    if (tag == null) return const <String>[];
+    final next = List<String>.from(_selectedTags);
+    if (next.contains(tag)) {
+      next.remove(tag);
+    } else {
+      if (next.length >= kMaxLikeTagsPerGame) return _selectedTags;
+      next.add(tag);
+    }
+    return normalizeLikeTagLabels(next);
+  }
+
+  bool _sameTagLabels(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  void _updateBoardSavedAnalysisTagSnapshot(List<String> tags) {
     ref
         .read(chessBoardScreenProviderNew(widget.config.params).notifier)
-        .updateSavedAnalysisTagsSnapshot(
-          tag == null ? const <String>[] : [tag],
-        );
+        .updateSavedAnalysisTagsSnapshot(tags);
   }
 
   Widget _buildFolderSection(AsyncValue<List<LibraryFolder>> foldersAsync) {
@@ -1947,24 +2188,12 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   }) {
     return foldersAsync.when(
       data: (folders) {
-        // Pre-select the analysis's existing folder once on first data load.
-        if (!_hasAppliedInitialFolder &&
-            _initialFolderId != null &&
-            _selectedFolder == null) {
-          _hasAppliedInitialFolder = true;
-          final initialId = _initialFolderId;
-          final match = folders.where((f) => f.id == initialId).toList();
-          if (match.isNotEmpty) {
-            final folder = match.first;
-            if (folder.isLikedGames) {
-              _editingLikedAnalysis = true;
+        if (!_hasLoadedSavedDestinations) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              unawaited(_loadSavedDestinations(folders));
             }
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _selectedFolder == null) {
-                setState(() => _selectedFolder = folder);
-              }
-            });
-          }
+          });
         }
         // Sort folders hierarchically: parents first, then their children
         final sortedFolders = _sortFoldersHierarchically(folders);
@@ -2107,7 +2336,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               folders.asMap().entries.map((entry) {
                 final index = entry.key;
                 final folder = entry.value;
-                final isSelected = _selectedFolder?.id == folder.id;
+                final isSelected = _isFolderSelected(folder);
                 final isLast = index == folders.length - 1;
                 // Only nest a row when its parent is actually present in this
                 // list. The sheet lists databases only (parent folders are
@@ -2264,11 +2493,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     // - Not currently saving, AND
     // - A folder is selected, OR new folder mode is on with a non-empty name
     final trimmedNewFolderName = _newFolderNameController.text.trim();
-    final hasExistingFolder = _selectedFolder != null;
+    final hasExistingFolder = _selectedFoldersById.isNotEmpty;
     final hasValidNewFolderName =
         _isCreatingNewFolder && trimmedNewFolderName.isNotEmpty;
     final canSave = !_isSaving && (hasValidNewFolderName || hasExistingFolder);
     final saveSeparateFromLiked = _willSaveSeparateFromLikedAnalysis;
+    final selectedDatabaseCount =
+        _selectedFoldersById.length + (hasValidNewFolderName ? 1 : 0);
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -2385,13 +2616,15 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                           ? (_isDuplicateMode
                                               ? 'Save Copy'
                                               : (saveSeparateFromLiked
-                                                  ? 'Save to Database'
+                                                  ? (selectedDatabaseCount > 1
+                                                      ? 'Save to Databases'
+                                                      : 'Save to Database')
                                                   : (_isEditMode
                                                       ? 'Update Game'
                                                       : 'Save Analysis')))
                                           : _isCreatingNewFolder
-                                          ? 'Name your folder'
-                                          : 'Select a Folder',
+                                          ? 'Name your database'
+                                          : 'Select a Database',
                                       style: AppTypography.textSmBold.copyWith(
                                         color:
                                             canSave
@@ -2637,17 +2870,19 @@ final _foldersProvider = FutureProvider.autoDispose<List<LibraryFolder>>((
   );
 });
 
-/// A single-select tag chip. Motor springs a subtle pop on selection and the
-/// fill / border ease from neutral to the tag's accent.
+/// A selectable tag chip. Motor springs a subtle pop on selection and the fill
+/// / border ease from neutral to the tag's accent.
 class _TagChip extends StatelessWidget {
   const _TagChip({
     required this.tag,
     required this.selected,
+    required this.disabled,
     required this.onTap,
   });
 
   final LikeTag tag;
   final bool selected;
+  final bool disabled;
   final VoidCallback? onTap;
 
   @override
@@ -2661,49 +2896,53 @@ class _TagChip extends StatelessWidget {
           scale: 1.0 + 0.06 * t,
           child: GestureDetector(
             onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-              decoration: BoxDecoration(
-                color: Color.lerp(
-                  colors.textPrimary.withValues(alpha: 0.05),
-                  tag.color.withValues(alpha: 0.22),
-                  t,
-                ),
-                borderRadius: BorderRadius.circular(20.br),
-                border: Border.all(
-                  color:
-                      Color.lerp(
-                        colors.textPrimary.withValues(alpha: 0.1),
-                        tag.color.withValues(alpha: 0.75),
-                        t,
-                      )!,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8.w,
-                    height: 8.w,
-                    decoration: BoxDecoration(
-                      color: tag.color,
-                      shape: BoxShape.circle,
-                    ),
+            child: Opacity(
+              opacity: disabled ? 0.42 : 1,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: Color.lerp(
+                    colors.textPrimary.withValues(alpha: 0.05),
+                    tag.color.withValues(alpha: 0.22),
+                    t,
                   ),
-                  SizedBox(width: 7.w),
-                  Text(
-                    tag.label,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color:
-                          selected
-                              ? colors.textPrimary
-                              : colors.textPrimary.withValues(alpha: 0.7),
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    ),
+                  borderRadius: BorderRadius.circular(20.br),
+                  border: Border.all(
+                    color:
+                        Color.lerp(
+                          colors.textPrimary.withValues(alpha: 0.1),
+                          tag.color.withValues(alpha: 0.75),
+                          t,
+                        )!,
+                    width: 1,
                   ),
-                ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8.w,
+                      height: 8.w,
+                      decoration: BoxDecoration(
+                        color: tag.color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    SizedBox(width: 7.w),
+                    Text(
+                      tag.label,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color:
+                            selected
+                                ? colors.textPrimary
+                                : colors.textPrimary.withValues(alpha: 0.7),
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

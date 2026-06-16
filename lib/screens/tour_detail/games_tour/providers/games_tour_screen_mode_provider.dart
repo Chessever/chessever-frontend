@@ -1,12 +1,18 @@
+import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
+import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum GamesTourScreenMode { normal, groupEvent }
 
 final gamesTourScreenModeProvider = StateNotifierProvider((ref) {
-  // Watch tour details first - this is the primary dependency
-  final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+  // Only selected tournament data should recreate mode evaluation. Live-tour
+  // status churn should not flip the Games tab through loading.
+  final tourDetailAsync = ref.watch(
+    tourDetailScreenProvider.select(_GamesTourModeDetailSlice.from),
+  );
 
   if (tourDetailAsync.isLoading) {
     return _GamesTourScreenModeNotifier.loading(ref);
@@ -16,7 +22,7 @@ final gamesTourScreenModeProvider = StateNotifierProvider((ref) {
     return _GamesTourScreenModeNotifier.error(ref);
   }
 
-  final aboutTourModel = tourDetailAsync.valueOrNull?.aboutTourModel;
+  final aboutTourModel = tourDetailAsync.aboutTourModel;
 
   if (aboutTourModel == null) {
     return _GamesTourScreenModeNotifier.loading(ref);
@@ -54,16 +60,18 @@ class _GamesTourScreenModeNotifier
     final tourDetail = ref.read(tourDetailScreenProvider).value;
     if (tourDetail == null) return;
 
-    print('🔍 Evaluating tournament mode for: ${tourDetail.aboutTourModel.id}');
+    debugPrint(
+      '🔍 Evaluating tournament mode for: ${tourDetail.aboutTourModel.id}',
+    );
 
     final tourId = tourDetail.aboutTourModel.id;
     final knockoutState = ref.read(knockoutTournamentStateProvider(tourId));
-    print(
+    debugPrint(
       '🥊 Knockout state: isKnockout=${knockoutState.isKnockout}, games=${knockoutState.allGames.length}',
     );
 
     if (knockoutState.isKnockout) {
-      print(
+      debugPrint(
         '🥊 Knockout format active - Using normal mode for match-based display',
       );
       state = const AsyncValue.data(GamesTourScreenMode.normal);
@@ -77,14 +85,52 @@ class _GamesTourScreenModeNotifier
         players.isNotEmpty &&
         players.where((e) => e.team != null).length == players.length;
 
-    print('👥 Players count: ${players.length}, All have teams: $hasAllTeams');
+    debugPrint(
+      '👥 Players count: ${players.length}, All have teams: $hasAllTeams',
+    );
 
     if (hasAllTeams) {
-      print('📋 Setting mode to: groupEvent');
+      debugPrint('📋 Setting mode to: groupEvent');
       state = AsyncValue.data(GamesTourScreenMode.groupEvent);
     } else {
-      print('📋 Setting mode to: normal');
+      debugPrint('📋 Setting mode to: normal');
       state = AsyncValue.data(GamesTourScreenMode.normal);
     }
   }
+}
+
+class _GamesTourModeDetailSlice {
+  const _GamesTourModeDetailSlice({
+    required this.isLoading,
+    required this.error,
+    required this.aboutTourModel,
+  });
+
+  factory _GamesTourModeDetailSlice.from(
+    AsyncValue<TourDetailViewModel> value,
+  ) {
+    return _GamesTourModeDetailSlice(
+      isLoading: value.isLoading,
+      error: value.error,
+      aboutTourModel: value.valueOrNull?.aboutTourModel,
+    );
+  }
+
+  final bool isLoading;
+  final Object? error;
+  final AboutTourModel? aboutTourModel;
+
+  bool get hasError => error != null;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _GamesTourModeDetailSlice &&
+            other.isLoading == isLoading &&
+            other.error == error &&
+            other.aboutTourModel == aboutTourModel;
+  }
+
+  @override
+  int get hashCode => Object.hash(isLoading, error, aboutTourModel);
 }

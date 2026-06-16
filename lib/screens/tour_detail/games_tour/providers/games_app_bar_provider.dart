@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print, empty_catches, unused_element
+
 import 'package:collection/collection.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -31,8 +33,11 @@ final gamesAppBarProvider = StateNotifierProvider<
   _GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
-  final tourAsync = ref.watch(tourDetailScreenProvider);
-  final tourId = tourAsync.value?.aboutTourModel.id;
+  final tourId = ref.watch(
+    tourDetailScreenProvider.select(
+      (tourAsync) => tourAsync.valueOrNull?.aboutTourModel.id,
+    ),
+  );
 
   return _GamesAppBarNotifier(ref: ref, tourId: tourId);
 });

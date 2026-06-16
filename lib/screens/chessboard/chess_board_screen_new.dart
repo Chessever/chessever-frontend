@@ -3809,250 +3809,268 @@ class _AppBarState extends ConsumerState<_AppBar> {
         _TagAwareAppBarActions(
           isActivePage: widget.isActivePage,
           actions: <Widget>[
-              // Event info button (hidden when navigating from library for position analysis)
-              // Uses delayed show on tablets to prevent phantom tap dismissals
-              if (!widget.hideEventInfo)
-                IconButton(
-            icon: Icon(
-              Icons.info_outline_rounded,
-              color: context.colors.textPrimary,
-              size: 20.sp,
-            ),
-            tooltip: 'Event info',
-            onPressed:
-                widget.isLoading
-                    ? null
-                    : () => _showEventInfoSheet(context, ref, infoSheetPgn),
-          ),
-        // Save Analysis button — with auto-save status animation for library games
-        _buildSaveButton(),
-        // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
-        // phantom tap dismissals, use standard PopupMenuButton on mobile
-        if (ResponsiveHelper.isTablet)
-          _TabletSafePopupMenu<String>(
-            icon: Icon(
-              Icons.more_vert,
-              color: context.colors.textPrimary,
-              size: 22.sp,
-            ),
-            enabled: !widget.isLoading,
-            onSelected: (value) async {
-              if (value == 'share') {
-                shareGameBtnClicked();
-              } else if (value == 'board_settings') {
-                final allowed = await requireFullAuthGuard(context);
-                if (!allowed) return;
-                if (!context.mounted) return;
-                Navigator.of(context).push(
-                  SettingsPage.route(initiallyExpanded: SettingsSection.board),
-                );
-              } else if (value == 'clear_analysis') {
-                final params = ChessBoardProviderParams(
-                  game: widget.game,
-                  index: widget.currentGameIndex,
-                );
-                final boardState = ref.read(
-                  chessBoardScreenProviderNew(params),
-                );
-                final analysisGame = boardState.valueOrNull?.analysisState.game;
-                final hasCustomAnalysis = _gameHasCustomVariations(
-                  analysisGame,
-                );
+            // Event info button (hidden when navigating from library for position analysis)
+            // Uses delayed show on tablets to prevent phantom tap dismissals
+            if (!widget.hideEventInfo)
+              IconButton(
+                icon: Icon(
+                  Icons.info_outline_rounded,
+                  color: context.colors.textPrimary,
+                  size: 20.sp,
+                ),
+                tooltip: 'Event info',
+                onPressed:
+                    widget.isLoading
+                        ? null
+                        : () => _showEventInfoSheet(context, ref, infoSheetPgn),
+              ),
+            // Save Analysis button — with auto-save status animation for library games
+            _buildSaveButton(),
+            // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
+            // phantom tap dismissals, use standard PopupMenuButton on mobile
+            if (ResponsiveHelper.isTablet)
+              _TabletSafePopupMenu<String>(
+                icon: Icon(
+                  Icons.more_vert,
+                  color: context.colors.textPrimary,
+                  size: 22.sp,
+                ),
+                enabled: !widget.isLoading,
+                onSelected: (value) async {
+                  if (value == 'share') {
+                    shareGameBtnClicked();
+                  } else if (value == 'board_settings') {
+                    final allowed = await requireFullAuthGuard(context);
+                    if (!allowed) return;
+                    if (!context.mounted) return;
+                    Navigator.of(context).push(
+                      SettingsPage.route(
+                        initiallyExpanded: SettingsSection.board,
+                      ),
+                    );
+                  } else if (value == 'clear_analysis') {
+                    final params = ChessBoardProviderParams(
+                      game: widget.game,
+                      index: widget.currentGameIndex,
+                    );
+                    final boardState = ref.read(
+                      chessBoardScreenProviderNew(params),
+                    );
+                    final analysisGame =
+                        boardState.valueOrNull?.analysisState.game;
+                    final hasCustomAnalysis = _gameHasCustomVariations(
+                      analysisGame,
+                    );
 
-                if (!hasCustomAnalysis) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('No custom analysis to clear'),
-                      backgroundColor: Colors.orange,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                  return;
-                }
-
-                HapticFeedback.selectionClick();
-                final confirmed =
-                    await _showAnalysisConfirmationDialog(
-                      context: context,
-                      title: 'Clear analysis?',
-                      message:
-                          'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                      confirmLabel: 'Clear',
-                      confirmColor: kRedColor,
-                    ) ??
-                    false;
-                if (!confirmed) return;
-                HapticFeedback.heavyImpact();
-                final notifier = ref.read(
-                  chessBoardScreenProviderNew(params).notifier,
-                );
-                await notifier.clearUserAnalysis();
-              }
-            },
-            itemBuilder:
-                (context) => [
-                  PopupMenuItem(
-                    value: 'board_settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.settings, color: context.colors.textPrimary),
-                        SizedBox(width: 8.w),
-                        const Text('Board Settings'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'share',
-                    child: Row(
-                      children: [
-                        Icon(Icons.share, color: context.colors.textPrimary),
-                        SizedBox(width: 8.w),
-                        const Text('Share Game'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    onTap: () {
-                      copyPgnBtnClicked();
-                    },
-                    value: 'copy_pgn',
-                    child: Row(
-                      children: [
-                        Icon(Icons.copy, color: context.colors.textPrimary),
-                        SizedBox(width: 8.w),
-                        const Text('Copy PGN'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: 'clear_analysis',
-                    child: Row(
-                      children: [
-                        Icon(Icons.auto_delete_outlined, color: kRedColor),
-                        SizedBox(width: 8.w),
-                        const Text(
-                          'Clear Analysis',
-                          style: TextStyle(color: kRedColor),
+                    if (!hasCustomAnalysis) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('No custom analysis to clear'),
+                          backgroundColor: Colors.orange,
+                          behavior: SnackBarBehavior.floating,
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-          )
-        else
-          PopupMenuButton<String>(
-            icon: Icon(
-              Icons.more_vert,
-              color: context.colors.textPrimary,
-              size: 22.sp,
-            ),
-            enabled: !widget.isLoading,
-            onSelected: (value) async {
-              if (value == 'share') {
-                shareGameBtnClicked();
-              } else if (value == 'board_settings') {
-                final allowed = await requireFullAuthGuard(context);
-                if (!allowed) return;
-                if (!context.mounted) return;
-                Navigator.of(context).push(
-                  SettingsPage.route(initiallyExpanded: SettingsSection.board),
-                );
-              } else if (value == 'clear_analysis') {
-                final params = ChessBoardProviderParams(
-                  game: widget.game,
-                  index: widget.currentGameIndex,
-                );
-                final boardState = ref.read(
-                  chessBoardScreenProviderNew(params),
-                );
-                final analysisGame = boardState.valueOrNull?.analysisState.game;
-                final hasCustomAnalysis = _gameHasCustomVariations(
-                  analysisGame,
-                );
+                      );
+                      return;
+                    }
 
-                if (!hasCustomAnalysis) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('No custom analysis to clear'),
-                      backgroundColor: Colors.orange,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                  return;
-                }
-
-                HapticFeedback.selectionClick();
-                final confirmed =
-                    await _showAnalysisConfirmationDialog(
-                      context: context,
-                      title: 'Clear analysis?',
-                      message:
-                          'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                      confirmLabel: 'Clear',
-                      confirmColor: kRedColor,
-                    ) ??
-                    false;
-                if (!confirmed) return;
-                HapticFeedback.heavyImpact();
-                final notifier = ref.read(
-                  chessBoardScreenProviderNew(params).notifier,
-                );
-                await notifier.clearUserAnalysis();
-              }
-            },
-            itemBuilder:
-                (context) => [
-                  PopupMenuItem(
-                    value: 'board_settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.settings, color: context.colors.textPrimary),
-                        SizedBox(width: 8.w),
-                        const Text('Board Settings'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'share',
-                    child: Row(
-                      children: [
-                        Icon(Icons.share, color: context.colors.textPrimary),
-                        SizedBox(width: 8.w),
-                        const Text('Share Game'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    onTap: () {
-                      copyPgnBtnClicked();
-                    },
-                    value: 'copy_pgn',
-                    child: Row(
-                      children: [
-                        Icon(Icons.copy, color: context.colors.textPrimary),
-                        SizedBox(width: 8.w),
-                        const Text('Copy PGN'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: 'clear_analysis',
-                    child: Row(
-                      children: [
-                        Icon(Icons.auto_delete_outlined, color: kRedColor),
-                        SizedBox(width: 8.w),
-                        const Text(
-                          'Clear Analysis',
-                          style: TextStyle(color: kRedColor),
+                    HapticFeedback.selectionClick();
+                    final confirmed =
+                        await _showAnalysisConfirmationDialog(
+                          context: context,
+                          title: 'Clear analysis?',
+                          message:
+                              'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                          confirmLabel: 'Clear',
+                          confirmColor: kRedColor,
+                        ) ??
+                        false;
+                    if (!confirmed) return;
+                    HapticFeedback.heavyImpact();
+                    final notifier = ref.read(
+                      chessBoardScreenProviderNew(params).notifier,
+                    );
+                    await notifier.clearUserAnalysis();
+                  }
+                },
+                itemBuilder:
+                    (context) => [
+                      PopupMenuItem(
+                        value: 'board_settings',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.settings,
+                              color: context.colors.textPrimary,
+                            ),
+                            SizedBox(width: 8.w),
+                            const Text('Board Settings'),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-          ),
-        ],
+                      ),
+                      PopupMenuItem(
+                        value: 'share',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.share,
+                              color: context.colors.textPrimary,
+                            ),
+                            SizedBox(width: 8.w),
+                            const Text('Share Game'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        onTap: () {
+                          copyPgnBtnClicked();
+                        },
+                        value: 'copy_pgn',
+                        child: Row(
+                          children: [
+                            Icon(Icons.copy, color: context.colors.textPrimary),
+                            SizedBox(width: 8.w),
+                            const Text('Copy PGN'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: 'clear_analysis',
+                        child: Row(
+                          children: [
+                            Icon(Icons.auto_delete_outlined, color: kRedColor),
+                            SizedBox(width: 8.w),
+                            const Text(
+                              'Clear Analysis',
+                              style: TextStyle(color: kRedColor),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+              )
+            else
+              PopupMenuButton<String>(
+                icon: Icon(
+                  Icons.more_vert,
+                  color: context.colors.textPrimary,
+                  size: 22.sp,
+                ),
+                enabled: !widget.isLoading,
+                onSelected: (value) async {
+                  if (value == 'share') {
+                    shareGameBtnClicked();
+                  } else if (value == 'board_settings') {
+                    final allowed = await requireFullAuthGuard(context);
+                    if (!allowed) return;
+                    if (!context.mounted) return;
+                    Navigator.of(context).push(
+                      SettingsPage.route(
+                        initiallyExpanded: SettingsSection.board,
+                      ),
+                    );
+                  } else if (value == 'clear_analysis') {
+                    final params = ChessBoardProviderParams(
+                      game: widget.game,
+                      index: widget.currentGameIndex,
+                    );
+                    final boardState = ref.read(
+                      chessBoardScreenProviderNew(params),
+                    );
+                    final analysisGame =
+                        boardState.valueOrNull?.analysisState.game;
+                    final hasCustomAnalysis = _gameHasCustomVariations(
+                      analysisGame,
+                    );
+
+                    if (!hasCustomAnalysis) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('No custom analysis to clear'),
+                          backgroundColor: Colors.orange,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+
+                    HapticFeedback.selectionClick();
+                    final confirmed =
+                        await _showAnalysisConfirmationDialog(
+                          context: context,
+                          title: 'Clear analysis?',
+                          message:
+                              'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                          confirmLabel: 'Clear',
+                          confirmColor: kRedColor,
+                        ) ??
+                        false;
+                    if (!confirmed) return;
+                    HapticFeedback.heavyImpact();
+                    final notifier = ref.read(
+                      chessBoardScreenProviderNew(params).notifier,
+                    );
+                    await notifier.clearUserAnalysis();
+                  }
+                },
+                itemBuilder:
+                    (context) => [
+                      PopupMenuItem(
+                        value: 'board_settings',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.settings,
+                              color: context.colors.textPrimary,
+                            ),
+                            SizedBox(width: 8.w),
+                            const Text('Board Settings'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'share',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.share,
+                              color: context.colors.textPrimary,
+                            ),
+                            SizedBox(width: 8.w),
+                            const Text('Share Game'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        onTap: () {
+                          copyPgnBtnClicked();
+                        },
+                        value: 'copy_pgn',
+                        child: Row(
+                          children: [
+                            Icon(Icons.copy, color: context.colors.textPrimary),
+                            SizedBox(width: 8.w),
+                            const Text('Copy PGN'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: 'clear_analysis',
+                        child: Row(
+                          children: [
+                            Icon(Icons.auto_delete_outlined, color: kRedColor),
+                            SizedBox(width: 8.w),
+                            const Text(
+                              'Clear Analysis',
+                              style: TextStyle(color: kRedColor),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+              ),
+          ],
         ),
       ],
     );
@@ -4126,8 +4144,7 @@ class _TagAwareAppBarActionsState
             }
           },
           builder:
-              (context, t, _) =>
-                  _build(context, t.clamp(0.0, 1.0), effective),
+              (context, t, _) => _build(context, t.clamp(0.0, 1.0), effective),
         );
       },
     );
@@ -4180,8 +4197,9 @@ class _TagAwareAppBarActionsState
               child: Opacity(
                 // Fade slightly ahead of the width reveal so the chip reads as
                 // a solid object arriving, not a thin sliver being unmasked.
-                opacity:
-                    Curves.easeOut.transform(((r - 0.25) / 0.75).clamp(0.0, 1.0)),
+                opacity: Curves.easeOut.transform(
+                  ((r - 0.25) / 0.75).clamp(0.0, 1.0),
+                ),
                 child: Padding(
                   padding: EdgeInsets.only(right: 8.w),
                   child: LikeTagChip(
@@ -8090,20 +8108,20 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   /// After a fresh like, hand the AppBar's action icons over to the tag chip
   /// (see [LikeTagChip]). A chosen tag is written onto the liked game's saved
   /// analysis; letting the chip's countdown elapse leaves it untagged (tagging
-  /// is optional). Pre-fills with any tag the game already carries so re-likes
+  /// is optional). Pre-fills with any tags the game already carries so re-likes
   /// read back continuously.
   ///
   /// The chip itself owns the write + dismissal; this only opens the offer.
   void _offerTagAfterLike(GamesTourModel game) {
     final liked = ref.read(likedGamesProvider).valueOrNull ?? const [];
-    String? initialTag;
+    List<String> initialTags = const <String>[];
     for (final a in liked) {
       if (a.sourceGameId == game.likeId) {
-        if (a.tags.isNotEmpty) initialTag = a.tags.first;
+        initialTags = a.tags;
         break;
       }
     }
-    ref.read(tagChipOfferProvider).open(game.likeId, initialTag);
+    ref.read(tagChipOfferProvider).open(game.likeId, initialTags);
   }
 
   void _removeFlyingHeartEntry() {

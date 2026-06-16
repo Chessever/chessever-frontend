@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -127,6 +128,10 @@ LiveGameUpdate? _watchLiveUpdate(
   LiveGameWatchParams params,
   _LiveGameMergeMode mode,
 ) {
+  if (!ref.watch(shouldStreamProvider)) {
+    return null;
+  }
+
   final batchKey = params.batchKey;
   if (batchKey != null && batchKey.contains(params.gameId)) {
     final projectedUpdateAsync = ref.watch(

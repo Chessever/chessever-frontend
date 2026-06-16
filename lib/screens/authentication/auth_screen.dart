@@ -30,10 +30,12 @@ class AuthScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
+  bool _hasHandledAuthenticatedUser = false;
+
   @override
   void initState() {
-    Future.microtask(() async {
-      await ref.read(countryDropdownProvider);
+    Future.microtask(() {
+      ref.read(countryDropdownProvider);
     });
     // Safety net for users who reach auth without going through onboarding ATT
     // trigger. System dialog only — no explainer sheet outside onboarding.
@@ -56,15 +58,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       // Suppress showing programmatic errors to end users on auth screen
       if (state.errorMessage != null) {
         ref.read(authScreenProvider.notifier).clearError();
-        return;
       }
 
       final user = state.user;
-      if (user == null) return;
+      if (user == null || _hasHandledAuthenticatedUser) return;
+      _hasHandledAuthenticatedUser = true;
 
       final onboardingRepo = ref.read(onboardingRepositoryProvider);
       final hasCompleted = await onboardingRepo.isCompleted(user.id);
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       if (!hasCompleted) {
         ref.read(authScreenProvider.notifier).hideCountrySelection();
@@ -218,7 +220,6 @@ class _AuthButtonWidget extends ConsumerWidget {
     required this.state,
     this.isTabletLandscape = false,
     this.isTabletPortrait = false,
-    super.key,
   });
 
   final AuthScreenState state;
@@ -516,7 +517,9 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
             padding: EdgeInsets.symmetric(horizontal: 10.sp),
             child: Text(
               'Select your Country',
-              style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdBold.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
           Container(
@@ -581,7 +584,7 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
             offset: const Offset(0, 4),
           ),
           BoxShadow(
-            color: kBlackColor.withOpacity(0.2),
+            color: kBlackColor.withValues(alpha: 0.2),
             blurRadius: 15,
             spreadRadius: 1,
             offset: const Offset(0, 8),
@@ -594,23 +597,18 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
           orElse:
               () => () async {
                 await _dismissWithAnimation();
-                if (mounted) {
-                  notifier.hideCountrySelection();
-                  Navigator.of(context).pop();
-                  if (!widget.isHamburgerMode) {
-                    final onboardingRepo = ref.read(
-                      onboardingRepositoryProvider,
-                    );
-                    final userId =
-                        Supabase.instance.client.auth.currentUser?.id;
-                    final hasCompleted = await onboardingRepo.isCompleted(
-                      userId,
-                    );
-                    if (!mounted) return;
-                    final targetRoute =
-                        hasCompleted ? '/home_screen' : '/onboarding';
-                    Navigator.pushReplacementNamed(context, targetRoute);
-                  }
+                if (!context.mounted) return;
+
+                notifier.hideCountrySelection();
+                Navigator.of(context).pop();
+                if (!widget.isHamburgerMode) {
+                  final onboardingRepo = ref.read(onboardingRepositoryProvider);
+                  final userId = Supabase.instance.client.auth.currentUser?.id;
+                  final hasCompleted = await onboardingRepo.isCompleted(userId);
+                  if (!context.mounted) return;
+                  final targetRoute =
+                      hasCompleted ? '/home_screen' : '/onboarding';
+                  Navigator.pushReplacementNamed(context, targetRoute);
                 }
               },
         ),

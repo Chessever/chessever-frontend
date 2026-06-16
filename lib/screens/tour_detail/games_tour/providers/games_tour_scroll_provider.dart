@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
@@ -23,10 +24,102 @@ final gamesTourScrollScopeProvider = Provider<String>(
 final gamesTourAutoScrollProvider = StateProvider.autoDispose
     .family<bool, String>((ref, scopeId) => false);
 
+/// True while the tournament games list is actively moving.
+///
+/// Game-card engine fallbacks use this to stay cache-only during scroll and
+/// resume low-priority Stockfish work after the list has settled.
+final gamesTourIsScrollingProvider = StateProvider.autoDispose
+    .family<bool, String>((ref, scopeId) => false);
+
 final gamesTourScrollProvider = StateNotifierProvider.autoDispose
     .family<_GamesTourScrollProvider, ItemScrollController, String>(
       (ref, scopeId) => _GamesTourScrollProvider(ref, scopeId),
     );
+
+class GamesTourScrollActivityDetector extends ConsumerStatefulWidget {
+  const GamesTourScrollActivityDetector({
+    required this.scopeId,
+    required this.child,
+    super.key,
+  });
+
+  final String scopeId;
+  final Widget child;
+
+  @override
+  ConsumerState<GamesTourScrollActivityDetector> createState() =>
+      _GamesTourScrollActivityDetectorState();
+}
+
+class _GamesTourScrollActivityDetectorState
+    extends ConsumerState<GamesTourScrollActivityDetector> {
+  static const Duration _idleDelay = Duration(milliseconds: 180);
+
+  Timer? _idleTimer;
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    if (notification is ScrollEndNotification) {
+      _scheduleIdle();
+      return false;
+    }
+
+    if (notification is UserScrollNotification &&
+        notification.direction == ScrollDirection.idle) {
+      _scheduleIdle();
+      return false;
+    }
+
+    if (notification is ScrollStartNotification ||
+        notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification ||
+        notification is UserScrollNotification) {
+      _markScrolling();
+    }
+
+    return false;
+  }
+
+  void _markScrolling() {
+    final isScrolling = ref.read(gamesTourIsScrollingProvider(widget.scopeId));
+    if (!isScrolling) {
+      ref.read(gamesTourIsScrollingProvider(widget.scopeId).notifier).state =
+          true;
+    }
+
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleDelay, _markIdle);
+  }
+
+  void _scheduleIdle() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleDelay, _markIdle);
+  }
+
+  void _markIdle() {
+    if (!mounted) return;
+    final isScrolling = ref.read(gamesTourIsScrollingProvider(widget.scopeId));
+    if (isScrolling) {
+      ref.read(gamesTourIsScrollingProvider(widget.scopeId).notifier).state =
+          false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: _handleScrollNotification,
+      child: widget.child,
+    );
+  }
+}
 
 class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   _GamesTourScrollProvider(this._ref, this._scopeId)
@@ -171,9 +264,8 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       if (positions.isEmpty) return;
 
       // Find the topmost visible item (considering items that are at least partially visible).
-      final topItem = positions
-          .where((pos) => pos.itemLeadingEdge < 0.3)
-          .firstOrNull;
+      final topItem =
+          positions.where((pos) => pos.itemLeadingEdge < 0.3).firstOrNull;
       if (topItem == null) return;
 
       final gameId = _getGameIdFromItemIndex(topItem.index);

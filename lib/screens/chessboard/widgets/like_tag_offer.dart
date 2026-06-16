@@ -4,20 +4,20 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// A live "tag this game" offer surfaced right after a fresh like.
 ///
 /// Carries everything the AppBar tag chip needs to render and persist: the
-/// liked game's [likeId] (the write key for `setTagsForLikeId`), any tag the
-/// game already carries ([initialTag], so a re-like reads back continuously),
+/// liked game's [likeId] (the write key for `setTagsForLikeId`), any tags the
+/// game already carries ([initialTags], so a re-like reads back continuously),
 /// and a monotonic [token] so a brand-new like cleanly supersedes a still-open
 /// offer from the previous one.
 @immutable
 class TagOffer {
   const TagOffer({
     required this.likeId,
-    required this.initialTag,
+    required this.initialTags,
     required this.token,
   });
 
   final String likeId;
-  final String? initialTag;
+  final List<String> initialTags;
   final int token;
 }
 
@@ -36,10 +36,10 @@ class TagChipOfferController {
 
   /// Begin (or replace) an offer for [likeId]. Bumps the token so the chip
   /// rebuilds fresh and any in-flight previous offer is dropped.
-  void open(String likeId, String? initialTag) {
+  void open(String likeId, List<String> initialTags) {
     current.value = TagOffer(
       likeId: likeId,
-      initialTag: initialTag,
+      initialTags: List<String>.unmodifiable(initialTags),
       token: ++_token,
     );
   }

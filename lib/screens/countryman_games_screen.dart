@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
@@ -17,7 +18,6 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -51,6 +51,7 @@ class CountrymanGamesList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);
+    final shouldStream = ref.watch(shouldStreamProvider);
 
     return ref
         .watch(countrymanGamesTourScreenProvider)
@@ -98,6 +99,7 @@ class CountrymanGamesList extends ConsumerWidget {
 
                       ref.read(chessboardViewFromProviderNew.notifier).state =
                           ChessboardView.countryman;
+                      ref.read(shouldStreamProvider.notifier).state = false;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -109,6 +111,7 @@ class CountrymanGamesList extends ConsumerWidget {
                         ),
                       ).then((_) {
                         if (context.mounted) {
+                          ref.read(shouldStreamProvider.notifier).state = true;
                           ref.invalidate(gameUpdatesStreamProvider);
                           ref.invalidate(liveGameUpdateStreamProvider);
                           ref.invalidate(gameUpdatesBatchStreamProvider);
@@ -116,6 +119,7 @@ class CountrymanGamesList extends ConsumerWidget {
                       });
                     },
                     gamesTourModel: game,
+                    allowStockfishFallback: shouldStream,
                   )
                   : GameCard(
                     onTap: () async {
@@ -128,6 +132,7 @@ class CountrymanGamesList extends ConsumerWidget {
 
                       ref.read(chessboardViewFromProviderNew.notifier).state =
                           ChessboardView.countryman;
+                      ref.read(shouldStreamProvider.notifier).state = false;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -139,6 +144,7 @@ class CountrymanGamesList extends ConsumerWidget {
                         ),
                       ).then((_) {
                         if (context.mounted) {
+                          ref.read(shouldStreamProvider.notifier).state = true;
                           ref.invalidate(gameUpdatesStreamProvider);
                           ref.invalidate(liveGameUpdateStreamProvider);
                           ref.invalidate(gameUpdatesBatchStreamProvider);
@@ -149,6 +155,7 @@ class CountrymanGamesList extends ConsumerWidget {
                       game: game,
                       comparison: MatchComparison.sameOrder,
                     ),
+                    allowStockfishFallback: shouldStream,
                     pinnedIds: data.pinnedGamedIs,
                     onPinToggle: (gamesTourModel) async {
                       await ref
@@ -293,7 +300,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                           children: [
                             SvgPicture.asset(
                               SvgAsset.searchIcon,
-                              colorFilter:  ColorFilter.mode(
+                              colorFilter: ColorFilter.mode(
                                 context.colors.textPrimary,
                                 BlendMode.srcIn,
                               ),
@@ -427,7 +434,10 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                         Text(
                                           "Unpin all",
                                           style: AppTypography.textXsMedium
-                                              .copyWith(color: context.colors.textPrimary),
+                                              .copyWith(
+                                                color:
+                                                    context.colors.textPrimary,
+                                              ),
                                         ),
                                         SvgPicture.asset(
                                           SvgAsset.unpine,
@@ -453,7 +463,9 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                     Text(
                                       "Active games on top",
                                       style: AppTypography.textXsMedium
-                                          .copyWith(color: context.colors.textPrimary),
+                                          .copyWith(
+                                            color: context.colors.textPrimary,
+                                          ),
                                     ),
                                     SvgPicture.asset(
                                       SvgAsset.active,

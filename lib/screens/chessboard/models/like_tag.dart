@@ -36,8 +36,11 @@ class LikeTag {
   final IconData icon;
 }
 
+/// Product cap for tags attached to one liked/saved game.
+const int kMaxLikeTagsPerGame = 3;
+
 /// The canonical, ordered tag vocabulary. Keep the order stable so a remembered
-/// `initialTag` always renders consistently.
+/// initial tag lists always render consistently.
 const List<LikeTag> kLikeTags = <LikeTag>[
   // hot pink — chaos · a spinning storm
   LikeTag('Wild Game', Color(0xFFFF4D9D), Icons.cyclone_rounded),
@@ -52,11 +55,7 @@ const List<LikeTag> kLikeTags = <LikeTag>[
   // teal — precision · the draftsman's compass
   LikeTag('High Technique', Color(0xFF2FD4C4), Icons.architecture_rounded),
   // royal purple — mastery · the board's structure
-  LikeTag(
-    'Positional Masterpiece',
-    Color(0xFFA77BF0),
-    Icons.grid_on_rounded,
-  ),
+  LikeTag('Positional Masterpiece', Color(0xFFA77BF0), Icons.grid_on_rounded),
   // crimson — blood · giving material away
   LikeTag('Sacrifice', Color(0xFFFF5A5A), Icons.volunteer_activism_rounded),
   // indigo — intricate · linked tactics
@@ -72,4 +71,20 @@ LikeTag? likeTagByLabel(String label) {
     if (t.label == label) return t;
   }
   return null;
+}
+
+/// Normalizes user-selected tag labels before UI display or persistence.
+///
+/// The vocabulary may evolve, so this intentionally preserves unknown legacy
+/// labels while enforcing trim, dedupe and the current per-game cap.
+List<String> normalizeLikeTagLabels(Iterable<String> labels) {
+  final seen = <String>{};
+  final normalized = <String>[];
+  for (final raw in labels) {
+    final label = raw.trim();
+    if (label.isEmpty || !seen.add(label)) continue;
+    normalized.add(label);
+    if (normalized.length == kMaxLikeTagsPerGame) break;
+  }
+  return List<String>.unmodifiable(normalized);
 }

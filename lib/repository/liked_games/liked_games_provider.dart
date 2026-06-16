@@ -7,6 +7,7 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
@@ -294,7 +295,7 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
   /// the tag lands on the server record and survives the toggle's reconcile.
   /// No-op if the game isn't (or stops being) liked.
   Future<bool> setTagsForLikeId(String likeId, List<String> tags) {
-    final normalized = List<String>.unmodifiable(tags.take(1));
+    final normalized = _normalizeTags(tags);
     ref.read(likedGamePendingTagsProvider(likeId).notifier).state = normalized;
     _applyOptimisticTags(likeId, normalized);
 
@@ -370,6 +371,10 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
     return (state.valueOrNull ?? const <SavedAnalysis>[]).firstWhereOrNull(
       (a) => a.sourceGameId == likeId && a.id.isNotEmpty,
     );
+  }
+
+  List<String> _normalizeTags(Iterable<String> tags) {
+    return normalizeLikeTagLabels(tags);
   }
 
   bool _applyOptimisticTags(String likeId, List<String> tags) {

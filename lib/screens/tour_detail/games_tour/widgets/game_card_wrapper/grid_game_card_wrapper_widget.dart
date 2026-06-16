@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +41,8 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
     final liveGame = watchLiveGamePosition(ref, game, batchKey: liveBatchKey);
+    final effectiveAllowStockfishFallback =
+        allowStockfishFallback && ref.watch(shouldStreamProvider);
 
     // Build updated games list with the live game data
     List<GamesTourModel> getUpdatedGamesList() {
@@ -57,7 +60,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       pinnedIds: pinnedIds,
       onPinToggle: onPinToggle,
       fixedBottomSide: fixedBottomSide,
-      allowStockfishFallback: allowStockfishFallback,
+      allowStockfishFallback: effectiveAllowStockfishFallback,
       liveBatchKey: liveBatchKey,
     );
   }

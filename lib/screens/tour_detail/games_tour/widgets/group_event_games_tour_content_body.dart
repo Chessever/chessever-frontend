@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
@@ -70,9 +72,15 @@ class _GroupEventGamesTourContentBodyState
           rounds: visibleRounds,
           gamesScreenModel: widget.gamesScreenModel,
         );
+    final liveBatchKeyByGameId = buildGroupEventLiveBatchKeys(
+      orderedGamesData.gamesTourModels,
+    );
 
     // Get scroll controller and listener from provider
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
+    final shouldStream = ref.watch(shouldStreamProvider);
+    final isScrolling = ref.watch(gamesTourIsScrollingProvider(scopeId));
+    final allowStockfishFallback = shouldStream && !isScrolling;
     final scrollController = ref.watch(gamesTourScrollProvider(scopeId));
     final itemPositionsListener =
         ref
@@ -87,6 +95,9 @@ class _GroupEventGamesTourContentBodyState
       scrollController,
       itemPositionsListener,
       roundExpansionState,
+      liveBatchKeyByGameId,
+      allowStockfishFallback,
+      scopeId,
     );
   }
 
@@ -97,6 +108,9 @@ class _GroupEventGamesTourContentBodyState
     ItemScrollController scrollController,
     ItemPositionsListener itemPositionsListener,
     Map<String, bool> roundExpansionState,
+    Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
+    bool allowStockfishFallback,
+    String scopeId,
   ) {
     // Build a flat list of all items with round tracking
     final allItems = <_GroupEventItem>[];
@@ -150,6 +164,8 @@ class _GroupEventGamesTourContentBodyState
               gamesData: orderedGamesData,
               gamesListViewMode: widget.gamesListViewMode,
               onReturnFromChessboard: widget.onReturnFromChessboard,
+              liveBatchKeyByGameId: liveBatchKeyByGameId,
+              allowStockfishFallback: allowStockfishFallback,
             ),
             isHeader: false,
           ),
@@ -158,42 +174,45 @@ class _GroupEventGamesTourContentBodyState
     }
 
     final listItemCount = allItems.length;
-    return PositionedListScrollbar(
-      itemPositionsListener: itemPositionsListener,
-      itemScrollController: scrollController,
-      itemCount: listItemCount,
-      thumbWidth: 4.sp,
-      padding: EdgeInsets.only(
-        top: 0,
-        bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
-      ),
-      child: ScrollablePositionedList.builder(
-        itemScrollController: scrollController,
+    return GamesTourScrollActivityDetector(
+      scopeId: scopeId,
+      child: PositionedListScrollbar(
         itemPositionsListener: itemPositionsListener,
+        itemScrollController: scrollController,
+        itemCount: listItemCount,
+        thumbWidth: 4.sp,
         padding: EdgeInsets.only(
-          left: 16.sp,
-          right: 16.sp,
-          top: 8.sp,
+          top: 0,
           bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
         ),
-        itemCount: listItemCount,
-        itemBuilder: (context, index) {
-          final item = allItems[index];
-          final isLastItem = index == listItemCount - 1;
-          final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
+        child: ScrollablePositionedList.builder(
+          itemScrollController: scrollController,
+          itemPositionsListener: itemPositionsListener,
+          padding: EdgeInsets.only(
+            left: 16.sp,
+            right: 16.sp,
+            top: 8.sp,
+            bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+          ),
+          itemCount: listItemCount,
+          itemBuilder: (context, index) {
+            final item = allItems[index];
+            final isLastItem = index == listItemCount - 1;
+            final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
 
-          // Apply beautiful UI spacing with visual hierarchy
-          EdgeInsets padding;
-          if (item.isHeader) {
-            // Round headers get more spacing below (16sp)
-            padding = EdgeInsets.only(bottom: 16.sp);
-          } else {
-            // Team cards: standard spacing (12sp), extra before next header (20sp)
-            padding = EdgeInsets.only(bottom: nextIsHeader ? 20.sp : 12.sp);
-          }
+            // Apply beautiful UI spacing with visual hierarchy
+            EdgeInsets padding;
+            if (item.isHeader) {
+              // Round headers get more spacing below (16sp)
+              padding = EdgeInsets.only(bottom: 16.sp);
+            } else {
+              // Team cards: standard spacing (12sp), extra before next header (20sp)
+              padding = EdgeInsets.only(bottom: nextIsHeader ? 20.sp : 12.sp);
+            }
 
-          return Padding(padding: padding, child: item.widget);
-        },
+            return Padding(padding: padding, child: item.widget);
+          },
+        ),
       ),
     );
   }

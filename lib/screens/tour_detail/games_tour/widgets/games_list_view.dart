@@ -3,11 +3,13 @@ import 'dart:math' as math;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
@@ -55,6 +57,10 @@ class GamesListView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Expansion states for rounds and matches
     // In search mode, override expansion to show everything
+    final scopeId = ref.watch(gamesTourScrollScopeProvider);
+    final shouldStream = ref.watch(shouldStreamProvider);
+    final isScrolling = ref.watch(gamesTourIsScrollingProvider(scopeId));
+    final allowStockfishFallback = shouldStream && !isScrolling;
     final matchExpansionState =
         isSearchMode
             ? <String, bool>{} // Empty map means all expanded by default
@@ -226,6 +232,7 @@ class GamesListView extends ConsumerWidget {
                             orderedGamesList,
                             matchGroupsByRound,
                             liveBatchKeyByGameId,
+                            allowStockfishFallback,
                           )
                           : _buildCardRow(
                             context,
@@ -234,6 +241,7 @@ class GamesListView extends ConsumerWidget {
                             orderedGamesList,
                             matchGroupsByRound,
                             liveBatchKeyByGameId,
+                            allowStockfishFallback,
                           ),
                 );
                 // TABLET: Wrap with SizedBox to provide bounded width
@@ -273,7 +281,10 @@ class GamesListView extends ConsumerWidget {
     // Note: Tablet max-width constraint is applied by parent TournamentDetailScreen
     // Applying it here would create nested Center > ConstrainedBox which can cause
     // layout issues on tablet landscape with PageView animations.
-    return listContent;
+    return GamesTourScrollActivityDetector(
+      scopeId: scopeId,
+      child: listContent,
+    );
   }
 
   Widget _buildGridRow(
@@ -283,6 +294,7 @@ class GamesListView extends ConsumerWidget {
     List<GamesTourModel> orderedGamesList,
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
+    bool allowStockfishFallback,
   ) {
     final game1Widget = _buildGridGame(
       context,
@@ -293,6 +305,7 @@ class GamesListView extends ConsumerWidget {
       matchGroupsByRound,
       item.fixedBottomSide1,
       liveBatchKeyByGameId,
+      allowStockfishFallback,
     );
 
     final game2Widget =
@@ -306,6 +319,7 @@ class GamesListView extends ConsumerWidget {
               matchGroupsByRound,
               item.fixedBottomSide2,
               liveBatchKeyByGameId,
+              allowStockfishFallback,
             )
             : null;
 
@@ -339,6 +353,7 @@ class GamesListView extends ConsumerWidget {
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Side? fixedBottomSide,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
+    bool allowStockfishFallback,
   ) {
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${game.gameId}'),
@@ -370,6 +385,7 @@ class GamesListView extends ConsumerWidget {
               ),
       pinnedIds: gamesData.pinnedGamedIs,
       fixedBottomSide: fixedBottomSide,
+      allowStockfishFallback: allowStockfishFallback,
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)
@@ -384,6 +400,7 @@ class GamesListView extends ConsumerWidget {
     List<GamesTourModel> orderedGamesList,
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
+    bool allowStockfishFallback,
   ) {
     // Create modified gamesData with correct orderedGames for multi-stage knockouts
     final modifiedGamesData = GamesScreenModel(
@@ -398,6 +415,7 @@ class GamesListView extends ConsumerWidget {
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
       fixedBottomSide: item.fixedBottomSide1,
+      allowStockfishFallback: allowStockfishFallback,
       onReturnFromChessboard: (returnedIndex) {
         final latestMatchExpansion = ref.read(matchExpansionProvider);
         final latestRoundExpansion = ref.read(roundExpansionProvider);

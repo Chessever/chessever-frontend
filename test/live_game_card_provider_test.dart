@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
@@ -11,9 +12,37 @@ class _FakeGameStreamRepository extends GameStreamRepository {
   _FakeGameStreamRepository(this.stream);
 
   final Stream<Map<String, dynamic>?> stream;
+  int individualSubscriptions = 0;
+  int batchSubscriptions = 0;
 
   @override
-  Stream<Map<String, dynamic>?> subscribeToGameUpdates(String gameId) => stream;
+  Stream<Map<String, dynamic>?> subscribeToGameUpdates(String gameId) {
+    individualSubscriptions++;
+    return stream;
+  }
+
+  @override
+  Stream<LiveGameUpdate?> subscribeToLiveGameUpdate(String gameId) {
+    individualSubscriptions++;
+    return stream.map(
+      (update) =>
+          update == null ? null : LiveGameUpdate.fromLegacyMap(gameId, update),
+    );
+  }
+
+  @override
+  Stream<Map<String, LiveGameUpdate>> subscribeToLiveGameUpdatesBatch(
+    List<String> gameIds,
+  ) {
+    batchSubscriptions++;
+    return stream.map((update) {
+      if (update == null) return const <String, LiveGameUpdate>{};
+      return {
+        for (final gameId in gameIds)
+          gameId: LiveGameUpdate.fromLegacyMap(gameId, update),
+      };
+    });
+  }
 }
 
 PlayerCard _player(String name) {
@@ -201,5 +230,52 @@ void main() {
         );
       },
     );
+
+    test('disabled stream gate pauses card realtime subscriptions', () async {
+      final controller = StreamController<Map<String, dynamic>?>();
+      addTearDown(controller.close);
+      final repository = _FakeGameStreamRepository(controller.stream);
+
+      final container = ProviderContainer(
+        overrides: [gameStreamRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+
+      container.read(shouldStreamProvider.notifier).state = false;
+      container.read(baseGameProvider('game-1').notifier).state = _game(
+        id: 'game-1',
+        status: GameStatus.ongoing,
+        fen: afterE4,
+        lastMove: 'e2e4',
+      );
+
+      final sub = container.listen(
+        liveGameCardProvider('game-1'),
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(sub.close);
+
+      expect(repository.individualSubscriptions, 0);
+      expect(sub.read()?.fen, afterE4);
+
+      controller.add({'fen': afterE4E5, 'last_move': 'e7e5', 'status': '*'});
+      await Future<void>.delayed(Duration.zero);
+      expect(sub.read()?.fen, afterE4);
+
+      container.read(shouldStreamProvider.notifier).state = true;
+      await Future<void>.delayed(Duration.zero);
+      expect(repository.individualSubscriptions, 1);
+
+      controller.add({
+        'fen': afterE4,
+        'pgn': pgnAfterE4E5,
+        'last_move': 'e7e5',
+        'status': '*',
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(sub.read()?.lastMove, 'e7e5');
+      expect(sub.read()?.fen, afterE4E5);
+    });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -16,6 +17,7 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
   final int gameIndex;
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
+  final bool allowStockfishFallback;
 
   const BoardGameCardWrapperWidget({
     super.key,
@@ -25,6 +27,7 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
     required this.gameIndex,
     required this.pinnedIds,
     required this.onPinToggle,
+    this.allowStockfishFallback = true,
   });
 
   @override
@@ -32,6 +35,8 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
     final liveGame = watchLiveGamePosition(ref, game);
+    final effectiveAllowStockfishFallback =
+        allowStockfishFallback && ref.watch(shouldStreamProvider);
 
     // Build updated games list with the live game data
     List<GamesTourModel> getUpdatedGamesList() {
@@ -48,6 +53,7 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
       onChanged: () => onChangedWithLiveGames(getUpdatedGamesList()),
       pinnedIds: pinnedIds,
       onPinToggle: onPinToggle,
+      allowStockfishFallback: effectiveAllowStockfishFallback,
     );
   }
 }

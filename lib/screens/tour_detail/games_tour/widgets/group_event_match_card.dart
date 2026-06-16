@@ -25,6 +25,8 @@ class GroupEventMatchCard extends ConsumerWidget {
   final GamesScreenModel gamesData;
   final GamesListViewMode gamesListViewMode;
   final void Function(int)? onReturnFromChessboard;
+  final Map<String, LiveGamesBatchKey>? liveBatchKeyByGameId;
+  final bool allowStockfishFallback;
 
   const GroupEventMatchCard({
     super.key,
@@ -33,6 +35,8 @@ class GroupEventMatchCard extends ConsumerWidget {
     required this.gamesData,
     required this.gamesListViewMode,
     this.onReturnFromChessboard,
+    this.liveBatchKeyByGameId,
+    this.allowStockfishFallback = true,
   });
 
   @override
@@ -218,26 +222,35 @@ class GroupEventMatchCard extends ConsumerWidget {
   }
 
   Widget _buildGamesList(BuildContext context, WidgetRef ref) {
+    final liveBatchKeyByGameId =
+        this.liveBatchKeyByGameId ??
+        buildGroupEventLiveBatchKeys(gamesData.gamesTourModels);
+
     switch (gamesListViewMode) {
       case GamesListViewMode.gamesCard:
         return GroupEventGamesCard(
           games: games,
           gamesData: gamesData,
+          liveBatchKeyByGameId: liveBatchKeyByGameId,
+          allowStockfishFallback: allowStockfishFallback,
           onReturnFromChessboard: onReturnFromChessboard,
         );
       case GamesListViewMode.chessBoardGrid:
-        return _buildChessBoardGridView(context, ref);
+        return _buildChessBoardGridView(context, ref, liveBatchKeyByGameId);
       case GamesListViewMode.chessBoard:
-        return _buildChessBoardView(context, ref);
+        return _buildChessBoardView(context, ref, liveBatchKeyByGameId);
     }
   }
 
-  Widget _buildChessBoardGridView(BuildContext context, WidgetRef ref) {
+  Widget _buildChessBoardGridView(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
+  ) {
     final fullGamesList = gamesData.gamesTourModels;
     final gameIndexMap = {
       for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
     };
-    final liveBatchKeyByGameId = _groupEventLiveBatchKeys(fullGamesList);
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -284,18 +297,16 @@ class GroupEventMatchCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildChessBoardView(BuildContext context, WidgetRef ref) {
+  Widget _buildChessBoardView(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
+  ) {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = gamesData.gamesTourModels;
     final gameIndexMap = {
       for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
     };
-    // Share ONE batched realtime channel per chunk across all match cards in
-    // this event instead of one channel per card (per-card channels blow
-    // Supabase's per-client limit → ChannelRateLimitReached → updates die back
-    // to the slow poll). Keys are content-stable, so cards dedupe to the same
-    // channel.
-    final liveBatchKeyByGameId = _groupEventLiveBatchKeys(fullGamesList);
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -317,6 +328,7 @@ class GroupEventMatchCard extends ConsumerWidget {
             ),
             gameIndex: gameIndex,
             isChessBoardVisible: true,
+            allowStockfishFallback: allowStockfishFallback,
             onReturnFromChessboard: onReturnFromChessboard,
           ),
         );
@@ -350,6 +362,7 @@ class GroupEventMatchCard extends ConsumerWidget {
                 onReturnFromChessboard: onReturnFromChessboard,
               ),
       pinnedIds: gamesData.pinnedGamedIs,
+      allowStockfishFallback: allowStockfishFallback,
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)
@@ -359,30 +372,30 @@ class GroupEventMatchCard extends ConsumerWidget {
               ),
     );
   }
+}
 
-  /// gameId → shared chunked [LiveGamesBatchKey] over the whole event game set.
-  /// Content-stable (same scope + sorted ids → equal key), so every match card
-  /// in the event resolves to the same batched realtime channels instead of
-  /// opening one channel per card.
-  static Map<String, LiveGamesBatchKey> _groupEventLiveBatchKeys(
-    List<GamesTourModel> games,
-  ) {
-    const chunkSize = 25;
-    final result = <String, LiveGamesBatchKey>{};
-    if (games.isEmpty) return result;
-    final chunkCount = (games.length / chunkSize).ceil();
-    for (var chunk = 0; chunk < chunkCount; chunk++) {
-      final start = chunk * chunkSize;
-      final end = math.min(start + chunkSize, games.length);
-      final chunkGames = games.sublist(start, end);
-      final key = LiveGamesBatchKey(
-        scopeId: 'group_event_match:$chunk',
-        gameIds: chunkGames.map((game) => game.gameId),
-      );
-      for (final game in chunkGames) {
-        result[game.gameId] = key;
-      }
+/// gameId -> shared chunked [LiveGamesBatchKey] over the whole event game set.
+/// Content-stable (same scope + sorted ids -> equal key), so every match card
+/// in the event resolves to the same batched realtime channels instead of
+/// opening one channel per card.
+Map<String, LiveGamesBatchKey> buildGroupEventLiveBatchKeys(
+  List<GamesTourModel> games,
+) {
+  const chunkSize = 25;
+  final result = <String, LiveGamesBatchKey>{};
+  if (games.isEmpty) return result;
+  final chunkCount = (games.length / chunkSize).ceil();
+  for (var chunk = 0; chunk < chunkCount; chunk++) {
+    final start = chunk * chunkSize;
+    final end = math.min(start + chunkSize, games.length);
+    final chunkGames = games.sublist(start, end);
+    final key = LiveGamesBatchKey(
+      scopeId: 'group_event_match:$chunk',
+      gameIds: chunkGames.map((game) => game.gameId),
+    );
+    for (final game in chunkGames) {
+      result[game.gameId] = key;
     }
-    return result;
   }
+  return result;
 }
