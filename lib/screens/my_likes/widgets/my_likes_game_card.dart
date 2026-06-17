@@ -29,11 +29,16 @@ class MyLikesGameCard extends ConsumerWidget {
     required this.isLocked,
     required this.onOpen,
     required this.onRemove,
+    this.tagCounts,
   });
 
   final SavedAnalysis analysis;
   final GamesTourModel game;
   final bool isLocked;
+
+  /// Library-wide tag → game-count map. Threaded into [LibraryGameCard] so
+  /// chips render with the dominant tag first.
+  final Map<String, int>? tagCounts;
 
   /// Opens the game on the board. For a locked card this is only reached after
   /// the user successfully subscribes via the paywall.
@@ -56,6 +61,7 @@ class MyLikesGameCard extends ConsumerWidget {
       date: game.lastMoveTime,
       tags: analysis.tags,
       reserveTagSlot: true,
+      tagCounts: tagCounts,
       onTap: isLocked ? () => _handleLockedTap(context, ref) : onOpen,
     );
 

@@ -227,9 +227,42 @@ async function processItem(item: OutboxItem) {
         reason: "live_activity_refresh_isolated",
       };
     }
+
+    if (item.event_type === "call_to_action") {
+      const recipients = await resolveCallToActionRecipients();
+      if (recipients.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const title = optionalPayloadString(item.payload, "title") ??
+        optionalPayloadString(item.payload, "heading") ??
+        "ChessEver";
+      const body = optionalPayloadString(item.payload, "body") ??
+        optionalPayloadString(item.payload, "message");
+      if (!body) {
+        await markSkipped(item.id, "missing_message");
+        return { id: item.id, status: "skipped", reason: "missing_message" };
+      }
+
+      const payloadData = isPlainRecord(item.payload?.data)
+        ? item.payload.data
+        : {};
+      await sendOneSignal(recipients, {
+        title,
+        body,
+        url: optionalPayloadString(item.payload, "url"),
+        data: { ...payloadData, type: "call_to_action" },
+        androidChannelId: channelForEvent("call_to_action"),
+      });
+
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: recipients.length };
+    }
+
     if (item.event_type === "round_started") {
       const rsTimeControl = await resolveGameTimeControl(
-        item.tour_id ?? context.round?.tour_id ?? null,
+        buildTimeControlLookup(item, context),
       );
       const { playerRecipients, eventRecipients } = await filterRoundRecipients(
         context.eventUserIds,
@@ -368,7 +401,7 @@ async function processItem(item: OutboxItem) {
 
       // Only send to users whose preferred lead time and time-control filter match.
       const huTimeControl = await resolveGameTimeControl(
-        item.tour_id ?? context.round?.tour_id ?? null,
+        buildTimeControlLookup(item, context),
       );
       const { playerRecipients, eventRecipients } =
         await filterHeadsUpRecipients(
@@ -564,7 +597,7 @@ async function processItem(item: OutboxItem) {
     //   4. Requires favorite_event_alerts opt-in (handled by filterRoundRecipients).
     if (item.event_type === "round_finished") {
       const rfTimeControl = await resolveGameTimeControl(
-        item.tour_id ?? context.round?.tour_id ?? null,
+        buildTimeControlLookup(item, context),
       );
       const { eventRecipients } = await filterRoundRecipients(
         context.eventUserIds,
@@ -629,7 +662,7 @@ async function processItem(item: OutboxItem) {
         ...context.playerUserIds,
       ]);
       const timeControl = await resolveGameTimeControl(
-        context.game?.tour_id ?? item.tour_id,
+        buildTimeControlLookup(item, context),
       );
       const filteredUserIds = await applyPreferences(
         item.event_type,
@@ -676,7 +709,7 @@ async function processItem(item: OutboxItem) {
       ...context.playerUserIds,
     ]);
     const gsTimeControl = await resolveGameTimeControl(
-      context.game?.tour_id ?? item.tour_id,
+      buildTimeControlLookup(item, context),
     );
     const filteredUserIds = await applyPreferences(
       item.event_type,
@@ -1092,7 +1125,32 @@ async function resolveRecipients(args: {
   return { eventUserIds, playerUserIds };
 }
 
-// Normalises a raw time-class string from the tours table into one of the
+type TimeControlLookup = {
+  groupBroadcastId: string | null;
+  tourId: string | null;
+};
+
+function buildTimeControlLookup(
+  item: OutboxItem,
+  context: {
+    game: GameRow | null;
+    round: RoundRow | null;
+    tourId: string | null;
+    groupBroadcastId: string | null;
+  },
+): TimeControlLookup {
+  return {
+    groupBroadcastId: context.groupBroadcastId ?? item.group_broadcast_id,
+    tourId: item.tour_id ?? context.tourId ?? context.game?.tour_id ??
+      context.round?.tour_id ?? null,
+  };
+}
+
+function pushUniqueId(ids: string[], id: string | null | undefined) {
+  if (id && !ids.includes(id)) ids.push(id);
+}
+
+// Normalises a raw time-control string from group_broadcasts into one of the
 // three canonical values the preference columns use.
 function normaliseTimeControl(
   raw: string | null | undefined,
@@ -1105,23 +1163,92 @@ function normaliseTimeControl(
   return null;
 }
 
-// Fetch the time-control class for a tour. Returns null when unknown so that
-// the preference filter is skipped (fail-open — users always get the push).
+function optionalPayloadString(
+  payload: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
+  const value = payload?.[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Resolve from the two identifiers notification rows may carry directly or via
+// context. Some event types have a group broadcast id, others only have a tour.
 async function resolveGameTimeControl(
-  tourId: string | null | undefined,
+  lookup: TimeControlLookup,
 ): Promise<"classical" | "rapid" | "blitz" | null> {
-  if (!tourId) return null;
   try {
-    const { data } = await supabase
-      .from("tours")
-      .select("time_class")
-      .eq("id", tourId)
-      .maybeSingle();
-    return normaliseTimeControl(data?.time_class as string | null);
+    const broadcastIds: string[] = [];
+    pushUniqueId(broadcastIds, lookup.groupBroadcastId);
+
+    let tourId = lookup.tourId;
+
+    if (tourId) {
+      const { data: tourData, error: tourError } = await supabase
+        .from("tours")
+        .select("group_broadcast_id")
+        .eq("id", tourId)
+        .maybeSingle();
+
+      if (tourError) return null;
+      pushUniqueId(
+        broadcastIds,
+        (tourData?.group_broadcast_id as string | null) ?? null,
+      );
+    }
+
+    for (const broadcastId of broadcastIds) {
+      const { data, error } = await supabase
+        .from("group_broadcasts")
+        .select("time_control")
+        .eq("id", broadcastId)
+        .maybeSingle();
+
+      if (error) continue;
+      const timeControl = normaliseTimeControl(
+        data?.time_control as string | null,
+      );
+      if (timeControl) return timeControl;
+    }
+
+    return null;
   } catch (_) {
-    // Column may not exist yet — fail-open.
     return null;
   }
+}
+
+async function resolveCallToActionRecipients(): Promise<string[]> {
+  const recipients = new Set<string>();
+  const pageSize = 1000;
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("user_notification_preferences")
+      .select("user_id")
+      .eq("push_enabled", true)
+      .eq("call_to_action_alerts", true)
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = (data ?? []) as Array<{ user_id: string | null }>;
+    for (const row of rows) {
+      if (row.user_id) recipients.add(row.user_id);
+    }
+
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return Array.from(recipients);
 }
 
 async function applyPreferences(

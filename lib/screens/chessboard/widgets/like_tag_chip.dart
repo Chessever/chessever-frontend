@@ -8,7 +8,9 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// The post-like tag picker that lives *in the AppBar*.
 ///
@@ -129,11 +131,20 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   void _closeMenu() {
     if (!_menuOpen) return;
     _menu.reverse();
+    // Captured before the deferred callback so a mid-flight commit (from Save)
+    // doesn't double-fire here.
+    final shouldCommit = _draftTouched && !_committed;
     Future.delayed(_menuDuration, () {
       _menuEntry?.remove();
       _menuEntry = null;
       if (!mounted) return;
       setState(() => _menuOpen = false);
+      if (shouldCommit && !_committed) {
+        // PM: dismissing with picks already made should save immediately
+        // instead of waiting out the countdown.
+        _commit(_draftLabels, haptic: false);
+        return;
+      }
       // Resume the countdown from where it paused, unless the user committed.
       if (!_committed && _countdown.status != AnimationStatus.completed) {
         _countdown.forward();
@@ -232,71 +243,128 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
         setState(() => _pressed = false);
         _toggleMenu();
       },
-      child: AnimatedScale(
-        // Tactile press feedback — 0.96 (anything lower reads as exaggerated).
-        scale: _pressed ? 0.96 : 1.0,
-        duration: const Duration(milliseconds: 110),
-        curve: Curves.easeOut,
-        child: AnimatedBuilder(
-          animation: _countdown,
-          builder: (context, _) {
-            final remaining =
-                _committed ? 1.0 : (1 - _countdown.value).clamp(0.0, 1.0);
-            return _chipBody(colors, _faceFor(colors), remaining);
-          },
-        ),
-      ),
+      child: SingleMotionBuilder(
+        // Bouncy press feedback — spring beats AnimatedScale's linear ease.
+        motion: const CupertinoMotion.bouncy(),
+        value: _pressed ? 1.0 : 0.0,
+        builder: (context, pressT, _) {
+          return Transform.scale(
+            scale: 1.0 - 0.05 * pressT,
+            child: AnimatedBuilder(
+              animation: _countdown,
+              builder: (context, _) {
+                final remaining =
+                    _committed
+                        ? 1.0
+                        : (1 - _countdown.value).clamp(0.0, 1.0);
+                return _chipBody(colors, _faceFor(colors), remaining);
+              },
+            ),
+          );
+        },
+      ).animate(target: 1).fadeIn(duration: 260.ms, curve: Curves.easeOutCubic),
     );
   }
 
   Widget _chipBody(AppColors colors, _ChipFace face, double remaining) {
     final radius = 17.br;
-    return CustomPaint(
-      foregroundPainter: _CountdownBorderPainter(
-        remaining: remaining,
-        radius: radius,
-        accent: face.accent,
-        track: colors.dividerStrong.withValues(alpha: 0.45),
-      ),
-      child: Container(
-        key: _chipKey,
-        height: 34.h,
-        constraints: BoxConstraints(maxWidth: 196.w),
-        padding: EdgeInsets.symmetric(horizontal: 8.w),
+    // Subtle accent glow under the chip, brightest while the countdown is
+    // still draining, faded once the user commits.
+    final glowAlpha = _committed ? 0.0 : 0.22 * remaining;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.centerRight,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(radius),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _IconBubble(icon: face.icon, accent: face.accent),
-            SizedBox(width: 7.w),
-            Flexible(
-              child: Text(
-                face.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: colors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
+          boxShadow: [
+            if (glowAlpha > 0.01)
+              BoxShadow(
+                color: face.accent.withValues(alpha: glowAlpha),
+                blurRadius: 14,
+                spreadRadius: -2,
+                offset: const Offset(0, 2),
               ),
+          ],
+        ),
+        child: CustomPaint(
+          foregroundPainter: _CountdownBorderPainter(
+            remaining: remaining,
+            radius: radius,
+            accent: face.accent,
+            track: colors.dividerStrong.withValues(alpha: 0.45),
+          ),
+          child: Container(
+            key: _chipKey,
+            height: 34.h,
+            constraints: BoxConstraints(maxWidth: 196.w),
+            padding: EdgeInsets.symmetric(horizontal: 8.w),
+            decoration: BoxDecoration(
+              color: colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(radius),
             ),
-            SizedBox(width: 4.w),
-            face.showCheck
-                ? Icon(Icons.check_rounded, size: 17.sp, color: face.accent)
-                : AnimatedRotation(
-                  turns: _menuOpen ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 18.sp,
-                    color: colors.textSecondary,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _IconBubble(icon: face.icon, accent: face.accent),
+                SizedBox(width: 7.w),
+                Flexible(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    transitionBuilder: (child, anim) {
+                      return FadeTransition(
+                        opacity: anim,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.15),
+                            end: Offset.zero,
+                          ).animate(anim),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Text(
+                      face.label,
+                      key: ValueKey<String>(face.label),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: colors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
-          ],
+                SizedBox(width: 4.w),
+                face.showCheck
+                    ? Icon(
+                          Icons.check_rounded,
+                          size: 17.sp,
+                          color: face.accent,
+                        )
+                        .animate()
+                        .scale(
+                          duration: 240.ms,
+                          curve: Curves.elasticOut,
+                          begin: const Offset(0.4, 0.4),
+                          end: const Offset(1.0, 1.0),
+                        )
+                    : AnimatedRotation(
+                      turns: _menuOpen ? 0.5 : 0.0,
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 18.sp,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -307,7 +375,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   Widget _buildMenu(BuildContext overlayContext, Rect chipRect) {
     final media = MediaQuery.of(overlayContext);
     final screenW = media.size.width;
-    final panelWidth = 248.w;
+    final panelWidth = 268.w;
     // Right-align under the chip, clamped on-screen.
     final right = (screenW - chipRect.right).clamp(
       8.w,
@@ -350,17 +418,16 @@ class _ChipFace {
   final bool showCheck;
 }
 
-/// Small tinted glyph bubble used on the chip and on each dropdown row.
+/// Small tinted glyph bubble on the AppBar chip face.
 class _IconBubble extends StatelessWidget {
-  const _IconBubble({required this.icon, required this.accent, this.size});
+  const _IconBubble({required this.icon, required this.accent});
 
   final IconData icon;
   final Color accent;
-  final double? size;
 
   @override
   Widget build(BuildContext context) {
-    final dim = size ?? 22.w;
+    final dim = 22.w;
     return Container(
       width: dim,
       height: dim,
@@ -490,7 +557,9 @@ class _TagDropdownState extends State<_TagDropdown> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final curved = CurvedAnimation(
+    // Two curves: easeOutCubic for the panel enter (opens decisively), and
+    // a sharper easeInCubic on reverse for a tight exit.
+    final shellCurve = CurvedAnimation(
       parent: widget.animation,
       curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
@@ -508,20 +577,21 @@ class _TagDropdownState extends State<_TagDropdown> {
           right: widget.right,
           width: widget.width,
           child: AnimatedBuilder(
-            animation: curved,
+            animation: shellCurve,
             builder: (context, child) {
-              final t = curved.value.clamp(0.0, 1.0);
+              final t = shellCurve.value.clamp(0.0, 1.0);
+              // Anchor the scale at top-right (under the chip), so the panel
+              // visually "grows out of" the trigger pill instead of dropping
+              // from above.
+              final scale = 0.86 + 0.14 * t;
               return Opacity(
                 opacity: t,
                 child: Transform.translate(
-                  offset: Offset(0, (1 - t) * -6),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16.br),
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      heightFactor: t < 0.02 ? 0.02 : t,
-                      child: child,
-                    ),
+                  offset: Offset(0, (1 - t) * -8),
+                  child: Transform.scale(
+                    scale: scale,
+                    alignment: Alignment.topRight,
+                    child: child,
                   ),
                 ),
               );
@@ -575,14 +645,36 @@ class _TagDropdownState extends State<_TagDropdown> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Done',
-                      onPressed: _commit,
-                      icon: Icon(
-                        Icons.check_rounded,
-                        size: 18.sp,
-                        color: colors.textPrimary,
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _commit,
+                        borderRadius: BorderRadius.circular(8.br),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10.w,
+                            vertical: 5.h,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_rounded,
+                                size: 15.sp,
+                                color: colors.brand,
+                              ),
+                              SizedBox(width: 4.w),
+                              Text(
+                                'Save',
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: colors.brand,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -594,28 +686,53 @@ class _TagDropdownState extends State<_TagDropdown> {
                 color: colors.dividerStrong.withValues(alpha: 0.4),
               ),
               Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(vertical: 4.h),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final t in tags)
-                        () {
-                          final selected = _selected.contains(t.label);
-                          final disabled =
-                              !selected &&
-                              _selected.length >= kMaxLikeTagsPerGame;
-                          return _TagRow(
-                            icon: t.icon,
-                            label: t.label,
-                            accent: t.color,
-                            selected: selected,
-                            disabled: disabled,
-                            onTap: disabled ? null : () => _toggle(t.label),
-                          );
-                        }(),
-                    ],
+                child: GridView.builder(
+                  padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 10.h),
+                  shrinkWrap: true,
+                  physics: const ClampingScrollPhysics(),
+                  itemCount: tags.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 6.h,
+                    crossAxisSpacing: 6.w,
+                    mainAxisExtent: 34.h,
                   ),
+                  itemBuilder: (_, i) {
+                    final t = tags[i];
+                    final selected = _selected.contains(t.label);
+                    final disabled =
+                        !selected &&
+                        _selected.length >= kMaxLikeTagsPerGame;
+                    return _TagSquare(
+                          label: t.label,
+                          accent: t.color,
+                          selected: selected,
+                          disabled: disabled,
+                          onTap: disabled ? null : () => _toggle(t.label),
+                        )
+                        // Stagger reveal — each chip arrives ~22ms after the
+                        // previous so the grid feels assembled, not slammed.
+                        .animate()
+                        .fadeIn(
+                          delay: Duration(milliseconds: 60 + i * 22),
+                          duration: 200.ms,
+                          curve: Curves.easeOutCubic,
+                        )
+                        .moveY(
+                          begin: 6,
+                          end: 0,
+                          delay: Duration(milliseconds: 60 + i * 22),
+                          duration: 220.ms,
+                          curve: Curves.easeOutCubic,
+                        )
+                        .scaleXY(
+                          begin: 0.94,
+                          end: 1.0,
+                          delay: Duration(milliseconds: 60 + i * 22),
+                          duration: 240.ms,
+                          curve: Curves.easeOutBack,
+                        );
+                  },
                 ),
               ),
             ],
@@ -626,11 +743,12 @@ class _TagDropdownState extends State<_TagDropdown> {
   }
 }
 
-/// One selectable tag in the dropdown: explanatory icon bubble, label, and a
-/// trailing check when it's the game's current tag.
-class _TagRow extends StatelessWidget {
-  const _TagRow({
-    required this.icon,
+/// One selectable tag in the dropdown: text-only clickable square that wraps
+/// alongside its siblings so all ten tags fit at a glance. Tag colour survives
+/// as the selected-state accent (border + tinted fill) so the curated palette
+/// still distinguishes tags without per-tag glyphs.
+class _TagSquare extends StatelessWidget {
+  const _TagSquare({
     required this.label,
     required this.accent,
     required this.selected,
@@ -638,7 +756,6 @@ class _TagRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
   final String label;
   final Color accent;
   final bool selected;
@@ -648,39 +765,56 @@ class _TagRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return InkWell(
-      onTap: onTap,
-      splashColor:
-          disabled ? Colors.transparent : accent.withValues(alpha: 0.12),
-      highlightColor:
-          disabled ? Colors.transparent : accent.withValues(alpha: 0.08),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
-        child: Row(
-          children: [
-            Opacity(
-              opacity: disabled ? 0.42 : 1,
-              child: _IconBubble(icon: icon, accent: accent, size: 30.w),
+    final radius = 10.br;
+    final Color fill;
+    final Color border;
+    final Color textColor;
+    if (selected) {
+      fill = accent.withValues(alpha: 0.18);
+      border = accent.withValues(alpha: 0.9);
+      textColor = colors.textPrimary;
+    } else if (disabled) {
+      fill = colors.surfaceRecessed.withValues(alpha: 0.55);
+      border = colors.dividerStrong.withValues(alpha: 0.35);
+      textColor = colors.textPrimary.withValues(alpha: 0.42);
+    } else {
+      fill = colors.surfaceRecessed;
+      border = colors.dividerStrong.withValues(alpha: 0.55);
+      textColor = colors.textPrimary;
+    }
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(radius),
+        splashColor:
+            disabled ? Colors.transparent : accent.withValues(alpha: 0.12),
+        highlightColor:
+            disabled ? Colors.transparent : accent.withValues(alpha: 0.08),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          alignment: Alignment.center,
+          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: border,
+              width: selected ? 1.2 : 1.0,
             ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: colors.textPrimary.withValues(
-                    alpha: disabled ? 0.42 : 1,
-                  ),
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: AppTypography.textXsMedium.copyWith(
+              color: textColor,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              letterSpacing: 0.1,
             ),
-            if (selected) ...[
-              SizedBox(width: 8.w),
-              Icon(Icons.check_rounded, size: 18.sp, color: accent),
-            ],
-          ],
+          ),
         ),
       ),
     );

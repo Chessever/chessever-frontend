@@ -93,7 +93,7 @@ class NotifPushCard extends StatelessWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Enable alerts for game starts, finishes, and live updates.',
+                      'Enable alerts for favorite players and starred event rounds.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textPrimaryMuted,
                         fontSize: 11.f,

@@ -177,6 +177,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   /// already liked.
   List<String> _selectedTags = const <String>[];
 
+  /// Collapsible tag section state. Tags sit above Databases now and stay
+  /// expanded by default so the picker remains discoverable; users can collapse
+  /// it to keep the sheet short on small phones.
+  bool _tagsExpanded = true;
+
   @override
   void initState() {
     super.initState();
@@ -1170,8 +1175,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
                 SizedBox(height: 24.h),
 
-                // Folder section
-                _buildFolderSection(foldersAsync)
+                // Tag (My-Likes classification) — above Databases per PM feedback.
+                _buildTagsSection()
                     .animate()
                     .fadeIn(duration: 300.ms, delay: 150.ms)
                     .slideY(
@@ -1183,8 +1188,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
                 SizedBox(height: 24.h),
 
-                // Tag (My-Likes classification)
-                _buildTagsSection()
+                // Folder section (Databases)
+                _buildFolderSection(foldersAsync)
                     .animate()
                     .fadeIn(duration: 300.ms, delay: 175.ms)
                     .slideY(
@@ -1792,61 +1797,120 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   }
 
   Widget _buildTagsSection() {
+    final colors = context.colors;
+    final selectedCount = _selectedTags.length;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Tag',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.8),
-                  letterSpacing: 0.3,
-                ),
-              ),
-              if (_selectedTags.isNotEmpty)
-                GestureDetector(
-                  onTap:
-                      _isSaving
-                          ? null
-                          : () {
-                            _handleTagSelection(null);
-                          },
-                  child: Text(
-                    'Clear',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              setState(() => _tagsExpanded = !_tagsExpanded);
+            },
+            child: Row(
+              children: [
+                Text(
+                  'Tag',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: colors.textPrimary.withValues(alpha: 0.8),
+                    letterSpacing: 0.3,
                   ),
                 ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          Wrap(
-            spacing: 8.w,
-            runSpacing: 8.h,
-            children: [
-              for (final tag in kLikeTags)
-                () {
-                  final selected = _selectedTags.contains(tag.label);
-                  final disabled =
-                      !selected && _selectedTags.length >= kMaxLikeTagsPerGame;
-                  return _TagChip(
-                    tag: tag,
-                    selected: selected,
-                    disabled: disabled,
+                if (selectedCount > 0) ...[
+                  SizedBox(width: 8.w),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 7.w,
+                      vertical: 2.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.textPrimary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(999.br),
+                    ),
+                    child: Text(
+                      '$selectedCount',
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: colors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                if (selectedCount > 0)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
                     onTap:
-                        _isSaving || disabled
+                        _isSaving
                             ? null
                             : () {
-                              _handleTagSelection(tag.label);
+                              _handleTagSelection(null);
                             },
-                  );
-                }(),
-            ],
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6.w,
+                        vertical: 2.h,
+                      ),
+                      child: Text(
+                        'Clear',
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                SizedBox(width: 2.w),
+                AnimatedRotation(
+                  turns: _tagsExpanded ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20.sp,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child:
+                _tagsExpanded
+                    ? Padding(
+                      padding: EdgeInsets.only(top: 14.h),
+                      child: Wrap(
+                        spacing: 8.w,
+                        runSpacing: 8.h,
+                        children: [
+                          for (final tag in kLikeTags)
+                            () {
+                              final selected = _selectedTags.contains(
+                                tag.label,
+                              );
+                              final disabled =
+                                  !selected &&
+                                  _selectedTags.length >= kMaxLikeTagsPerGame;
+                              return _TagChip(
+                                tag: tag,
+                                selected: selected,
+                                disabled: disabled,
+                                onTap:
+                                    _isSaving || disabled
+                                        ? null
+                                        : () {
+                                          _handleTagSelection(tag.label);
+                                        },
+                              );
+                            }(),
+                        ],
+                      ),
+                    )
+                    : const SizedBox(width: double.infinity),
           ),
         ],
       ),
@@ -2918,30 +2982,15 @@ class _TagChip extends StatelessWidget {
                     width: 1,
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8.w,
-                      height: 8.w,
-                      decoration: BoxDecoration(
-                        color: tag.color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    SizedBox(width: 7.w),
-                    Text(
-                      tag.label,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color:
-                            selected
-                                ? colors.textPrimary
-                                : colors.textPrimary.withValues(alpha: 0.7),
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  tag.label,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color:
+                        selected
+                            ? colors.textPrimary
+                            : colors.textPrimary.withValues(alpha: 0.7),
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
                 ),
               ),
             ),

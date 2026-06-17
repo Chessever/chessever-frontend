@@ -863,11 +863,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       );
     }
 
+    // Edge-to-edge horizontal scroll. 48h holds the chip's selected-state
+    // scale-up without vertical clipping; listview padding (not parent
+    // padding) keeps the first/last chip 16w in but lets content scroll
+    // straight off-screen.
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
+      padding: EdgeInsets.only(bottom: 8.h),
+      child: SizedBox(
+        height: 48.h,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          physics: const BouncingScrollPhysics(),
+          itemCount: chips.length,
+          separatorBuilder: (_, __) => SizedBox(width: 8.w),
+          itemBuilder: (_, i) => Center(child: chips[i]),
+        ),
       ),
     );
   }
@@ -934,6 +945,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               filteredAnalyses.length +
               (showLoadingTail ? 1 : 0);
 
+          // Folder-wide tag → game-count map. Captured here so each card can
+          // sort its chips so the dominant tag in the database renders first.
+          final folderTagCounts =
+              ref.watch(folderTagCountsProvider(_tagCountsKey)).valueOrNull ??
+              _lastTagCounts;
+
           return ListView.builder(
             controller: _scrollController,
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
@@ -959,6 +976,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     padding: EdgeInsets.only(bottom: 12.h),
                     child: BookSavedGameCard(
                       analysis: analysis,
+                      tagCounts: folderTagCounts,
                       onTap: () async {
                         await loadSavedAnalysisWithSwiping(
                           context,
@@ -982,6 +1000,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     behavior: SwipeActionBehavior.dismiss,
                     child: BookSavedGameCard(
                       analysis: analysis,
+                      tagCounts: folderTagCounts,
                       onTap: () async {
                         await loadSavedAnalysisWithSwiping(
                           context,

@@ -458,11 +458,17 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+            padding: EdgeInsets.fromLTRB(0, 12.h, 0, 8.h),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSearchBar(),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: _buildSearchBar(),
+                ),
+                // Filter row is edge-to-edge so the horizontal scroll runs
+                // under the screen edges instead of being clipped by parent
+                // padding.
                 _buildTagQuickFilters(data.totalLiked),
               ],
             ),
@@ -546,18 +552,35 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       );
     }
 
+    // 48h gives the chip's 40h pill room for the selected-state 1.03 scale
+    // without vertical clipping. ListView eats the horizontal padding so the
+    // strip itself can run from screen edge to screen edge.
     return Padding(
       padding: EdgeInsets.only(top: 12.h),
-      // Wrap (not a horizontal ListView): a scrolling strip always chops the
-      // overflow chip at the viewport edge — and long labels make that common.
-      // Wrapping flows chips onto extra rows so every one shows in full, with
-      // no horizontal cut-off whatever the chip count or label length.
-      child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
+      child: SizedBox(
+        height: 48.h,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          physics: const BouncingScrollPhysics(),
+          itemCount: chips.length,
+          separatorBuilder: (_, __) => SizedBox(width: 8.w),
+          itemBuilder: (_, i) => Center(child: chips[i]),
+        ),
+      ),
     );
   }
 
   Widget _buildSectionsSliver(MyLikesData data) {
     final items = <Widget>[];
+
+    // Library-wide tag → game-count map. Reuses the cached counts that drive
+    // the filter chip row so cards can render the dominant tag first.
+    final liveCounts = ref.watch(myLikesTagCountsProvider).valueOrNull;
+    if (liveCounts != null) {
+      _lastTagCounts = liveCounts;
+    }
+    final tagCounts = liveCounts ?? _lastTagCounts;
 
     for (final section in data.sections) {
       final dateKey = section.key;
@@ -594,6 +617,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
                 analysis: entry.analysis,
                 game: entry.game,
                 isLocked: entry.isLocked,
+                tagCounts: tagCounts,
                 onOpen: () => _openAnalysis(entry.analysis),
                 onRemove: () => _removeAnalysis(entry.analysis),
               ),

@@ -29,6 +29,7 @@ class LibraryGameCard extends ConsumerWidget {
     this.showRound = true,
     this.tags = const <String>[],
     this.reserveTagSlot = false,
+    this.tagCounts,
   });
 
   final GamesTourModel game;
@@ -44,6 +45,12 @@ class LibraryGameCard extends ConsumerWidget {
   /// in a database list stays the same size. Used by saved-analysis lists
   /// (My Database, My Likes); left false for gamebase/import cards.
   final bool reserveTagSlot;
+
+  /// Optional tag-frequency map (tag label → total games carrying that tag in
+  /// the enclosing collection). When provided, the chips render sorted by
+  /// count desc — most-used tag leftmost — so the user's dominant categories
+  /// surface first. Tie-break follows canonical [kLikeTags] order.
+  final Map<String, int>? tagCounts;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,6 +72,19 @@ class LibraryGameCard extends ConsumerWidget {
 
     final visibleTags =
         tags.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
+    final counts = tagCounts;
+    if (counts != null && visibleTags.length > 1) {
+      final canonicalOrder = <String, int>{
+        for (var i = 0; i < kLikeTags.length; i++) kLikeTags[i].label: i,
+      };
+      visibleTags.sort((a, b) {
+        final cmp = (counts[b] ?? 0).compareTo(counts[a] ?? 0);
+        if (cmp != 0) return cmp;
+        final ia = canonicalOrder[a] ?? kLikeTags.length;
+        final ib = canonicalOrder[b] ?? kLikeTags.length;
+        return ia.compareTo(ib);
+      });
+    }
 
     return TappableScale(
       onTap: () {
@@ -196,29 +216,26 @@ class LibraryGameCard extends ConsumerWidget {
                     if (reserveTagSlot || visibleTags.isNotEmpty) ...[
                       SizedBox(height: 6.h),
                       if (visibleTags.isNotEmpty)
-                        Wrap(
-                          spacing: 6.w,
-                          runSpacing: 5.h,
-                          children: [
-                            for (final tag in visibleTags.take(3))
-                              _LibraryTagChip(label: tag),
-                            if (visibleTags.length > 3)
-                              _LibraryTagChip(
-                                label: '+${visibleTags.length - 3}',
-                                accent: context.colors.textSecondary,
-                              ),
-                          ],
+                        SizedBox(
+                          height: 22.h,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            padding: EdgeInsets.zero,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: visibleTags.length,
+                            separatorBuilder: (_, __) => SizedBox(width: 6.w),
+                            itemBuilder:
+                                (_, i) => Center(
+                                  child: _LibraryTagChip(
+                                    label: visibleTags[i],
+                                  ),
+                                ),
+                          ),
                         )
                       else
-                        // No tags: reserve exactly one chip-row of height so
-                        // cards stay uniformly sized across the list.
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Opacity(
-                            opacity: 0,
-                            child: _LibraryTagChip(label: ' '),
-                          ),
-                        ),
+                        // No tags: keep a single chip-row of height so cards
+                        // stay uniformly sized across the list.
+                        SizedBox(height: 22.h),
                     ],
                   ],
                 ),
@@ -270,15 +287,14 @@ class LibraryGameCard extends ConsumerWidget {
 }
 
 class _LibraryTagChip extends StatelessWidget {
-  const _LibraryTagChip({required this.label, this.accent});
+  const _LibraryTagChip({required this.label});
 
   final String label;
-  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
     final tag = likeTagByLabel(label);
-    final color = accent ?? tag?.color ?? context.colors.textSecondary;
+    final color = tag?.color ?? context.colors.textSecondary;
 
     return Container(
       constraints: BoxConstraints(maxWidth: 160.w),
@@ -288,27 +304,14 @@ class _LibraryTagChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999.br),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6.w,
-            height: 6.w,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          SizedBox(width: 5.w),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textXsMedium.copyWith(
-                color: context.colors.textPrimary,
-                fontSize: 10.sp,
-              ),
-            ),
-          ),
-        ],
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTypography.textXsMedium.copyWith(
+          color: context.colors.textPrimary,
+          fontSize: 10.sp,
+        ),
       ),
     );
   }

@@ -6,10 +6,20 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:flutter/material.dart';
 
 class BookSavedGameCard extends StatelessWidget {
-  const BookSavedGameCard({super.key, required this.analysis, this.onTap});
+  const BookSavedGameCard({
+    super.key,
+    required this.analysis,
+    this.onTap,
+    this.tagCounts,
+  });
 
   final SavedAnalysis analysis;
   final VoidCallback? onTap;
+
+  /// Folder-wide tag → game-count map. When supplied, the card sorts its tag
+  /// chips by count desc so the dominant tag in the enclosing database
+  /// surfaces leftmost.
+  final Map<String, int>? tagCounts;
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +31,7 @@ class BookSavedGameCard extends StatelessWidget {
       eventName: eventName,
       tags: analysis.tags,
       reserveTagSlot: true,
+      tagCounts: tagCounts,
       onTap: onTap ?? () => loadSavedAnalysis(context, analysis),
     );
   }
