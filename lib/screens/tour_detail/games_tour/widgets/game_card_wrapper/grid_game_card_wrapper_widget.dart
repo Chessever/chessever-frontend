@@ -51,6 +51,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     final effectiveAllowStockfishFallback =
         streamEnabled &&
         allowStockfishFallback &&
+        !ref.watch(liveGameCardsPausedProvider) &&
         ref.watch(shouldStreamProvider);
 
     // Build updated games list with the live game data

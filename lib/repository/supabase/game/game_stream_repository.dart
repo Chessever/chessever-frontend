@@ -83,8 +83,7 @@ class LiveGameUpdate {
             other.lastMoveTime == lastMoveTime &&
             other.lastClockWhite == lastClockWhite &&
             other.lastClockBlack == lastClockBlack &&
-            other.status == status &&
-            other.players == players;
+            other.status == status;
   }
 
   @override
@@ -98,7 +97,6 @@ class LiveGameUpdate {
       lastClockWhite,
       lastClockBlack,
       status,
-      players,
     );
   }
 }
@@ -158,21 +156,21 @@ class GameStreamRepository {
   /// This is the primary method used by game cards for live updates.
   /// Each call creates an individual Realtime channel for this game.
   Stream<Map<String, dynamic>?> subscribeToGameUpdates(String gameId) {
+    return subscribeToLiveGameUpdate(
+      gameId,
+    ).map((update) => update?.toLegacyMap()).distinct(_sameLegacyUpdate);
+  }
+
+  Stream<LiveGameUpdate?> subscribeToLiveGameUpdate(String gameId) {
     return Supabase.instance.client
         .from('games')
         .stream(primaryKey: ['id'])
         .eq('id', gameId)
         .map((data) {
           if (data.isEmpty) return null;
-          return LiveGameUpdate.fromRow(data.first).toLegacyMap();
-        });
-  }
-
-  Stream<LiveGameUpdate?> subscribeToLiveGameUpdate(String gameId) {
-    return subscribeToGameUpdates(gameId).map(
-      (update) =>
-          update == null ? null : LiveGameUpdate.fromLegacyMap(gameId, update),
-    );
+          return LiveGameUpdate.fromRow(data.first);
+        })
+        .distinct();
   }
 
   /// One Realtime stream for a small set of visible games.
@@ -199,6 +197,36 @@ class GameStreamRepository {
             for (final row in rows)
               row['id'] as String: LiveGameUpdate.fromRow(row),
           };
-        });
+        })
+        .distinct(_sameLiveGameUpdateBatch);
   }
+}
+
+bool _sameLegacyUpdate(
+  Map<String, dynamic>? previous,
+  Map<String, dynamic>? next,
+) {
+  if (identical(previous, next)) return true;
+  if (previous == null || next == null) return previous == next;
+  return previous['pgn'] == next['pgn'] &&
+      previous['fen'] == next['fen'] &&
+      previous['last_move'] == next['last_move'] &&
+      previous['last_move_time'] == next['last_move_time'] &&
+      previous['last_clock_white'] == next['last_clock_white'] &&
+      previous['last_clock_black'] == next['last_clock_black'] &&
+      previous['status'] == next['status'];
+}
+
+bool _sameLiveGameUpdateBatch(
+  Map<String, LiveGameUpdate> previous,
+  Map<String, LiveGameUpdate> next,
+) {
+  if (identical(previous, next)) return true;
+  if (previous.length != next.length) return false;
+  for (final entry in previous.entries) {
+    if (next[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
 }

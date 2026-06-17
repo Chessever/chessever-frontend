@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -15,6 +16,7 @@ import 'package:chessever2/screens/player_profile/provider/player_profile_provid
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
@@ -59,16 +61,22 @@ class PlayerGamesTab extends ConsumerStatefulWidget {
 }
 
 class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
-    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
   Timer? _scrollIdleTimer;
+  bool _routeSubscribed = false;
+  bool _routeIsCurrent = true;
+  bool _appIsResumed = true;
   bool _isLoadingAllPagesForSelection = false;
-  bool _isScrolling = false;
+  bool _liveCardsPausedForScroll = false;
   final Set<String> _selectedGameIds = <String>{};
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
+
+  String get _liveCardsPauseReason => 'player_games_scroll_$hashCode';
+  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
 
   // Rotating "Search <word>" hint — mirrors the home and TWIC search bars so
   // the animated second word is consistent across the app.
@@ -157,11 +165,26 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   );
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route == null) return;
+    routeObserver.subscribe(this, route);
+    _routeSubscribed = true;
+    _routeIsCurrent = route.isCurrent;
+  }
+
+  @override
   void dispose() {
+    if (_routeSubscribed) {
+      routeObserver.unsubscribe(this);
+    }
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
     _debounceTimer?.cancel();
     _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
     _hintRotationTimer?.cancel();
     _hintFadeOutTimer?.cancel();
     _scrollController.removeListener(_onScroll);
@@ -174,14 +197,36 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   @override
+  void didPush() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPopNext() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPushNext() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didPop() {
+    _setRouteActive(false);
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state != AppLifecycleState.resumed) {
       ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
+      _setAppResumed(false);
       return;
     }
     if (!mounted) return;
 
+    _setAppResumed(true);
     ForegroundTaskScheduler.schedule(
       key: 'player_games_resume_$hashCode',
       task: () {
@@ -205,6 +250,27 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
+  void _setRouteActive(bool isActive) {
+    if (!mounted) return;
+    if (_routeIsCurrent != isActive) {
+      setState(() => _routeIsCurrent = isActive);
+    }
+    if (!isActive) {
+      ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
+      _stopLiveCardsForHiddenTab();
+    }
+  }
+
+  void _setAppResumed(bool isResumed) {
+    if (!mounted) return;
+    if (_appIsResumed != isResumed) {
+      setState(() => _appIsResumed = isResumed);
+    }
+    if (!isResumed) {
+      _stopLiveCardsForHiddenTab();
+    }
+  }
+
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     _markLiveCardsScrolling();
@@ -215,16 +281,24 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   void _markLiveCardsScrolling() {
-    if (!_isScrolling && mounted) {
-      setState(() => _isScrolling = true);
-    }
+    _setLiveCardsPausedForScroll(true);
     _scrollIdleTimer?.cancel();
     _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
   }
 
   void _markLiveCardsIdle() {
-    if (!mounted || !_isScrolling) return;
-    setState(() => _isScrolling = false);
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _stopLiveCardsForHiddenTab() {
+    _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _setLiveCardsPausedForScroll(bool paused) {
+    if (_liveCardsPausedForScroll == paused) return;
+    _liveCardsPausedForScroll = paused;
+    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
   }
 
   void _onSearchChanged(String value) {
@@ -472,6 +546,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    ref.listen<PlayerProfileTab>(selectedPlayerProfileTabProvider, (_, next) {
+      if (next != PlayerProfileTab.games) {
+        _stopLiveCardsForHiddenTab();
+      }
+    });
+
+    final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
+    if (selectedTab != PlayerProfileTab.games || !_isActiveOnScreen) {
+      return const SizedBox.shrink();
+    }
 
     final isSelectionMode = ref.watch(
       playerGamesSelectionModeProvider(_playerKey),
@@ -1202,8 +1287,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   game: game,
                   orderedGames: games,
                   gameIndex: globalIndex,
-                  allowStockfishFallback: !_isScrolling,
-                  streamEnabled: !_isScrolling,
+                  allowStockfishFallback: true,
+                  streamEnabled: true,
                   onChangedWithLiveGames: (updatedGames) async {
                     final hasPremium = await requirePremiumGuard(context, ref);
                     if (!hasPremium) return;
@@ -1235,7 +1320,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               showSwipeHint: showHint,
               showGamebaseButton: false,
               playerProfileDataSource: widget.dataSource,
-              streamEnabled: !_isScrolling,
+              streamEnabled: true,
               onAdd:
                   isSelectionMode
                       ? () => _toggleGameSelection(game.gameId)
@@ -1305,8 +1390,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       game: game,
       orderedGames: allGames,
       gameIndex: gameIndex,
-      allowStockfishFallback: !_isScrolling,
-      streamEnabled: !_isScrolling,
+      allowStockfishFallback: true,
+      streamEnabled: true,
       onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);

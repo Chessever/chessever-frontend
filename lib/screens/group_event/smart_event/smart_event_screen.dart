@@ -16,6 +16,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
@@ -1248,7 +1249,9 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   bool _routeSubscribed = false;
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
-  bool _isScrolling = false;
+  bool _liveCardsPausedForScroll = false;
+
+  String get _liveCardsPauseReason => 'smart_event_games_scroll_$hashCode';
 
   /// The dialog filter is owned by the screen state (seeded from the smart
   /// event's generating criteria, applied + saved on confirmed exit); this
@@ -1294,6 +1297,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       routeObserver.unsubscribe(this);
     }
     _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1326,27 +1330,19 @@ class _GamesTabState extends ConsumerState<_GamesTab>
 
   void _setRouteActive(bool isActive) {
     if (!mounted || _routeIsCurrent == isActive) return;
-    setState(() {
-      _routeIsCurrent = isActive;
-      if (!isActive) {
-        _isScrolling = false;
-      }
-    });
+    setState(() => _routeIsCurrent = isActive);
     if (!isActive) {
       _scrollIdleTimer?.cancel();
+      _setLiveCardsPausedForScroll(false);
     }
   }
 
   void _setAppResumed(bool isResumed) {
     if (!mounted || _appIsResumed == isResumed) return;
-    setState(() {
-      _appIsResumed = isResumed;
-      if (!isResumed) {
-        _isScrolling = false;
-      }
-    });
+    setState(() => _appIsResumed = isResumed);
     if (!isResumed) {
       _scrollIdleTimer?.cancel();
+      _setLiveCardsPausedForScroll(false);
     }
   }
 
@@ -1375,9 +1371,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 
   void _markScrolling() {
-    if (!_isScrolling && mounted) {
-      setState(() => _isScrolling = true);
-    }
+    _setLiveCardsPausedForScroll(true);
     _scrollIdleTimer?.cancel();
     _scrollIdleTimer = Timer(_scrollIdleDelay, _markScrollIdle);
   }
@@ -1388,8 +1382,13 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 
   void _markScrollIdle() {
-    if (!mounted || !_isScrolling) return;
-    setState(() => _isScrolling = false);
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _setLiveCardsPausedForScroll(bool paused) {
+    if (_liveCardsPausedForScroll == paused) return;
+    _liveCardsPausedForScroll = paused;
+    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
   }
 
   void _toggleDateSection(String dateKey) {
@@ -1417,7 +1416,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     }
     final request = _SmartEventRequestScope.of(context);
     final tier = tabScope.tier;
-    final allowStockfishFallback = !_isScrolling;
+    const allowStockfishFallback = true;
     final smartQuery = SmartEventGamesQuery(
       request: request.withNeutralEloRange(),
       filter: _dataFilterForTier(tier),

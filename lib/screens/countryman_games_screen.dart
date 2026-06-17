@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -56,16 +57,91 @@ class CountrymanGamesList extends ConsumerStatefulWidget {
       _CountrymanGamesListState();
 }
 
-class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList> {
+class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
+    with WidgetsBindingObserver, RouteAware {
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   Timer? _scrollIdleTimer;
-  bool _isScrolling = false;
+  bool _routeSubscribed = false;
+  bool _routeIsCurrent = true;
+  bool _appIsResumed = true;
+  bool _liveCardsPausedForScroll = false;
+
+  String get _liveCardsPauseReason => 'countryman_games_scroll_$hashCode';
+  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route == null) return;
+    routeObserver.subscribe(this, route);
+    _routeSubscribed = true;
+    _routeIsCurrent = route.isCurrent;
+  }
 
   @override
   void dispose() {
+    if (_routeSubscribed) {
+      routeObserver.unsubscribe(this);
+    }
+    WidgetsBinding.instance.removeObserver(this);
     _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
     super.dispose();
+  }
+
+  @override
+  void didPush() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPopNext() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPushNext() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didPop() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    _setAppResumed(state == AppLifecycleState.resumed);
+  }
+
+  void _setRouteActive(bool isActive) {
+    if (!mounted) return;
+    if (_routeIsCurrent != isActive) {
+      setState(() => _routeIsCurrent = isActive);
+    }
+    if (!isActive) {
+      _stopLiveCardsForHiddenRoute();
+    }
+  }
+
+  void _setAppResumed(bool isResumed) {
+    if (!mounted) return;
+    if (_appIsResumed != isResumed) {
+      setState(() => _appIsResumed = isResumed);
+    }
+    if (!isResumed) {
+      _stopLiveCardsForHiddenRoute();
+    }
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
@@ -93,9 +169,7 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList> {
   }
 
   void _markLiveCardsScrolling() {
-    if (!_isScrolling && mounted) {
-      setState(() => _isScrolling = true);
-    }
+    _setLiveCardsPausedForScroll(true);
     _scrollIdleTimer?.cancel();
     _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
   }
@@ -106,15 +180,29 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList> {
   }
 
   void _markLiveCardsIdle() {
-    if (!mounted || !_isScrolling) return;
-    setState(() => _isScrolling = false);
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _stopLiveCardsForHiddenRoute() {
+    _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _setLiveCardsPausedForScroll(bool paused) {
+    if (_liveCardsPausedForScroll == paused) return;
+    _liveCardsPausedForScroll = paused;
+    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isActiveOnScreen) {
+      return const SizedBox.shrink();
+    }
+
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);
     final shouldStream = ref.watch(shouldStreamProvider);
-    final streamEnabled = shouldStream && !_isScrolling;
+    final streamEnabled = shouldStream;
 
     return ref
         .watch(countrymanGamesTourScreenProvider)
@@ -136,100 +224,110 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList> {
 
             Widget buildGameItem(int index) {
               final baseGame = data.gamesTourModels[index];
-              final game = watchLiveGame(
-                ref,
-                baseGame,
-                streamEnabled: streamEnabled,
-              );
-              final updatedGames = List<GamesTourModel>.from(
-                data.gamesTourModels,
-              );
-              if (index >= 0 && index < updatedGames.length) {
-                updatedGames[index] = game;
-              }
-
-              return gamesListViewMode == GamesListViewMode.chessBoard
-                  ? ChessBoardFromFENNew(
-                    pinnedIds: data.pinnedGamedIs,
-                    onPinToggle: (gamesTourModel) async {
-                      await ref
-                          .read(countrymanGamesTourScreenProvider.notifier)
-                          .togglePinGame(gamesTourModel.gameId);
-                    },
-                    onChanged: () async {
-                      final hasPremium = await requirePremiumGuard(
-                        context,
-                        ref,
-                      );
-                      if (!hasPremium) return;
-                      if (!context.mounted) return;
-
-                      ref.read(chessboardViewFromProviderNew.notifier).state =
-                          ChessboardView.countryman;
-                      ref.read(shouldStreamProvider.notifier).state = false;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (_) => ChessBoardScreenNew(
-                                games: updatedGames,
-                                currentIndex: index,
-                              ),
-                        ),
-                      ).then((_) {
-                        if (context.mounted) {
-                          ref.read(shouldStreamProvider.notifier).state = true;
-                          ref.invalidate(gameUpdatesStreamProvider);
-                          ref.invalidate(liveGameUpdateStreamProvider);
-                          ref.invalidate(gameUpdatesBatchStreamProvider);
-                        }
-                      });
-                    },
-                    gamesTourModel: game,
-                    allowStockfishFallback: streamEnabled,
-                  )
-                  : GameCard(
-                    onTap: () async {
-                      final hasPremium = await requirePremiumGuard(
-                        context,
-                        ref,
-                      );
-                      if (!hasPremium) return;
-                      if (!context.mounted) return;
-
-                      ref.read(chessboardViewFromProviderNew.notifier).state =
-                          ChessboardView.countryman;
-                      ref.read(shouldStreamProvider.notifier).state = false;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (_) => ChessBoardScreenNew(
-                                games: updatedGames,
-                                currentIndex: index,
-                              ),
-                        ),
-                      ).then((_) {
-                        if (context.mounted) {
-                          ref.read(shouldStreamProvider.notifier).state = true;
-                          ref.invalidate(gameUpdatesStreamProvider);
-                          ref.invalidate(liveGameUpdateStreamProvider);
-                          ref.invalidate(gameUpdatesBatchStreamProvider);
-                        }
-                      });
-                    },
-                    matchComparison: MatchWithComparison(
-                      game: game,
-                      comparison: MatchComparison.sameOrder,
-                    ),
-                    allowStockfishFallback: streamEnabled,
-                    pinnedIds: data.pinnedGamedIs,
-                    onPinToggle: (gamesTourModel) async {
-                      await ref
-                          .read(countrymanGamesTourScreenProvider.notifier)
-                          .togglePinGame(gamesTourModel.gameId);
-                    },
+              return Consumer(
+                builder: (context, ref, _) {
+                  final game = watchLiveGame(
+                    ref,
+                    baseGame,
+                    streamEnabled: streamEnabled,
                   );
+                  final allowStockfishFallback =
+                      streamEnabled && !ref.watch(liveGameCardsPausedProvider);
+                  final updatedGames = List<GamesTourModel>.from(
+                    data.gamesTourModels,
+                  );
+                  if (index >= 0 && index < updatedGames.length) {
+                    updatedGames[index] = game;
+                  }
+
+                  return gamesListViewMode == GamesListViewMode.chessBoard
+                      ? ChessBoardFromFENNew(
+                        pinnedIds: data.pinnedGamedIs,
+                        onPinToggle: (gamesTourModel) async {
+                          await ref
+                              .read(countrymanGamesTourScreenProvider.notifier)
+                              .togglePinGame(gamesTourModel.gameId);
+                        },
+                        onChanged: () async {
+                          final hasPremium = await requirePremiumGuard(
+                            context,
+                            ref,
+                          );
+                          if (!hasPremium) return;
+                          if (!context.mounted) return;
+
+                          ref
+                              .read(chessboardViewFromProviderNew.notifier)
+                              .state = ChessboardView.countryman;
+                          ref.read(shouldStreamProvider.notifier).state = false;
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => ChessBoardScreenNew(
+                                    games: updatedGames,
+                                    currentIndex: index,
+                                  ),
+                            ),
+                          ).then((_) {
+                            if (context.mounted) {
+                              ref.read(shouldStreamProvider.notifier).state =
+                                  true;
+                              ref.invalidate(gameUpdatesStreamProvider);
+                              ref.invalidate(liveGameUpdateStreamProvider);
+                              ref.invalidate(gameUpdatesBatchStreamProvider);
+                            }
+                          });
+                        },
+                        gamesTourModel: game,
+                        allowStockfishFallback: allowStockfishFallback,
+                      )
+                      : GameCard(
+                        onTap: () async {
+                          final hasPremium = await requirePremiumGuard(
+                            context,
+                            ref,
+                          );
+                          if (!hasPremium) return;
+                          if (!context.mounted) return;
+
+                          ref
+                              .read(chessboardViewFromProviderNew.notifier)
+                              .state = ChessboardView.countryman;
+                          ref.read(shouldStreamProvider.notifier).state = false;
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => ChessBoardScreenNew(
+                                    games: updatedGames,
+                                    currentIndex: index,
+                                  ),
+                            ),
+                          ).then((_) {
+                            if (context.mounted) {
+                              ref.read(shouldStreamProvider.notifier).state =
+                                  true;
+                              ref.invalidate(gameUpdatesStreamProvider);
+                              ref.invalidate(liveGameUpdateStreamProvider);
+                              ref.invalidate(gameUpdatesBatchStreamProvider);
+                            }
+                          });
+                        },
+                        matchComparison: MatchWithComparison(
+                          game: game,
+                          comparison: MatchComparison.sameOrder,
+                        ),
+                        allowStockfishFallback: allowStockfishFallback,
+                        pinnedIds: data.pinnedGamedIs,
+                        onPinToggle: (gamesTourModel) async {
+                          await ref
+                              .read(countrymanGamesTourScreenProvider.notifier)
+                              .togglePinGame(gamesTourModel.gameId);
+                        },
+                      );
+                },
+              );
             }
 
             return NotificationListener<ScrollNotification>(

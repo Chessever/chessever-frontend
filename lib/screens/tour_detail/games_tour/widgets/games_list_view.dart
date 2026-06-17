@@ -59,8 +59,7 @@ class GamesListView extends ConsumerWidget {
     // In search mode, override expansion to show everything
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
     final shouldStream = ref.watch(shouldStreamProvider);
-    final isScrolling = ref.watch(gamesTourIsScrollingProvider(scopeId));
-    final streamEnabled = shouldStream && !isScrolling;
+    final streamEnabled = shouldStream;
     final allowStockfishFallback = streamEnabled;
     final matchExpansionState =
         isSearchMode

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
@@ -43,14 +44,20 @@ class FavoritesGamesTab extends ConsumerStatefulWidget {
 }
 
 class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
-    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+    with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
   Timer? _scrollIdleTimer;
-  bool _isScrolling = false;
+  bool _routeSubscribed = false;
+  bool _routeIsCurrent = true;
+  bool _appIsResumed = true;
+  bool _liveCardsPausedForScroll = false;
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
+
+  String get _liveCardsPauseReason => 'favorites_games_scroll_$hashCode';
+  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
 
   /// Track expanded state for date sections
   final Set<String> _collapsedDates = {};
@@ -66,12 +73,27 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route == null) return;
+    routeObserver.subscribe(this, route);
+    _routeSubscribed = true;
+    _routeIsCurrent = route.isCurrent;
+  }
+
+  @override
   void dispose() {
+    if (_routeSubscribed) {
+      routeObserver.unsubscribe(this);
+    }
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
     _scrollController.removeListener(_onScroll);
     _debounceTimer?.cancel();
     _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -79,14 +101,36 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   @override
+  void didPush() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPopNext() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPushNext() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didPop() {
+    _setRouteActive(false);
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state != AppLifecycleState.resumed) {
       ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
+      _setAppResumed(false);
       return;
     }
     if (!mounted) return;
 
+    _setAppResumed(true);
     ForegroundTaskScheduler.schedule(
       key: 'favorites_games_resume_$hashCode',
       task: () {
@@ -108,6 +152,27 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     );
   }
 
+  void _setRouteActive(bool isActive) {
+    if (!mounted) return;
+    if (_routeIsCurrent != isActive) {
+      setState(() => _routeIsCurrent = isActive);
+    }
+    if (!isActive) {
+      ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
+      _stopLiveCardsForHiddenTab();
+    }
+  }
+
+  void _setAppResumed(bool isResumed) {
+    if (!mounted) return;
+    if (_appIsResumed != isResumed) {
+      setState(() => _appIsResumed = isResumed);
+    }
+    if (!isResumed) {
+      _stopLiveCardsForHiddenTab();
+    }
+  }
+
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     _markLiveCardsScrolling();
@@ -125,16 +190,24 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   void _markLiveCardsScrolling() {
-    if (!_isScrolling && mounted) {
-      setState(() => _isScrolling = true);
-    }
+    _setLiveCardsPausedForScroll(true);
     _scrollIdleTimer?.cancel();
     _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
   }
 
   void _markLiveCardsIdle() {
-    if (!mounted || !_isScrolling) return;
-    setState(() => _isScrolling = false);
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _stopLiveCardsForHiddenTab() {
+    _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _setLiveCardsPausedForScroll(bool paused) {
+    if (_liveCardsPausedForScroll == paused) return;
+    _liveCardsPausedForScroll = paused;
+    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
   }
 
   void _loadMoreDays() {
@@ -296,6 +369,17 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    ref.listen<FavoritesScreenMode>(selectedFavoritesModeProvider, (_, next) {
+      if (next != FavoritesScreenMode.games) {
+        _stopLiveCardsForHiddenTab();
+      }
+    });
+
+    final selectedMode = ref.watch(selectedFavoritesModeProvider);
+    if (selectedMode != FavoritesScreenMode.games || !_isActiveOnScreen) {
+      return const SizedBox.shrink();
+    }
 
     final state = ref.watch(favoritesCombinedGamesProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
@@ -842,7 +926,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   allGames: games,
                   isChessBoardVisible: true,
                   isLast: isLast,
-                  streamEnabled: !_isScrolling,
+                  streamEnabled: true,
                   onNavigateToChessBoard: _navigateToChessBoard,
                 ),
               );
@@ -859,7 +943,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     showRound: true,
                     showSwipeHint: showHint,
                     showGamebaseButton: false,
-                    streamEnabled: !_isScrolling,
+                    streamEnabled: true,
                     onAdd: () => _showAddToFolderSheet(context, game),
                     onLiveAdd:
                         (liveGame) => _showAddToFolderSheet(context, liveGame),
@@ -934,8 +1018,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       game: game,
       orderedGames: allGames,
       gameIndex: gameIndex,
-      allowStockfishFallback: !_isScrolling,
-      streamEnabled: !_isScrolling,
+      allowStockfishFallback: true,
+      streamEnabled: true,
       onChangedWithLiveGames: (updatedGames) {
         if (!mounted) return;
         _navigateToChessBoard(updatedGames[gameIndex], updatedGames, gameIndex);

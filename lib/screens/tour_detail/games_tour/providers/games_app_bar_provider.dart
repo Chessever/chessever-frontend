@@ -29,7 +29,7 @@ final userSelectedRoundProvider =
     StateProvider<({String id, bool userSelected})?>((ref) => null);
 
 /// Auto-disposed optimized provider
-final gamesAppBarProvider = StateNotifierProvider<
+final gamesAppBarProvider = StateNotifierProvider.autoDispose<
   _GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
@@ -338,7 +338,7 @@ class _GamesAppBarNotifier
   }
 
   Future<void> _scrollToRound(String roundId) async {
-    final scopeId = ref.read(gamesTourScrollScopeProvider);
+    final scopeId = resolveGamesTourScrollScope(ref);
     print('🔵 _scrollToRound - scopeId: $scopeId');
 
     // Retry with increasing delays to handle category switches where games

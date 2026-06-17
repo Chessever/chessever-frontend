@@ -58,6 +58,13 @@ class _SearchArguments {
   _SearchArguments(this.games, this.query);
 }
 
+class _RecentTourFetch {
+  const _RecentTourFetch({required this.games, required this.fetchedAt});
+
+  final List<Games> games;
+  final DateTime fetchedAt;
+}
+
 List<Games> _searchGamesWorker(_SearchArguments args) {
   final queryLower = args.query.toLowerCase().trim();
   final List<MapEntry<Games, double>> gameScores = [];
@@ -96,8 +103,38 @@ class GamesLocalStorage {
   GamesLocalStorage(this.ref);
 
   final Ref ref;
+  static const Duration _recentTourFetchReuseWindow = Duration(seconds: 2);
+  static const int _maxRecentTourFetches = 80;
+  static final Map<String, Future<List<Games>>> _inFlightTourFetches =
+      <String, Future<List<Games>>>{};
+  static final Map<String, _RecentTourFetch> _recentTourFetches =
+      <String, _RecentTourFetch>{};
 
   String _getCacheKey(String tourId) => 'games_$tourId';
+
+  List<Games>? _getReusableRecentFetch(String tourId) {
+    final recent = _recentTourFetches[tourId];
+    if (recent == null) return null;
+
+    if (DateTime.now().difference(recent.fetchedAt) <=
+        _recentTourFetchReuseWindow) {
+      return recent.games;
+    }
+
+    _recentTourFetches.remove(tourId);
+    return null;
+  }
+
+  void _rememberRecentTourFetch(String tourId, List<Games> games) {
+    _recentTourFetches[tourId] = _RecentTourFetch(
+      games: games,
+      fetchedAt: DateTime.now(),
+    );
+
+    while (_recentTourFetches.length > _maxRecentTourFetches) {
+      _recentTourFetches.remove(_recentTourFetches.keys.first);
+    }
+  }
 
   Future<({bool found, List<Games> games})> _readCachedGames(
     String tourId,
@@ -113,13 +150,42 @@ class GamesLocalStorage {
   }
 
   /// Fetch games from Supabase, return immediately, compress+cache in background.
-  Future<List<Games>> fetchAndSaveGames(String tourId) async {
+  Future<List<Games>> fetchAndSaveGames(
+    String tourId, {
+    bool forceRefresh = false,
+  }) async {
+    final existingFetch = _inFlightTourFetches[tourId];
+    if (existingFetch != null) {
+      return existingFetch;
+    }
+
+    if (!forceRefresh) {
+      final recentGames = _getReusableRecentFetch(tourId);
+      if (recentGames != null) {
+        return recentGames;
+      }
+    }
+
+    final fetch = _fetchAndSaveGames(tourId);
+    _inFlightTourFetches[tourId] = fetch;
+    try {
+      return await fetch;
+    } finally {
+      if (identical(_inFlightTourFetches[tourId], fetch)) {
+        _inFlightTourFetches.remove(tourId);
+      }
+    }
+  }
+
+  Future<List<Games>> _fetchAndSaveGames(String tourId) async {
     try {
       ref.read(loggerProvider).logInfo('Fetching games for tourId: $tourId');
 
       final games = await ref
           .read(gameRepositoryProvider)
           .getGamesByTourId(tourId);
+
+      _rememberRecentTourFetch(tourId, games);
 
       // Compress + save entirely in a background isolate — zero main-thread work
       compute(_encodeAndCompress, games).then((compressed) async {
@@ -212,7 +278,7 @@ class GamesLocalStorage {
 
   Future<List<Games>> refresh(String tourId) async {
     try {
-      return await fetchAndSaveGames(tourId);
+      return await fetchAndSaveGames(tourId, forceRefresh: true);
     } catch (error, _) {
       return <Games>[];
     }

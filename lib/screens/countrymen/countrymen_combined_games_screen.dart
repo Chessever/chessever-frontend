@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -27,14 +29,20 @@ class CountrymenCombinedGamesScreen extends ConsumerStatefulWidget {
 
 class _CountrymenCombinedGamesScreenState
     extends ConsumerState<CountrymenCombinedGamesScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RouteAware {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
   Timer? _scrollIdleTimer;
-  bool _isScrolling = false;
+  bool _routeSubscribed = false;
+  bool _routeIsCurrent = true;
+  bool _appIsResumed = true;
+  bool _liveCardsPausedForScroll = false;
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
+
+  String get _liveCardsPauseReason => 'countrymen_combined_scroll_$hashCode';
+  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
 
   @override
   void initState() {
@@ -44,11 +52,26 @@ class _CountrymenCombinedGamesScreenState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route == null) return;
+    routeObserver.subscribe(this, route);
+    _routeSubscribed = true;
+    _routeIsCurrent = route.isCurrent;
+  }
+
+  @override
   void dispose() {
+    if (_routeSubscribed) {
+      routeObserver.unsubscribe(this);
+    }
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('countrymen_combined_resume_$hashCode');
     _debounceTimer?.cancel();
     _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
@@ -57,14 +80,36 @@ class _CountrymenCombinedGamesScreenState
   }
 
   @override
+  void didPush() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPopNext() {
+    _setRouteActive(true);
+  }
+
+  @override
+  void didPushNext() {
+    _setRouteActive(false);
+  }
+
+  @override
+  void didPop() {
+    _setRouteActive(false);
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state != AppLifecycleState.resumed) {
       ForegroundTaskScheduler.cancel('countrymen_combined_resume_$hashCode');
+      _setAppResumed(false);
       return;
     }
     if (!mounted) return;
 
+    _setAppResumed(true);
     ForegroundTaskScheduler.schedule(
       key: 'countrymen_combined_resume_$hashCode',
       task: () {
@@ -80,6 +125,27 @@ class _CountrymenCombinedGamesScreenState
         );
       },
     );
+  }
+
+  void _setRouteActive(bool isActive) {
+    if (!mounted) return;
+    if (_routeIsCurrent != isActive) {
+      setState(() => _routeIsCurrent = isActive);
+    }
+    if (!isActive) {
+      ForegroundTaskScheduler.cancel('countrymen_combined_resume_$hashCode');
+      _stopLiveCardsForHiddenRoute();
+    }
+  }
+
+  void _setAppResumed(bool isResumed) {
+    if (!mounted) return;
+    if (_appIsResumed != isResumed) {
+      setState(() => _appIsResumed = isResumed);
+    }
+    if (!isResumed) {
+      _stopLiveCardsForHiddenRoute();
+    }
   }
 
   void _onScroll() {
@@ -98,16 +164,24 @@ class _CountrymenCombinedGamesScreenState
   }
 
   void _markLiveCardsScrolling() {
-    if (!_isScrolling && mounted) {
-      setState(() => _isScrolling = true);
-    }
+    _setLiveCardsPausedForScroll(true);
     _scrollIdleTimer?.cancel();
     _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
   }
 
   void _markLiveCardsIdle() {
-    if (!mounted || !_isScrolling) return;
-    setState(() => _isScrolling = false);
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _stopLiveCardsForHiddenRoute() {
+    _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _setLiveCardsPausedForScroll(bool paused) {
+    if (_liveCardsPausedForScroll == paused) return;
+    _liveCardsPausedForScroll = paused;
+    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
   }
 
   void _onSearchChanged(String value) {
@@ -127,6 +201,10 @@ class _CountrymenCombinedGamesScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (!_isActiveOnScreen) {
+      return const SizedBox.shrink();
+    }
+
     final state = ref.watch(countrymenCombinedGamesProvider);
 
     return Scaffold(
@@ -480,7 +558,7 @@ class _CountrymenCombinedGamesScreenState
               gameIndex: index,
               animationIndex: index,
               showRound: true,
-              streamEnabled: !_isScrolling,
+              streamEnabled: true,
               onAdd: () => _showAddToFolderSheet(context, game),
               onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
             ),

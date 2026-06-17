@@ -2933,8 +2933,9 @@ final _foldersProvider = FutureProvider.autoDispose<List<LibraryFolder>>((
 ) async {
   final repository = ref.watch(libraryRepositoryProvider);
   final folders = await repository.getFolders();
-  final databases =
-      folders.where((folder) => folder.isDatabase).toList(growable: false);
+  final databases = folders
+      .where((folder) => folder.isDatabase)
+      .toList(growable: false);
   // Stable sort: liked first, otherwise preserve repo order.
   final sorted = [...databases]..sort((a, b) {
     if (a.isLikedGames == b.isLikedGames) return 0;

@@ -13,6 +13,7 @@ import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
@@ -36,8 +37,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
-const double _kForYouCompactCacheExtent = 1200;
-const double _kForYouBoardCacheExtent = 500;
+const double _kForYouCompactCacheExtent = 360;
+const double _kForYouBoardCacheExtent = 180;
 const Duration _kForYouScrollIdleDelay = Duration(milliseconds: 180);
 
 double _forYouCacheExtentForMode(GamesListViewMode mode) {
@@ -81,7 +82,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   bool _routeSubscribed = false;
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
-  bool _isScrolling = false;
+  bool _liveCardsPausedForScroll = false;
+
+  String get _liveCardsPauseReason => 'for_you_scroll_$hashCode';
 
   @override
   void initState() {
@@ -110,6 +113,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     }
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
     widget.scrollController.removeListener(_onScroll);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -157,12 +161,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _setRouteActive(bool isActive, {bool refreshNow = false}) {
     if (!mounted) return;
     if (_routeIsCurrent != isActive) {
-      setState(() {
-        _routeIsCurrent = isActive;
-        if (!isActive) {
-          _isScrolling = false;
-        }
-      });
+      setState(() => _routeIsCurrent = isActive);
     }
     if (!isActive) {
       _stopTransientWork();
@@ -174,12 +173,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _setAppResumed(bool isResumed) {
     if (!mounted) return;
     if (_appIsResumed != isResumed) {
-      setState(() {
-        _appIsResumed = isResumed;
-        if (!isResumed) {
-          _isScrolling = false;
-        }
-      });
+      setState(() => _appIsResumed = isResumed);
     }
     if (!isResumed) {
       _stopTransientWork();
@@ -189,6 +183,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _stopTransientWork() {
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
   }
 
   void _refreshRealtimeGamesNow() {
@@ -211,7 +206,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   void _onScroll() {
     if (!widget.scrollController.hasClients) return;
-    _markScrolling();
+    _markLiveCardsScrolling();
     final max = widget.scrollController.position.maxScrollExtent;
     final current = widget.scrollController.position.pixels;
     if (max - current <= 300) {
@@ -219,16 +214,19 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     }
   }
 
-  void _markScrolling() {
-    if (!_isScrolling && mounted) {
-      setState(() => _isScrolling = true);
-    }
-
+  void _markLiveCardsScrolling() {
+    _setLiveCardsPausedForScroll(true);
     _scrollIdleTimer?.cancel();
-    _scrollIdleTimer = Timer(_kForYouScrollIdleDelay, () {
-      if (!mounted || !_isScrolling) return;
-      setState(() => _isScrolling = false);
-    });
+    _scrollIdleTimer = Timer(
+      _kForYouScrollIdleDelay,
+      () => _setLiveCardsPausedForScroll(false),
+    );
+  }
+
+  void _setLiveCardsPausedForScroll(bool paused) {
+    if (_liveCardsPausedForScroll == paused) return;
+    _liveCardsPausedForScroll = paused;
+    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
   }
 
   @override
@@ -310,7 +308,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       child: _buildEventsList(
         events,
         viewMode: viewMode,
-        isScrolling: _isScrolling,
         showLoadingMore: state.hasMore && !state.isLoading,
         smartData: smartData,
         savedSmartData: visibleSavedSmartData,
@@ -445,7 +442,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   Widget _buildEventsList(
     List<GroupEventCardModel> events, {
     required GamesListViewMode viewMode,
-    required bool isScrolling,
     bool showLoadingMore = false,
     SmartEventCardData? smartData,
     List<SmartEventCardData> savedSmartData = const [],
@@ -455,7 +451,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       return _buildTabletGridLayout(
         events,
         viewMode: viewMode,
-        isScrolling: isScrolling,
         showLoadingMore: showLoadingMore,
         smartData: smartData,
         savedSmartData: savedSmartData,
@@ -518,7 +513,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           isFirst: index == 1 + smartOffset,
           animatedEventIds: _animatedEventIds,
           animatedGameIds: _animatedGameIds,
-          isScrolling: isScrolling,
         );
       },
     );
@@ -566,7 +560,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   Widget _buildTabletGridLayout(
     List<GroupEventCardModel> events, {
     required GamesListViewMode viewMode,
-    required bool isScrolling,
     bool showLoadingMore = false,
     SmartEventCardData? smartData,
     List<SmartEventCardData> savedSmartData = const [],
@@ -637,7 +630,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                   event: event1,
                   animatedEventIds: _animatedEventIds,
                   animatedGameIds: _animatedGameIds,
-                  isScrolling: isScrolling,
                 ),
               ),
               SizedBox(width: columnSpacing),
@@ -650,7 +642,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                           event: event2,
                           animatedEventIds: _animatedEventIds,
                           animatedGameIds: _animatedGameIds,
-                          isScrolling: isScrolling,
                         )
                         : const SizedBox.shrink(),
               ),
@@ -760,14 +751,12 @@ class _ForYouEventSection extends ConsumerWidget {
     required this.isFirst,
     required this.animatedEventIds,
     required this.animatedGameIds,
-    required this.isScrolling,
   });
 
   final GroupEventCardModel event;
   final bool isFirst;
   final Set<String> animatedEventIds;
   final Set<String> animatedGameIds;
-  final bool isScrolling;
 
   /// Builds the EventCard with proper constraints for tablet
   /// Tablet uses image-as-background layout which needs bounded height
@@ -844,7 +833,6 @@ class _ForYouEventSection extends ConsumerWidget {
           eventId: event.id,
           snapshotAsync: snapshotAsync,
           animatedGameIds: animatedGameIds,
-          isScrolling: isScrolling,
         ),
       ],
     );
@@ -868,13 +856,11 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
     required this.event,
     required this.animatedEventIds,
     required this.animatedGameIds,
-    required this.isScrolling,
   });
 
   final GroupEventCardModel event;
   final Set<String> animatedEventIds;
   final Set<String> animatedGameIds;
-  final bool isScrolling;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -938,7 +924,6 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
           eventId: event.id,
           snapshotAsync: snapshotAsync,
           animatedGameIds: animatedGameIds,
-          isScrolling: isScrolling,
         ),
       ],
     );
@@ -961,13 +946,11 @@ class _ForYouTabletColumnGames extends StatelessWidget {
     required this.eventId,
     required this.snapshotAsync,
     required this.animatedGameIds,
-    required this.isScrolling,
   });
 
   final String eventId;
   final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
   final Set<String> animatedGameIds;
-  final bool isScrolling;
 
   @override
   Widget build(BuildContext context) {
@@ -1014,7 +997,6 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                         index: i,
                         eventId: eventId,
                         pinnedIds: snapshot.pinnedIds,
-                        isScrolling: isScrolling,
                         liveBatchKey: liveBatchKey,
                       ),
                     ),
@@ -1032,7 +1014,6 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                                 index: i + 1,
                                 eventId: eventId,
                                 pinnedIds: snapshot.pinnedIds,
-                                isScrolling: isScrolling,
                                 liveBatchKey: liveBatchKey,
                               ),
                             )
@@ -1114,7 +1095,6 @@ class _TabletGameCard extends ConsumerWidget {
     required this.index,
     required this.eventId,
     required this.pinnedIds,
-    required this.isScrolling,
     required this.liveBatchKey,
   });
 
@@ -1123,7 +1103,6 @@ class _TabletGameCard extends ConsumerWidget {
   final int index;
   final String eventId;
   final List<String> pinnedIds;
-  final bool isScrolling;
   final LiveGamesBatchKey liveBatchKey;
 
   @override
@@ -1134,8 +1113,8 @@ class _TabletGameCard extends ConsumerWidget {
       orderedGames: orderedGames,
       gameIndex: index,
       liveBatchKey: liveBatchKey,
-      allowStockfishFallback: !isScrolling,
-      streamEnabled: !isScrolling,
+      allowStockfishFallback: false,
+      streamEnabled: true,
       onChangedWithLiveGames:
           (updatedGames) => ref
               .read(gameCardWrapperProvider)
@@ -1166,13 +1145,11 @@ class _ForYouEventGames extends ConsumerWidget {
     required this.eventId,
     required this.snapshotAsync,
     required this.animatedGameIds,
-    required this.isScrolling,
   });
 
   final String eventId;
   final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
   final Set<String> animatedGameIds;
-  final bool isScrolling;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1211,7 +1188,6 @@ class _ForYouEventGames extends ConsumerWidget {
             displayedGames,
             orderedGames,
             snapshot.pinnedIds,
-            isScrolling,
             liveBatchKey,
           );
         }
@@ -1231,7 +1207,6 @@ class _ForYouEventGames extends ConsumerWidget {
                 eventId: eventId,
                 animatedGameIds: animatedGameIds,
                 viewMode: viewMode,
-                isScrolling: isScrolling,
                 liveBatchKey: liveBatchKey,
               ),
             );
@@ -1263,7 +1238,6 @@ class _ForYouEventGames extends ConsumerWidget {
     List<GamesTourModel> displayedGames,
     List<GamesTourModel> orderedGames,
     List<String> pinnedIds,
-    bool isScrolling,
     LiveGamesBatchKey liveBatchKey,
   ) {
     final rows = <Widget>[];
@@ -1288,8 +1262,8 @@ class _ForYouEventGames extends ConsumerWidget {
                     orderedGames: orderedGames,
                     gameIndex: i,
                     liveBatchKey: liveBatchKey,
-                    allowStockfishFallback: !isScrolling,
-                    streamEnabled: !isScrolling,
+                    allowStockfishFallback: false,
+                    streamEnabled: true,
                     onChangedWithLiveGames:
                         (updatedGames) => ref
                             .read(gameCardWrapperProvider)
@@ -1325,8 +1299,8 @@ class _ForYouEventGames extends ConsumerWidget {
                             orderedGames: orderedGames,
                             gameIndex: i + 1,
                             liveBatchKey: liveBatchKey,
-                            allowStockfishFallback: !isScrolling,
-                            streamEnabled: !isScrolling,
+                            allowStockfishFallback: false,
+                            streamEnabled: true,
                             onChangedWithLiveGames:
                                 (updatedGames) => ref
                                     .read(gameCardWrapperProvider)
@@ -1446,7 +1420,6 @@ class _ForYouGameCard extends ConsumerWidget {
     required this.eventId,
     required this.animatedGameIds,
     required this.viewMode,
-    required this.isScrolling,
     required this.liveBatchKey,
   });
 
@@ -1456,7 +1429,6 @@ class _ForYouGameCard extends ConsumerWidget {
   final String eventId;
   final Set<String> animatedGameIds;
   final GamesListViewMode viewMode;
-  final bool isScrolling;
   final LiveGamesBatchKey liveBatchKey;
 
   @override
@@ -1477,8 +1449,8 @@ class _ForYouGameCard extends ConsumerWidget {
         isChessBoardVisible: isChessBoardVisible,
         viewSource: ChessboardView.forYou,
         liveBatchKey: liveBatchKey,
-        allowStockfishFallback: !isScrolling,
-        streamEnabled: !isScrolling,
+        allowStockfishFallback: false,
+        streamEnabled: true,
         onPinToggle:
             (_) => ref
                 .read(forYouPinActionProvider)

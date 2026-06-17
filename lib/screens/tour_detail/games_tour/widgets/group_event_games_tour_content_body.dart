@@ -79,8 +79,7 @@ class _GroupEventGamesTourContentBodyState
     // Get scroll controller and listener from provider
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
     final shouldStream = ref.watch(shouldStreamProvider);
-    final isScrolling = ref.watch(gamesTourIsScrollingProvider(scopeId));
-    final streamEnabled = shouldStream && !isScrolling;
+    final streamEnabled = shouldStream;
     final allowStockfishFallback = streamEnabled;
     final scrollController = ref.watch(gamesTourScrollProvider(scopeId));
     final itemPositionsListener =

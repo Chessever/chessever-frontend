@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
@@ -14,11 +15,33 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
+const String kDefaultGamesTourScrollScopeId = 'global_scroll_scope';
+String? _activeGamesTourScrollScopeId;
+
 /// Scope identifier to allow multiple tournament detail screens to coexist
 /// without sharing the same ScrollablePositionedList controller.
 final gamesTourScrollScopeProvider = Provider<String>(
-  (_) => 'global_scroll_scope',
+  (_) => kDefaultGamesTourScrollScopeId,
 );
+
+String resolveGamesTourScrollScope(Ref ref) {
+  final scopedId = ref.read(gamesTourScrollScopeProvider);
+  if (scopedId != kDefaultGamesTourScrollScopeId) {
+    return scopedId;
+  }
+  return _activeGamesTourScrollScopeId ?? scopedId;
+}
+
+void markGamesTourScrollScopeActive(String scopeId) {
+  if (scopeId == kDefaultGamesTourScrollScopeId) return;
+  _activeGamesTourScrollScopeId = scopeId;
+}
+
+void clearGamesTourScrollScopeActive(String scopeId) {
+  if (_activeGamesTourScrollScopeId == scopeId) {
+    _activeGamesTourScrollScopeId = null;
+  }
+}
 
 /// Track whether we already performed the initial auto-scroll for a given scope.
 final gamesTourAutoScrollProvider = StateProvider.autoDispose
@@ -56,6 +79,35 @@ class _GamesTourScrollActivityDetectorState
   static const Duration _idleDelay = Duration(milliseconds: 180);
 
   Timer? _idleTimer;
+  bool _liveCardsPausedForScroll = false;
+
+  String _pauseReasonFor(String scopeId) => 'games_tour_scroll_$scopeId';
+
+  @override
+  void initState() {
+    super.initState();
+    markGamesTourScrollScopeActive(widget.scopeId);
+  }
+
+  @override
+  void didUpdateWidget(covariant GamesTourScrollActivityDetector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scopeId == widget.scopeId) return;
+    clearGamesTourScrollScopeActive(oldWidget.scopeId);
+    markGamesTourScrollScopeActive(widget.scopeId);
+    if (_liveCardsPausedForScroll) {
+      setLiveGameCardsPaused(
+        ref,
+        reason: _pauseReasonFor(oldWidget.scopeId),
+        paused: false,
+      );
+      setLiveGameCardsPaused(
+        ref,
+        reason: _pauseReasonFor(widget.scopeId),
+        paused: true,
+      );
+    }
+  }
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
@@ -87,6 +139,7 @@ class _GamesTourScrollActivityDetectorState
       ref.read(gamesTourIsScrollingProvider(widget.scopeId).notifier).state =
           true;
     }
+    _setLiveCardsPausedForScroll(true);
 
     _idleTimer?.cancel();
     _idleTimer = Timer(_idleDelay, _markIdle);
@@ -104,11 +157,24 @@ class _GamesTourScrollActivityDetectorState
       ref.read(gamesTourIsScrollingProvider(widget.scopeId).notifier).state =
           false;
     }
+    _setLiveCardsPausedForScroll(false);
+  }
+
+  void _setLiveCardsPausedForScroll(bool paused) {
+    if (_liveCardsPausedForScroll == paused) return;
+    _liveCardsPausedForScroll = paused;
+    setLiveGameCardsPaused(
+      ref,
+      reason: _pauseReasonFor(widget.scopeId),
+      paused: paused,
+    );
   }
 
   @override
   void dispose() {
     _idleTimer?.cancel();
+    _setLiveCardsPausedForScroll(false);
+    clearGamesTourScrollScopeActive(widget.scopeId);
     super.dispose();
   }
 
@@ -123,7 +189,8 @@ class _GamesTourScrollActivityDetectorState
 
 class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   _GamesTourScrollProvider(this._ref, this._scopeId)
-    : super(ItemScrollController()) {
+    : super(_acquireScrollController(_scopeId)) {
+    _ref.onDispose(() => _releaseScrollController(_scopeId, state));
     _itemPositionsListener = ItemPositionsListener.create();
     _itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
 
@@ -142,6 +209,31 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   Timer? _debounceTimer;
   String? _lastVisibleRoundId;
   bool _isProgrammaticScroll = false;
+
+  static final Map<String, ItemScrollController> _controllersByScope =
+      <String, ItemScrollController>{};
+  static final Map<String, int> _controllerRefCounts = <String, int>{};
+
+  static ItemScrollController _acquireScrollController(String scopeId) {
+    _controllerRefCounts[scopeId] = (_controllerRefCounts[scopeId] ?? 0) + 1;
+    return _controllersByScope.putIfAbsent(scopeId, ItemScrollController.new);
+  }
+
+  static void _releaseScrollController(
+    String scopeId,
+    ItemScrollController controller,
+  ) {
+    final nextCount = (_controllerRefCounts[scopeId] ?? 1) - 1;
+    if (nextCount > 0) {
+      _controllerRefCounts[scopeId] = nextCount;
+      return;
+    }
+
+    _controllerRefCounts.remove(scopeId);
+    if (identical(_controllersByScope[scopeId], controller)) {
+      _controllersByScope.remove(scopeId);
+    }
+  }
 
   ItemPositionsListener get itemPositionsListener =>
       _itemPositionsListener; // Expose for Riverpod

@@ -10,6 +10,7 @@ import 'package:chessever2/repository/local_storage/tournament/games/pin_games_l
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
@@ -29,6 +30,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
@@ -830,6 +832,7 @@ class _ForYouEventGamesController
   bool _isObserved = true;
   bool _isRefreshing = false;
   bool _queuedRefresh = false;
+  final Set<String> _handledFinishedRefreshes = <String>{};
 
   void handleCancel() {
     _isObserved = false;
@@ -858,6 +861,26 @@ class _ForYouEventGamesController
     }
 
     unawaited(_performRefreshLoop());
+  }
+
+  void requestRefreshForFinishedGame({
+    required String gameId,
+    required String status,
+  }) {
+    final normalizedStatus = status.trim();
+    if (gameId.isEmpty || normalizedStatus.isEmpty) {
+      return;
+    }
+
+    final refreshKey = '$gameId:$normalizedStatus';
+    if (!_handledFinishedRefreshes.add(refreshKey)) {
+      return;
+    }
+
+    debugPrint(
+      '[ForYou] Game $gameId finished ($normalizedStatus), refreshing snapshot for event $eventId',
+    );
+    requestRefresh();
   }
 
   Future<void> _performRefreshLoop() async {
@@ -1184,7 +1207,7 @@ Future<List<Games>> _safeRefreshGames({
   required String tourId,
 }) async {
   try {
-    return await gamesStorage.refresh(tourId);
+    return await gamesStorage.fetchAndSaveGames(tourId);
   } catch (e) {
     debugPrint('[ForYou] Error fetching games for tour $tourId: $e');
     return const <Games>[];
@@ -1561,24 +1584,47 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
               .toList();
 
       if (liveGames.isNotEmpty) {
+        final shouldWatchLiveFinishes =
+            ref.watch(shouldStreamProvider) &&
+            !ref.watch(liveGameCardsPausedProvider);
+        if (!shouldWatchLiveFinishes) {
+          return AsyncValue.data(snapshot);
+        }
+
+        final displayedGames = snapshot.visibleGames.take(kGamesPerEvent);
+        final watchedGameIds = liveGames
+            .map((game) => game.gameId)
+            .toList(growable: false);
         final updatesAsync = ref.watch(
           gameUpdatesBatchStreamProvider(
             LiveGamesBatchKey(
-              scopeId: 'for_you_refresh:$eventId:${snapshot.tourId}',
-              gameIds: liveGames.map((game) => game.gameId),
+              scopeId: 'for_you:$eventId:${snapshot.tourId}',
+              gameIds: displayedGames.map((game) => game.gameId),
+            ),
+          ).select(
+            (async) => async.whenData(
+              (updates) => _LiveGameStatusProjection.fromUpdates(
+                watchedGameIds,
+                updates,
+              ),
             ),
           ),
         );
 
         updatesAsync.whenData((updates) {
-          for (final game in liveGames) {
-            final status = updates[game.gameId]?.status;
-            if (status != null && _isFinishedStatus(status)) {
-              debugPrint(
-                '[ForYou] Game ${game.gameId} finished ($status), refreshing snapshot for event $eventId',
-              );
+          for (final status in updates.statuses) {
+            if (status.status != null && _isFinishedStatus(status.status!)) {
               Future.microtask(() {
-                bumpEventPinRefreshSignal(ref, eventId);
+                try {
+                  ref
+                      .read(eventGamesProvider(eventId).notifier)
+                      .requestRefreshForFinishedGame(
+                        gameId: status.gameId,
+                        status: status.status!,
+                      );
+                } on StateError {
+                  // The section can be disposed while a stream event is queued.
+                }
               });
             }
           }
@@ -1591,6 +1637,55 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
     error: (e, st) => AsyncValue.error(e, st),
   );
 });
+
+@immutable
+class _LiveGameStatusProjection {
+  const _LiveGameStatusProjection(this.statuses);
+
+  factory _LiveGameStatusProjection.fromUpdates(
+    List<String> gameIds,
+    Map<String, LiveGameUpdate> updates,
+  ) {
+    return _LiveGameStatusProjection(
+      List<_LiveGameStatus>.unmodifiable(
+        gameIds.map(
+          (gameId) => _LiveGameStatus(gameId, updates[gameId]?.status),
+        ),
+      ),
+    );
+  }
+
+  final List<_LiveGameStatus> statuses;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! _LiveGameStatusProjection) return false;
+    return listEquals(statuses, other.statuses);
+  }
+
+  @override
+  int get hashCode => Object.hashAll(statuses);
+}
+
+@immutable
+class _LiveGameStatus {
+  const _LiveGameStatus(this.gameId, this.status);
+
+  final String gameId;
+  final String? status;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _LiveGameStatus &&
+            other.gameId == gameId &&
+            other.status == status;
+  }
+
+  @override
+  int get hashCode => Object.hash(gameId, status);
+}
 
 /// Read-only snapshot alias for non-rendering code paths.
 final forYouEventSnapshotProvider = Provider.autoDispose

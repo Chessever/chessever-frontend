@@ -274,10 +274,11 @@ class PushNotificationsService {
               'book_update_alerts': true,
               'fp_classical': true,
               'fp_rapid': true,
-              'fp_blitz': true,
+              // Blitz notifications OFF by default — users opt in manually.
+              'fp_blitz': false,
               'se_classical': true,
               'se_rapid': true,
-              'se_blitz': true,
+              'se_blitz': false,
               'heads_up_lead_minutes': 30,
             },
             onConflict: 'user_id',

@@ -88,10 +88,11 @@ class NotificationPreferences {
     bookUpdateAlerts: true,
     fpClassical: true,
     fpRapid: true,
-    fpBlitz: true,
+    // Blitz notifications are OFF by default — users opt in manually.
+    fpBlitz: false,
     seClassical: true,
     seRapid: true,
-    seBlitz: true,
+    seBlitz: false,
     headsUpLeadMinutes: 30,
   );
 }
@@ -222,7 +223,8 @@ class NotificationPreferencesNotifier
           favoritePlayerAlerts: true,
           fpClassical: true,
           fpRapid: true,
-          fpBlitz: true,
+          // Blitz stays off on parent re-enable — manual opt-in only.
+          fpBlitz: false,
         );
       }
       return prefs.copyWith(favoritePlayerAlerts: false);
@@ -238,7 +240,8 @@ class NotificationPreferencesNotifier
           favoriteEventAlerts: true,
           seClassical: true,
           seRapid: true,
-          seBlitz: true,
+          // Blitz stays off on parent re-enable — manual opt-in only.
+          seBlitz: false,
         );
       }
       return prefs.copyWith(favoriteEventAlerts: false);

@@ -9,10 +9,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Stores the base game model for each game, keyed by gameId.
-/// Non-auto-dispose so it persists across provider rebuilds.
-final baseGameProvider = StateProvider.family<GamesTourModel?, String>(
-  (ref, gameId) => null,
-);
+/// Auto-disposes once no visible card/provider is observing the game.
+final baseGameProvider = StateProvider.autoDispose
+    .family<GamesTourModel?, String>((ref, gameId) => null);
 
 /// Provider that combines the base game model with real-time updates from the stream.
 /// This is used by game cards to show live updates without entering the game screen.
@@ -134,7 +133,9 @@ LiveGameUpdate? _watchLiveUpdate(
   LiveGameWatchParams params,
   _LiveGameMergeMode mode,
 ) {
-  if (!params.streamEnabled || !ref.watch(shouldStreamProvider)) {
+  if (!params.streamEnabled ||
+      !ref.watch(shouldStreamProvider) ||
+      ref.watch(liveGameCardsPausedProvider)) {
     return null;
   }
 
@@ -459,6 +460,24 @@ bool _shouldUseIncomingGame(
     return true;
   }
 
+  if (current.gameStatus == GameStatus.ongoing &&
+      incoming.gameStatus != GameStatus.ongoing) {
+    return true;
+  }
+  if (current.gameStatus != GameStatus.ongoing &&
+      incoming.gameStatus == GameStatus.ongoing) {
+    return false;
+  }
+
+  if ((current.lastMove?.isNotEmpty ?? false) &&
+      (incoming.lastMove == null || incoming.lastMove!.isEmpty)) {
+    return false;
+  }
+
+  if (!_hasPositionFieldChanges(current, incoming)) {
+    return _hasLiveFieldChanges(current, incoming) || allowEqualFreshnessUpdate;
+  }
+
   final currentPly = _knownPly(current);
   final incomingPly = _knownPly(incoming);
   if (currentPly != null && incomingPly != null) {
@@ -470,21 +489,14 @@ bool _shouldUseIncomingGame(
     return true;
   }
 
-  if ((current.lastMove?.isNotEmpty ?? false) &&
-      (incoming.lastMove == null || incoming.lastMove!.isEmpty)) {
-    return false;
-  }
-
-  if (current.gameStatus == GameStatus.ongoing &&
-      incoming.gameStatus != GameStatus.ongoing) {
-    return true;
-  }
-  if (current.gameStatus != GameStatus.ongoing &&
-      incoming.gameStatus == GameStatus.ongoing) {
-    return false;
-  }
-
   return allowEqualFreshnessUpdate;
+}
+
+bool _hasPositionFieldChanges(GamesTourModel current, GamesTourModel incoming) {
+  return current.pgn != incoming.pgn ||
+      current.fen != incoming.fen ||
+      current.lastMove != incoming.lastMove ||
+      current.lastMoveTime != incoming.lastMoveTime;
 }
 
 bool _hasLiveFieldChanges(GamesTourModel current, GamesTourModel incoming) {

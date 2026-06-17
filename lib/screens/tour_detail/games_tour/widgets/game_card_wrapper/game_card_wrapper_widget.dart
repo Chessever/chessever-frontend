@@ -63,6 +63,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     final effectiveAllowStockfishFallback =
         streamEnabled &&
         allowStockfishFallback &&
+        !ref.watch(liveGameCardsPausedProvider) &&
         ref.watch(shouldStreamProvider);
     final keyValue = 'game_${liveGame.gameId}';
 

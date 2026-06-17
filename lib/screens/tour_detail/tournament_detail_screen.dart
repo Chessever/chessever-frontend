@@ -21,7 +21,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropd
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -46,6 +45,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void didPush() {
+    markGamesTourScrollScopeActive(_scrollScopeId);
     Future.microtask(() {
       debugPrint('🔥 TournamentDetail: didPush - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
@@ -55,6 +55,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void didPop() {
+    clearGamesTourScrollScopeActive(_scrollScopeId);
     Future.microtask(() {
       debugPrint('🔥 TournamentDetail: didPop - disabling streaming');
       ref.read(shouldStreamProvider.notifier).state = false;
@@ -64,6 +65,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void didPopNext() {
+    markGamesTourScrollScopeActive(_scrollScopeId);
     Future.microtask(() {
       debugPrint('🔥 TournamentDetail: didPopNext - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
@@ -76,6 +78,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void didPushNext() {
+    clearGamesTourScrollScopeActive(_scrollScopeId);
     Future.microtask(() {
       debugPrint(
         '🔥 TournamentDetail: didPushNext - disabling streaming while off-screen',
@@ -117,6 +120,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         final route = ModalRoute.of(context);
         if (route?.isCurrent != true) return;
 
+        markGamesTourScrollScopeActive(_scrollScopeId);
         debugPrint('🔥 TournamentDetail: App resumed - refreshing games');
         // Re-enable streaming when app comes back to foreground
         ref.read(shouldStreamProvider.notifier).state = true;
@@ -147,6 +151,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   void _handleAppPaused() {
     debugPrint('🔥 TournamentDetail: App paused - stopping streaming');
+    clearGamesTourScrollScopeActive(_scrollScopeId);
     // Stop streaming when app goes to background to save resources
     ref.read(shouldStreamProvider.notifier).state = false;
   }
@@ -160,6 +165,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     );
     pageController = PageController(initialPage: initialPage);
     _scrollScopeId = 'games_scroll_${UniqueKey()}';
+    markGamesTourScrollScopeActive(_scrollScopeId);
   }
 
   @override
@@ -189,6 +195,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    clearGamesTourScrollScopeActive(_scrollScopeId);
     ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
     pageController.dispose();
     super.dispose();
@@ -196,62 +203,73 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final selectedTourMode = ref.watch(selectedTourModeProvider);
-    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
     return ProviderScope(
       overrides: [
         gamesTourScrollScopeProvider.overrideWithValue(_scrollScopeId),
       ],
-      child: ScreenWrapper(
-        child: Scaffold(
-          key: e2eKey(E2eIds.tournamentDetailRoot),
-          body: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth:
-                    ResponsiveHelper.isTablet
-                        ? ResponsiveHelper.contentMaxWidth
-                        : double.infinity,
-              ),
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).viewPadding.top + 4.h,
+      child: Consumer(
+        builder: (context, scopedRef, _) {
+          final selectedTourMode = scopedRef.watch(selectedTourModeProvider);
+          final tourDetailAsync = scopedRef.watch(tourDetailScreenProvider);
+
+          return ScreenWrapper(
+            child: Scaffold(
+              key: e2eKey(E2eIds.tournamentDetailRoot),
+              body: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth:
+                        ResponsiveHelper.isTablet
+                            ? ResponsiveHelper.contentMaxWidth
+                            : double.infinity,
                   ),
-                  tourDetailAsync.when(
-                    data: (data) => _buildSuccessAppBar(data, selectedTourMode),
-                    error: (error, stackTrace) => _buildErrorAppBar(error),
-                    loading:
-                        () => const _LoadingAppBarWithTitle(title: "ChessEver"),
-                  ),
-                  Expanded(
-                    child: PageView.builder(
-                      controller: pageController,
-                      itemCount: 3,
-                      onPageChanged: _handlePageChanged,
-                      itemBuilder: (context, index) {
-                        if (index == 0) {
-                          return AboutTourScreen();
-                        } else if (index == 1) {
-                          return GamesTourScreen();
-                        } else if (index == 2) {
-                          return PlayerTourScreen();
-                        } else {
-                          return Center(
-                            child: Text(
-                              'Invalid page index: $index',
-                              style: TextStyle(color: context.colors.textPrimary),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: MediaQuery.of(context).viewPadding.top + 4.h,
+                      ),
+                      tourDetailAsync.when(
+                        data:
+                            (data) =>
+                                _buildSuccessAppBar(data, selectedTourMode),
+                        error: (error, stackTrace) => _buildErrorAppBar(error),
+                        loading:
+                            () => const _LoadingAppBarWithTitle(
+                              title: "ChessEver",
                             ),
-                          );
-                        }
-                      },
-                    ),
+                      ),
+                      Expanded(
+                        child: PageView.builder(
+                          controller: pageController,
+                          itemCount: 3,
+                          onPageChanged: _handlePageChanged,
+                          itemBuilder: (context, index) {
+                            if (index == 0) {
+                              return AboutTourScreen();
+                            } else if (index == 1) {
+                              return GamesTourScreen();
+                            } else if (index == 2) {
+                              return PlayerTourScreen();
+                            } else {
+                              return Center(
+                                child: Text(
+                                  'Invalid page index: $index',
+                                  style: TextStyle(
+                                    color: context.colors.textPrimary,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -410,7 +428,9 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
         const Spacer(),
         Text(
           errorMessage,
-          style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textMdRegular.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         const Spacer(),
         SizedBox(width: 44.w),
@@ -445,7 +465,9 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
         SkeletonWidget(
           child: Text(
             title,
-            style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdRegular.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
         ),
         SizedBox(width: 44.w),

@@ -77,12 +77,10 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
 
   void _onCountdownStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed && !_committed && !_menuOpen) {
-      if (_draftTouched) {
-        _commit(_draftLabels, haptic: false);
-        return;
-      }
-      // Elapsed untouched -> leave the like untagged. Token-guarded close in
-      // case a newer offer already replaced us.
+      // Elapsed without a Save tap -> leave the like untagged regardless of
+      // any in-flight draft picks. Tags only persist via the explicit Save
+      // button in the dropdown. Token-guarded close in case a newer offer
+      // already replaced us.
       ref.read(tagChipOfferProvider).close(widget.offer.token);
     }
   }
@@ -131,21 +129,13 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   void _closeMenu() {
     if (!_menuOpen) return;
     _menu.reverse();
-    // Captured before the deferred callback so a mid-flight commit (from Save)
-    // doesn't double-fire here.
-    final shouldCommit = _draftTouched && !_committed;
     Future.delayed(_menuDuration, () {
       _menuEntry?.remove();
       _menuEntry = null;
       if (!mounted) return;
       setState(() => _menuOpen = false);
-      if (shouldCommit && !_committed) {
-        // PM: dismissing with picks already made should save immediately
-        // instead of waiting out the countdown.
-        _commit(_draftLabels, haptic: false);
-        return;
-      }
-      // Resume the countdown from where it paused, unless the user committed.
+      // Closing the menu without Save never persists. Resume the countdown
+      // from where it paused so the chip still self-dismisses if ignored.
       if (!_committed && _countdown.status != AnimationStatus.completed) {
         _countdown.forward();
       }
@@ -254,9 +244,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
               animation: _countdown,
               builder: (context, _) {
                 final remaining =
-                    _committed
-                        ? 1.0
-                        : (1 - _countdown.value).clamp(0.0, 1.0);
+                    _committed ? 1.0 : (1 - _countdown.value).clamp(0.0, 1.0);
                 return _chipBody(colors, _faceFor(colors), remaining);
               },
             ),
@@ -341,17 +329,15 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
                 SizedBox(width: 4.w),
                 face.showCheck
                     ? Icon(
-                          Icons.check_rounded,
-                          size: 17.sp,
-                          color: face.accent,
-                        )
-                        .animate()
-                        .scale(
-                          duration: 240.ms,
-                          curve: Curves.elasticOut,
-                          begin: const Offset(0.4, 0.4),
-                          end: const Offset(1.0, 1.0),
-                        )
+                      Icons.check_rounded,
+                      size: 17.sp,
+                      color: face.accent,
+                    ).animate().scale(
+                      duration: 240.ms,
+                      curve: Curves.elasticOut,
+                      begin: const Offset(0.4, 0.4),
+                      end: const Offset(1.0, 1.0),
+                    )
                     : AnimatedRotation(
                       turns: _menuOpen ? 0.5 : 0.0,
                       duration: const Duration(milliseconds: 220),
@@ -375,14 +361,14 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   Widget _buildMenu(BuildContext overlayContext, Rect chipRect) {
     final media = MediaQuery.of(overlayContext);
     final screenW = media.size.width;
-    final panelWidth = 268.w;
+    final panelWidth = 332.w;
     // Right-align under the chip, clamped on-screen.
     final right = (screenW - chipRect.right).clamp(
       8.w,
       (screenW - panelWidth - 8.w).clamp(8.w, screenW),
     );
     final top = chipRect.bottom + 8.h;
-    final maxHeight = (media.size.height - top - 24.h).clamp(120.h, 460.h);
+    final maxHeight = (media.size.height - top - 24.h).clamp(120.h, 540.h);
 
     return _TagDropdown(
       animation: _menu,
@@ -549,9 +535,6 @@ class _TagDropdownState extends State<_TagDropdown> {
     });
     widget.onChanged(_selected.toList(growable: false));
 
-    // Hit the cap on this add — auto-commit + dismiss instead of making the
-    // user reach for Save. Removes can't trigger this; only an add that
-    // lands at exactly kMaxLikeTagsPerGame.
     if (!isSelected && _selected.length >= kMaxLikeTagsPerGame) {
       widget.onCommit(_selected.toList(growable: false));
     }
@@ -700,16 +683,15 @@ class _TagDropdownState extends State<_TagDropdown> {
                   itemCount: tags.length,
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    mainAxisSpacing: 6.h,
-                    crossAxisSpacing: 6.w,
-                    mainAxisExtent: 34.h,
+                    mainAxisSpacing: 8.h,
+                    crossAxisSpacing: 8.w,
+                    mainAxisExtent: 48.h,
                   ),
                   itemBuilder: (_, i) {
                     final t = tags[i];
                     final selected = _selected.contains(t.label);
                     final disabled =
-                        !selected &&
-                        _selected.length >= kMaxLikeTagsPerGame;
+                        !selected && _selected.length >= kMaxLikeTagsPerGame;
                     return _TagSquare(
                           label: t.label,
                           accent: t.color,
@@ -802,24 +784,23 @@ class _TagSquare extends StatelessWidget {
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           alignment: Alignment.center,
-          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
           decoration: BoxDecoration(
             color: fill,
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(
-              color: border,
-              width: selected ? 1.2 : 1.0,
-            ),
+            border: Border.all(color: border, width: selected ? 1.2 : 1.0),
           ),
           child: Text(
             label,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
+            softWrap: true,
             textAlign: TextAlign.center,
             style: AppTypography.textXsMedium.copyWith(
               color: textColor,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               letterSpacing: 0.1,
+              height: 1.15,
             ),
           ),
         ),

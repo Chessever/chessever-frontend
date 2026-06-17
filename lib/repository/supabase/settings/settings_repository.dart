@@ -31,7 +31,8 @@ class SettingsRepository extends BaseRepository {
             data.isEmpty
                 ? <String>[]
                 : List<String>.from(data.first['live_round_ids'] ?? []),
-      );
+      )
+      .distinct(_sameStringSet);
 
   Stream<List<String>> subscribeToLiveTourIds() => supabase
       .from('settings')
@@ -54,7 +55,8 @@ class SettingsRepository extends BaseRepository {
                 : List<String>.from(
                   data.first['live_group_broadcast_ids'] ?? [],
                 ),
-      );
+      )
+      .distinct(_sameStringSet);
 }
 
 bool _sameStringSet(List<String> a, List<String> b) {
