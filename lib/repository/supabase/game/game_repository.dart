@@ -1231,8 +1231,14 @@ class GameRepository extends BaseRepository {
       final tcDb = _timeControlDbValue(
         filter?.timeControl ?? GameTimeControlFilter.all,
       );
-      final selectCols =
+      final baseCols =
           tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+      // Inner-join rounds so the .or() below evicts parent games whose round
+      // hasn't started — mirrors the home Current/For You contract that the
+      // most up-to-date row a query may return is a live game, never a
+      // pre-uploaded future pairing on a `next_round_start` round.
+      final selectCols = '$baseCols,\nrounds!games_round_id_fkey!inner(starts_at)';
+      final nowIso = DateTime.now().toUtc().toIso8601String();
       final trimmedQuery = query?.trim();
 
       final jsonList = <String>[];
@@ -1248,7 +1254,11 @@ class GameRepository extends BaseRepository {
         dynamic dbQuery = supabase
             .from('games')
             .select(selectCols)
-            .inFilter('tour_id', tourIds);
+            .inFilter('tour_id', tourIds)
+            .or(
+              'starts_at.is.null,starts_at.lte.$nowIso',
+              referencedTable: 'rounds',
+            );
 
         if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
           dbQuery = dbQuery.or(
