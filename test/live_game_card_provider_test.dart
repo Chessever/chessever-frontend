@@ -277,5 +277,40 @@ void main() {
       expect(sub.read()?.lastMove, 'e7e5');
       expect(sub.read()?.fen, afterE4E5);
     });
+
+    test(
+      'disabled per-card stream gate avoids realtime subscriptions',
+      () async {
+        final repository = _FakeGameStreamRepository(
+          const Stream<Map<String, dynamic>?>.empty(),
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            gameStreamRepositoryProvider.overrideWithValue(repository),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container.read(baseGameProvider('game-1').notifier).state = _game(
+          id: 'game-1',
+          status: GameStatus.ongoing,
+          fen: afterE4,
+          lastMove: 'e2e4',
+        );
+
+        final sub = container.listen(
+          scopedLiveGameCardProvider(
+            const LiveGameWatchParams(gameId: 'game-1', streamEnabled: false),
+          ),
+          (_, __) {},
+          fireImmediately: true,
+        );
+        addTearDown(sub.close);
+
+        expect(repository.individualSubscriptions, 0);
+        expect(sub.read()?.fen, afterE4);
+      },
+    );
   });
 }

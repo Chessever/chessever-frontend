@@ -20,6 +20,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
+    this.streamEnabled = true,
     this.onTap,
     this.onLiveTap,
     this.onLiveAdd,
@@ -35,6 +36,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
   final bool showGamebaseButton;
   final bool hideEventInfo;
   final PlayerProfileDataSource playerProfileDataSource;
+  final bool streamEnabled;
 
   /// Optional tap callback. If provided, overrides default chessboard navigation.
   final VoidCallback? onTap;
@@ -50,7 +52,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
-    final liveGame = watchLiveGame(ref, game);
+    final liveGame = watchLiveGame(ref, game, streamEnabled: streamEnabled);
 
     // Build updated games list with live data for navigation
     final updatedGames = List<GamesTourModel>.from(allGames);

@@ -35,6 +35,9 @@ class _FavoritesCombinedGamesScreenState
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+  Timer? _scrollIdleTimer;
+  bool _isScrolling = false;
+  static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   /// Selected player IDs for filtering - empty means show all
   final Set<String> _selectedPlayerIds = {};
@@ -51,6 +54,7 @@ class _FavoritesCombinedGamesScreenState
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('favorites_combined_resume_$hashCode');
     _debounceTimer?.cancel();
+    _scrollIdleTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
@@ -85,6 +89,7 @@ class _FavoritesCombinedGamesScreenState
   }
 
   void _onScroll() {
+    _markLiveCardsScrolling();
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       final state = ref.read(favoritesCombinedGamesProvider);
@@ -96,6 +101,19 @@ class _FavoritesCombinedGamesScreenState
         ref.read(favoritesCombinedGamesProvider.notifier).loadMoreGames();
       }
     }
+  }
+
+  void _markLiveCardsScrolling() {
+    if (!_isScrolling && mounted) {
+      setState(() => _isScrolling = true);
+    }
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
+  }
+
+  void _markLiveCardsIdle() {
+    if (!mounted || !_isScrolling) return;
+    setState(() => _isScrolling = false);
   }
 
   void _onSearchChanged(String value) {
@@ -497,7 +515,11 @@ class _FavoritesCombinedGamesScreenState
         child: Row(
           children: [
             SizedBox(width: 12.w),
-            Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
+            Icon(
+              Icons.search,
+              size: 20.sp,
+              color: context.colors.textSecondary,
+            ),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
@@ -650,9 +672,10 @@ class _FavoritesCombinedGamesScreenState
                           fontSize: 13.sp,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color: isSelected
-                              ? kWhiteColor
-                              : context.colors.textPrimary,
+                          color:
+                              isSelected
+                                  ? kWhiteColor
+                                  : context.colors.textPrimary,
                         ),
                       ),
                     ],
@@ -775,6 +798,7 @@ class _FavoritesCombinedGamesScreenState
               gameIndex: index,
               animationIndex: index,
               showRound: true,
+              streamEnabled: !_isScrolling,
               onAdd: () => _showAddToFolderSheet(context, game),
               onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
             ),
@@ -837,7 +861,9 @@ class _FavoritesCombinedGamesScreenState
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -858,7 +884,9 @@ class _FavoritesCombinedGamesScreenState
                         .read(favoritesCombinedGamesProvider.notifier)
                         .refreshGames(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -866,7 +894,9 @@ class _FavoritesCombinedGamesScreenState
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -902,7 +932,9 @@ class _FavoritesCombinedGamesScreenState
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -919,7 +951,9 @@ class _FavoritesCombinedGamesScreenState
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -927,7 +961,9 @@ class _FavoritesCombinedGamesScreenState
             ),
             child: Text(
               'Add favorites',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -1054,7 +1090,9 @@ class _FavoritesCombinedGamesScreenState
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ),

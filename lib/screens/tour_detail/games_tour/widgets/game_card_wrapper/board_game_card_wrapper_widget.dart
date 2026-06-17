@@ -18,6 +18,7 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
   final bool allowStockfishFallback;
+  final bool streamEnabled;
 
   const BoardGameCardWrapperWidget({
     super.key,
@@ -28,15 +29,22 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
     required this.pinnedIds,
     required this.onPinToggle,
     this.allowStockfishFallback = true,
+    this.streamEnabled = true,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
-    final liveGame = watchLiveGamePosition(ref, game);
+    final liveGame = watchLiveGamePosition(
+      ref,
+      game,
+      streamEnabled: streamEnabled,
+    );
     final effectiveAllowStockfishFallback =
-        allowStockfishFallback && ref.watch(shouldStreamProvider);
+        streamEnabled &&
+        allowStockfishFallback &&
+        ref.watch(shouldStreamProvider);
 
     // Build updated games list with the live game data
     List<GamesTourModel> getUpdatedGamesList() {

@@ -27,6 +27,7 @@ class GroupEventMatchCard extends ConsumerWidget {
   final void Function(int)? onReturnFromChessboard;
   final Map<String, LiveGamesBatchKey>? liveBatchKeyByGameId;
   final bool allowStockfishFallback;
+  final bool streamEnabled;
 
   const GroupEventMatchCard({
     super.key,
@@ -37,6 +38,7 @@ class GroupEventMatchCard extends ConsumerWidget {
     this.onReturnFromChessboard,
     this.liveBatchKeyByGameId,
     this.allowStockfishFallback = true,
+    this.streamEnabled = true,
   });
 
   @override
@@ -233,6 +235,7 @@ class GroupEventMatchCard extends ConsumerWidget {
           gamesData: gamesData,
           liveBatchKeyByGameId: liveBatchKeyByGameId,
           allowStockfishFallback: allowStockfishFallback,
+          streamEnabled: streamEnabled,
           onReturnFromChessboard: onReturnFromChessboard,
         );
       case GamesListViewMode.chessBoardGrid:
@@ -329,6 +332,7 @@ class GroupEventMatchCard extends ConsumerWidget {
             gameIndex: gameIndex,
             isChessBoardVisible: true,
             allowStockfishFallback: allowStockfishFallback,
+            streamEnabled: streamEnabled,
             onReturnFromChessboard: onReturnFromChessboard,
           ),
         );
@@ -363,6 +367,7 @@ class GroupEventMatchCard extends ConsumerWidget {
               ),
       pinnedIds: gamesData.pinnedGamedIs,
       allowStockfishFallback: allowStockfishFallback,
+      streamEnabled: streamEnabled,
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)

@@ -60,7 +60,8 @@ class GamesListView extends ConsumerWidget {
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
     final shouldStream = ref.watch(shouldStreamProvider);
     final isScrolling = ref.watch(gamesTourIsScrollingProvider(scopeId));
-    final allowStockfishFallback = shouldStream && !isScrolling;
+    final streamEnabled = shouldStream && !isScrolling;
+    final allowStockfishFallback = streamEnabled;
     final matchExpansionState =
         isSearchMode
             ? <String, bool>{} // Empty map means all expanded by default
@@ -233,6 +234,7 @@ class GamesListView extends ConsumerWidget {
                             matchGroupsByRound,
                             liveBatchKeyByGameId,
                             allowStockfishFallback,
+                            streamEnabled,
                           )
                           : _buildCardRow(
                             context,
@@ -242,6 +244,7 @@ class GamesListView extends ConsumerWidget {
                             matchGroupsByRound,
                             liveBatchKeyByGameId,
                             allowStockfishFallback,
+                            streamEnabled,
                           ),
                 );
                 // TABLET: Wrap with SizedBox to provide bounded width
@@ -295,6 +298,7 @@ class GamesListView extends ConsumerWidget {
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
     bool allowStockfishFallback,
+    bool streamEnabled,
   ) {
     final game1Widget = _buildGridGame(
       context,
@@ -306,6 +310,7 @@ class GamesListView extends ConsumerWidget {
       item.fixedBottomSide1,
       liveBatchKeyByGameId,
       allowStockfishFallback,
+      streamEnabled,
     );
 
     final game2Widget =
@@ -320,6 +325,7 @@ class GamesListView extends ConsumerWidget {
               item.fixedBottomSide2,
               liveBatchKeyByGameId,
               allowStockfishFallback,
+              streamEnabled,
             )
             : null;
 
@@ -354,6 +360,7 @@ class GamesListView extends ConsumerWidget {
     Side? fixedBottomSide,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
     bool allowStockfishFallback,
+    bool streamEnabled,
   ) {
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${game.gameId}'),
@@ -386,6 +393,7 @@ class GamesListView extends ConsumerWidget {
       pinnedIds: gamesData.pinnedGamedIs,
       fixedBottomSide: fixedBottomSide,
       allowStockfishFallback: allowStockfishFallback,
+      streamEnabled: streamEnabled,
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)
@@ -401,6 +409,7 @@ class GamesListView extends ConsumerWidget {
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
     bool allowStockfishFallback,
+    bool streamEnabled,
   ) {
     // Create modified gamesData with correct orderedGames for multi-stage knockouts
     final modifiedGamesData = GamesScreenModel(
@@ -416,6 +425,7 @@ class GamesListView extends ConsumerWidget {
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
       fixedBottomSide: item.fixedBottomSide1,
       allowStockfishFallback: allowStockfishFallback,
+      streamEnabled: streamEnabled,
       onReturnFromChessboard: (returnedIndex) {
         final latestMatchExpansion = ref.read(matchExpansionProvider);
         final latestRoundExpansion = ref.read(roundExpansionProvider);

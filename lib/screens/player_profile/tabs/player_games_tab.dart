@@ -64,8 +64,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+  Timer? _scrollIdleTimer;
   bool _isLoadingAllPagesForSelection = false;
+  bool _isScrolling = false;
   final Set<String> _selectedGameIds = <String>{};
+  static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   // Rotating "Search <word>" hint — mirrors the home and TWIC search bars so
   // the animated second word is consistent across the app.
@@ -158,6 +161,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
     _debounceTimer?.cancel();
+    _scrollIdleTimer?.cancel();
     _hintRotationTimer?.cancel();
     _hintFadeOutTimer?.cancel();
     _scrollController.removeListener(_onScroll);
@@ -202,11 +206,25 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   void _onScroll() {
-    if (widget.dataSource != PlayerProfileDataSource.twic) return;
     if (!_scrollController.hasClients) return;
+    _markLiveCardsScrolling();
+    if (widget.dataSource != PlayerProfileDataSource.twic) return;
     final position = _scrollController.position;
     if (position.pixels < position.maxScrollExtent - 560) return;
     ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).loadMore();
+  }
+
+  void _markLiveCardsScrolling() {
+    if (!_isScrolling && mounted) {
+      setState(() => _isScrolling = true);
+    }
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
+  }
+
+  void _markLiveCardsIdle() {
+    if (!mounted || !_isScrolling) return;
+    setState(() => _isScrolling = false);
   }
 
   void _onSearchChanged(String value) {
@@ -316,7 +334,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         SnackBar(
           content: Text(
             'Selected ${allFilteredIds.length} filtered games',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -328,7 +348,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         SnackBar(
           content: Text(
             'Failed to select all games: $e',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: kRedColor,
           behavior: SnackBarBehavior.floating,
@@ -362,7 +384,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         SnackBar(
           content: Text(
             'Select at least one game',
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           backgroundColor: context.colors.surface.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
@@ -804,7 +828,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   SvgAsset.chase_grid,
                   width: 20.sp,
                   height: 20.sp,
-                  colorFilter:  ColorFilter.mode(
+                  colorFilter: ColorFilter.mode(
                     context.colors.textSecondary,
                     BlendMode.srcIn,
                   ),
@@ -873,7 +897,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                               style: AppTypography.textSmMedium.copyWith(
                                 color:
                                     selectedVisibleCount == 0
-                                        ? context.colors.textPrimary.withValues(alpha: 0.75)
+                                        ? context.colors.textPrimary.withValues(
+                                          alpha: 0.75,
+                                        )
                                         : kPrimaryColor,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -882,7 +908,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                             Text(
                               subtitle,
                               style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(alpha: 0.58),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.58,
+                                ),
                               ),
                               maxLines: 2,
                             ),
@@ -907,13 +935,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                             vertical: 8.h,
                           ),
                           decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(alpha: 0.1),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.1,
+                            ),
                             borderRadius: BorderRadius.circular(10.br),
                           ),
                           child: Icon(
                             Icons.close_rounded,
                             size: 16.sp,
-                            color: context.colors.textPrimary.withValues(alpha: 0.8),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.8,
+                            ),
                           ),
                         ),
                       ),
@@ -1170,6 +1202,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   game: game,
                   orderedGames: games,
                   gameIndex: globalIndex,
+                  allowStockfishFallback: !_isScrolling,
+                  streamEnabled: !_isScrolling,
                   onChangedWithLiveGames: (updatedGames) async {
                     final hasPremium = await requirePremiumGuard(context, ref);
                     if (!hasPremium) return;
@@ -1201,6 +1235,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               showSwipeHint: showHint,
               showGamebaseButton: false,
               playerProfileDataSource: widget.dataSource,
+              streamEnabled: !_isScrolling,
               onAdd:
                   isSelectionMode
                       ? () => _toggleGameSelection(game.gameId)
@@ -1270,6 +1305,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       game: game,
       orderedGames: allGames,
       gameIndex: gameIndex,
+      allowStockfishFallback: !_isScrolling,
+      streamEnabled: !_isScrolling,
       onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);
@@ -1381,7 +1418,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             SizedBox(width: 10.w),
             Text(
               'Loading more games...',
-              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textPrimaryMuted,
+              ),
             ),
           ],
         ),
@@ -1405,7 +1444,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           alignment: Alignment.center,
           child: Text(
             'Load more games',
-            style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
+            style: AppTypography.textXsMedium.copyWith(
+              color: context.colors.textPrimaryMuted,
+            ),
           ),
         ),
       );
@@ -1438,38 +1479,37 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     // SliverFillRemaining + Center/ConstrainedBox wrap).
     return ExcludeSemantics(
       child: RepaintBoundary(
-        child:
-            Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      for (int i = 0; i < 4; i++) ...[
-                        Container(
-                          width: double.infinity,
-                          height: 96.h,
-                          margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
-                          decoration: BoxDecoration(
-                            color: context.colors.surface,
-                            borderRadius: BorderRadius.circular(12.br),
-                          ),
-                        ),
-                      ],
-                      SizedBox(height: 16.h),
-                      Text(
-                        'Loading games...',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
+        child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (int i = 0; i < 4; i++) ...[
+                    Container(
+                      width: double.infinity,
+                      height: 96.h,
+                      margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
+                      decoration: BoxDecoration(
+                        color: context.colors.surface,
+                        borderRadius: BorderRadius.circular(12.br),
                       ),
-                    ],
+                    ),
+                  ],
+                  SizedBox(height: 16.h),
+                  Text(
+                    'Loading games...',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
                   ),
-                )
-                .animate(onPlay: (controller) => controller.repeat())
-                .shimmer(
-                  duration: 1400.ms,
-                  color: context.colors.textPrimary.withValues(alpha: 0.1),
-                ),
+                ],
+              ),
+            )
+            .animate(onPlay: (controller) => controller.repeat())
+            .shimmer(
+              duration: 1400.ms,
+              color: context.colors.textPrimary.withValues(alpha: 0.1),
+            ),
       ),
     );
   }
@@ -1495,7 +1535,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -1518,7 +1560,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                         )
                         .refresh(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -1526,7 +1570,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -1562,7 +1608,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -1622,7 +1670,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ),
@@ -1647,7 +1697,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SizedBox(height: 12.h),
           Text(
             'Searching more games...',
-            style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimaryMuted),
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textPrimaryMuted,
+            ),
           ),
         ],
       ),
@@ -1700,7 +1752,9 @@ class _SelectionActionButton extends StatelessWidget {
               icon,
               size: 16.sp,
               color:
-                  enabled ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.45),
+                  enabled
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimary.withValues(alpha: 0.45),
             ),
             SizedBox(width: 6.w),
             Flexible(

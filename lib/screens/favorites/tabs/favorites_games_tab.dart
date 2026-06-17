@@ -48,6 +48,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+  Timer? _scrollIdleTimer;
+  bool _isScrolling = false;
+  static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   /// Track expanded state for date sections
   final Set<String> _collapsedDates = {};
@@ -68,6 +71,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     ForegroundTaskScheduler.cancel('favorites_games_resume_$hashCode');
     _scrollController.removeListener(_onScroll);
     _debounceTimer?.cancel();
+    _scrollIdleTimer?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -106,6 +110,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
+    _markLiveCardsScrolling();
 
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
@@ -117,6 +122,19 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         _loadMoreDays();
       }
     }
+  }
+
+  void _markLiveCardsScrolling() {
+    if (!_isScrolling && mounted) {
+      setState(() => _isScrolling = true);
+    }
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
+  }
+
+  void _markLiveCardsIdle() {
+    if (!mounted || !_isScrolling) return;
+    setState(() => _isScrolling = false);
   }
 
   void _loadMoreDays() {
@@ -518,7 +536,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   SvgAsset.chase_grid,
                   width: 20.sp,
                   height: 20.sp,
-                  colorFilter:  ColorFilter.mode(
+                  colorFilter: ColorFilter.mode(
                     context.colors.textSecondary,
                     BlendMode.srcIn,
                   ),
@@ -824,6 +842,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   allGames: games,
                   isChessBoardVisible: true,
                   isLast: isLast,
+                  streamEnabled: !_isScrolling,
                   onNavigateToChessBoard: _navigateToChessBoard,
                 ),
               );
@@ -840,6 +859,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     showRound: true,
                     showSwipeHint: showHint,
                     showGamebaseButton: false,
+                    streamEnabled: !_isScrolling,
                     onAdd: () => _showAddToFolderSheet(context, game),
                     onLiveAdd:
                         (liveGame) => _showAddToFolderSheet(context, liveGame),
@@ -914,6 +934,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       game: game,
       orderedGames: allGames,
       gameIndex: gameIndex,
+      allowStockfishFallback: !_isScrolling,
+      streamEnabled: !_isScrolling,
       onChangedWithLiveGames: (updatedGames) {
         if (!mounted) return;
         _navigateToChessBoard(updatedGames[gameIndex], updatedGames, gameIndex);
@@ -969,7 +991,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -990,7 +1014,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                         .read(favoritesCombinedGamesProvider.notifier)
                         .refreshGames(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -998,7 +1024,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -1034,7 +1062,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -1121,7 +1151,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ),
@@ -1190,7 +1222,9 @@ class _DateHeader extends StatelessWidget {
         decoration: BoxDecoration(
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.1),
@@ -1252,6 +1286,7 @@ class _FavoritesLiveBoardGameCard extends ConsumerStatefulWidget {
     required this.allGames,
     required this.isChessBoardVisible,
     required this.isLast,
+    required this.streamEnabled,
     required this.onNavigateToChessBoard,
   });
 
@@ -1262,6 +1297,7 @@ class _FavoritesLiveBoardGameCard extends ConsumerStatefulWidget {
   final List<GamesTourModel> allGames;
   final bool isChessBoardVisible;
   final bool isLast;
+  final bool streamEnabled;
   final void Function(
     GamesTourModel game,
     List<GamesTourModel> games,
@@ -1299,6 +1335,8 @@ class _FavoritesLiveBoardGameCardState
         gameIndex: widget.gameIndex,
         onChangedWithLiveGames: _handleNavigate,
         pinnedIds: widget.gamesData.pinnedGamedIs,
+        allowStockfishFallback: widget.streamEnabled,
+        streamEnabled: widget.streamEnabled,
         onPinToggle: (_) {},
       ),
     );

@@ -1135,6 +1135,7 @@ class _TabletGameCard extends ConsumerWidget {
       gameIndex: index,
       liveBatchKey: liveBatchKey,
       allowStockfishFallback: !isScrolling,
+      streamEnabled: !isScrolling,
       onChangedWithLiveGames:
           (updatedGames) => ref
               .read(gameCardWrapperProvider)
@@ -1288,6 +1289,7 @@ class _ForYouEventGames extends ConsumerWidget {
                     gameIndex: i,
                     liveBatchKey: liveBatchKey,
                     allowStockfishFallback: !isScrolling,
+                    streamEnabled: !isScrolling,
                     onChangedWithLiveGames:
                         (updatedGames) => ref
                             .read(gameCardWrapperProvider)
@@ -1324,6 +1326,7 @@ class _ForYouEventGames extends ConsumerWidget {
                             gameIndex: i + 1,
                             liveBatchKey: liveBatchKey,
                             allowStockfishFallback: !isScrolling,
+                            streamEnabled: !isScrolling,
                             onChangedWithLiveGames:
                                 (updatedGames) => ref
                                     .read(gameCardWrapperProvider)
@@ -1475,6 +1478,7 @@ class _ForYouGameCard extends ConsumerWidget {
         viewSource: ChessboardView.forYou,
         liveBatchKey: liveBatchKey,
         allowStockfishFallback: !isScrolling,
+        streamEnabled: !isScrolling,
         onPinToggle:
             (_) => ref
                 .read(forYouPinActionProvider)

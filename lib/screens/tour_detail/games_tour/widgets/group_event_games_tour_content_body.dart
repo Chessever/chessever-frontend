@@ -80,7 +80,8 @@ class _GroupEventGamesTourContentBodyState
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
     final shouldStream = ref.watch(shouldStreamProvider);
     final isScrolling = ref.watch(gamesTourIsScrollingProvider(scopeId));
-    final allowStockfishFallback = shouldStream && !isScrolling;
+    final streamEnabled = shouldStream && !isScrolling;
+    final allowStockfishFallback = streamEnabled;
     final scrollController = ref.watch(gamesTourScrollProvider(scopeId));
     final itemPositionsListener =
         ref
@@ -97,6 +98,7 @@ class _GroupEventGamesTourContentBodyState
       roundExpansionState,
       liveBatchKeyByGameId,
       allowStockfishFallback,
+      streamEnabled,
       scopeId,
     );
   }
@@ -110,6 +112,7 @@ class _GroupEventGamesTourContentBodyState
     Map<String, bool> roundExpansionState,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
     bool allowStockfishFallback,
+    bool streamEnabled,
     String scopeId,
   ) {
     // Build a flat list of all items with round tracking
@@ -166,6 +169,7 @@ class _GroupEventGamesTourContentBodyState
               onReturnFromChessboard: widget.onReturnFromChessboard,
               liveBatchKeyByGameId: liveBatchKeyByGameId,
               allowStockfishFallback: allowStockfishFallback,
+              streamEnabled: streamEnabled,
             ),
             isHeader: false,
           ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -16,6 +18,7 @@ import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -45,13 +48,73 @@ class CountrymanGamesScreen extends StatelessWidget {
   }
 }
 
-class CountrymanGamesList extends ConsumerWidget {
+class CountrymanGamesList extends ConsumerStatefulWidget {
   const CountrymanGamesList({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CountrymanGamesList> createState() =>
+      _CountrymanGamesListState();
+}
+
+class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList> {
+  static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
+
+  Timer? _scrollIdleTimer;
+  bool _isScrolling = false;
+
+  @override
+  void dispose() {
+    _scrollIdleTimer?.cancel();
+    super.dispose();
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    if (notification is ScrollEndNotification) {
+      _scheduleLiveCardsIdle();
+      return false;
+    }
+
+    if (notification is UserScrollNotification &&
+        notification.direction == ScrollDirection.idle) {
+      _scheduleLiveCardsIdle();
+      return false;
+    }
+
+    if (notification is ScrollStartNotification ||
+        notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification ||
+        notification is UserScrollNotification) {
+      _markLiveCardsScrolling();
+    }
+
+    return false;
+  }
+
+  void _markLiveCardsScrolling() {
+    if (!_isScrolling && mounted) {
+      setState(() => _isScrolling = true);
+    }
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
+  }
+
+  void _scheduleLiveCardsIdle() {
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
+  }
+
+  void _markLiveCardsIdle() {
+    if (!mounted || !_isScrolling) return;
+    setState(() => _isScrolling = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);
     final shouldStream = ref.watch(shouldStreamProvider);
+    final streamEnabled = shouldStream && !_isScrolling;
 
     return ref
         .watch(countrymanGamesTourScreenProvider)
@@ -73,7 +136,11 @@ class CountrymanGamesList extends ConsumerWidget {
 
             Widget buildGameItem(int index) {
               final baseGame = data.gamesTourModels[index];
-              final game = watchLiveGame(ref, baseGame);
+              final game = watchLiveGame(
+                ref,
+                baseGame,
+                streamEnabled: streamEnabled,
+              );
               final updatedGames = List<GamesTourModel>.from(
                 data.gamesTourModels,
               );
@@ -119,7 +186,7 @@ class CountrymanGamesList extends ConsumerWidget {
                       });
                     },
                     gamesTourModel: game,
-                    allowStockfishFallback: shouldStream,
+                    allowStockfishFallback: streamEnabled,
                   )
                   : GameCard(
                     onTap: () async {
@@ -155,7 +222,7 @@ class CountrymanGamesList extends ConsumerWidget {
                       game: game,
                       comparison: MatchComparison.sameOrder,
                     ),
-                    allowStockfishFallback: shouldStream,
+                    allowStockfishFallback: streamEnabled,
                     pinnedIds: data.pinnedGamedIs,
                     onPinToggle: (gamesTourModel) async {
                       await ref
@@ -165,47 +232,51 @@ class CountrymanGamesList extends ConsumerWidget {
                   );
             }
 
-            return Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: ResponsiveHelper.contentMaxWidth,
+            return NotificationListener<ScrollNotification>(
+              onNotification: _handleScrollNotification,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: ResponsiveHelper.contentMaxWidth,
+                  ),
+                  child:
+                      isTablet
+                          ? GridView.builder(
+                            padding: EdgeInsets.only(
+                              left: horizontalPadding,
+                              right: horizontalPadding,
+                              top: 12.sp,
+                              bottom: bottomPadding,
+                            ),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount:
+                                      ResponsiveHelper.tabletGridColumns,
+                                  crossAxisSpacing: 16.sp,
+                                  mainAxisSpacing: 16.sp,
+                                  childAspectRatio:
+                                      ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                                ),
+                            itemCount: data.gamesTourModels.length,
+                            itemBuilder:
+                                (context, index) => buildGameItem(index),
+                          )
+                          : ListView.builder(
+                            padding: EdgeInsets.only(
+                              left: horizontalPadding,
+                              right: horizontalPadding,
+                              top: 12.sp,
+                              bottom: bottomPadding,
+                            ),
+                            itemCount: data.gamesTourModels.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: EdgeInsets.only(bottom: 12.sp),
+                                child: buildGameItem(index),
+                              );
+                            },
+                          ),
                 ),
-                child:
-                    isTablet
-                        ? GridView.builder(
-                          padding: EdgeInsets.only(
-                            left: horizontalPadding,
-                            right: horizontalPadding,
-                            top: 12.sp,
-                            bottom: bottomPadding,
-                          ),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount:
-                                    ResponsiveHelper.tabletGridColumns,
-                                crossAxisSpacing: 16.sp,
-                                mainAxisSpacing: 16.sp,
-                                childAspectRatio:
-                                    ResponsiveHelper.isLandscape ? 2.2 : 1.8,
-                              ),
-                          itemCount: data.gamesTourModels.length,
-                          itemBuilder: (context, index) => buildGameItem(index),
-                        )
-                        : ListView.builder(
-                          padding: EdgeInsets.only(
-                            left: horizontalPadding,
-                            right: horizontalPadding,
-                            top: 12.sp,
-                            bottom: bottomPadding,
-                          ),
-                          itemCount: data.gamesTourModels.length,
-                          itemBuilder: (context, index) {
-                            return Padding(
-                              padding: EdgeInsets.only(bottom: 12.sp),
-                              child: buildGameItem(index),
-                            );
-                          },
-                        ),
               ),
             );
           },

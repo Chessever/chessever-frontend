@@ -6,7 +6,6 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -33,6 +32,9 @@ class _CountrymenCombinedGamesScreenState
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+  Timer? _scrollIdleTimer;
+  bool _isScrolling = false;
+  static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   @override
   void initState() {
@@ -46,6 +48,7 @@ class _CountrymenCombinedGamesScreenState
     WidgetsBinding.instance.removeObserver(this);
     ForegroundTaskScheduler.cancel('countrymen_combined_resume_$hashCode');
     _debounceTimer?.cancel();
+    _scrollIdleTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
@@ -80,6 +83,7 @@ class _CountrymenCombinedGamesScreenState
   }
 
   void _onScroll() {
+    _markLiveCardsScrolling();
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       final state = ref.read(countrymenCombinedGamesProvider);
@@ -91,6 +95,19 @@ class _CountrymenCombinedGamesScreenState
         ref.read(countrymenCombinedGamesProvider.notifier).loadMoreGames();
       }
     }
+  }
+
+  void _markLiveCardsScrolling() {
+    if (!_isScrolling && mounted) {
+      setState(() => _isScrolling = true);
+    }
+    _scrollIdleTimer?.cancel();
+    _scrollIdleTimer = Timer(_scrollIdleDelay, _markLiveCardsIdle);
+  }
+
+  void _markLiveCardsIdle() {
+    if (!mounted || !_isScrolling) return;
+    setState(() => _isScrolling = false);
   }
 
   void _onSearchChanged(String value) {
@@ -219,7 +236,9 @@ class _CountrymenCombinedGamesScreenState
               children: [
                 Text(
                   countryName,
-                  style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
+                  style: AppTypography.textLgBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -317,7 +336,11 @@ class _CountrymenCombinedGamesScreenState
         child: Row(
           children: [
             SizedBox(width: 12.w),
-            Icon(Icons.search, size: 20.sp, color: context.colors.textSecondary),
+            Icon(
+              Icons.search,
+              size: 20.sp,
+              color: context.colors.textSecondary,
+            ),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
@@ -457,6 +480,7 @@ class _CountrymenCombinedGamesScreenState
               gameIndex: index,
               animationIndex: index,
               showRound: true,
+              streamEnabled: !_isScrolling,
               onAdd: () => _showAddToFolderSheet(context, game),
               onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
             ),
@@ -519,7 +543,9 @@ class _CountrymenCombinedGamesScreenState
           SizedBox(height: 16.h),
           Text(
             'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -540,7 +566,9 @@ class _CountrymenCombinedGamesScreenState
                         .read(countrymenCombinedGamesProvider.notifier)
                         .refreshGames(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -548,7 +576,9 @@ class _CountrymenCombinedGamesScreenState
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -584,7 +614,9 @@ class _CountrymenCombinedGamesScreenState
           SizedBox(height: 20.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -605,7 +637,9 @@ class _CountrymenCombinedGamesScreenState
                         .read(countrymenCombinedGamesProvider.notifier)
                         .refreshGames(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -613,7 +647,9 @@ class _CountrymenCombinedGamesScreenState
             ),
             child: Text(
               'Refresh',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -690,7 +726,9 @@ class _CountrymenCombinedGamesScreenState
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ),

@@ -16,6 +16,7 @@ class GroupEventGamesCard extends StatelessWidget {
     required this.onReturnFromChessboard,
     this.liveBatchKeyByGameId = const <String, LiveGamesBatchKey>{},
     this.allowStockfishFallback = true,
+    this.streamEnabled = true,
     super.key,
   });
 
@@ -24,6 +25,7 @@ class GroupEventGamesCard extends StatelessWidget {
   final void Function(int)? onReturnFromChessboard;
   final Map<String, LiveGamesBatchKey> liveBatchKeyByGameId;
   final bool allowStockfishFallback;
+  final bool streamEnabled;
 
   @override
   Widget build(BuildContext buildCxt) {
@@ -50,6 +52,7 @@ class GroupEventGamesCard extends StatelessWidget {
           gameIndex: gameIndexMap[match.game.gameId] ?? -1,
           liveBatchKey: liveBatchKeyByGameId[match.game.gameId],
           allowStockfishFallback: allowStockfishFallback,
+          streamEnabled: streamEnabled,
           onReturnFromChessboard: onReturnFromChessboard,
         );
       },
@@ -64,6 +67,7 @@ class _GroupEventGameCardTile extends ConsumerWidget {
     required this.gameIndex,
     required this.onReturnFromChessboard,
     required this.allowStockfishFallback,
+    required this.streamEnabled,
     this.liveBatchKey,
     super.key,
   });
@@ -73,11 +77,17 @@ class _GroupEventGameCardTile extends ConsumerWidget {
   final int gameIndex;
   final void Function(int)? onReturnFromChessboard;
   final bool allowStockfishFallback;
+  final bool streamEnabled;
   final LiveGamesBatchKey? liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final liveGame = watchLiveGame(ref, match.game, batchKey: liveBatchKey);
+    final liveGame = watchLiveGame(
+      ref,
+      match.game,
+      batchKey: liveBatchKey,
+      streamEnabled: streamEnabled,
+    );
     final liveMatch = MatchWithComparison(
       game: liveGame,
       comparison: match.comparison,

@@ -33,21 +33,27 @@ final liveGameCardProvider =
 
 @immutable
 class LiveGameWatchParams {
-  const LiveGameWatchParams({required this.gameId, this.batchKey});
+  const LiveGameWatchParams({
+    required this.gameId,
+    this.batchKey,
+    this.streamEnabled = true,
+  });
 
   final String gameId;
   final LiveGamesBatchKey? batchKey;
+  final bool streamEnabled;
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         other is LiveGameWatchParams &&
             other.gameId == gameId &&
-            other.batchKey == batchKey;
+            other.batchKey == batchKey &&
+            other.streamEnabled == streamEnabled;
   }
 
   @override
-  int get hashCode => Object.hash(gameId, batchKey);
+  int get hashCode => Object.hash(gameId, batchKey, streamEnabled);
 }
 
 final scopedLiveGameCardProvider =
@@ -128,7 +134,7 @@ LiveGameUpdate? _watchLiveUpdate(
   LiveGameWatchParams params,
   _LiveGameMergeMode mode,
 ) {
-  if (!ref.watch(shouldStreamProvider)) {
+  if (!params.streamEnabled || !ref.watch(shouldStreamProvider)) {
     return null;
   }
 
@@ -347,6 +353,7 @@ GamesTourModel watchLiveGame(
   WidgetRef ref,
   GamesTourModel game, {
   LiveGamesBatchKey? batchKey,
+  bool streamEnabled = true,
 }) {
   final current = ref.read(baseGameProvider(game.gameId));
   if (_shouldUseIncomingGame(current, game, allowEqualFreshnessUpdate: false)) {
@@ -359,7 +366,11 @@ GamesTourModel watchLiveGame(
       }
     });
   }
-  final params = LiveGameWatchParams(gameId: game.gameId, batchKey: batchKey);
+  final params = LiveGameWatchParams(
+    gameId: game.gameId,
+    batchKey: batchKey,
+    streamEnabled: streamEnabled,
+  );
   return ref.watch(scopedLiveGameCardProvider(params)) ?? game;
 }
 
@@ -367,9 +378,14 @@ GamesTourModel watchLiveGamePosition(
   WidgetRef ref,
   GamesTourModel game, {
   LiveGamesBatchKey? batchKey,
+  bool streamEnabled = true,
 }) {
   _ensureBaseGame(ref, game);
-  final params = LiveGameWatchParams(gameId: game.gameId, batchKey: batchKey);
+  final params = LiveGameWatchParams(
+    gameId: game.gameId,
+    batchKey: batchKey,
+    streamEnabled: streamEnabled,
+  );
   return ref.watch(liveGamePositionProvider(params)) ?? game;
 }
 
@@ -377,9 +393,14 @@ GamesTourModel watchLiveGameClock(
   WidgetRef ref,
   GamesTourModel game, {
   LiveGamesBatchKey? batchKey,
+  bool streamEnabled = true,
 }) {
   _ensureBaseGame(ref, game);
-  final params = LiveGameWatchParams(gameId: game.gameId, batchKey: batchKey);
+  final params = LiveGameWatchParams(
+    gameId: game.gameId,
+    batchKey: batchKey,
+    streamEnabled: streamEnabled,
+  );
   return ref.watch(liveGameClockProvider(params)) ?? game;
 }
 
