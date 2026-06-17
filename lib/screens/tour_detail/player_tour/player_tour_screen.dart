@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -28,13 +29,18 @@ class PlayerTourScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   late final ScrollController _scrollController;
   late String _scrollBucket;
   final Map<String, double> _scrollOffsets = {};
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
 
   @override
   void initState() {
@@ -105,7 +111,6 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const FigmaStandingsHeader(showScore: true),
               Expanded(child: _StandingsList(controller: _scrollController)),
             ],
           ),

@@ -27,6 +27,7 @@ import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -98,6 +99,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   late PageController _pageController;
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
+  final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
   /// Games/events are now sourced exclusively from TWIC. The old
   /// ChessEver/TWIC source selector was removed after the two databases were
   /// merged backend-side, so TWIC is the single source of truth.
@@ -162,6 +164,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   void dispose() {
     _pageController.dispose();
     _favoriteAnimationController.dispose();
+    _scrollToTopBus.dispose();
     super.dispose();
   }
 
@@ -173,6 +176,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   void _handleTabSelection(int index) {
     HapticFeedbackService.buttonPress();
     final nextTab = PlayerProfileTab.values[index];
+    final currentTab = ref.read(selectedPlayerProfileTabProvider);
+    if (nextTab == currentTab) {
+      _scrollToTopBus.request();
+      return;
+    }
     ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
       setState(() => _gamesTabCueCount = null);
@@ -783,6 +791,7 @@ countryCode,
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
         currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
         onSelectionChanged: _handleTabSelection,
+        notifyOnReselect: true,
       ),
     );
   }
@@ -856,39 +865,42 @@ countryCode,
     String? effectiveTitle,
     String? effectiveFederation,
   }) {
-    return PageView.builder(
-      controller: _pageController,
-      itemCount: PlayerProfileTab.values.length,
-      onPageChanged: _handlePageChanged,
-      itemBuilder: (context, index) {
-        switch (PlayerProfileTab.values[index]) {
-          case PlayerProfileTab.about:
-            return PlayerAboutTab(
-              fideId: widget.fideId,
-              playerName: widget.playerName,
-              title: effectiveTitle,
-              federation: effectiveFederation,
-              fallbackRating: widget.rating,
-              dataSource: _source,
-              gamebasePlayerId: _currentGamebasePlayerId,
-              onOpenGames: _openGames,
-            );
-          case PlayerProfileTab.games:
-            return PlayerGamesTab(
-              fideId: widget.fideId,
-              playerName: widget.playerName,
-              dataSource: _source,
-              gamebasePlayerId: _currentGamebasePlayerId,
-            );
-          case PlayerProfileTab.events:
-            return PlayerEventsTab(
-              fideId: widget.fideId,
-              playerName: widget.playerName,
-              dataSource: _source,
-              gamebasePlayerId: _currentGamebasePlayerId,
-            );
-        }
-      },
+    return ScrollToTopScope(
+      bus: _scrollToTopBus,
+      child: PageView.builder(
+        controller: _pageController,
+        itemCount: PlayerProfileTab.values.length,
+        onPageChanged: _handlePageChanged,
+        itemBuilder: (context, index) {
+          switch (PlayerProfileTab.values[index]) {
+            case PlayerProfileTab.about:
+              return PlayerAboutTab(
+                fideId: widget.fideId,
+                playerName: widget.playerName,
+                title: effectiveTitle,
+                federation: effectiveFederation,
+                fallbackRating: widget.rating,
+                dataSource: _source,
+                gamebasePlayerId: _currentGamebasePlayerId,
+                onOpenGames: _openGames,
+              );
+            case PlayerProfileTab.games:
+              return PlayerGamesTab(
+                fideId: widget.fideId,
+                playerName: widget.playerName,
+                dataSource: _source,
+                gamebasePlayerId: _currentGamebasePlayerId,
+              );
+            case PlayerProfileTab.events:
+              return PlayerEventsTab(
+                fideId: widget.fideId,
+                playerName: widget.playerName,
+                dataSource: _source,
+                gamebasePlayerId: _currentGamebasePlayerId,
+              );
+          }
+        },
+      ),
     );
   }
 

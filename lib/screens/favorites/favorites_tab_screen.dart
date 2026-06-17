@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -22,6 +23,7 @@ class FavoritesTabScreen extends ConsumerStatefulWidget {
 
 class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   late PageController _pageController;
+  final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
   @override
   void initState() {
@@ -45,11 +47,19 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    _scrollToTopBus.dispose();
     super.dispose();
   }
 
   void _handleTabSelection(int index) {
     try {
+      final currentIndex = FavoritesScreenMode.values.indexOf(
+        ref.read(selectedFavoritesModeProvider),
+      );
+      if (index == currentIndex) {
+        _scrollToTopBus.request();
+        return;
+      }
       ref
           .read(selectedFavoritesModeProvider.notifier)
           .update((_) => FavoritesScreenMode.values[index]);
@@ -97,27 +107,32 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
               SizedBox(height: 8.h),
               _buildSegmentedSwitcher(selectedMode),
               Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: 3,
-                  onPageChanged: _handlePageChanged,
-                  itemBuilder: (context, index) {
-                    switch (index) {
-                      case 0:
-                        return const FavoritesListTab();
-                      case 1:
-                        return const FavoritesGamesTab();
-                      case 2:
-                        return const FavoritesPlayersTab();
-                      default:
-                        return Center(
-                          child: Text(
-                            'Invalid page index: $index',
-                            style:  TextStyle(color: context.colors.textPrimary),
-                          ),
-                        );
-                    }
-                  },
+                child: ScrollToTopScope(
+                  bus: _scrollToTopBus,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: 3,
+                    onPageChanged: _handlePageChanged,
+                    itemBuilder: (context, index) {
+                      switch (index) {
+                        case 0:
+                          return const FavoritesListTab();
+                        case 1:
+                          return const FavoritesGamesTab();
+                        case 2:
+                          return const FavoritesPlayersTab();
+                        default:
+                          return Center(
+                            child: Text(
+                              'Invalid page index: $index',
+                              style: TextStyle(
+                                color: context.colors.textPrimary,
+                              ),
+                            ),
+                          );
+                      }
+                    },
+                  ),
                 ),
               ),
             ],
@@ -185,6 +200,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
         ),
         currentSelection: FavoritesScreenMode.values.indexOf(selectedMode),
         onSelectionChanged: _handleTabSelection,
+        notifyOnReselect: true,
       ),
     );
   }

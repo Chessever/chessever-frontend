@@ -216,22 +216,7 @@ class LibraryGameCard extends ConsumerWidget {
                     if (reserveTagSlot || visibleTags.isNotEmpty) ...[
                       SizedBox(height: 6.h),
                       if (visibleTags.isNotEmpty)
-                        SizedBox(
-                          height: 22.h,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            padding: EdgeInsets.zero,
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: visibleTags.length,
-                            separatorBuilder: (_, __) => SizedBox(width: 6.w),
-                            itemBuilder:
-                                (_, i) => Center(
-                                  child: _LibraryTagChip(
-                                    label: visibleTags[i],
-                                  ),
-                                ),
-                          ),
-                        )
+                        _FannedTagChips(tags: visibleTags)
                       else
                         // No tags: keep a single chip-row of height so cards
                         // stay uniformly sized across the list.
@@ -283,6 +268,96 @@ class LibraryGameCard extends ConsumerWidget {
   String _formatDate(DateTime? date) {
     if (date == null) return '';
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+}
+
+/// Single-row tag presentation for library cards.
+///
+/// The dominant tag (already sorted leftmost by [LibraryGameCard.tagCounts])
+/// renders as a full, readable pill. Any further tags collapse into a fanned
+/// stack of fixed-width colored sliver-tabs tucked to its right — so a card
+/// with three tags and a card with ten stay the exact same height and never
+/// wrap to a second row, keeping every card in a database list uniform.
+class _FannedTagChips extends StatelessWidget {
+  const _FannedTagChips({required this.tags});
+
+  final List<String> tags;
+
+  @override
+  Widget build(BuildContext context) {
+    final front = tags.first;
+    final rest = tags.skip(1).toList();
+
+    return SizedBox(
+      height: 22.h,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Dominant tag: readable, ellipsized at the chip's own maxWidth.
+          Flexible(child: _LibraryTagChip(label: front)),
+          if (rest.isNotEmpty) ...[
+            SizedBox(width: 5.w),
+            _TagSliverFan(labels: rest),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A right-fanning stack of equal-width rounded tabs, one per remaining tag,
+/// each tucked behind the tab to its left. Equal width + equal step makes every
+/// peeking sliver identical, so the fan reads as designed rather than ragged.
+class _TagSliverFan extends StatelessWidget {
+  const _TagSliverFan({required this.labels});
+
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabWidth = 22.w;
+    final step = 13.w; // visible sliver of each tucked tab
+    final height = 20.h; // ~ pill height; centered inside the 22.h tag row
+    final width = tabWidth + step * (labels.length - 1);
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Paint right-to-left so the left-most tab (nearest the pill) lands on
+          // top and covers the next tab's left edge by exactly (tabWidth - step).
+          for (int i = labels.length - 1; i >= 0; i--)
+            Positioned(
+              left: i * step,
+              top: 0,
+              bottom: 0,
+              child: _TagSliverTab(label: labels[i], width: tabWidth),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TagSliverTab extends StatelessWidget {
+  const _TagSliverTab({required this.label, required this.width});
+
+  final String label;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = likeTagByLabel(label)?.color ?? context.colors.textSecondary;
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999.br),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+    );
   }
 }
 

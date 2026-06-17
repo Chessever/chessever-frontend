@@ -32,6 +32,7 @@ import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart' show SpringHintWord;
 import 'package:flutter/material.dart';
@@ -61,8 +62,17 @@ class PlayerGamesTab extends ConsumerStatefulWidget {
 }
 
 class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
-    with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
+    with
+        WidgetsBindingObserver,
+        RouteAware,
+        AutomaticKeepAliveClientMixin,
+        ScrollToTopListenerMixin {
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;

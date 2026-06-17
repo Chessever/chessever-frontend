@@ -9,6 +9,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
@@ -27,8 +28,13 @@ class FavoritesListTab extends ConsumerStatefulWidget {
 }
 
 class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 

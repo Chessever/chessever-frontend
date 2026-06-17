@@ -30,6 +30,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:intl/intl.dart';
 
@@ -44,8 +45,17 @@ class CountrymenGamesTab extends ConsumerStatefulWidget {
 }
 
 class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
-    with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
+    with
+        WidgetsBindingObserver,
+        RouteAware,
+        AutomaticKeepAliveClientMixin,
+        ScrollToTopListenerMixin {
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;

@@ -16,6 +16,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
@@ -212,8 +213,13 @@ class CountrymenPlayersTab extends ConsumerStatefulWidget {
 }
 
 class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;

@@ -9,6 +9,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ class CountrymenTabScreen extends ConsumerStatefulWidget {
 
 class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   late PageController _pageController;
+  final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
   @override
   void initState() {
@@ -37,6 +39,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    _scrollToTopBus.dispose();
     super.dispose();
   }
 
@@ -48,6 +51,13 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
 
   void _handleTabSelection(int index) {
     try {
+      final currentIndex = CountrymenScreenMode.values.indexOf(
+        ref.read(selectedCountrymenModeProvider),
+      );
+      if (index == currentIndex) {
+        _scrollToTopBus.request();
+        return;
+      }
       ref
           .read(selectedCountrymenModeProvider.notifier)
           .update((_) => CountrymenScreenMode.values[index]);
@@ -136,27 +146,32 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
               SizedBox(height: 8.h),
               _buildSegmentedSwitcher(selectedMode),
               Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: 3,
-                  onPageChanged: _handlePageChanged,
-                  itemBuilder: (context, index) {
-                    switch (index) {
-                      case 0:
-                        return const CountrymenEventsTab();
-                      case 1:
-                        return const CountrymenGamesTab();
-                      case 2:
-                        return const CountrymenPlayersTab();
-                      default:
-                        return Center(
-                          child: Text(
-                            'Invalid page index: $index',
-                            style:  TextStyle(color: context.colors.textPrimary),
-                          ),
-                        );
-                    }
-                  },
+                child: ScrollToTopScope(
+                  bus: _scrollToTopBus,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: 3,
+                    onPageChanged: _handlePageChanged,
+                    itemBuilder: (context, index) {
+                      switch (index) {
+                        case 0:
+                          return const CountrymenEventsTab();
+                        case 1:
+                          return const CountrymenGamesTab();
+                        case 2:
+                          return const CountrymenPlayersTab();
+                        default:
+                          return Center(
+                            child: Text(
+                              'Invalid page index: $index',
+                              style: TextStyle(
+                                color: context.colors.textPrimary,
+                              ),
+                            ),
+                          );
+                      }
+                    },
+                  ),
                 ),
               ),
             ],
@@ -310,6 +325,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
         ),
         currentSelection: CountrymenScreenMode.values.indexOf(selectedMode),
         onSelectionChanged: _handleTabSelection,
+        notifyOnReselect: true,
       ),
     );
   }

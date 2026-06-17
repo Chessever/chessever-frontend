@@ -31,7 +31,8 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tutorial_overlay.dart';
-import 'package:chessever2/screens/chessboard/widgets/pip_intro_dialog.dart';
+// REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
+// import 'package:chessever2/screens/chessboard/widgets/pip_intro_dialog.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
@@ -764,10 +765,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
-  // Step 4/4 ("live game widgets" intro) — shown once per session at most, after
-  // the three board walkthroughs. Guards against a double-show across its two
-  // trigger points (chained off the like step, and the on-open fallback).
-  bool _liveWidgetsIntroShown = false;
+  // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
+  // bool _liveWidgetsIntroShown = false;
   late AnimationController _swipeController;
   late Animation<double> _swipeFadeAnimation;
   late Animation<double> _swipeScaleAnimation;
@@ -922,53 +921,54 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  /// One-time intro for the live-game widgets (PiP + Live Activity). Shown only
-  /// after all three board walkthroughs are done/opted-out, so the dialog never
-  /// stacks on top of a teaching overlay.
-  Future<void> _maybeShowLiveWidgetsIntro(BuildContext context) async {
-    if (!mounted ||
-        _liveWidgetsIntroShown ||
-        _showTutorialOverlay ||
-        _showLikeTutorial ||
-        !_canShowTeachingsForCurrentGame()) {
-      return;
-    }
-
-    final prefs = ref.read(sharedPreferencesRepository);
-    if (await prefs.getBool(kLiveWidgetsIntroSeenKey) ?? false) return;
-
-    final swipeSeen =
-        (await prefs.getBool(_kWalkthroughDontShowKey) ?? false) ||
-        (await prefs.getInt(_kWalkthroughShownDateKey)) != null;
-    final switchSeen =
-        (await prefs.getBool(kSwitchViewsWalkthroughDontShowKey) ?? false) ||
-        (await prefs.getInt(kSwitchViewsWalkthroughShownDateKey)) != null;
-    final likeSeen =
-        (await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false) ||
-        (await prefs.getInt(kLikeWalkthroughShownDateKey)) != null;
-    if (!(swipeSeen && switchSeen && likeSeen)) return;
-
-    if (!mounted ||
-        _liveWidgetsIntroShown ||
-        _showTutorialOverlay ||
-        _showLikeTutorial ||
-        !_canShowTeachingsForCurrentGame()) {
-      return;
-    }
-
-    _liveWidgetsIntroShown = true;
-    await prefs.setBool(kLiveWidgetsIntroSeenKey, true);
-    if (!mounted || !context.mounted) return;
-    await showLiveWidgetsIntroDialog(
-      context,
-      onOpenSettings: () {
-        if (!context.mounted) return;
-        Navigator.of(context).push(
-          SettingsPage.route(initiallyExpanded: SettingsSection.notification),
-        );
-      },
-    );
-  }
+  // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
+  // /// One-time intro for the live-game widgets (PiP + Live Activity). Shown only
+  // /// after all three board walkthroughs are done/opted-out, so the dialog never
+  // /// stacks on top of a teaching overlay.
+  // Future<void> _maybeShowLiveWidgetsIntro(BuildContext context) async {
+  //   if (!mounted ||
+  //       _liveWidgetsIntroShown ||
+  //       _showTutorialOverlay ||
+  //       _showLikeTutorial ||
+  //       !_canShowTeachingsForCurrentGame()) {
+  //     return;
+  //   }
+  //
+  //   final prefs = ref.read(sharedPreferencesRepository);
+  //   if (await prefs.getBool(kLiveWidgetsIntroSeenKey) ?? false) return;
+  //
+  //   final swipeSeen =
+  //       (await prefs.getBool(_kWalkthroughDontShowKey) ?? false) ||
+  //       (await prefs.getInt(_kWalkthroughShownDateKey)) != null;
+  //   final switchSeen =
+  //       (await prefs.getBool(kSwitchViewsWalkthroughDontShowKey) ?? false) ||
+  //       (await prefs.getInt(kSwitchViewsWalkthroughShownDateKey)) != null;
+  //   final likeSeen =
+  //       (await prefs.getBool(kLikeWalkthroughDontShowKey) ?? false) ||
+  //       (await prefs.getInt(kLikeWalkthroughShownDateKey)) != null;
+  //   if (!(swipeSeen && switchSeen && likeSeen)) return;
+  //
+  //   if (!mounted ||
+  //       _liveWidgetsIntroShown ||
+  //       _showTutorialOverlay ||
+  //       _showLikeTutorial ||
+  //       !_canShowTeachingsForCurrentGame()) {
+  //     return;
+  //   }
+  //
+  //   _liveWidgetsIntroShown = true;
+  //   await prefs.setBool(kLiveWidgetsIntroSeenKey, true);
+  //   if (!mounted || !context.mounted) return;
+  //   await showLiveWidgetsIntroDialog(
+  //     context,
+  //     onOpenSettings: () {
+  //       if (!context.mounted) return;
+  //       Navigator.of(context).push(
+  //         SettingsPage.route(initiallyExpanded: SettingsSection.notification),
+  //       );
+  //     },
+  //   );
+  // }
 
   void _onWalkthroughFinished() {
     setState(() {
@@ -1058,14 +1058,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void _onLikeTutorialFinished() {
     _removeLikeTutorialOverlay();
     _showLikeTutorial = false;
-    // Step 4/4: chain the live-game-widgets intro right after the like teaching
-    // (next frame, so it never paints atop the dismissing overlay). For users
-    // who already finished 1–3 in a past session, the on-open fallback in
-    // _checkAndShowWalkthrough's caller handles it instead. The seen-key + the
-    // in-memory guard keep it to a single show.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_maybeShowLiveWidgetsIntro(context));
-    });
+    // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (mounted) unawaited(_maybeShowLiveWidgetsIntro(context));
+    // });
   }
 
   bool _canShowTeachingsForCurrentGame() {
@@ -2344,9 +2340,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
               _hasCheckedWalkthrough = true;
               WidgetsBinding.instance.addPostFrameCallback((_) async {
                 await _checkAndShowWalkthrough(context);
-                if (mounted && context.mounted) {
-                  await _maybeShowLiveWidgetsIntro(context);
-                }
+                // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
+                // if (mounted && context.mounted) {
+                //   await _maybeShowLiveWidgetsIntro(context);
+                // }
               });
             }
             return Builder(
@@ -7084,6 +7081,9 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
     final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
     final showEngineGauge =
         engineGaugeEnabled &&
+        // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
+        // engine off in the game view hides the bar, not just the PV cards.
+        state.showEngineAnalysis &&
         !((spoilerState.isLoading || spoilerState.enabled) &&
             game.gameStatus.isFinished);
 
@@ -7167,6 +7167,9 @@ class _BoardWithSidebar extends ConsumerWidget {
     final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
     final showEngineGauge =
         engineGaugeEnabled &&
+        // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
+        // engine off in the game view hides the bar, not just the PV cards.
+        state.showEngineAnalysis &&
         !((spoilerState.isLoading || spoilerState.enabled) &&
             game.gameStatus.isFinished);
 

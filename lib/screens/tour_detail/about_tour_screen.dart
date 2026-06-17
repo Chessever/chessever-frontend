@@ -12,6 +12,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -26,7 +27,21 @@ class AboutTourScreen extends ConsumerStatefulWidget {
   ConsumerState<AboutTourScreen> createState() => _AboutTourScreenState();
 }
 
-class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
+class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
+    with ScrollToTopListenerMixin {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   static const _skeletonEffect = ShimmerEffect(
     baseColor: Color(0xFF2A2A2A),
     highlightColor: Color(0xFF3A3A3A),
@@ -166,6 +181,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
           child: Container(
             margin: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: SingleChildScrollView(
+              controller: _scrollController,
               padding: EdgeInsets.zero,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,

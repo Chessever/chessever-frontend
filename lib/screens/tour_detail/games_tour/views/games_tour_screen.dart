@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -12,6 +13,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -27,7 +29,21 @@ class GamesTourScreen extends ConsumerStatefulWidget {
       _GamesTourScreenState();
 }
 
-class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
+class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
+    with ScrollToTopListenerMixin {
+  @override
+  void onScrollToTopRequested() {
+    final scopeId = ref.read(gamesTourScrollScopeProvider);
+    final controller = ref.read(gamesTourScrollProvider(scopeId));
+    if (controller.isAttached) {
+      controller.scrollTo(
+        index: 0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);

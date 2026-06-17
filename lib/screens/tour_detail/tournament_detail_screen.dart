@@ -25,6 +25,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +43,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     with RouteAware, WidgetsBindingObserver {
   late PageController pageController;
   late final String _scrollScopeId;
+  final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
   @override
   void didPush() {
@@ -198,6 +200,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     clearGamesTourScrollScopeActive(_scrollScopeId);
     ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');
     pageController.dispose();
+    _scrollToTopBus.dispose();
     super.dispose();
   }
 
@@ -239,28 +242,31 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                             ),
                       ),
                       Expanded(
-                        child: PageView.builder(
-                          controller: pageController,
-                          itemCount: 3,
-                          onPageChanged: _handlePageChanged,
-                          itemBuilder: (context, index) {
-                            if (index == 0) {
-                              return AboutTourScreen();
-                            } else if (index == 1) {
-                              return GamesTourScreen();
-                            } else if (index == 2) {
-                              return PlayerTourScreen();
-                            } else {
-                              return Center(
-                                child: Text(
-                                  'Invalid page index: $index',
-                                  style: TextStyle(
-                                    color: context.colors.textPrimary,
+                        child: ScrollToTopScope(
+                          bus: _scrollToTopBus,
+                          child: PageView.builder(
+                            controller: pageController,
+                            itemCount: 3,
+                            onPageChanged: _handlePageChanged,
+                            itemBuilder: (context, index) {
+                              if (index == 0) {
+                                return AboutTourScreen();
+                              } else if (index == 1) {
+                                return GamesTourScreen();
+                              } else if (index == 2) {
+                                return PlayerTourScreen();
+                              } else {
+                                return Center(
+                                  child: Text(
+                                    'Invalid page index: $index',
+                                    style: TextStyle(
+                                      color: context.colors.textPrimary,
+                                    ),
                                   ),
-                                ),
-                              );
-                            }
-                          },
+                                );
+                              }
+                            },
+                          ),
                         ),
                       ),
                     ],
@@ -329,12 +335,20 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           _mappedName[selectedTourMode]!,
         ),
         onSelectionChanged: onChanged,
+        notifyOnReselect: true,
       ),
     );
   }
 
   void _handleTabSelection(int index) {
     try {
+      final currentIndex = TournamentDetailScreenMode.values.indexOf(
+        ref.read(selectedTourModeProvider),
+      );
+      if (index == currentIndex) {
+        _scrollToTopBus.request();
+        return;
+      }
       // Drop the keyboard when leaving the search-enabled tabs so the field
       // and the keyboard collapse together, instead of the keyboard hovering
       // over About after a swipe.

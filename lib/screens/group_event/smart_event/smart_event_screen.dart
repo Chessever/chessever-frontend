@@ -41,6 +41,7 @@ import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -97,6 +98,8 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   /// not against the (stale) opening request.
   late SmartEventRequest _baselineRequest = widget.request;
 
+  final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+
   static String _initialTier(SmartEventRequest request) {
     final first = request.tierLabel.split(' ').first;
     return _validTiers.contains(first) ? first : 'All';
@@ -108,11 +111,15 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     _page.dispose();
+    _scrollToTopBus.dispose();
     super.dispose();
   }
 
   void _select(int i) {
-    if (_index == i) return;
+    if (_index == i) {
+      _scrollToTopBus.request();
+      return;
+    }
     // Drop the keyboard when switching tabs so the field and the keyboard
     // collapse together instead of the keyboard hovering over About.
     _searchFocusNode.unfocus();
@@ -367,21 +374,25 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                       initialSelection: _index,
                       currentSelection: _index,
                       onSelectionChanged: _select,
+                      notifyOnReselect: true,
                     ),
                   ),
                   SizedBox(height: 8.h),
                   Expanded(
-                    child: PageView(
-                      controller: _page,
-                      onPageChanged: (i) {
-                        if (_index != i) _searchFocusNode.unfocus();
-                        setState(() => _index = i);
-                      },
-                      children: const [
-                        _AboutTab(),
-                        _GamesTab(),
-                        _StandingsTab(),
-                      ],
+                    child: ScrollToTopScope(
+                      bus: _scrollToTopBus,
+                      child: PageView(
+                        controller: _page,
+                        onPageChanged: (i) {
+                          if (_index != i) _searchFocusNode.unfocus();
+                          setState(() => _index = i);
+                        },
+                        children: const [
+                          _AboutTab(),
+                          _GamesTab(),
+                          _StandingsTab(),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1236,12 +1247,23 @@ class _GamesTab extends ConsumerStatefulWidget {
 }
 
 class _GamesTabState extends ConsumerState<_GamesTab>
-    with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
+    with
+        WidgetsBindingObserver,
+        RouteAware,
+        AutomaticKeepAliveClientMixin,
+        ScrollToTopListenerMixin {
   // Keep the tab alive when the PageView swaps it offscreen: disposal would
   // drop the autoDispose aggregate provider (full refetch on return) plus
   // the search text, scroll offset and collapsed sections.
   @override
   bool get wantKeepAlive => true;
+
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
 
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
@@ -1299,6 +1321,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
     WidgetsBinding.instance.removeObserver(this);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1460,6 +1483,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
           },
           child: ListView.builder(
             key: PageStorageKey<String>('smart_event_games_${request.scopeId}'),
+            controller: _scrollController,
             padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
@@ -1931,11 +1955,24 @@ class _AboutTab extends ConsumerStatefulWidget {
 }
 
 class _AboutTabState extends ConsumerState<_AboutTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   // Keep-alive so swapping tabs doesn't dispose this page's listener on the
   // autoDispose aggregate provider (which would refetch on every return).
   @override
   bool get wantKeepAlive => true;
+
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   /// Last successfully loaded aggregate. Filter / tier / search changes
   /// re-key the query provider; rendering this while the new fetch is in
@@ -1992,6 +2029,7 @@ class _AboutTabState extends ConsumerState<_AboutTab>
     final dateSpan = TimeUtils.formatDateRange(event.dateStart, event.dateEnd);
 
     return ListView(
+      controller: _scrollController,
       padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
       children: [
         Container(
@@ -2136,12 +2174,25 @@ class _StandingsTab extends ConsumerStatefulWidget {
 }
 
 class _StandingsTabState extends ConsumerState<_StandingsTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   // Same keep-alive rationale as the Games tab: offscreen disposal would
   // kill the autoDispose aggregate + per-event standings providers and the
   // collapsed-section state.
   @override
   bool get wantKeepAlive => true;
+
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   final Set<String> _collapsedEventIds = {};
 
@@ -2190,6 +2241,7 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
             child: ListView.builder(
+              controller: _scrollController,
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
                 8.sp,

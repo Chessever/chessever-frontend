@@ -19,6 +19,7 @@ import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:heroine/heroine.dart';
 import 'package:flutter/material.dart';
@@ -67,9 +68,22 @@ class PlayerAboutTab extends ConsumerStatefulWidget {
 }
 
 class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   @override
   bool get wantKeepAlive => true;
+
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   GameFilter? _previousFilter;
   double _filterFlashValue = 0.0;
@@ -208,6 +222,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
       child: SingleChildScrollView(
+        controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),

@@ -13,6 +13,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -38,8 +39,13 @@ class PlayerEventsTab extends ConsumerStatefulWidget {
 }
 
 class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void onScrollToTopRequested() {
+    animateScrollControllerToTop(_scrollController);
+  }
   static const int _twicPageSize = 24;
   List<PlayerEventData> _twicEvents = const [];
   bool _twicIsLoading = false;
