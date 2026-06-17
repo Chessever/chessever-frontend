@@ -548,6 +548,13 @@ class _TagDropdownState extends State<_TagDropdown> {
       }
     });
     widget.onChanged(_selected.toList(growable: false));
+
+    // Hit the cap on this add — auto-commit + dismiss instead of making the
+    // user reach for Save. Removes can't trigger this; only an add that
+    // lands at exactly kMaxLikeTagsPerGame.
+    if (!isSelected && _selected.length >= kMaxLikeTagsPerGame) {
+      widget.onCommit(_selected.toList(growable: false));
+    }
   }
 
   void _commit() {

@@ -63,26 +63,29 @@ class MyLikesFilterState {
   const MyLikesFilterState({
     required this.filter,
     required this.searchQuery,
-    this.selectedTag,
+    this.selectedTags = const <String>{},
   });
 
   final GameFilter filter;
   final String searchQuery;
-  final String? selectedTag;
+
+  /// Tag chips selected for filtering. Empty set = no tag filter (the
+  /// implicit "all" — there is no dedicated "All" chip anymore).
+  final Set<String> selectedTags;
 
   MyLikesFilterState copyWith({GameFilter? filter, String? searchQuery}) {
     return MyLikesFilterState(
       filter: filter ?? this.filter,
       searchQuery: searchQuery ?? this.searchQuery,
-      selectedTag: selectedTag,
+      selectedTags: selectedTags,
     );
   }
 
-  MyLikesFilterState withSelectedTag(String? tag) {
+  MyLikesFilterState withSelectedTags(Set<String> tags) {
     return MyLikesFilterState(
       filter: filter,
       searchQuery: searchQuery,
-      selectedTag: tag,
+      selectedTags: Set<String>.unmodifiable(tags),
     );
   }
 }
@@ -98,7 +101,18 @@ class MyLikesFilterNotifier extends StateNotifier<MyLikesFilterState> {
       state = state.copyWith(filter: GameFilter.defaultFilter());
   void searchGames(String query) => state = state.copyWith(searchQuery: query);
   void clearSearch() => state = state.copyWith(searchQuery: '');
-  void selectTag(String? tag) => state = state.withSelectedTag(tag);
+
+  /// Toggle a tag in the selection. Empty set after the toggle = implicit
+  /// "all games" filter.
+  void toggleTag(String tag) {
+    final trimmed = tag.trim();
+    if (trimmed.isEmpty) return;
+    final next = <String>{...state.selectedTags};
+    if (!next.add(trimmed)) next.remove(trimmed);
+    state = state.withSelectedTags(next);
+  }
+
+  void clearTags() => state = state.withSelectedTags(const <String>{});
 }
 
 final myLikesFilterProvider = StateNotifierProvider.autoDispose<
@@ -176,7 +190,7 @@ final myLikesViewProvider = FutureProvider.autoDispose<MyLikesData>((
       folderId: folder.id,
       filter: effectiveFilter,
       search: filterState.searchQuery,
-      tag: filterState.selectedTag,
+      tags: filterState.selectedTags.toList(),
     ),
     repo.getOwnedAnalysisCountInFolder(folder.id),
   ]);

@@ -46,28 +46,43 @@ class BookPaginationKey {
   final bool isSubscribed;
   final GameFilter filter;
   final String search;
-  final String? tag;
 
-  const BookPaginationKey({
+  /// Selected tag chips. Empty list = no tag filter ("all"). Tags are sorted
+  /// in the constructor so two equal selections compared in any order hit
+  /// the same cached provider instance.
+  final List<String> tags;
+
+  BookPaginationKey({
     required this.folderId,
     this.isSubscribed = false,
     required this.filter,
     this.search = '',
-    this.tag,
-  });
+    Iterable<String> tags = const <String>[],
+  }) : tags = List<String>.unmodifiable(tags.toList()..sort());
 
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BookPaginationKey &&
-          folderId == other.folderId &&
-          isSubscribed == other.isSubscribed &&
-          filter == other.filter &&
-          search == other.search &&
-          tag == other.tag;
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! BookPaginationKey) return false;
+    if (folderId != other.folderId) return false;
+    if (isSubscribed != other.isSubscribed) return false;
+    if (filter != other.filter) return false;
+    if (search != other.search) return false;
+    if (tags.length != other.tags.length) return false;
+    for (var i = 0; i < tags.length; i++) {
+      if (tags[i] != other.tags[i]) return false;
+    }
+    return true;
+  }
 
   @override
-  int get hashCode => Object.hash(folderId, isSubscribed, filter, search, tag);
+  int get hashCode => Object.hash(
+        folderId,
+        isSubscribed,
+        filter,
+        search,
+        Object.hashAll(tags),
+      );
 }
 
 class FolderTagCountsKey {
@@ -133,7 +148,7 @@ class BookGamesNotifier
           folderId: key.folderId,
           filter: key.filter,
           search: key.search,
-          tag: key.tag,
+          tags: key.tags,
           limit: kBookPageSize,
           offset: offset,
         ),
@@ -142,7 +157,7 @@ class BookGamesNotifier
             folderId: key.folderId,
             filter: key.filter,
             search: key.search,
-            tag: key.tag,
+            tags: key.tags,
           ),
       ]);
       page = results[0] as List<SavedAnalysis>;
@@ -153,7 +168,7 @@ class BookGamesNotifier
           folderId: key.folderId,
           filter: key.filter,
           search: key.search,
-          tag: key.tag,
+          tags: key.tags,
           limit: kBookPageSize,
           offset: offset,
         ),
@@ -162,7 +177,7 @@ class BookGamesNotifier
             folderId: key.folderId,
             filter: key.filter,
             search: key.search,
-            tag: key.tag,
+            tags: key.tags,
           ),
       ]);
       page = results[0] as List<SavedAnalysis>;

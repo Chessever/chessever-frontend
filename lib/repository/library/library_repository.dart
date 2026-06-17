@@ -764,14 +764,17 @@ class LibraryRepository extends BaseRepository {
     PostgrestFilterBuilder<T> query,
     GameFilter filter,
     String search, {
-    String? tag,
+    List<String> tags = const <String>[],
   }) {
-    final normalizedTag = tag?.trim();
-    if (normalizedTag != null && normalizedTag.isNotEmpty) {
-      // Supabase Dart maps this to PostgREST `tags=cs.{...}` / SQL `tags @>`.
-      // Keep tag chips server-side and array-aware so multi-tag games match
-      // every selected single-tag filter.
-      query = query.contains('tags', [normalizedTag]);
+    final normalizedTags = <String>{
+      for (final t in tags)
+        if (t.trim().isNotEmpty) t.trim(),
+    }.toList();
+    if (normalizedTags.isNotEmpty) {
+      // Supabase Dart maps `.overlaps` to PostgREST `tags=ov.{...}` /
+      // SQL `tags && ARRAY[...]`. Multi-tag chip selection is OR semantics:
+      // a game matches if it carries ANY of the selected tags.
+      query = query.overlaps('tags', normalizedTags);
     }
 
     final term = _sanitizeOrTerm(search);
@@ -849,7 +852,7 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
   }) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -859,7 +862,7 @@ class LibraryRepository extends BaseRepository {
         .select()
         .eq('user_id', userId)
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search, tag: tag);
+    query = _applyBookFilters(query, filter, search, tags: tags);
 
     final response = await _orderBook(query, filter);
 
@@ -917,7 +920,7 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
     int limit = 30,
     int offset = 0,
   }) => handleApiCall(() async {
@@ -929,7 +932,7 @@ class LibraryRepository extends BaseRepository {
         .select()
         .eq('user_id', userId)
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search, tag: tag);
+    query = _applyBookFilters(query, filter, search, tags: tags);
 
     final response = await _orderBook(
       query,
@@ -946,7 +949,7 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
     int limit = 30,
     int offset = 0,
   }) => handleApiCall(() async {
@@ -954,7 +957,7 @@ class LibraryRepository extends BaseRepository {
         .from('user_saved_analyses')
         .select()
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search, tag: tag);
+    query = _applyBookFilters(query, filter, search, tags: tags);
 
     final response = await _orderBook(
       query,
@@ -971,7 +974,7 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
   }) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -981,7 +984,7 @@ class LibraryRepository extends BaseRepository {
         .count(CountOption.exact)
         .eq('user_id', userId)
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search, tag: tag);
+    query = _applyBookFilters(query, filter, search, tags: tags);
     return await query;
   });
 
@@ -990,13 +993,13 @@ class LibraryRepository extends BaseRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
   }) => handleApiCall(() async {
     var query = supabase
         .from('user_saved_analyses')
         .count(CountOption.exact)
         .eq('folder_id', folderId);
-    query = _applyBookFilters(query, filter, search, tag: tag);
+    query = _applyBookFilters(query, filter, search, tags: tags);
     return await query;
   });
 

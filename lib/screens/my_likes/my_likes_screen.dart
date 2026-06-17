@@ -131,14 +131,14 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     });
   }
 
-  void _selectTagFilter(String? tag) {
-    final current = ref.read(myLikesFilterProvider).selectedTag;
-    if (current == tag) return;
+  void _toggleTagFilter(String tag) {
+    final trimmed = tag.trim();
+    if (trimmed.isEmpty) return;
     HapticFeedback.selectionClick();
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
-    ref.read(myLikesFilterProvider.notifier).selectTag(tag);
+    ref.read(myLikesFilterProvider.notifier).toggleTag(trimmed);
   }
 
   Future<void> _openAnalysis(SavedAnalysis analysis) async {
@@ -448,7 +448,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   Widget _buildBody(MyLikesData data) {
     if (data.isEmpty) return _buildEmptyState();
 
-    final selectedTag = ref.watch(myLikesFilterProvider).selectedTag;
+    final selectedTags = ref.watch(myLikesFilterProvider).selectedTags;
 
     Widget content = CustomScrollView(
       controller: _scrollController,
@@ -469,7 +469,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
                 // Filter row is edge-to-edge so the horizontal scroll runs
                 // under the screen edges instead of being clipped by parent
                 // padding.
-                _buildTagQuickFilters(data.totalLiked),
+                _buildTagQuickFilters(),
               ],
             ),
           ),
@@ -479,7 +479,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
             hasScrollBody: false,
             child: _buildNoMatchesState(
               subtitle:
-                  selectedTag == null
+                  selectedTags.isEmpty
                       ? 'Try adjusting your search or filters'
                       : 'Try another tag or clear the tag filter',
             ),
@@ -515,8 +515,8 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     );
   }
 
-  Widget _buildTagQuickFilters(int totalLiked) {
-    final selectedTag = ref.watch(myLikesFilterProvider).selectedTag;
+  Widget _buildTagQuickFilters() {
+    final selectedTags = ref.watch(myLikesFilterProvider).selectedTags;
     // Retain the last counts through a reload so the chip row doesn't collapse
     // and snap back when a swipe-remove re-derives the tag counts.
     final liveCounts = ref.watch(myLikesTagCountsProvider).valueOrNull;
@@ -524,30 +524,25 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       _lastTagCounts = liveCounts;
     }
     final counts = liveCounts ?? _lastTagCounts;
-    if (counts.isEmpty && selectedTag == null) {
+    if (counts.isEmpty && selectedTags.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final chips = <Widget>[
-      _LikeTagFilterChip(
-        label: 'All',
-        count: totalLiked,
-        selected: selectedTag == null,
-        color: context.colors.textPrimary,
-        onTap: () => _selectTagFilter(null),
-      ),
-    ];
+    // No "All" chip — empty selection IS "all" (PM removed it). Total-liked
+    // count remains visible via the date headers / sticky title.
+    final chips = <Widget>[];
 
     for (final tag in kLikeTags) {
       final count = counts[tag.label] ?? 0;
-      if (count == 0 && selectedTag != tag.label) continue;
+      final isSelected = selectedTags.contains(tag.label);
+      if (count == 0 && !isSelected) continue;
       chips.add(
         _LikeTagFilterChip(
           label: tag.label,
           count: count,
-          selected: selectedTag == tag.label,
+          selected: isSelected,
           color: tag.color,
-          onTap: () => _selectTagFilter(tag.label),
+          onTap: () => _toggleTagFilter(tag.label),
         ),
       );
     }
@@ -790,16 +785,19 @@ class _LikeTagFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final t = selected ? 1.0 : 0.0;
+    // No dot anymore — chip carries its tag identity via a low-key tinted
+    // fill + colored border. Unselected sits quiet; selected pops with a
+    // brighter fill and a stronger border.
     final background =
         Color.lerp(
-          colors.textPrimary.withValues(alpha: 0.05),
-          color.withValues(alpha: 0.18),
+          color.withValues(alpha: 0.08),
+          color.withValues(alpha: 0.22),
           t,
         )!;
     final borderColor =
         Color.lerp(
-          colors.textPrimary.withValues(alpha: 0.1),
-          color.withValues(alpha: 0.75),
+          color.withValues(alpha: 0.32),
+          color.withValues(alpha: 0.85),
           t,
         )!;
 
@@ -825,18 +823,6 @@ class _LikeTagFilterChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 8.w,
-                  height: 8.w,
-                  decoration: BoxDecoration(
-                    color:
-                        selected
-                            ? color
-                            : color.withValues(alpha: label == 'All' ? 0.5 : 1),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                SizedBox(width: 7.w),
                 Text(
                   label,
                   maxLines: 1,

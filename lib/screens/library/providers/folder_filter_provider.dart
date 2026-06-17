@@ -8,27 +8,29 @@ class FolderFilterState {
   const FolderFilterState({
     required this.filter,
     required this.searchQuery,
-    this.selectedTag,
+    this.selectedTags = const <String>{},
   });
 
   final GameFilter filter;
   final String searchQuery;
-  final String? selectedTag;
+
+  /// Tag chips selected for filtering. Empty set = no tag filter (the
+  /// implicit "all" — there is no dedicated "All" chip anymore).
+  final Set<String> selectedTags;
 
   FolderFilterState copyWith({GameFilter? filter, String? searchQuery}) {
     return FolderFilterState(
       filter: filter ?? this.filter,
       searchQuery: searchQuery ?? this.searchQuery,
-      selectedTag: selectedTag,
+      selectedTags: selectedTags,
     );
   }
 
-  FolderFilterState withSelectedTag(String? tag) {
-    final trimmed = tag?.trim();
+  FolderFilterState withSelectedTags(Set<String> tags) {
     return FolderFilterState(
       filter: filter,
       searchQuery: searchQuery,
-      selectedTag: trimmed == null || trimmed.isEmpty ? null : trimmed,
+      selectedTags: Set<String>.unmodifiable(tags),
     );
   }
 }
@@ -44,7 +46,18 @@ class FolderFilterNotifier extends StateNotifier<FolderFilterState> {
       state = state.copyWith(filter: GameFilter.defaultFilter());
   void searchGames(String query) => state = state.copyWith(searchQuery: query);
   void clearSearch() => state = state.copyWith(searchQuery: '');
-  void selectTag(String? tag) => state = state.withSelectedTag(tag);
+
+  /// Toggle a tag in the selection. Empty set after the toggle = implicit
+  /// "all games" filter.
+  void toggleTag(String tag) {
+    final trimmed = tag.trim();
+    if (trimmed.isEmpty) return;
+    final next = <String>{...state.selectedTags};
+    if (!next.add(trimmed)) next.remove(trimmed);
+    state = state.withSelectedTags(next);
+  }
+
+  void clearTags() => state = state.withSelectedTags(const <String>{});
 }
 
 /// Keyed by `folder.id` so two open folder routes don't cross-pollute filter

@@ -2924,14 +2924,23 @@ class _FolderListItem extends ConsumerWidget {
   }
 }
 
-/// Provider to fetch folders for the current user
+/// Provider to fetch folders for the current user. Databases only, with the
+/// Liked Games database pinned to the top of the list — it's the default
+/// destination for liked games and PM wants it always reachable without
+/// scrolling.
 final _foldersProvider = FutureProvider.autoDispose<List<LibraryFolder>>((
   ref,
 ) async {
   final repository = ref.watch(libraryRepositoryProvider);
-  return repository.getFolders().then(
-    (folders) => folders.where((folder) => folder.isDatabase).toList(),
-  );
+  final folders = await repository.getFolders();
+  final databases =
+      folders.where((folder) => folder.isDatabase).toList(growable: false);
+  // Stable sort: liked first, otherwise preserve repo order.
+  final sorted = [...databases]..sort((a, b) {
+    if (a.isLikedGames == b.isLikedGames) return 0;
+    return a.isLikedGames ? -1 : 1;
+  });
+  return sorted;
 });
 
 /// A selectable tag chip. Motor springs a subtle pop on selection and the fill

@@ -88,7 +88,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       isSubscribed: _isSubscribed,
       filter: effectiveFilter,
       search: filterState.searchQuery.trim(),
-      tag: filterState.selectedTag,
+      tags: filterState.selectedTags,
     );
   }
 
@@ -144,17 +144,16 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     ref.read(folderFilterProvider(_folderFilterKey).notifier).clearSearch();
   }
 
-  void _selectTagFilter(String? tag) {
-    final current =
-        ref.read(folderFilterProvider(_folderFilterKey)).selectedTag;
-    final trimmed = tag?.trim();
-    final next = trimmed == null || trimmed.isEmpty ? null : trimmed;
-    if (current == next) return;
+  void _toggleTagFilter(String tag) {
+    final trimmed = tag.trim();
+    if (trimmed.isEmpty) return;
     HapticFeedbackService.light();
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
-    ref.read(folderFilterProvider(_folderFilterKey).notifier).selectTag(next);
+    ref
+        .read(folderFilterProvider(_folderFilterKey).notifier)
+        .toggleTag(trimmed);
   }
 
   Future<void> _refreshCurrentBook({bool includeTagCounts = true}) async {
@@ -805,39 +804,34 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildTagQuickFilters() {
-    final selectedTag =
-        ref.watch(folderFilterProvider(_folderFilterKey)).selectedTag;
+    final selectedTags =
+        ref.watch(folderFilterProvider(_folderFilterKey)).selectedTags;
     final liveCounts =
         ref.watch(folderTagCountsProvider(_tagCountsKey)).valueOrNull;
     if (liveCounts != null) {
       _lastTagCounts = liveCounts;
     }
     final counts = liveCounts ?? _lastTagCounts;
-    if (counts.isEmpty && selectedTag == null) {
+    if (counts.isEmpty && selectedTags.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final chips = <Widget>[
-      _DatabaseTagFilterChip(
-        label: 'All',
-        selected: selectedTag == null,
-        color: context.colors.textPrimary,
-        onTap: () => _selectTagFilter(null),
-      ),
-    ];
+    // No "All" chip — empty selection IS "all". PM explicitly removed it.
+    final chips = <Widget>[];
 
     final canonicalLabels = <String>{};
     for (final tag in kLikeTags) {
       canonicalLabels.add(tag.label);
       final count = counts[tag.label] ?? 0;
-      if (count == 0 && selectedTag != tag.label) continue;
+      final isSelected = selectedTags.contains(tag.label);
+      if (count == 0 && !isSelected) continue;
       chips.add(
         _DatabaseTagFilterChip(
           label: tag.label,
           count: count,
-          selected: selectedTag == tag.label,
+          selected: isSelected,
           color: tag.color,
-          onTap: () => _selectTagFilter(tag.label),
+          onTap: () => _toggleTagFilter(tag.label),
         ),
       );
     }
@@ -851,14 +845,15 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             return byCount != 0 ? byCount : a.key.compareTo(b.key);
           });
     for (final entry in legacyTags) {
-      if (entry.value == 0 && selectedTag != entry.key) continue;
+      final isSelected = selectedTags.contains(entry.key);
+      if (entry.value == 0 && !isSelected) continue;
       chips.add(
         _DatabaseTagFilterChip(
           label: entry.key,
           count: entry.value,
-          selected: selectedTag == entry.key,
+          selected: isSelected,
           color: context.colors.textSecondary,
-          onTap: () => _selectTagFilter(entry.key),
+          onTap: () => _toggleTagFilter(entry.key),
         ),
       );
     }
@@ -913,7 +908,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               subscription.isSubscribed || subscription.isLoading;
           final hasActiveFilters =
               canFilterAndSort && filterState.filter.hasActiveFilters;
-          final hasActiveTag = filterState.selectedTag != null;
+          final hasActiveTag = filterState.selectedTags.isNotEmpty;
 
           // Child folders aren't part of the games query, so filter them by the
           // search term here for display.
@@ -1086,7 +1081,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   Widget _buildEmptySearchState() {
     final state = ref.read(folderFilterProvider(_folderFilterKey));
     final hasActiveFilters = state.filter.hasActiveFilters;
-    final hasActiveTag = state.selectedTag != null;
+    final hasActiveTag = state.selectedTags.isNotEmpty;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1140,14 +1135,17 @@ class _DatabaseTagFilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    // No dot anymore — chip carries its tag identity via a low-key tinted
+    // fill + colored border. Selected pops with a brighter fill and stronger
+    // border.
     final background =
         selected
-            ? color.withValues(alpha: 0.18)
-            : colors.textPrimary.withValues(alpha: 0.05);
+            ? color.withValues(alpha: 0.22)
+            : color.withValues(alpha: 0.08);
     final borderColor =
         selected
-            ? color.withValues(alpha: 0.75)
-            : colors.textPrimary.withValues(alpha: 0.1);
+            ? color.withValues(alpha: 0.85)
+            : color.withValues(alpha: 0.32);
 
     return AnimatedScale(
       duration: const Duration(milliseconds: 160),
@@ -1171,15 +1169,6 @@ class _DatabaseTagFilterChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 8.w,
-                  height: 8.w,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: label == 'All' ? 0.72 : 1),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                SizedBox(width: 7.w),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: 170.w),
                   child: Text(
