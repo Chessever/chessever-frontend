@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -26,12 +27,17 @@ class GameCard extends ConsumerWidget {
     required this.onPinToggle,
     required this.pinnedIds,
     required this.onTap,
+    this.onShare,
     this.allowStockfishFallback = true,
     super.key,
   });
 
   final MatchWithComparison matchComparison;
-  final void Function(GamesTourModel game) onPinToggle;
+  final FutureOr<void> Function(GamesTourModel game) onPinToggle;
+
+  /// Opens the share flow for this game. When null, the long-press Share
+  /// action is a no-op (the menu just closes).
+  final FutureOr<void> Function(GamesTourModel game)? onShare;
   final List<String> pinnedIds;
   final Function() onTap;
   final bool allowStockfishFallback;
@@ -135,14 +141,17 @@ class GameCard extends ConsumerWidget {
           isPinned: isPinned,
           onDismiss: () => Navigator.of(buildContext).pop(),
           onPinToggle: () {
-            onPinToggle(matchComparison.game);
-            Future.microtask(() {
+            // Await the (possibly async) pin write before dismissing so the
+            // menu doesn't close on stale pinned state (Smart Event pin).
+            Future<void>(() async {
+              await onPinToggle(matchComparison.game);
               if (!buildContext.mounted) return;
               Navigator.pop(buildContext);
             });
           },
           onShare: () {
             Navigator.pop(buildContext);
+            onShare?.call(matchComparison.game);
           },
         );
       },

@@ -120,6 +120,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
           ),
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle: handlePinToggle,
+          onShare: (game) => showGameShareOverlay(context, ref, game),
           allowStockfishFallback: effectiveAllowStockfishFallback,
           onTap: navigateToGame,
         );
