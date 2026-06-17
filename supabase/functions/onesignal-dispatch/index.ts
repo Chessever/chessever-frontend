@@ -1105,6 +1105,26 @@ function normaliseTimeControl(
   return null;
 }
 
+function inferTimeControlFromText(
+  raw: string | null | undefined,
+): "classical" | "rapid" | "blitz" | null {
+  if (!raw) return null;
+  const text = raw.trim().toLowerCase();
+  if (!text) return null;
+
+  // Chess.com Titled Tuesday rows have historically arrived without a reliable
+  // tours.time_class value. It is always a blitz event, and failing open here
+  // bypasses users who explicitly disabled favourite-player blitz alerts.
+  if (text.includes("titled tuesday") || text.includes("titled-tuesday")) {
+    return "blitz";
+  }
+
+  if (/\b(bullet|blitz|speed chess)\b/.test(text)) return "blitz";
+  if (/\brapid\b/.test(text)) return "rapid";
+  if (/\b(classical|standard)\b/.test(text)) return "classical";
+  return null;
+}
+
 // Fetch the time-control class for a tour. Returns null when unknown so that
 // the preference filter is skipped (fail-open — users always get the push).
 async function resolveGameTimeControl(
@@ -1114,10 +1134,12 @@ async function resolveGameTimeControl(
   try {
     const { data } = await supabase
       .from("tours")
-      .select("time_class")
+      .select("time_class,name,slug")
       .eq("id", tourId)
       .maybeSingle();
-    return normaliseTimeControl(data?.time_class as string | null);
+    return normaliseTimeControl(data?.time_class as string | null) ??
+      inferTimeControlFromText(data?.name as string | null) ??
+      inferTimeControlFromText(data?.slug as string | null);
   } catch (_) {
     // Column may not exist yet — fail-open.
     return null;
