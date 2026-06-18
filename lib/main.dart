@@ -632,31 +632,15 @@ void _initializePostStartupServices() {
           },
         );
 
-        ForegroundTaskScheduler.schedule(
-          key: 'root_auth_resume_refresh',
-          delay: kForegroundRefreshDelay,
-          task: () async {
-            try {
-              final auth = Supabase.instance.client.auth;
-              final session = auth.currentSession;
-              if (session != null) {
-                final expiresAt = session.expiresAt;
-                if (expiresAt != null) {
-                  final expiresInSeconds =
-                      DateTime.fromMillisecondsSinceEpoch(
-                        expiresAt * 1000,
-                      ).difference(DateTime.now()).inSeconds;
-                  // Refresh if token expires within 60 seconds or already expired
-                  if (expiresInSeconds < 60) {
-                    await auth.refreshSession();
-                  }
-                }
-              }
-            } catch (e) {
-              debugPrint('⚠️ Token refresh on resume failed: $e');
-            }
-          },
-        );
+        // NOTE: We intentionally do NOT refresh the auth token on resume here.
+        // The Supabase SDK already owns this: its lifecycle observer calls
+        // startAutoRefresh() on AppLifecycleState.resumed, which fires an
+        // immediate refresh tick (see supabase_flutter SupabaseAuth /
+        // gotrue startAutoRefresh). A second manual auth.refreshSession() races
+        // the SDK's refresh and can replay an already-rotated refresh token,
+        // tripping GoTrue reuse-detection → whole-session-family revocation →
+        // a forced "signedOut" the next time the SDK refreshes. Let the SDK be
+        // the single refresh authority.
 
         ForegroundTaskScheduler.schedule(
           key: 'root_revenuecat_resume_sync',
