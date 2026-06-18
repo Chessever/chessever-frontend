@@ -4,48 +4,76 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('shouldShowChessBoardTeachingsForGame', () {
-    test('allows current-day Supabase live games', () {
-      final now = DateTime.utc(2026, 6, 15, 12);
+    test('allows Supabase live games', () {
       final game = _game(
         source: GameSource.supabase,
         status: GameStatus.ongoing,
         lastMoveTime: DateTime.utc(2026, 6, 15, 11),
       );
 
-      expect(shouldShowChessBoardTeachingsForGame(game, now: now), isTrue);
+      expect(shouldShowChessBoardTeachingsForGame(game), isTrue);
     });
 
-    test('blocks finished Supabase games', () {
-      final now = DateTime.utc(2026, 6, 15, 12);
+    test('allows finished Supabase games', () {
       final game = _game(
         source: GameSource.supabase,
         status: GameStatus.whiteWins,
         lastMoveTime: DateTime.utc(2026, 6, 15, 11),
       );
 
-      expect(shouldShowChessBoardTeachingsForGame(game, now: now), isFalse);
+      expect(shouldShowChessBoardTeachingsForGame(game), isTrue);
+    });
+
+    test('allows gamebase games', () {
+      final game = _game(
+        source: GameSource.gamebase,
+        status: GameStatus.blackWins,
+      );
+
+      expect(shouldShowChessBoardTeachingsForGame(game), isTrue);
+    });
+
+    test('allows TWIC games', () {
+      final game = _game(source: GameSource.twic, status: GameStatus.draw);
+
+      expect(shouldShowChessBoardTeachingsForGame(game), isTrue);
+    });
+
+    test('allows saved analysis games', () {
+      final game = _game(
+        source: GameSource.savedAnalysis,
+        status: GameStatus.whiteWins,
+      );
+
+      expect(shouldShowChessBoardTeachingsForGame(game), isTrue);
     });
 
     test('blocks board editor analysis positions', () {
-      final now = DateTime.utc(2026, 6, 15, 12);
       final game = _game(
         source: GameSource.boardEditor,
         status: GameStatus.ongoing,
         lastMoveTime: DateTime.utc(2026, 6, 15, 11),
       );
 
-      expect(shouldShowChessBoardTeachingsForGame(game, now: now), isFalse);
+      expect(shouldShowChessBoardTeachingsForGame(game), isFalse);
     });
 
-    test('blocks offline gamebase-style ongoing games', () {
-      final now = DateTime.utc(2026, 6, 15, 12);
+    test('blocks opening explorer analysis positions', () {
       final game = _game(
-        source: GameSource.gamebase,
+        source: GameSource.openingExplorer,
         status: GameStatus.ongoing,
-        lastMoveTime: DateTime.utc(2026, 6, 15, 11),
       );
 
-      expect(shouldShowChessBoardTeachingsForGame(game, now: now), isFalse);
+      expect(shouldShowChessBoardTeachingsForGame(game), isFalse);
+    });
+
+    test('blocks local analysis positions', () {
+      final game = _game(
+        source: GameSource.localAnalysis,
+        status: GameStatus.unknown,
+      );
+
+      expect(shouldShowChessBoardTeachingsForGame(game), isFalse);
     });
   });
 }
