@@ -45,7 +45,9 @@ class _FavoritesCombinedGamesScreenState
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   String get _liveCardsPauseReason => 'favorites_combined_scroll_$hashCode';
-  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
+  // blank. Route coverage still removes the screen from active provider work.
+  bool get _isActiveOnScreen => _routeIsCurrent;
 
   /// Selected player IDs for filtering - empty means show all
   final Set<String> _selectedPlayerIds = {};

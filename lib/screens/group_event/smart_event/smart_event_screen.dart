@@ -673,6 +673,14 @@ class _AppBar extends ConsumerWidget {
               final notifier = ref.read(favoriteEventsProvider.notifier);
               if (isSaved) {
                 await notifier.removeFavorite(savedRequest.favoriteEventId);
+                // Removing the saved smart event must also wipe the applied
+                // filter that generates its card on home — otherwise the
+                // generated card lingers even though the favorite is gone.
+                ref.read(eventAppliedFilterProvider.notifier).state =
+                    defaultFilterPopupState;
+                ref
+                    .read(filterPopupProvider.notifier)
+                    .setState(defaultFilterPopupState);
                 if (context.mounted) Navigator.of(context).pop();
                 return;
               }
@@ -1294,7 +1302,9 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   /// Favorites games tabs.
   final Set<String> _collapsedDates = {};
 
-  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
+  // blank. Route coverage still removes the tab from active provider work.
+  bool get _isActiveOnScreen => _routeIsCurrent;
 
   @override
   void initState() {

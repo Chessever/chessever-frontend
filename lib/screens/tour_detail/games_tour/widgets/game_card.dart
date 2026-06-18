@@ -569,6 +569,7 @@ class _TimerWidget extends StatelessWidget {
         gamesTourModel.activePlayer != null &&
         ((isWhitePlayer && gamesTourModel.activePlayer == Side.white) ||
             (!isWhitePlayer && gamesTourModel.activePlayer == Side.black));
+    final shouldHighlightClock = turn && isClockRunning;
 
     final clockCentiseconds =
         isWhitePlayer
@@ -593,7 +594,9 @@ class _TimerWidget extends StatelessWidget {
           color:
               isGameFinished
                   ? context.colors.textPrimary
-                  : (turn ? kPrimaryColor : context.colors.textPrimary),
+                  : (shouldHighlightClock
+                      ? kPrimaryColor
+                      : context.colors.textPrimary),
         ),
       ),
     );

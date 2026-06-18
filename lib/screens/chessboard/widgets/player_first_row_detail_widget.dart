@@ -80,6 +80,34 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         (!spoilerState.isLoading && !spoilerState.enabled) ||
         !effectiveGameModel.gameStatus.isFinished ||
         spoilersRevealedForGame;
+    final currentPosition =
+        chessBoardState?.isAnalysisMode == true
+            ? chessBoardState?.analysisState.position
+            : chessBoardState?.position;
+    final effectiveMoveIndex =
+        chessBoardState?.isAnalysisMode == true
+            ? chessBoardState!.analysisState.currentMoveIndex
+            : chessBoardState?.currentMoveIndex ?? -1;
+    final latestMainlineIndex =
+        chessBoardState == null ? -1 : chessBoardState!.moveSans.length - 1;
+    final isShowingLivePosition =
+        chessBoardState == null
+            ? true
+            : isShowingLiveBoardPosition(
+              currentFen: currentPosition?.fen,
+              liveFen: effectiveGameModel.fen,
+              currentMoveIndex: effectiveMoveIndex,
+              latestMainlineIndex: latestMainlineIndex,
+              isInAnalysisVariation:
+                  chessBoardState!.analysisState.isInAnalysisVariation,
+            );
+    final liveActivePlayer = effectiveGameModel.activePlayer;
+    final isLiveCurrentPlayer =
+        liveActivePlayer != null &&
+        ((isWhitePlayer && liveActivePlayer == Side.white) ||
+            (!isWhitePlayer && liveActivePlayer == Side.black));
+    final visibleIsCurrentPlayer =
+        isShowingLivePosition ? isLiveCurrentPlayer : isCurrentPlayer;
     final playerCard = useMemoized(() {
       return isWhitePlayer
           ? effectiveGameModel.whitePlayer
@@ -185,11 +213,6 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // Calculate move time from state if available, otherwise use game model's time
     final moveTime = useMemoized(() {
       String? calculatedMoveTime;
-
-      final effectiveMoveIndex =
-          chessBoardState?.isAnalysisMode == true
-              ? chessBoardState!.analysisState.currentMoveIndex
-              : chessBoardState?.currentMoveIndex ?? -1;
 
       if (chessBoardState != null &&
           chessBoardState!.moveTimes.isNotEmpty &&
@@ -321,7 +344,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 8.5.f,
               fontWeight: FontWeight.w500,
               color:
-                  isCurrentPlayer
+                  visibleIsCurrentPlayer
                       ? context.colors.textPrimaryMuted
                       : context.colors.textPrimary,
               height: 1.15,
@@ -333,7 +356,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontSize: 8.f,
               fontWeight: FontWeight.w600,
               color:
-                  isCurrentPlayer
+                  visibleIsCurrentPlayer
                       ? context.colors.textPrimaryMuted
                       : context.colors.textPrimary,
               height: 1.15,
@@ -342,7 +365,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             )
             : AppTypography.textXsMedium.copyWith(
               color:
-                  isCurrentPlayer
+                  visibleIsCurrentPlayer
                       ? context.colors.textPrimaryMuted
                       : context.colors.textPrimary,
               fontSize: 14.f,
@@ -878,7 +901,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   vertical: playerView == PlayerView.gridView ? 1.sp : 0,
                 ),
                 decoration: BoxDecoration(
-                  color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
+                  color:
+                      visibleIsCurrentPlayer ? kDarkBlue : Colors.transparent,
                   borderRadius:
                       playerView == PlayerView.gridView
                           ? BorderRadius.circular(2)
@@ -888,7 +912,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   isWhitePlayer: isWhitePlayer,
                   gamesTourModel: effectiveGameModel,
                   chessBoardState: chessBoardState,
-                  isCurrentPlayer: isCurrentPlayer,
+                  isCurrentPlayer: visibleIsCurrentPlayer,
                   timeStyle: timeStyle,
                   moveTime: moveTime,
                 ),
@@ -1039,7 +1063,7 @@ class _PlayerClock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveGameModel = chessBoardState?.game ?? gamesTourModel;
+    final effectiveGameModel = gamesTourModel;
     final currentPosition =
         chessBoardState?.isAnalysisMode == true
             ? chessBoardState?.analysisState.position

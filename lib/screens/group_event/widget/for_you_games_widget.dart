@@ -83,12 +83,17 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
+  bool _isDisposing = false;
+  late final StateController<Set<String>> _liveGameCardsPauseReasons;
 
   String get _liveCardsPauseReason => 'for_you_scroll_$hashCode';
 
   @override
   void initState() {
     super.initState();
+    _liveGameCardsPauseReasons = ref.read(
+      liveGameCardsPauseReasonsProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
   }
@@ -106,6 +111,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   @override
   void dispose() {
+    _isDisposing = true;
+    widget.scrollController.removeListener(_onScroll);
     _animatedEventIds.clear();
     _animatedGameIds.clear();
     if (_routeSubscribed) {
@@ -114,7 +121,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
-    widget.scrollController.removeListener(_onScroll);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -156,7 +162,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     );
   }
 
-  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+  // Keep rendering while the app is backgrounded so the OS app-switcher
+  // snapshot still shows the current cards. Route coverage is what should
+  // remove this tab from the tree.
+  bool get _isActiveOnScreen => _routeIsCurrent;
 
   void _setRouteActive(bool isActive, {bool refreshNow = false}) {
     if (!mounted) return;
@@ -187,8 +196,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   void _refreshRealtimeGamesNow() {
-    if (!mounted) return;
-    if (!_isActiveOnScreen) return;
+    if (!mounted || _isDisposing) return;
+    if (!_routeIsCurrent || !_appIsResumed) return;
     final route = ModalRoute.of(context);
     if (route?.isCurrent != true) return;
     final selected = ref.read(selectedGroupCategoryProvider);
@@ -205,6 +214,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   void _onScroll() {
+    if (!mounted || _isDisposing) return;
     if (!widget.scrollController.hasClients) return;
     _markLiveCardsScrolling();
     final max = widget.scrollController.position.maxScrollExtent;
@@ -217,16 +227,22 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _markLiveCardsScrolling() {
     _setLiveCardsPausedForScroll(true);
     _scrollIdleTimer?.cancel();
-    _scrollIdleTimer = Timer(
-      _kForYouScrollIdleDelay,
-      () => _setLiveCardsPausedForScroll(false),
-    );
+    _scrollIdleTimer = Timer(_kForYouScrollIdleDelay, _markLiveCardsIdle);
+  }
+
+  void _markLiveCardsIdle() {
+    if (!mounted || _isDisposing) return;
+    _setLiveCardsPausedForScroll(false);
   }
 
   void _setLiveCardsPausedForScroll(bool paused) {
     if (_liveCardsPausedForScroll == paused) return;
     _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
+    setLiveGameCardsPausedWithNotifier(
+      _liveGameCardsPauseReasons,
+      reason: _liveCardsPauseReason,
+      paused: paused,
+    );
   }
 
   @override
@@ -247,6 +263,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final viewMode = ref.watch(gamesListViewModeProvider);
     final events = state.events;
     final favoriteEvents = ref.watch(favoriteEventsProvider).valueOrNull ?? [];
+    final dismissedSmartEventCardKeys = ref.watch(
+      dismissedSmartEventCardKeysProvider,
+    );
     final liveIds =
         ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ??
         const <String>[];
@@ -283,19 +302,32 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     // The smart "Convergence" event only materialises when an ELO/tier filter
     // is applied — it gathers the strongest live games across every broadcast
     // into one card, pinned top-most.
-    final smartData = SmartEventCardData.fromState(
-      filter: ref.watch(forYouAppliedFilterProvider),
-      events: events,
-      source: SmartEventSource.forYou,
+    final smartData = visibleSmartEventCardData(
+      SmartEventCardData.fromState(
+        filter: ref.watch(forYouAppliedFilterProvider),
+        events: events,
+        source: SmartEventSource.forYou,
+      ),
+      dismissedSmartEventCardKeys,
     );
     final visibleSavedSmartData =
         smartData == null
             ? savedSmartData
+                .where(
+                  (saved) =>
+                      !dismissedSmartEventCardKeys.contains(
+                        saved.request.cardDismissKey,
+                      ),
+                )
+                .toList(growable: false)
             : savedSmartData
                 .where(
                   (saved) =>
                       saved.request.favoriteEventId !=
-                      smartData.request.favoriteEventId,
+                          smartData.request.favoriteEventId &&
+                      !dismissedSmartEventCardKeys.contains(
+                        saved.request.cardDismissKey,
+                      ),
                 )
                 .toList(growable: false);
 

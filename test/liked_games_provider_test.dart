@@ -29,7 +29,7 @@ class _FakeLibraryRepository extends LibraryRepository {
   int deleteCalls = 0;
   int updateTagCalls = 0;
   int likedViewCalls = 0;
-  String? lastLikedViewTag;
+  List<String>? lastLikedViewTags;
   final List<List<String>> tagUpdates = <List<String>>[];
 
   @override
@@ -107,15 +107,17 @@ class _FakeLibraryRepository extends LibraryRepository {
     required String folderId,
     required GameFilter filter,
     String search = '',
-    String? tag,
+    List<String> tags = const <String>[],
   }) async {
     likedViewCalls++;
-    lastLikedViewTag = tag;
+    lastLikedViewTags = List<String>.from(tags);
 
     var rows = _saved.where((item) => item.folderId == folderId).toList();
-    final selectedTag = tag?.trim();
-    if (selectedTag != null && selectedTag.isNotEmpty) {
-      rows = rows.where((item) => item.tags.contains(selectedTag)).toList();
+    final selectedTags =
+        tags.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toSet();
+    if (selectedTags.isNotEmpty) {
+      rows =
+          rows.where((item) => item.tags.any(selectedTags.contains)).toList();
     }
     return rows;
   }
@@ -328,7 +330,7 @@ void main() {
     ]);
   });
 
-  test('tag writes are normalized and capped at three labels', () async {
+  test('tag writes are normalized without capping labels', () async {
     final game = _game();
     final repository = _FakeLibraryRepository(
       initial: [_savedAnalysis(game: game, id: 'saved-1')],
@@ -347,7 +349,7 @@ void main() {
       'Sacrifice',
     ]);
 
-    const expectedTags = ['Trap', 'Beautiful Mate', 'Blunder'];
+    const expectedTags = ['Trap', 'Beautiful Mate', 'Blunder', 'Sacrifice'];
     expect(container.read(likedGameTagsProvider(game.likeId)), expectedTags);
     expect(await update, isTrue);
 
@@ -400,12 +402,12 @@ void main() {
     final container = _containerWithSubscription(repository);
     addTearDown(container.dispose);
 
-    container.read(myLikesFilterProvider.notifier).selectTag('Beautiful Mate');
+    container.read(myLikesFilterProvider.notifier).toggleTag('Beautiful Mate');
 
     final data = await container.read(myLikesViewProvider.future);
 
     expect(repository.likedViewCalls, 1);
-    expect(repository.lastLikedViewTag, 'Beautiful Mate');
+    expect(repository.lastLikedViewTags, const ['Beautiful Mate']);
     expect(data.totalLiked, 2);
     expect(data.visibleCount, 1);
     expect(data.sections.single.value.single.analysis.tags, const [

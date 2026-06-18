@@ -133,9 +133,7 @@ LiveGameUpdate? _watchLiveUpdate(
   LiveGameWatchParams params,
   _LiveGameMergeMode mode,
 ) {
-  if (!params.streamEnabled ||
-      !ref.watch(shouldStreamProvider) ||
-      ref.watch(liveGameCardsPausedProvider)) {
+  if (!params.streamEnabled || !ref.watch(shouldStreamProvider)) {
     return null;
   }
 
@@ -187,6 +185,11 @@ class _ProjectedBaseGame {
         ],
         _LiveGameMergeMode.clock => <Object?>[
           game.gameId,
+          // Clock countdown depends on the side-to-move and move timestamp.
+          game.pgn,
+          game.fen,
+          game.lastMove,
+          game.lastMoveTime,
           game.whiteClockCentiseconds,
           game.blackClockCentiseconds,
           game.whiteClockSeconds,
@@ -243,6 +246,10 @@ class _ProjectedLiveGameUpdate {
         ],
         _LiveGameMergeMode.clock => <Object?>[
           update.gameId,
+          update.pgn,
+          update.fen,
+          update.lastMove,
+          update.lastMoveTime,
           update.lastClockWhite,
           update.lastClockBlack,
           update.status,
@@ -281,7 +288,9 @@ GamesTourModel _mergeLiveUpdate({
   required _LiveGameMergeMode mode,
 }) {
   final includePosition =
-      mode == _LiveGameMergeMode.full || mode == _LiveGameMergeMode.position;
+      mode == _LiveGameMergeMode.full ||
+      mode == _LiveGameMergeMode.position ||
+      mode == _LiveGameMergeMode.clock;
   final includeClock =
       mode == _LiveGameMergeMode.full || mode == _LiveGameMergeMode.clock;
 

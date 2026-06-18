@@ -523,7 +523,6 @@ class _TagDropdownState extends State<_TagDropdown> {
 
   void _toggle(String label) {
     final isSelected = _selected.contains(label);
-    if (!isSelected && _selected.length >= kMaxLikeTagsPerGame) return;
 
     HapticFeedback.selectionClick();
     setState(() {
@@ -534,10 +533,6 @@ class _TagDropdownState extends State<_TagDropdown> {
       }
     });
     widget.onChanged(_selected.toList(growable: false));
-
-    if (!isSelected && _selected.length >= kMaxLikeTagsPerGame) {
-      widget.onCommit(_selected.toList(growable: false));
-    }
   }
 
   void _commit() {
@@ -626,7 +621,7 @@ class _TagDropdownState extends State<_TagDropdown> {
                       child: Text(
                         _selected.isEmpty
                             ? 'Tag this game'
-                            : '${_selected.length}/$kMaxLikeTagsPerGame selected',
+                            : '${_selected.length} selected',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.textXsMedium.copyWith(
@@ -690,14 +685,11 @@ class _TagDropdownState extends State<_TagDropdown> {
                   itemBuilder: (_, i) {
                     final t = tags[i];
                     final selected = _selected.contains(t.label);
-                    final disabled =
-                        !selected && _selected.length >= kMaxLikeTagsPerGame;
                     return _TagSquare(
                           label: t.label,
                           accent: t.color,
                           selected: selected,
-                          disabled: disabled,
-                          onTap: disabled ? null : () => _toggle(t.label),
+                          onTap: () => _toggle(t.label),
                         )
                         // Stagger reveal — each chip arrives ~22ms after the
                         // previous so the grid feels assembled, not slammed.
@@ -741,14 +733,12 @@ class _TagSquare extends StatelessWidget {
     required this.label,
     required this.accent,
     required this.selected,
-    required this.disabled,
     required this.onTap,
   });
 
   final String label;
   final Color accent;
   final bool selected;
-  final bool disabled;
   final VoidCallback? onTap;
 
   @override
@@ -762,10 +752,6 @@ class _TagSquare extends StatelessWidget {
       fill = accent.withValues(alpha: 0.18);
       border = accent.withValues(alpha: 0.9);
       textColor = colors.textPrimary;
-    } else if (disabled) {
-      fill = colors.surfaceRecessed.withValues(alpha: 0.55);
-      border = colors.dividerStrong.withValues(alpha: 0.35);
-      textColor = colors.textPrimary.withValues(alpha: 0.42);
     } else {
       fill = colors.surfaceRecessed;
       border = colors.dividerStrong.withValues(alpha: 0.55);
@@ -776,10 +762,8 @@ class _TagSquare extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(radius),
-        splashColor:
-            disabled ? Colors.transparent : accent.withValues(alpha: 0.12),
-        highlightColor:
-            disabled ? Colors.transparent : accent.withValues(alpha: 0.08),
+        splashColor: accent.withValues(alpha: 0.12),
+        highlightColor: accent.withValues(alpha: 0.08),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,

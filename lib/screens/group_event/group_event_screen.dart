@@ -57,6 +57,9 @@ class GroupEventScreen extends HookConsumerWidget {
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
     final appliedFilterState = ref.watch(eventAppliedFilterProvider);
+    final dismissedSmartEventCardKeys = ref.watch(
+      dismissedSmartEventCardKeysProvider,
+    );
 
     int activeFilterCount(FilterPopupState state) {
       return state.formatsAndStates.length + (state.hasEloFilter ? 1 : 0);
@@ -500,10 +503,13 @@ class GroupEventScreen extends HookConsumerWidget {
                                         );
                             final smartData =
                                 isCurrent
-                                    ? SmartEventCardData.fromState(
-                                      filter: appliedFilterState,
-                                      events: finalEvents,
-                                      source: SmartEventSource.current,
+                                    ? visibleSmartEventCardData(
+                                      SmartEventCardData.fromState(
+                                        filter: appliedFilterState,
+                                        events: finalEvents,
+                                        source: SmartEventSource.current,
+                                      ),
+                                      dismissedSmartEventCardKeys,
                                     )
                                     : null;
 

@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -35,6 +36,7 @@ class SavedAnalysisCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = analysis.chessGame;
+    final visibleTags = normalizeLikeTagLabels(analysis.tags);
     // Extract player names from metadata
     final whiteName = game.metadata['White'] as String? ?? 'White';
     final blackName = game.metadata['Black'] as String? ?? 'Black';
@@ -154,13 +156,13 @@ class SavedAnalysisCard extends StatelessWidget {
             ),
 
             // Tags if any
-            if (analysis.tags.isNotEmpty) ...[
+            if (visibleTags.isNotEmpty) ...[
               SizedBox(height: 12.h),
               Wrap(
                 spacing: 6.w,
                 runSpacing: 6.h,
                 children:
-                    analysis.tags.take(3).map((tag) {
+                    visibleTags.map((tag) {
                       return Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 8.w,

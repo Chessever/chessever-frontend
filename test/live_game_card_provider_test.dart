@@ -4,6 +4,7 @@ import 'package:chessever2/repository/supabase/game/game_stream_repository.dart'
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -276,6 +277,104 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(sub.read()?.lastMove, 'e7e5');
       expect(sub.read()?.fen, afterE4E5);
+    });
+
+    test('scroll pause does not freeze grid-card live positions', () async {
+      final controller = StreamController<Map<String, dynamic>?>();
+      addTearDown(controller.close);
+      final repository = _FakeGameStreamRepository(controller.stream);
+
+      final container = ProviderContainer(
+        overrides: [gameStreamRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+
+      container.read(liveGameCardsPauseReasonsProvider.notifier).state = {
+        'scrolling',
+      };
+      container.read(baseGameProvider('game-1').notifier).state = _game(
+        id: 'game-1',
+        status: GameStatus.ongoing,
+        fen: afterE4,
+        lastMove: 'e2e4',
+      );
+
+      final sub = container.listen(
+        liveGamePositionProvider(const LiveGameWatchParams(gameId: 'game-1')),
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(sub.close);
+
+      expect(repository.individualSubscriptions, 1);
+      expect(sub.read()?.fen, afterE4);
+      expect(sub.read()?.activePlayer, Side.black);
+
+      controller.add({
+        'fen': afterE4,
+        'pgn': pgnAfterE4E5,
+        'last_move': 'e7e5',
+        'status': '*',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      expect(sub.read()?.lastMove, 'e7e5');
+      expect(sub.read()?.fen, afterE4E5);
+      expect(sub.read()?.activePlayer, Side.white);
+    });
+
+    test('clock updates carry the matching side-to-move anchor', () async {
+      final controller = StreamController<Map<String, dynamic>?>();
+      addTearDown(controller.close);
+      final repository = _FakeGameStreamRepository(controller.stream);
+
+      final container = ProviderContainer(
+        overrides: [gameStreamRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+
+      container.read(liveGameCardsPauseReasonsProvider.notifier).state = {
+        'scrolling',
+      };
+      container.read(baseGameProvider('game-1').notifier).state = _game(
+        id: 'game-1',
+        status: GameStatus.ongoing,
+        fen: afterE4,
+        lastMove: 'e2e4',
+        lastMoveTime: DateTime.utc(2026, 4, 29, 12),
+        whiteClockSeconds: 120,
+        blackClockSeconds: 130,
+      );
+
+      final sub = container.listen(
+        liveGameClockProvider(const LiveGameWatchParams(gameId: 'game-1')),
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(sub.close);
+
+      expect(sub.read()?.activePlayer, Side.black);
+      expect(sub.read()?.blackClockSeconds, 130);
+
+      final moveTime = DateTime.utc(2026, 4, 29, 12, 1);
+      controller.add({
+        'fen': afterE4,
+        'pgn': pgnAfterE4E5,
+        'last_move': 'e7e5',
+        'last_move_time': moveTime.toIso8601String(),
+        'last_clock_white': 100,
+        'last_clock_black': 110,
+        'status': '*',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      final liveClockGame = sub.read();
+      expect(liveClockGame?.lastMove, 'e7e5');
+      expect(liveClockGame?.lastMoveTime, moveTime);
+      expect(liveClockGame?.fen, afterE4E5);
+      expect(liveClockGame?.activePlayer, Side.white);
+      expect(liveClockGame?.whiteClockSeconds, 100);
+      expect(liveClockGame?.blackClockSeconds, 110);
     });
 
     test(

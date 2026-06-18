@@ -242,6 +242,16 @@ class SmartEventRequest {
   /// across every tier re-keying of the same smart event.
   String get dismissScopeId => '${source.name}:${stableEventIds.join('|')}';
 
+  /// Source- and event-independent key for hiding the generated smart card.
+  ///
+  /// The For You and Current tabs build separate [SmartEventRequest] instances
+  /// from the same applied filters. Dismissing the card should therefore apply
+  /// to the filter configuration, not to one tab's source or current event set.
+  String get cardDismissKey {
+    final criteria = formatsAndStates.toList(growable: false)..sort();
+    return 'smart_event_card:$minElo-$maxElo:${criteria.join('|')}';
+  }
+
   /// The same request with the Elo range opened up to the full scale. The
   /// Games / Standings tabs load through this so the tier dropdown can move
   /// BELOW the saved floor — the selected band travels in the query's
@@ -468,6 +478,19 @@ class SmartEventCardData {
   /// Multi-value combinations collapse to "Filtered".
   static String? _labelForNonEloFilters(FilterPopupState filter) =>
       _labelForFormatsAndStates(filter.formatsAndStates);
+}
+
+final dismissedSmartEventCardKeysProvider = StateProvider<Set<String>>(
+  (ref) => const <String>{},
+);
+
+SmartEventCardData? visibleSmartEventCardData(
+  SmartEventCardData? data,
+  Set<String> dismissedKeys,
+) {
+  if (data == null) return null;
+  if (dismissedKeys.contains(data.request.cardDismissKey)) return null;
+  return data;
 }
 
 /// Shared by card generation and tier re-keying so both produce identical

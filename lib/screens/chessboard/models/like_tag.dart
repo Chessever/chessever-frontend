@@ -36,9 +36,6 @@ class LikeTag {
   final IconData icon;
 }
 
-/// Product cap for tags attached to one liked/saved game.
-const int kMaxLikeTagsPerGame = 3;
-
 /// The canonical, ordered tag vocabulary. Keep the order stable so a remembered
 /// initial tag lists always render consistently.
 const List<LikeTag> kLikeTags = <LikeTag>[
@@ -76,7 +73,7 @@ LikeTag? likeTagByLabel(String label) {
 /// Normalizes user-selected tag labels before UI display or persistence.
 ///
 /// The vocabulary may evolve, so this intentionally preserves unknown legacy
-/// labels while enforcing trim, dedupe and the current per-game cap.
+/// labels while enforcing trim and dedupe.
 List<String> normalizeLikeTagLabels(Iterable<String> labels) {
   final seen = <String>{};
   final normalized = <String>[];
@@ -84,7 +81,6 @@ List<String> normalizeLikeTagLabels(Iterable<String> labels) {
     final label = raw.trim();
     if (label.isEmpty || !seen.add(label)) continue;
     normalized.add(label);
-    if (normalized.length == kMaxLikeTagsPerGame) break;
   }
   return List<String>.unmodifiable(normalized);
 }

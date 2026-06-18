@@ -73,6 +73,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   void onScrollToTopRequested() {
     animateScrollControllerToTop(_scrollController);
   }
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
@@ -86,7 +87,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   String get _liveCardsPauseReason => 'player_games_scroll_$hashCode';
-  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
+  // blank. Route coverage still removes the tab from active provider work.
+  bool get _isActiveOnScreen => _routeIsCurrent;
 
   // Rotating "Search <word>" hint — mirrors the home and TWIC search bars so
   // the animated second word is consistent across the app.

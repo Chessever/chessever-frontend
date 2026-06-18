@@ -1892,15 +1892,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                               final selected = _selectedTags.contains(
                                 tag.label,
                               );
-                              final disabled =
-                                  !selected &&
-                                  _selectedTags.length >= kMaxLikeTagsPerGame;
                               return _TagChip(
                                 tag: tag,
                                 selected: selected,
-                                disabled: disabled,
                                 onTap:
-                                    _isSaving || disabled
+                                    _isSaving
                                         ? null
                                         : () {
                                           _handleTagSelection(tag.label);
@@ -1976,7 +1972,6 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     if (next.contains(tag)) {
       next.remove(tag);
     } else {
-      if (next.length >= kMaxLikeTagsPerGame) return _selectedTags;
       next.add(tag);
     }
     return normalizeLikeTagLabels(next);
@@ -2950,13 +2945,11 @@ class _TagChip extends StatelessWidget {
   const _TagChip({
     required this.tag,
     required this.selected,
-    required this.disabled,
     required this.onTap,
   });
 
   final LikeTag tag;
   final bool selected;
-  final bool disabled;
   final VoidCallback? onTap;
 
   @override
@@ -2970,37 +2963,34 @@ class _TagChip extends StatelessWidget {
           scale: 1.0 + 0.06 * t,
           child: GestureDetector(
             onTap: onTap,
-            child: Opacity(
-              opacity: disabled ? 0.42 : 1,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: Color.lerp(
-                    colors.textPrimary.withValues(alpha: 0.05),
-                    tag.color.withValues(alpha: 0.22),
-                    t,
-                  ),
-                  borderRadius: BorderRadius.circular(20.br),
-                  border: Border.all(
-                    color:
-                        Color.lerp(
-                          colors.textPrimary.withValues(alpha: 0.1),
-                          tag.color.withValues(alpha: 0.75),
-                          t,
-                        )!,
-                    width: 1,
-                  ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: Color.lerp(
+                  colors.textPrimary.withValues(alpha: 0.05),
+                  tag.color.withValues(alpha: 0.22),
+                  t,
                 ),
-                child: Text(
-                  tag.label,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color:
-                        selected
-                            ? colors.textPrimary
-                            : colors.textPrimary.withValues(alpha: 0.7),
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
+                borderRadius: BorderRadius.circular(20.br),
+                border: Border.all(
+                  color:
+                      Color.lerp(
+                        colors.textPrimary.withValues(alpha: 0.1),
+                        tag.color.withValues(alpha: 0.75),
+                        t,
+                      )!,
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                tag.label,
+                style: AppTypography.textXsMedium.copyWith(
+                  color:
+                      selected
+                          ? colors.textPrimary
+                          : colors.textPrimary.withValues(alpha: 0.7),
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
             ),

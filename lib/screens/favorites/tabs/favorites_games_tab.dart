@@ -56,6 +56,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   void onScrollToTopRequested() {
     animateScrollControllerToTop(_scrollController);
   }
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
@@ -67,7 +68,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   String get _liveCardsPauseReason => 'favorites_games_scroll_$hashCode';
-  bool get _isActiveOnScreen => _routeIsCurrent && _appIsResumed;
+  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
+  // blank. Route coverage still removes the tab from active provider work.
+  bool get _isActiveOnScreen => _routeIsCurrent;
 
   /// Track expanded state for date sections
   final Set<String> _collapsedDates = {};

@@ -19,9 +19,20 @@ void setLiveGameCardsPaused(
   required String reason,
   required bool paused,
 }) {
+  setLiveGameCardsPausedWithNotifier(
+    ref.read(liveGameCardsPauseReasonsProvider.notifier),
+    reason: reason,
+    paused: paused,
+  );
+}
+
+void setLiveGameCardsPausedWithNotifier(
+  StateController<Set<String>> notifier, {
+  required String reason,
+  required bool paused,
+}) {
   if (reason.isEmpty) return;
 
-  final notifier = ref.read(liveGameCardsPauseReasonsProvider.notifier);
   final current = notifier.state;
   final hasReason = current.contains(reason);
   if (paused == hasReason) return;
