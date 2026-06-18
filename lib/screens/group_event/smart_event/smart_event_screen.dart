@@ -1280,6 +1280,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
+  late final StateController<Set<String>> _liveGameCardsPauseReasons;
 
   String get _liveCardsPauseReason => 'smart_event_games_scroll_$hashCode';
 
@@ -1309,6 +1310,9 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   @override
   void initState() {
     super.initState();
+    _liveGameCardsPauseReasons = ref.read(
+      liveGameCardsPauseReasonsProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -1421,7 +1425,11 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   void _setLiveCardsPausedForScroll(bool paused) {
     if (_liveCardsPausedForScroll == paused) return;
     _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
+    setLiveGameCardsPausedWithNotifier(
+      _liveGameCardsPauseReasons,
+      reason: _liveCardsPauseReason,
+      paused: paused,
+    );
   }
 
   void _toggleDateSection(String dateKey) {

@@ -65,6 +65,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
+  late final StateController<Set<String>> _liveGameCardsPauseReasons;
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   String get _liveCardsPauseReason => 'countrymen_games_scroll_$hashCode';
@@ -81,6 +82,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   @override
   void initState() {
     super.initState();
+    _liveGameCardsPauseReasons = ref.read(
+      liveGameCardsPauseReasonsProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
   }
@@ -220,7 +224,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   void _setLiveCardsPausedForScroll(bool paused) {
     if (_liveCardsPausedForScroll == paused) return;
     _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
+    setLiveGameCardsPausedWithNotifier(
+      _liveGameCardsPauseReasons,
+      reason: _liveCardsPauseReason,
+      paused: paused,
+    );
   }
 
   void _loadMoreDays() {

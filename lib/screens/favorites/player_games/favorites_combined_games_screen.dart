@@ -42,6 +42,7 @@ class _FavoritesCombinedGamesScreenState
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
+  late final StateController<Set<String>> _liveGameCardsPauseReasons;
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   String get _liveCardsPauseReason => 'favorites_combined_scroll_$hashCode';
@@ -55,6 +56,9 @@ class _FavoritesCombinedGamesScreenState
   @override
   void initState() {
     super.initState();
+    _liveGameCardsPauseReasons = ref.read(
+      liveGameCardsPauseReasonsProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
   }
@@ -189,7 +193,11 @@ class _FavoritesCombinedGamesScreenState
   void _setLiveCardsPausedForScroll(bool paused) {
     if (_liveCardsPausedForScroll == paused) return;
     _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
+    setLiveGameCardsPausedWithNotifier(
+      _liveGameCardsPauseReasons,
+      reason: _liveCardsPauseReason,
+      paused: paused,
+    );
   }
 
   void _onSearchChanged(String value) {

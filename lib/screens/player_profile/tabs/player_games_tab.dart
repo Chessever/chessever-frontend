@@ -83,6 +83,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   bool _appIsResumed = true;
   bool _isLoadingAllPagesForSelection = false;
   bool _liveCardsPausedForScroll = false;
+  late final StateController<Set<String>> _liveGameCardsPauseReasons;
   final Set<String> _selectedGameIds = <String>{};
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
@@ -118,6 +119,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   void initState() {
     super.initState();
+    _liveGameCardsPauseReasons = ref.read(
+      liveGameCardsPauseReasonsProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     _searchFocusNode.addListener(_onSearchFocusChange);
@@ -311,7 +315,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   void _setLiveCardsPausedForScroll(bool paused) {
     if (_liveCardsPausedForScroll == paused) return;
     _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
+    setLiveGameCardsPausedWithNotifier(
+      _liveGameCardsPauseReasons,
+      reason: _liveCardsPauseReason,
+      paused: paused,
+    );
   }
 
   void _onSearchChanged(String value) {

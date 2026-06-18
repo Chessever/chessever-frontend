@@ -80,12 +80,16 @@ class _GamesTourScrollActivityDetectorState
 
   Timer? _idleTimer;
   bool _liveCardsPausedForScroll = false;
+  late final StateController<Set<String>> _liveGameCardsPauseReasons;
 
   String _pauseReasonFor(String scopeId) => 'games_tour_scroll_$scopeId';
 
   @override
   void initState() {
     super.initState();
+    _liveGameCardsPauseReasons = ref.read(
+      liveGameCardsPauseReasonsProvider.notifier,
+    );
     markGamesTourScrollScopeActive(widget.scopeId);
   }
 
@@ -163,8 +167,8 @@ class _GamesTourScrollActivityDetectorState
   void _setLiveCardsPausedForScroll(bool paused) {
     if (_liveCardsPausedForScroll == paused) return;
     _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPaused(
-      ref,
+    setLiveGameCardsPausedWithNotifier(
+      _liveGameCardsPauseReasons,
       reason: _pauseReasonFor(widget.scopeId),
       paused: paused,
     );

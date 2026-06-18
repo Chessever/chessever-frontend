@@ -66,6 +66,7 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
+  late final StateController<Set<String>> _liveGameCardsPauseReasons;
 
   String get _liveCardsPauseReason => 'countryman_games_scroll_$hashCode';
   // Keep rendering while backgrounded so the OS app-switcher snapshot is not
@@ -75,6 +76,9 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
   @override
   void initState() {
     super.initState();
+    _liveGameCardsPauseReasons = ref.read(
+      liveGameCardsPauseReasonsProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -193,7 +197,11 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
   void _setLiveCardsPausedForScroll(bool paused) {
     if (_liveCardsPausedForScroll == paused) return;
     _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPaused(ref, reason: _liveCardsPauseReason, paused: paused);
+    setLiveGameCardsPausedWithNotifier(
+      _liveGameCardsPauseReasons,
+      reason: _liveCardsPauseReason,
+      paused: paused,
+    );
   }
 
   @override
