@@ -95,7 +95,7 @@ class _CalendarDetailScreenController
 
       final calEvents = await ref
           .read(calendarEventRepositoryProvider)
-          .getCalendarEventsForMonth(
+          .getMajorUpcomingCalendarEventsForMonth(
             selectedMonth: filterArgs.month,
             selectedYear: filterArgs.year,
           );

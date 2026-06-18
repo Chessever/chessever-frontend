@@ -118,7 +118,7 @@ class _CalendarScreenNotifier
 
       final yearCalendarEvents = await ref
           .read(calendarEventRepositoryProvider)
-          .getCalendarEventsForYear(year: selectedYear);
+          .getMajorUpcomingCalendarEventsForYear(year: selectedYear);
       final List<String> liveIds =
           ref.read(liveGroupBroadcastIdsProvider).valueOrNull ??
           await ref.read(liveGroupBroadcastIdsProvider.future);
