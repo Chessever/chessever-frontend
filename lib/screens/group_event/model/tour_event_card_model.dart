@@ -24,6 +24,7 @@ class GroupEventCardModel extends Equatable {
     this.location,
     this.searchTerms = const [],
     this.eventSource = EventSource.lichessBroadcast,
+    this.isMajorUpcoming = false,
   });
 
   final String id;
@@ -38,6 +39,11 @@ class GroupEventCardModel extends Equatable {
   final String? location;
   final List<String> searchTerms;
   final EventSource eventSource;
+
+  /// Only meaningful for [EventSource.communityEvent]: whether the event is in
+  /// the curated FIDE major calendar (Upcoming filter keeps only these among
+  /// community events). Lichess broadcasts ignore this flag.
+  final bool isMajorUpcoming;
 
   factory GroupEventCardModel.fromGroupBroadcast(
     GroupBroadcast groupBroadcast,
@@ -98,6 +104,7 @@ class GroupEventCardModel extends Equatable {
       location: calendarEvent.location,
       searchTerms: const [],
       eventSource: EventSource.communityEvent,
+      isMajorUpcoming: calendarEvent.isMajorUpcoming,
     );
   }
 
@@ -181,6 +188,7 @@ class GroupEventCardModel extends Equatable {
       location: location,
       searchTerms: searchTerms,
       eventSource: eventSource,
+      isMajorUpcoming: isMajorUpcoming,
     );
   }
 
@@ -197,6 +205,7 @@ class GroupEventCardModel extends Equatable {
     location,
     searchTerms,
     eventSource,
+    isMajorUpcoming,
   ];
 
   static String _formatTimeControl(String? raw) {

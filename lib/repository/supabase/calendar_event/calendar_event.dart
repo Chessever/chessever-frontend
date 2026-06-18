@@ -12,6 +12,11 @@ class CalendarEvent {
   final List<dynamic>? players;
   final String? fideEventId;
 
+  /// True when this event belongs to the curated FIDE Main Events ("major")
+  /// calendar and is appropriate to surface in the Upcoming filter. The full
+  /// calendar feed keeps every event; only Upcoming restricts to these.
+  final bool isMajorUpcoming;
+
   CalendarEvent({
     required this.name,
     this.startDate,
@@ -25,6 +30,7 @@ class CalendarEvent {
     this.countryCode,
     this.players,
     this.fideEventId,
+    this.isMajorUpcoming = false,
   });
 
   factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
@@ -46,6 +52,7 @@ class CalendarEvent {
     countryCode: json['country_code'] as String?,
     players: json['players'] as List<dynamic>?,
     fideEventId: json['fide_event_id'] as String?,
+    isMajorUpcoming: json['is_major_upcoming_event'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -61,6 +68,7 @@ class CalendarEvent {
     'country_code': countryCode,
     'players': players,
     'fide_event_id': fideEventId,
+    'is_major_upcoming_event': isMajorUpcoming,
   };
 
   @override

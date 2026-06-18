@@ -885,9 +885,14 @@ class _QuickFilterButtons extends ConsumerWidget {
         for (final summary in summaries) {
           for (final event in summary.events) {
             final startDate = event.startDate ?? event.endDate;
-            if (startDate != null && !startDate.isBefore(today)) {
-              count++;
+            if (startDate == null || startDate.isBefore(today)) continue;
+            // Mirror the Upcoming filter: only curated FIDE major-calendar
+            // events + Lichess broadcasts count toward the Upcoming badge.
+            if (event.eventSource == EventSource.communityEvent &&
+                !event.isMajorUpcoming) {
+              continue;
             }
+            count++;
           }
         }
         return count;

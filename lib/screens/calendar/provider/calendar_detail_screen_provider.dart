@@ -95,7 +95,7 @@ class _CalendarDetailScreenController
 
       final calEvents = await ref
           .read(calendarEventRepositoryProvider)
-          .getMajorUpcomingCalendarEventsForMonth(
+          .getCalendarEventsForMonth(
             selectedMonth: filterArgs.month,
             selectedYear: filterArgs.year,
           );
@@ -137,6 +137,7 @@ class _CalendarDetailScreenController
       timeUntilStart: model.timeUntilStart,
       tourEventCategory: model.tourEventCategory.name,
       eventSource: model.eventSource.name,
+      isMajorUpcoming: model.isMajorUpcoming,
     );
   }
 
@@ -155,6 +156,7 @@ class _CalendarDetailScreenController
       timeUntilStart: model.timeUntilStart,
       tourEventCategory: model.tourEventCategory.name,
       eventSource: model.eventSource.name,
+      isMajorUpcoming: model.isMajorUpcoming,
     );
   }
 
@@ -268,6 +270,7 @@ class _CalendarDetailScreenController
         (e) => e.name == data.eventSource,
         orElse: () => EventSource.lichessBroadcast,
       ),
+      isMajorUpcoming: data.isMajorUpcoming,
     );
   }
 

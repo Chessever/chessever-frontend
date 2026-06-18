@@ -118,7 +118,7 @@ class _CalendarScreenNotifier
 
       final yearCalendarEvents = await ref
           .read(calendarEventRepositoryProvider)
-          .getMajorUpcomingCalendarEventsForYear(year: selectedYear);
+          .getCalendarEventsForYear(year: selectedYear);
       final List<String> liveIds =
           ref.read(liveGroupBroadcastIdsProvider).valueOrNull ??
           await ref.read(liveGroupBroadcastIdsProvider.future);
@@ -155,6 +155,7 @@ class _CalendarScreenNotifier
       timeUntilStart: event.timeUntilStart,
       tourEventCategory: event.tourEventCategory.name,
       eventSource: event.eventSource.name,
+      isMajorUpcoming: event.isMajorUpcoming,
     );
   }
 
@@ -290,6 +291,7 @@ class _CalendarScreenNotifier
         (e) => e.name == data.eventSource,
         orElse: () => EventSource.lichessBroadcast,
       ),
+      isMajorUpcoming: data.isMajorUpcoming,
     );
   }
 

@@ -67,6 +67,7 @@ class CalendarEventData {
   final String timeUntilStart;
   final String tourEventCategory;
   final String eventSource;
+  final bool isMajorUpcoming;
 
   const CalendarEventData({
     required this.id,
@@ -81,6 +82,7 @@ class CalendarEventData {
     required this.timeUntilStart,
     required this.tourEventCategory,
     required this.eventSource,
+    this.isMajorUpcoming = false,
   });
 }
 
@@ -143,6 +145,12 @@ CalendarSearchResult filterCalendarEventsIsolate(CalendarSearchParams params) {
     if (params.filterMode == 'upcoming') {
       final startDate = event.startDate ?? event.endDate;
       if (startDate == null || startDate.isBefore(params.today)) {
+        continue;
+      }
+      // Upcoming surfaces only curated FIDE major-calendar events plus Lichess
+      // broadcasts. Non-major community (FIDE full-calendar) events are hidden
+      // here but still appear in the All view.
+      if (event.eventSource == 'communityEvent' && !event.isMajorUpcoming) {
         continue;
       }
     } else if (params.filterMode == 'favorites') {
@@ -468,6 +476,12 @@ DetailSearchResult filterDetailEventsIsolate(DetailSearchParams params) {
     if (params.filterMode == 'upcoming') {
       final startDate = event.startDate ?? event.endDate;
       if (startDate == null || startDate.isBefore(params.today)) {
+        continue;
+      }
+      // Upcoming surfaces only curated FIDE major-calendar events plus Lichess
+      // broadcasts. Non-major community (FIDE full-calendar) events are hidden
+      // here but still appear in the All view.
+      if (event.eventSource == 'communityEvent' && !event.isMajorUpcoming) {
         continue;
       }
     } else if (params.filterMode == 'favorites') {
