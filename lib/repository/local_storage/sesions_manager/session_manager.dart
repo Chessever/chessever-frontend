@@ -89,54 +89,27 @@ class SessionManager {
     return completer.future;
   }
 
-  /// How long we let the SDK's own auto-refresh settle before reporting a
-  /// not-logged-in result on cold start. The SDK fires an immediate refresh
-  /// tick during Supabase.initialize()/on resume; this just avoids flashing the
-  /// auth screen while that in-flight refresh lands.
-  static const _sdkRefreshGrace = Duration(seconds: 3);
-  static const _sdkRefreshPoll = Duration(milliseconds: 250);
-
   Future<bool> _isLoggedInInternal() async {
     final auth = Supabase.instance.client.auth;
-
-    // Valid non-expired session — user is logged in.
     final session = auth.currentSession;
     final user = auth.currentUser;
-    if (user != null && session != null && !session.isExpired) {
-      return true;
-    }
 
-    // We have a session whose access token is expired. Do NOT initiate our own
-    // refresh here, and do NOT replay a token from our SharedPreferences backup
-    // via recoverSession(). The Supabase SDK's auto-refresh (started inside
-    // Supabase.initialize() and again on app resume) is the single owner of
-    // token refresh and dedupes concurrent calls through its own lock.
+    // Presence of a session = authenticated. The access token may currently be
+    // expired with a refresh pending or temporarily failing (e.g. no network /
+    // DNS). The Supabase SDK keeps the session on transient/retryable failures
+    // and refreshes once connectivity returns; it only drops the session and
+    // emits `signedOut` when the refresh token is DEFINITIVELY invalid
+    // (revoked) — see gotrue _callRefreshToken: an AuthRetryableFetchException
+    // does NOT remove the session. So we must NOT gate on token expiry here:
+    // doing so dumps an authenticated user on the login screen the moment a
+    // refresh hiccups (observed: cold start with a DNS blip →
+    // AuthRetryableFetchException → bounced to /auth_screen).
     //
-    // Initiating a second refresh — or replaying a token from our backup store,
-    // which can lag behind the SDK's latest rotation — races the SDK and may
-    // present an already-rotated refresh token. GoTrue treats that as refresh
-    // token reuse and REVOKES THE ENTIRE SESSION FAMILY, after which the SDK's
-    // next auto-refresh fails and emits a `signedOut` event: a forced, daily
-    // logout for active users. (Confirmed in production: ~1k "two refresh
-    // tokens revoked for one session in the same second" events.)
-    //
-    // So we only OBSERVE the SDK: give its in-flight refresh a brief, bounded
-    // window to complete, then report the result. We never clear storage or
-    // sign out here — if the refresh lands moments later, onAuthStateChange
-    // (tokenRefreshed) flips the app to authenticated reactively.
-    if (session != null) {
-      final deadline = _sdkRefreshGrace.inMilliseconds ~/
-          _sdkRefreshPoll.inMilliseconds;
-      for (var i = 0; i < deadline; i++) {
-        final s = auth.currentSession;
-        if (s != null && !s.isExpired) return true;
-        await Future.delayed(_sdkRefreshPoll);
-      }
-      return auth.currentSession?.isExpired == false;
-    }
-
-    // No session in the SDK at all — a fresh login is genuinely required.
-    return false;
+    // We also never initiate our own refresh or recoverSession() — the SDK is
+    // the single refresh authority. A competing refresh can replay an
+    // already-rotated token and trip GoTrue reuse-detection, which revokes the
+    // whole session family and causes a *real* signedOut (the daily-logout bug).
+    return session != null && user != null;
   }
 
   Future<String?> getUserInitials() async {

@@ -88,34 +88,33 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
     _startAuthListener();
 
-    // Quick path: SDK already has a valid session from Supabase.initialize().
+    // Presence of a session = authenticated, even if the access token is
+    // currently expired. A pending/failed refresh (e.g. no network / DNS) must
+    // not bounce an authenticated user to login — the SDK keeps the session on
+    // retryable failures and refreshes when connectivity returns. It only drops
+    // the session and emits `signedOut` on a DEFINITIVE invalid refresh token
+    // (revoked); the onAuthStateChange listener flips us to unauthenticated on
+    // that real event.
     final earlySession = _supabase.auth.currentSession;
     final earlyUser = _supabase.auth.currentUser;
-    if (earlySession != null && earlyUser != null && !earlySession.isExpired) {
+    if (earlySession != null && earlyUser != null) {
       return AppAuthState.authenticated(AppUser.fromSupabaseUser(earlyUser));
     }
 
-    // Session may be expired or absent — let isLoggedIn() attempt a refresh.
-    // The SessionManager no longer calls signOut on failure, so this is safe.
+    // No session in memory yet — give the SessionManager a bounded window to
+    // confirm whether the SDK restored one during init, then re-check.
     final loggedIn = await _sessionManager.isLoggedIn().timeout(
       kAuthRestoreTimeout,
       onTimeout: () => false,
     );
-
-    // Re-check the SDK's current state. The onAuthStateChange stream or the
-    // refresh inside isLoggedIn() may have updated the session since we started.
     final currentUser = _supabase.auth.currentUser;
-    final currentSession = _supabase.auth.currentSession;
-    if (loggedIn &&
-        currentUser != null &&
-        currentSession != null &&
-        !currentSession.isExpired) {
+    if (loggedIn && currentUser != null) {
       return AppAuthState.authenticated(AppUser.fromSupabaseUser(currentUser));
     }
 
-    // Even if isLoggedIn() returned false, the SDK's auto-refresh may still
-    // complete later. The onAuthStateChange listener will update state
-    // reactively when that happens (tokenRefreshed / signedIn events).
+    // No recoverable session. The SDK's auto-refresh may still complete later;
+    // the onAuthStateChange listener will flip us to authenticated reactively
+    // (tokenRefreshed / signedIn) if it does.
     return const AppAuthState.unauthenticated();
   }
 
