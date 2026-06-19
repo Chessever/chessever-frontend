@@ -20,7 +20,14 @@ class SessionManager {
   static const _keyPersistSession = 'supabase_session';
   static const _keyPersistUser = 'supabase_user';
 
-  /// Save the session as JSON string
+  /// Cache the user's display info for fast splash-time reads (getUserInitials).
+  ///
+  /// We intentionally no longer persist the Session here. The Supabase SDK owns
+  /// the session/refresh token in its own LocalStorage and is the single source
+  /// of truth; writing a second copy of the refresh token into plain
+  /// SharedPreferences was both redundant and a stale-token hazard (a lagging
+  /// copy replayed via recoverSession() could trip GoTrue reuse-detection).
+  /// [session] is accepted for call-site compatibility but no longer stored.
   Future<void> saveSession(Session session, User user) async {
     final prefs = await SharedPreferencesService.instance.ensureInitialized();
     if (prefs == null) {
@@ -28,7 +35,6 @@ class SessionManager {
       return;
     }
 
-    await prefs.setString(_keyPersistSession, jsonEncode(session.toJson()));
     await prefs.setString(_keyPersistUser, jsonEncode(user.toJson()));
   }
 
@@ -61,9 +67,11 @@ class SessionManager {
     ref.read(countryDropdownProvider.notifier).clearLocalOnly();
   }
 
-  /// Check current login state and recover session if valid
-  /// Note: The auth state stream (authStateProvider) is the primary source of truth
-  /// This method is only used for initial checks in splash screen
+  /// Reports whether a Supabase session is currently present (= logged in).
+  /// Reads only the SDK's current session/user — it does NOT refresh or recover
+  /// a session itself (the SDK owns refresh). The auth state stream
+  /// (authStateProvider) is the primary source of truth; this is used for the
+  /// initial routing check on the splash screen.
   Future<bool> isLoggedIn() async {
     final inFlight = _loginCheckCompleter;
     if (inFlight != null) {
