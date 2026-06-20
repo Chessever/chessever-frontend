@@ -795,6 +795,55 @@ class GamebaseRepository {
     return Map<String, dynamic>.from(response.data);
   }
 
+  /// Start or reuse a backend-built player opening tree.
+  Future<Map<String, dynamic>> startPlayerOpeningTreeBuild({
+    required String playerId,
+    int maxPly = 24,
+    bool forceRebuild = false,
+  }) async {
+    final response = await _dio.post(
+      '$_baseUrl/api/player/$playerId/opening-tree/build',
+      data: <String, dynamic>{'maxPly': maxPly, 'forceRebuild': forceRebuild},
+      options: Options(headers: _headers),
+    );
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  /// Poll the backend player opening tree build status.
+  Future<Map<String, dynamic>> getPlayerOpeningTreeStatus({
+    required String playerId,
+    required String treeId,
+  }) async {
+    final response = await _dio.get(
+      '$_baseUrl/api/player/$playerId/opening-tree/status',
+      queryParameters: <String, dynamic>{'treeId': treeId},
+      options: Options(headers: _headers),
+    );
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  /// Download a ready backend player opening tree.
+  ///
+  /// Returns `null` when the backend responds with HTTP 202, meaning the tree is
+  /// still being prepared.
+  Future<Map<String, dynamic>?> getPlayerOpeningTree({
+    required String playerId,
+    required String treeId,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/player/$playerId/opening-tree',
+        queryParameters: <String, dynamic>{'treeId': treeId},
+        options: Options(headers: _headers),
+      );
+      if (response.statusCode == 202) return null;
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 202) return null;
+      rethrow;
+    }
+  }
+
   /// List example games for a given position (and optionally a specific move from that position).
   ///
   /// Pagination is 0-indexed per the API spec for this endpoint.

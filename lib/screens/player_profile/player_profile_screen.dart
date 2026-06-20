@@ -4,7 +4,6 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
@@ -93,13 +92,11 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
 
 class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     with SingleTickerProviderStateMixin {
-  static const String _startingFen =
-      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-
   late PageController _pageController;
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+
   /// Games/events are now sourced exclusively from TWIC. The old
   /// ChessEver/TWIC source selector was removed after the two databases were
   /// merged backend-side, so TWIC is the single source of truth.
@@ -262,9 +259,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (gamesTabCueCount != null || eco == GameEcoFilter.all) {
       if (!mounted) return;
       setState(() {
-        _gamesTabCueCount = gamesTabCueCount != null && gamesTabCueCount > 0
-            ? gamesTabCueCount
-            : null;
+        _gamesTabCueCount =
+            gamesTabCueCount != null && gamesTabCueCount > 0
+                ? gamesTabCueCount
+                : null;
       });
     }
 
@@ -362,7 +360,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final uuid = _resolveGamebasePlayerId();
     if (uuid == null) return;
 
-    _prefetchExplorerRootForPlayer(uuid);
+    _startExplorerTreeForPlayer(uuid);
 
     final initialPlayer = _buildExplorerFallbackPlayer(uuid);
     if (!mounted) return;
@@ -395,19 +393,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     unawaited(ref.read(playerByIdProvider(uuid).future));
   }
 
-  void _prefetchExplorerRootForPlayer(String playerId) {
+  void _startExplorerTreeForPlayer(String playerId) {
     if (_didPrefetchExplorerRoot) return;
     _didPrefetchExplorerRoot = true;
 
-    unawaited(() async {
-      try {
-        await ref
-            .read(gamebaseRepositoryProvider)
-            .getMoveAggregates(fen: _startingFen, playerId: playerId);
-      } catch (_) {
-        // Best-effort prefetch only; never block UI on this path.
-      }
-    }());
+    ref.read(playerOpeningTreeProvider(playerId).notifier).start();
   }
 
   Future<void> _toggleFavorite() async {
@@ -471,7 +461,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       if (playerId != null && playerId.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          _prefetchExplorerRootForPlayer(playerId);
+          _startExplorerTreeForPlayer(playerId);
         });
       }
     }
@@ -711,10 +701,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(2.br),
                       child: CountryFlag.fromCountryCode(
-countryCode,
-  theme: ImageTheme(height: 16.h,
-                        width: 22.w,),
-),
+                        countryCode,
+                        theme: ImageTheme(height: 16.h, width: 22.w),
+                      ),
                     ),
 
                   if (countryCode.isNotEmpty ||
@@ -772,15 +761,17 @@ countryCode,
       tablet: 32.sp,
     );
 
-    final tabOptions = PlayerProfileTab.values.map((tab) {
-      if (tab == PlayerProfileTab.games &&
-          selectedTab != PlayerProfileTab.games &&
-          _gamesTabCueCount != null &&
-          _gamesTabCueCount! > 0) {
-        return 'Games ${formatCompactCount(_gamesTabCueCount!)}';
-      }
-      return playerProfileTabNames[tab]!;
-    }).toList(growable: false);
+    final tabOptions = PlayerProfileTab.values
+        .map((tab) {
+          if (tab == PlayerProfileTab.games &&
+              selectedTab != PlayerProfileTab.games &&
+              _gamesTabCueCount != null &&
+              _gamesTabCueCount! > 0) {
+            return 'Games ${formatCompactCount(_gamesTabCueCount!)}';
+          }
+          return playerProfileTabNames[tab]!;
+        })
+        .toList(growable: false);
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -988,9 +979,7 @@ countryCode,
                   icon: Icons.library_add_outlined,
                   title: 'Save to Library',
                   subtitle:
-                      hasActiveFilter
-                          ? 'Filtered games'
-                          : 'Games collection',
+                      hasActiveFilter ? 'Filtered games' : 'Games collection',
                   isHighlighted: hasActiveFilter,
                   onTap: () {
                     showSaveToLibrarySheet(
@@ -1041,7 +1030,6 @@ countryCode,
 
     return displayName;
   }
-
 }
 
 /// Compact pill-style button for study opening on the About tab.
@@ -1156,11 +1144,12 @@ class _ActionCardState extends State<_ActionCard> {
               value: widget.isHighlighted ? 1.0 : 0.0,
               builder: (context, h, _) {
                 // Idle: solid dark card. Highlighted: red-tinted.
-                final bg = Color.lerp(
-                  context.colors.surface,
-                  _filterRed.withValues(alpha: 0.10),
-                  h,
-                )!;
+                final bg =
+                    Color.lerp(
+                      context.colors.surface,
+                      _filterRed.withValues(alpha: 0.10),
+                      h,
+                    )!;
                 final iconBg =
                     Color.lerp(
                       context.colors.textPrimary.withValues(alpha: 0.08),
@@ -1259,9 +1248,8 @@ class _ActionCardState extends State<_ActionCard> {
                                                     ? _filterRed.withValues(
                                                       alpha: 0.9,
                                                     )
-                                                    : context.colors.textPrimary.withValues(
-                                                      alpha: 0.5,
-                                                    ),
+                                                    : context.colors.textPrimary
+                                                        .withValues(alpha: 0.5),
                                           ),
                                     ),
                                   ],
