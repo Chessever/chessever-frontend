@@ -215,6 +215,54 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     }
   }
 
+  /// Merge [patch] into a saved favorite's `metadata` JSONB (optimistic local
+  /// update + Supabase UPDATE). No-op if the event isn't currently saved.
+  ///
+  /// Used to persist per-smart-event configuration (e.g. hidden tournaments)
+  /// on the owning favorite row, so it syncs across devices and is deleted with
+  /// the event — no separate, content-keyed local store to drift or orphan.
+  Future<void> updateMetadata(
+    String eventId,
+    Map<String, dynamic> patch,
+  ) async {
+    final userId = _getCurrentUserId();
+    if (userId == null) return;
+
+    final currentEvents = state.valueOrNull ?? [];
+    final index = currentEvents.indexWhere((e) => e.eventId == eventId);
+    if (index < 0) return; // not saved — nothing to update
+
+    final existing = currentEvents[index];
+    final newMetadata = <String, dynamic>{...existing.metadata, ...patch};
+    final optimistic = FavoriteEvent(
+      id: existing.id,
+      userId: existing.userId,
+      eventId: existing.eventId,
+      eventName: existing.eventName,
+      metadata: newMetadata,
+      createdAt: existing.createdAt,
+      updatedAt: DateTime.now(),
+    );
+    final updatedEvents = [...currentEvents]..[index] = optimistic;
+    state = AsyncValue.data(updatedEvents);
+    await _cacheEvents(updatedEvents, userId);
+
+    try {
+      await _supabase
+          .from('user_favorite_events')
+          .update({'metadata': newMetadata})
+          .eq('user_id', userId)
+          .eq('event_id', eventId);
+      debugPrint('[FavoriteEvents] Updated metadata for $eventId');
+    } catch (e, st) {
+      debugPrint('[FavoriteEvents] Error updating metadata: $e');
+      debugPrint('[FavoriteEvents] Stack: $st');
+      state = AsyncValue.data(currentEvents);
+      await _cacheEvents(currentEvents, userId);
+      rethrow;
+    }
+  }
+
   /// Toggle event favorite status
   Future<bool> toggleFavorite({
     required String eventId,

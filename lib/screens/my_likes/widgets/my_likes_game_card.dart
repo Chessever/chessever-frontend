@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -96,12 +97,14 @@ class MyLikesGameCard extends ConsumerWidget {
 
   String _eventName(SavedAnalysis analysis) {
     final md = analysis.chessGame.metadata;
-    final broadcastName = md['BroadcastName']?.toString().trim();
-    if (broadcastName != null && broadcastName.isNotEmpty) {
-      return broadcastName;
-    }
-    final event = (md['Event'] ?? md['Site'] ?? '').toString().trim();
-    return event.isEmpty ? 'Library' : event;
+    return chooseLibraryEventName(
+          canonicalEventName: md['BroadcastName']?.toString(),
+          metadataEvent: md['Event']?.toString(),
+          site: md['Site']?.toString(),
+          whiteName: analysis.whiteName,
+          blackName: analysis.blackName,
+        ) ??
+        'Library';
   }
 }
 

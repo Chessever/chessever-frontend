@@ -3,7 +3,9 @@ import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -51,11 +53,15 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
         Navigator.of(context).pop();
         // The auth state change will handle navigation to login screen
       }
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (mounted) {
         setState(() {
           _isDeleting = false;
-          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+          _errorMessage = userFacingError(
+            e,
+            fallback: 'Could not delete your account. Please try again.',
+          );
         });
       }
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/library/library_repository.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
@@ -205,7 +206,14 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
 
   final eco = md['ECO']?.toString();
   final openingName = md['Opening']?.toString();
-  final event = md['Event']?.toString() ?? 'library';
+  final event =
+      chooseLibraryEventName(
+        metadataEvent: md['Event']?.toString(),
+        site: md['Site']?.toString(),
+        whiteName: whiteName,
+        blackName: blackName,
+      ) ??
+      'library';
   final round = md['Round']?.toString() ?? 'saved_analysis';
   final date = md['Date']?.toString();
   // Prefer the broadcast time-control category captured at like-time
@@ -312,7 +320,14 @@ GamesTourModel savedAnalysisToCardGame(SavedAnalysis analysis) {
 
   final eco = md['ECO']?.toString();
   final openingName = md['Opening']?.toString();
-  final event = md['Event']?.toString() ?? 'library';
+  final event =
+      chooseLibraryEventName(
+        metadataEvent: md['Event']?.toString(),
+        site: md['Site']?.toString(),
+        whiteName: whiteName,
+        blackName: blackName,
+      ) ??
+      'library';
   final round = md['Round']?.toString() ?? 'saved_analysis';
 
   final tcCategory = md['TcCategory']?.toString();

@@ -5,6 +5,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -73,7 +74,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
           constraints: BoxConstraints(maxHeight: maxH),
           child: searchAsync.when(
             loading: () => _buildLoadingState(context, maxH),
-            error: (e, _) => _buildErrorState(e.toString(), maxH),
+            error: (e, _) => _buildErrorState(userFacingError(e), maxH),
             data: (result) {
               if (result.isEmpty) return _buildEmptyState(context, maxH);
               return _buildResultsList(context, result);

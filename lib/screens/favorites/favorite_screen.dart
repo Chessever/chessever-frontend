@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:chessever2/widgets/standing_score_card.dart';
@@ -121,7 +122,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                             ),
                         error:
                             (error, stack) =>
-                                _buildErrorState(error.toString()),
+                                _buildErrorState(userFacingError(error)),
                       ),
                 ),
               ],

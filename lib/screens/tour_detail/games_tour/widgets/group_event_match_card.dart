@@ -64,6 +64,22 @@ class GroupEventMatchCard extends ConsumerWidget {
             ? matchScore.last.toStringAsFixed(0)
             : matchScore.last.toStringAsFixed(1);
 
+    // Decisive match → winner score in primary (brand), loser in red, mirroring
+    // the per-game result coloring in the board player rows. Draw stays neutral.
+    final isMatchDraw = matchScore.first == matchScore.last;
+    final team1ScoreColor =
+        isMatchDraw
+            ? context.colors.textPrimary
+            : matchScore.first > matchScore.last
+            ? context.colors.brand
+            : context.colors.danger;
+    final team2ScoreColor =
+        isMatchDraw
+            ? context.colors.textPrimary
+            : matchScore.last > matchScore.first
+            ? context.colors.brand
+            : context.colors.danger;
+
     // Use match key from roundTitle (Team1 vs Team2)
     final matchKey = roundTitle;
     final isExpanded = ref.watch(matchExpansionStateProvider(matchKey));
@@ -96,6 +112,10 @@ class GroupEventMatchCard extends ConsumerWidget {
               ),
               child: Row(
                 children: [
+                  // Phantom spacer mirroring the trailing expand-icon column so
+                  // the centre "score VS score" block stays optically centred in
+                  // the card no matter how long the team names are.
+                  SizedBox(width: 24.w),
                   Expanded(
                     child: Row(
                       children: [
@@ -109,7 +129,7 @@ class GroupEventMatchCard extends ConsumerWidget {
                         Expanded(
                           child: Text(
                             team1Name,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
                               color: context.colors.textPrimary,
@@ -128,7 +148,7 @@ class GroupEventMatchCard extends ConsumerWidget {
                       child: Text(
                         team1ScoreStr,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: context.colors.textPrimary,
+                          color: team1ScoreColor,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -156,7 +176,7 @@ class GroupEventMatchCard extends ConsumerWidget {
                       child: Text(
                         team2ScoreStr,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: context.colors.textPrimary,
+                          color: team2ScoreColor,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -169,7 +189,7 @@ class GroupEventMatchCard extends ConsumerWidget {
                         Expanded(
                           child: Text(
                             team2Name,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: AppTypography.textXsMedium.copyWith(
                               color: context.colors.textPrimary,
@@ -188,14 +208,17 @@ class GroupEventMatchCard extends ConsumerWidget {
                     ),
                   ),
 
-                  // Expand/collapse icon
-                  SizedBox(width: 8.w),
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
-                    size: 20.sp,
+                  // Expand/collapse icon — fixed-width column mirrored by the
+                  // leading phantom spacer so the score block stays centred.
+                  SizedBox(
+                    width: 24.w,
+                    child: Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: context.colors.textPrimary.withValues(alpha: 0.5),
+                      size: 20.sp,
+                    ),
                   ),
                 ],
               ),

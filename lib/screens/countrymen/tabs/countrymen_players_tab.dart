@@ -11,6 +11,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
@@ -150,7 +151,10 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
     } catch (e) {
       debugPrint('[CountrymenPlayers] Error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: userFacingError(e, fallback: 'Failed to load players.'),
+      );
     }
   }
 

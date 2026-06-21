@@ -6,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:flutter/material.dart';
@@ -106,7 +107,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                           Padding(
                             padding: EdgeInsets.symmetric(horizontal: 32.sp),
                             child: Text(
-                              'Error: $error',
+                              userFacingError(error),
                               style: AppTypography.textSmRegular.copyWith(
                                 color: context.colors.textPrimary.withValues(alpha: 0.7),
                               ),

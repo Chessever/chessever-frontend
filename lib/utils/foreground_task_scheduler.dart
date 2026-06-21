@@ -8,9 +8,9 @@ const Duration kForegroundRefreshDelay = Duration(milliseconds: 700);
 const Duration kForegroundHeavyRefreshDelay = Duration(milliseconds: 1100);
 const Duration kStartupWarmupDelay = Duration(seconds: 2);
 
-/// Delay before warming up the SoLoud audio engine on startup.
+/// Delay before warming up the native audio engine on startup.
 ///
-/// SoLoud's native init (engine spin-up + extracting the SFX assets to temp
+/// Native audio init (engine spin-up + extracting the SFX assets to temp
 /// files) briefly stalls the main thread. At the old 2s delay that stall landed
 /// on the splash→auth brand-logo *assemble* (splash holds ~3s, the auth logo
 /// assembles right after), and because the logo's [AnimationController] is

@@ -4,6 +4,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/widgets/search_result_title.dart';
@@ -69,7 +70,7 @@ class SearchOverlay extends ConsumerWidget {
                       .when(
                         loading: () => _buildLoadingState(maxH),
                         error: (e, _) =>
-                            _buildErrorState(context, e.toString(), maxH),
+                            _buildErrorState(context, userFacingError(e), maxH),
                         data: (searchResult) {
                           if (isWaitingForDebounce)
                             return _buildLoadingState(maxH);

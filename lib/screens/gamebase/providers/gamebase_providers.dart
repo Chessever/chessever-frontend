@@ -4,6 +4,8 @@ import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dar
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:dio/dio.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -290,9 +292,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           filters: filtersSnapshot,
         );
       }
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (fetchId != _fetchToken) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: userFacingError(e));
     }
   }
 

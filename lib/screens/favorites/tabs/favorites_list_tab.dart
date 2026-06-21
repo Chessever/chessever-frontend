@@ -7,6 +7,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -76,7 +77,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
                       color: context.colors.textPrimary,
                     ),
                   ),
-              error: (error, stack) => _buildErrorState(error.toString()),
+              error: (error, stack) => _buildErrorState(userFacingError(error)),
             ),
         // Scroll to top button
         Positioned(

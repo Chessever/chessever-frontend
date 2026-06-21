@@ -24,6 +24,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -303,13 +304,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   }
 
   Widget _buildErrorAppBar(Object error) {
-    final errorString = error.toString();
-    final previewLength = errorString.length < 20 ? errorString.length : 20;
-    final errorPreview = errorString.substring(0, previewLength);
-    final suffix = errorString.length > previewLength ? '...' : '';
     return Column(
       children: [
-        _LoadingAppBarWithTitle(title: "Error: $errorPreview$suffix"),
+        _LoadingAppBarWithTitle(title: userFacingError(error)),
         SizedBox(height: 8.h),
         _buildSegmentedSwitcher(TournamentDetailScreenMode.games, (index) {}),
       ],

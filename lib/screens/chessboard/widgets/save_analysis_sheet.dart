@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
@@ -14,8 +15,10 @@ import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -648,6 +651,34 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         updatedMetadata['Date'] = '????.??.??';
       }
 
+      final canonicalEvent = await repository.resolveCanonicalGameEvent(
+        sourceGameId: _saveSourceGameId,
+        sourceTournamentId: state.game.tourId,
+      );
+      final formEvent = updatedMetadata['Event']?.toString();
+      final preferCanonicalEvent =
+          !isReadableLibraryEventName(
+            formEvent,
+            whiteName: updatedMetadata['White']?.toString(),
+            blackName: updatedMetadata['Black']?.toString(),
+          );
+      final resolvedEventName = chooseLibraryEventName(
+        canonicalEventName:
+            preferCanonicalEvent ? canonicalEvent?.eventName : null,
+        metadataEvent: formEvent,
+        site: updatedMetadata['Site']?.toString(),
+        tourSlug: canonicalEvent?.tourSlug ?? state.game.tourSlug,
+        tourId: state.game.tourId,
+        whiteName: updatedMetadata['White']?.toString(),
+        blackName: updatedMetadata['Black']?.toString(),
+      );
+      if (resolvedEventName != null) {
+        updatedMetadata['Event'] = resolvedEventName;
+      }
+      final sourceTournamentId =
+          canonicalEvent?.sourceTournamentId ??
+          normalizeSourceTournamentId(state.game.tourId);
+
       analysisGame = analysisGame.copyWith(metadata: updatedMetadata);
 
       // Build analysis_state JSONB with navigation info
@@ -689,7 +720,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             folderId: targetFolderId,
             title: title,
             sourceGameId: existing.sourceGameId ?? _saveSourceGameId,
-            sourceTournamentId: state.game.tourId,
+            sourceTournamentId:
+                sourceTournamentId ?? existing.sourceTournamentId,
             chessGame: analysisGame,
             analysisState: analysisStateJson,
             variationComments: state.variationComments,
@@ -713,7 +745,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           folderId: targetFolderId,
           title: title,
           sourceGameId: _saveSourceGameId,
-          sourceTournamentId: state.game.tourId,
+          sourceTournamentId: sourceTournamentId,
           chessGame: analysisGame,
           analysisState: analysisStateJson,
           variationComments: state.variationComments,
@@ -833,14 +865,18 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           Navigator.maybeOf(context)?.maybePop();
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (mounted) {
         setState(() {
           final verb =
               _isDuplicateMode
                   ? 'duplicate'
                   : (_isEditMode && !saveSeparateFromLiked ? 'update' : 'save');
-          _errorMessage = 'Failed to $verb: ${e.toString()}';
+          _errorMessage = userFacingError(
+            e,
+            fallback: 'Could not $verb this analysis. Please try again.',
+          );
           _isSaving = false;
         });
         HapticFeedback.lightImpact();

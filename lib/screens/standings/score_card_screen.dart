@@ -589,6 +589,10 @@ class ScoreCardScreen extends ConsumerWidget {
       key: e2eKey(E2eIds.scorecardRoot),
       backgroundColor: context.colors.background,
       body: SafeArea(
+        // No bottom inset — bottom safe area shrinks the scroll viewport and
+        // cuts off the last games during scroll. Clearance is restored via a
+        // trailing padding sliver below instead.
+        bottom: false,
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
@@ -849,6 +853,13 @@ class ScoreCardScreen extends ConsumerWidget {
                       );
                     }, childCount: playerGames.length),
                   ),
+                // Bottom breathing room + restored home-indicator clearance
+                // (SafeArea bottom was disabled to stop scroll cutoffs).
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 24.h + MediaQuery.of(context).padding.bottom,
+                  ),
+                ),
               ],
             ),
           ),

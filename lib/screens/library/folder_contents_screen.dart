@@ -22,8 +22,10 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
@@ -270,13 +272,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           ),
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       _removingIds.remove(analysis.id);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to remove: $e',
+            userFacingError(e, fallback: 'Could not remove this item. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -321,12 +324,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     } catch (_) {
       try {
         result = await FilePicker.platform.pickFiles(type: FileType.any);
-      } catch (e) {
+      } catch (e, st) {
+        talker.handle(e, st);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Could not open file picker: $e',
+              userFacingError(e, fallback: 'Could not open the file picker. Please try again.'),
               style: AppTypography.textSmMedium.copyWith(
                 color: context.colors.textPrimary,
               ),
@@ -441,12 +445,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to create item: $e',
+            userFacingError(e, fallback: 'Could not create this item. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -490,13 +495,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       HapticFeedbackService.error();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to rename: $e',
+            userFacingError(e, fallback: 'Could not rename this item. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -539,7 +545,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           dialogController.update(processed: processed, total: total);
         },
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       error = e;
     }
 
@@ -553,7 +560,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            error != null ? 'Export failed: $error' : 'Nothing to export here',
+            error != null
+                ? userFacingError(error, fallback: 'Export failed. Please try again.')
+                : 'Nothing to export here',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -592,12 +601,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         sharePositionOrigin: origin,
       );
       HapticFeedbackService.success();
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Share failed: $e',
+            userFacingError(e, fallback: 'Could not share this. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -1036,7 +1046,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         error:
             (e, _) => Center(
               child: Text(
-                'Error: $e',
+                userFacingError(e),
                 style: AppTypography.textSmRegular.copyWith(color: kRedColor),
               ),
             ),

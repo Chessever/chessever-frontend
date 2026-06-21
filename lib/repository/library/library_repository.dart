@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/library/models/shared_book_preview.dart';
@@ -507,6 +508,100 @@ class LibraryRepository extends BaseRepository {
         await supabase.from('user_saved_analyses').insert(rows);
       });
 
+  /// Resolve a saved game's canonical event from Supabase source tables.
+  ///
+  /// Gamebase imports can carry PGN Event headers like
+  /// "Round 7: White - Black". Library cards should show the parent event
+  /// instead, so callers use this before inserting/updating saved analyses.
+  Future<ResolvedLibraryGameEvent?> resolveCanonicalGameEvent({
+    String? sourceGameId,
+    String? sourceTournamentId,
+  }) => handleApiCall(() async {
+    final tourId = normalizeSourceTournamentId(sourceTournamentId);
+
+    if (tourId != null) {
+      final tourRow =
+          await supabase
+              .from('tours')
+              .select(
+                'id,name,slug,group_broadcasts!tours_group_broadcast_id_fkey(name)',
+              )
+              .eq('id', tourId)
+              .maybeSingle();
+
+      if (tourRow != null) {
+        return _resolvedEventFromTourRow(tourRow);
+      }
+    }
+
+    final gameId = sourceGameId?.trim() ?? '';
+    if (gameId.isEmpty) {
+      return tourId == null
+          ? null
+          : ResolvedLibraryGameEvent(sourceTournamentId: tourId);
+    }
+
+    final gameRow =
+        await supabase
+            .from('games')
+            .select(
+              'tour_id,tour_slug,tours!games_tour_id_fkey(id,name,slug,group_broadcasts!tours_group_broadcast_id_fkey(name))',
+            )
+            .eq('id', gameId)
+            .maybeSingle();
+
+    if (gameRow == null) {
+      return tourId == null
+          ? null
+          : ResolvedLibraryGameEvent(sourceTournamentId: tourId);
+    }
+
+    return _resolvedEventFromGameRow(gameRow);
+  });
+
+  ResolvedLibraryGameEvent _resolvedEventFromGameRow(Map<String, dynamic> row) {
+    final tour = _asMap(row['tours']);
+    if (tour != null) {
+      return _resolvedEventFromTourRow(tour);
+    }
+
+    final tourId = row['tour_id']?.toString().trim();
+    final tourSlug = row['tour_slug']?.toString().trim();
+    return ResolvedLibraryGameEvent(
+      sourceTournamentId: tourId?.isNotEmpty == true ? tourId : null,
+      tourSlug: tourSlug?.isNotEmpty == true ? tourSlug : null,
+    );
+  }
+
+  ResolvedLibraryGameEvent _resolvedEventFromTourRow(Map<String, dynamic> row) {
+    final group = _asMap(row['group_broadcasts']);
+    final groupName = group?['name']?.toString().trim();
+    final tourName = row['name']?.toString().trim();
+    final tourSlug = row['slug']?.toString().trim();
+    final tourId = row['id']?.toString().trim();
+
+    return ResolvedLibraryGameEvent(
+      eventName: _firstNonEmpty([groupName, tourName]),
+      sourceTournamentId: tourId?.isNotEmpty == true ? tourId : null,
+      tourSlug: tourSlug?.isNotEmpty == true ? tourSlug : null,
+    );
+  }
+
+  Map<String, dynamic>? _asMap(Object? value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is List && value.isNotEmpty) return _asMap(value.first);
+    return null;
+  }
+
+  String? _firstNonEmpty(Iterable<String?> values) {
+    for (final value in values) {
+      final trimmed = value?.trim() ?? '';
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return null;
+  }
+
   /// Returns the subset of [sourceGameIds] already present in a folder.
   Future<Set<String>> getExistingSourceGameIdsInFolder({
     required String folderId,
@@ -766,10 +861,11 @@ class LibraryRepository extends BaseRepository {
     String search, {
     List<String> tags = const <String>[],
   }) {
-    final normalizedTags = <String>{
-      for (final t in tags)
-        if (t.trim().isNotEmpty) t.trim(),
-    }.toList();
+    final normalizedTags =
+        <String>{
+          for (final t in tags)
+            if (t.trim().isNotEmpty) t.trim(),
+        }.toList();
     if (normalizedTags.isNotEmpty) {
       // Supabase Dart maps `.overlaps` to PostgREST `tags=ov.{...}` /
       // SQL `tags && ARRAY[...]`. Multi-tag chip selection is OR semantics:

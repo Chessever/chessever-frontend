@@ -33,7 +33,9 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _initialized = false;
   bool _assetsLoaded = false;
   Future<void>? _initializing;
-  DateTime _lastPlayAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Future<void>? _androidRecovering;
+  final Stopwatch _playSpacingClock = Stopwatch()..start();
+  int? _lastPlayAtMicros;
   SfxType? _lastPlayedType;
   bool _audioSessionConfigured = false;
 
@@ -116,38 +118,57 @@ class AudioPlayerService with WidgetsBindingObserver {
     unawaited(_playWithRecovery(type));
   }
 
+  Future<void> prepareForForegroundPlayback() async {
+    try {
+      if (Platform.isAndroid) {
+        await _recoverAndroidSfxAssets();
+        return;
+      }
+
+      await initializeAndLoadAllAssets();
+    } catch (err, st) {
+      debugPrint('⚠️ Audio foreground preparation failed: $err\n$st');
+    }
+  }
+
   /// Convenience: determine sound from SAN notation and play it.
   void playSfxForSan(String san) => playSound(sfxTypeForSan(san));
 
   bool _shouldSkipForSpacing(SfxType type) {
-    final now = DateTime.now();
-    final elapsed = now.difference(_lastPlayAt);
-    if (elapsed < _minimumAnyPlaySpacing ||
-        (_lastPlayedType == type && elapsed < _minimumSameSoundSpacing)) {
-      return true;
+    final nowMicros = _playSpacingClock.elapsedMicroseconds;
+    final lastPlayAtMicros = _lastPlayAtMicros;
+    if (lastPlayAtMicros != null) {
+      final elapsed = Duration(microseconds: nowMicros - lastPlayAtMicros);
+      if (elapsed < _minimumAnyPlaySpacing ||
+          (_lastPlayedType == type && elapsed < _minimumSameSoundSpacing)) {
+        return true;
+      }
     }
 
     _lastPlayedType = type;
-    _lastPlayAt = now;
+    _lastPlayAtMicros = nowMicros;
     return false;
   }
 
   Future<void> _playWithRecovery(SfxType type) async {
     try {
+      await _waitForAndroidRecoveryIfNeeded();
       await initializeAndLoadAllAssets();
+      await _waitForAndroidRecoveryIfNeeded();
       // The engine can die during the await gap above (for example iOS route
       // changes). Re-check and funnel into recovery instead of letting play()
       // throw SoLoudNotInitializedException.
       if (!player.isInitialized) {
         throw StateError('SoLoud not initialized after init; forcing recovery');
       }
-      // soloud 4.x: play() is sync — no await.
-      player.play(_resolve(type));
+      _playResolved(type);
     } catch (e, s) {
       if (Platform.isAndroid) {
-        // Keep Android on the package's normal init/play lifecycle. Do not add
-        // an app-side teardown/reinit loop after a failed play.
-        debugPrint('⚠️ Android SoLoud playback failed: $e\n$s');
+        // Keep Android on the package's normal init/play lifecycle. A failed
+        // play can still leave Dart with stale source handles, so reload the
+        // short SFX assets without app-side deinit/reinit.
+        debugPrint('⚠️ Android SoLoud playback failed, reloading SFX: $e\n$s');
+        await _recoverAndroidPlayback(type);
         return;
       }
       debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
@@ -159,11 +180,74 @@ class AudioPlayerService with WidgetsBindingObserver {
         // recovery can't throw a second SoLoudNotInitializedException.
         if (player.isInitialized) {
           // _resolve reads the freshly-loaded field — no stale handles.
-          player.play(_resolve(type));
+          _playResolved(type);
         }
       } catch (err, st) {
         debugPrint('⚠️ Audio playback failed after recovery: $err\n$st');
       }
+    }
+  }
+
+  Future<void> _waitForAndroidRecoveryIfNeeded() async {
+    if (!Platform.isAndroid) return;
+    final androidRecovery = _androidRecovering;
+    if (androidRecovery != null) {
+      await androidRecovery;
+    }
+  }
+
+  Future<void> _recoverAndroidPlayback(SfxType type) async {
+    try {
+      await _recoverAndroidSfxAssets();
+
+      if (player.isInitialized && _assetsLoaded) {
+        _playResolved(type);
+      }
+    } catch (err, st) {
+      debugPrint('⚠️ Android SoLoud recovery failed: $err\n$st');
+    }
+  }
+
+  Future<void> _recoverAndroidSfxAssets() {
+    return _androidRecovering ??= _reloadAndroidSfxAssets().whenComplete(() {
+      _androidRecovering = null;
+    });
+  }
+
+  Future<void> _reloadAndroidSfxAssets() async {
+    final inFlightInitialization = _initializing;
+    if (inFlightInitialization != null) {
+      try {
+        await inFlightInitialization;
+      } catch (_) {
+        // The recovery below still needs to clear and reload any partial state.
+      }
+    }
+
+    _initialized = false;
+    _assetsLoaded = false;
+    await _disposeLoadedSourcesForRecovery();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await initializeAndLoadAllAssets();
+  }
+
+  Future<void> _disposeLoadedSourcesForRecovery() async {
+    if (!player.isInitialized) return;
+
+    try {
+      await player.disposeAllSources();
+    } catch (err, st) {
+      debugPrint('⚠️ Android SoLoud source disposal failed: $err\n$st');
+    }
+  }
+
+  void _playResolved(SfxType type) {
+    final handle = player.play(_resolve(type));
+    if (handle.isError || handle.id <= 0) {
+      throw StateError('SoLoud returned an invalid handle for $type');
+    }
+    if (!player.getIsValidVoiceHandle(handle)) {
+      throw StateError('SoLoud returned an inactive handle for $type');
     }
   }
 
@@ -176,6 +260,7 @@ class AudioPlayerService with WidgetsBindingObserver {
       if (Platform.isAndroid) {
         _initialized = false;
         _assetsLoaded = false;
+        await _disposeLoadedSourcesForRecovery();
       } else if (player.isInitialized) {
         _teardownPlayer();
       } else {

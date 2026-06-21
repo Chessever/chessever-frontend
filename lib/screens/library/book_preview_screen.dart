@@ -7,7 +7,9 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -59,7 +61,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                   () =>  Center(
                     child: CircularProgressIndicator(color: context.colors.textPrimary),
                   ),
-              error: (error, _) => _buildError(error.toString()),
+              error: (error, _) => _buildError(userFacingError(error)),
             ),
           ),
         ),
@@ -261,7 +263,8 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
       } else {
         Navigator.of(context).pop();
       }
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       HapticFeedbackService.error();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -269,7 +272,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
           content: Text(
             e.toString().contains('Duplicate')
                 ? 'Already in your library'
-                : 'Failed to add: $e',
+                : userFacingError(e, fallback: 'Could not add this. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
           ),
           backgroundColor: kRedColor,

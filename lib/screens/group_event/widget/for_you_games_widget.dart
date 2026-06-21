@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/main.dart' show pageRouteObserver;
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
@@ -23,6 +23,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
@@ -103,8 +104,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     super.didChangeDependencies();
     if (_routeSubscribed) return;
     final route = ModalRoute.of(context);
-    if (route == null) return;
-    routeObserver.subscribe(this, route);
+    // Subscribe to the enclosing PAGE route only. pageRouteObserver ignores
+    // transient popups (the share/copy-pgn menu, dialogs, sheets) so they no
+    // longer blank this tab; only a real page push (tournament/board) does.
+    if (route is! PageRoute) return;
+    pageRouteObserver.subscribe(this, route);
     _routeSubscribed = true;
     _routeIsCurrent = route.isCurrent;
   }
@@ -116,7 +120,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     _animatedEventIds.clear();
     _animatedGameIds.clear();
     if (_routeSubscribed) {
-      routeObserver.unsubscribe(this);
+      pageRouteObserver.unsubscribe(this);
     }
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
@@ -290,7 +294,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       debugPrint('[ForYouGamesWidget] Error: ${state.error}');
       final message = state.error?.trim();
       return GenericErrorWidget(
-        message: message != null && message.isNotEmpty ? message : null,
+        message: message != null && message.isNotEmpty
+            ? userFacingError(message)
+            : null,
         onRetry: () => ref.read(forYouEventsProvider.notifier).refresh(),
       );
     }
@@ -551,10 +557,17 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   Widget _buildSmartEventCard(SmartEventCardData smartData) {
+    // Subtract tournaments the user hid from this smart event so the card
+    // count matches the About tab (and survives restarts via the same store).
+    final hidden = ref.watch(
+      smartEventDismissedEventIdsProvider(smartData.request.dismissScopeId),
+    );
+    final visibleCount =
+        smartData.request.events.where((e) => !hidden.contains(e.id)).length;
     return SmartEventCard(
       tierLabel: smartData.request.tierLabel,
       minElo: smartData.request.minElo,
-      liveCount: smartData.eventCount,
+      liveCount: visibleCount,
       avgElo: smartData.avgElo,
       titleSuffix: smartData.request.titleSuffix,
       caption: smartData.request.caption,
