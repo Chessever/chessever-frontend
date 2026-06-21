@@ -1150,8 +1150,11 @@ function pushUniqueId(ids: string[], id: string | null | undefined) {
   if (id && !ids.includes(id)) ids.push(id);
 }
 
-// Normalises a raw time-control string from group_broadcasts into one of the
-// three canonical values the preference columns use.
+// Normalises a raw bucket string from group_broadcasts.time_control into one of
+// the three canonical values the preference columns use. This column only ever
+// holds a coarse bucket word, so a simple lookup suffices. It is an UNRELIABLE
+// secondary source (NULL on ~46% of events and mislabels many blitz events as
+// "standard"), used only as a fallback — see classifyTimeControlString below.
 function normaliseTimeControl(
   raw: string | null | undefined,
 ): "classical" | "rapid" | "blitz" | null {
@@ -1161,6 +1164,83 @@ function normaliseTimeControl(
   if (s === "rapid") return "rapid";
   if (s === "blitz" || s === "bullet") return "blitz";
   return null;
+}
+
+// PRIMARY time-control source. Classifies the real lichess time control carried
+// in tours.info->>'tc' — a free-form string in many shapes: a bucket word
+// ("blitz"), a clock pair ("3+2", "90+30"), verbose text ("90 min + 30 sec /
+// move"), PGN ("g/3;+2", "g60+30"), or multilingual ("3 minutos + 2 segundos").
+// Returns the canonical bucket, or null when the string carries no usable
+// signal (caller then falls back to the group bucket).
+//
+// Harm asymmetry drives the heuristics: wrongly calling a slow event "blitz"
+// would SUPPRESS a wanted push, so every ambiguity resolves toward the slower
+// bucket (over-send) — never toward blitz.
+function classifyTimeControlString(
+  raw: string | null | undefined,
+): "classical" | "rapid" | "blitz" | null {
+  if (!raw) return null;
+  let s = String(raw).toLowerCase().trim();
+  if (!s) return null;
+  s = s.replace(/^["']+|["']+$/g, "").trim();
+
+  // 1. Explicit speed words win outright. Checked slowest-first so a mixed
+  //    label ("classical & rapid", "rapid & blitz") resolves to the slower
+  //    bucket.
+  if (/\b(classical|standard|clásico|classic)\b/.test(s)) return "classical";
+  if (/\brapid\b/.test(s)) return "rapid";
+  if (/\bblitz\b/.test(s)) return "blitz";
+  if (/\bbullet\b/.test(s)) return "blitz"; // app has no bullet bucket
+
+  // 2. Strip a leading PGN game marker ("g/", "g:", "g60") so its slash/colon
+  //    is not mistaken for a move-based control.
+  s = s.replace(/^g\s*[\/:]\s*/, "").replace(/^g(?=\d)/, "");
+
+  // 3. Move-/phase-based controls ("40/90", "90 min / 40 moves") are classical
+  //    by nature. Require digits on BOTH sides of the slash so the "/ move"
+  //    increment suffix is not matched.
+  if (
+    /\d+\s*\/\s*\d+/.test(s) ||
+    /\d+\s*(?:moves?|m[oó]vimientos?|jugadas?|z(?:ü|u)ge|mvs)\b/.test(s)
+  ) {
+    return "classical";
+  }
+
+  // 4. Base minutes: prefer a number anchored to a minute marker; handle hours.
+  //    Anchoring prevents stray leading numbers (round ranges, game counts)
+  //    from being read as the base time.
+  let baseMinutes: number | null = null;
+  const hourMatch = s.match(/(\d+)\s*h\s*(\d+)?/);
+  if (hourMatch) {
+    baseMinutes = parseInt(hourMatch[1], 10) * 60 +
+      (hourMatch[2] ? parseInt(hourMatch[2], 10) : 0);
+  } else {
+    const minMatch = s.match(/(\d+)\s*(?:minutos|minutes|minute|mins|min|mn|m\b|')/);
+    if (minMatch) baseMinutes = parseFloat(minMatch[1]);
+  }
+
+  // 5. Increment seconds: number anchored to a second marker.
+  let incrementSeconds = 0;
+  const secMatch = s.match(
+    /(\d+)\s*(?:segundos|seconds|second|secs|sec|seg|sek|s\b|''|"|″)/,
+  );
+  if (secMatch) incrementSeconds = parseFloat(secMatch[1]);
+
+  // 6. Fallback to a plain "M+S" numeric form when no minute marker present
+  //    (covers "3+2", "90+30", "5+0").
+  if (baseMinutes === null) {
+    const nums = s.match(/\d+(?:\.\d+)?/g);
+    if (!nums || nums.length === 0) return null;
+    baseMinutes = parseFloat(nums[0]);
+    if (!secMatch && nums.length > 1) incrementSeconds = parseFloat(nums[1]);
+  }
+  if (!Number.isFinite(baseMinutes)) return null;
+
+  // Estimate full game length the way lichess does (base + 40 * increment).
+  const estimatedSeconds = baseMinutes * 60 + 40 * incrementSeconds;
+  if (estimatedSeconds < 480) return "blitz"; // < 8 min (covers bullet)
+  if (estimatedSeconds < 1500) return "rapid"; // < 25 min
+  return "classical";
 }
 
 function optionalPayloadString(
@@ -1186,22 +1266,36 @@ async function resolveGameTimeControl(
     const broadcastIds: string[] = [];
     pushUniqueId(broadcastIds, lookup.groupBroadcastId);
 
-    let tourId = lookup.tourId;
+    const tourId = lookup.tourId;
 
+    // PRIMARY: the per-tour lichess time control (tours.info->>'tc'). This is
+    // section-accurate and far more reliable than the group-level bucket, which
+    // is NULL on ~46% of events and mislabels many blitz events as "standard"
+    // (→ classical). Reading it here is the fix for blitz pushes leaking to
+    // users who turned blitz off.
     if (tourId) {
       const { data: tourData, error: tourError } = await supabase
         .from("tours")
-        .select("group_broadcast_id")
+        .select("info,group_broadcast_id")
         .eq("id", tourId)
         .maybeSingle();
 
       if (tourError) return null;
+
+      const info = tourData?.info as Record<string, unknown> | null;
+      const rawTc = info && typeof info["tc"] === "string"
+        ? (info["tc"] as string)
+        : null;
+      const parsed = classifyTimeControlString(rawTc);
+      if (parsed) return parsed;
+
       pushUniqueId(
         broadcastIds,
         (tourData?.group_broadcast_id as string | null) ?? null,
       );
     }
 
+    // FALLBACK: the coarse group_broadcasts.time_control bucket.
     for (const broadcastId of broadcastIds) {
       const { data, error } = await supabase
         .from("group_broadcasts")
