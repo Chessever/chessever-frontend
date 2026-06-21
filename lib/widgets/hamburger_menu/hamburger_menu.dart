@@ -170,10 +170,41 @@ class HamburgerMenu extends HookConsumerWidget {
                       // recolour to `iconPrimary` only when the theme is light;
                       // dark theme renders the asset unchanged.
                       _MenuItem(
+                        icon: Icons.favorite_border,
+                        title: 'Favorites',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          callbacks.onFavoritesPressed();
+                        },
+                        showChevron: true,
+                      ),
+                      _MenuItem(
+                        icon: Icons.desktop_mac_outlined,
+                        title: 'Desktop',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () async {
+                          final uri = Uri.parse('https://chessever.com');
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                        showChevron: true,
+                      ),
+                      _MenuItem(
                         key: e2eKey(E2eIds.drawerOpeningExplorer),
                         customIcon: SvgWidget(
                           SvgAsset.openingExplorer,
-                          semanticsLabel: 'Opening Explorer Icon',
+                          semanticsLabel: 'Explorer Icon',
                           height: 20.h,
                           width: 20.w,
                           colorFilter:
@@ -185,7 +216,7 @@ class HamburgerMenu extends HookConsumerWidget {
                                   : null,
                         ),
                         icon: Icons.explore_outlined,
-                        title: 'Opening Explorer',
+                        title: 'Explorer',
                         textStyle: AppTypography.textSmMedium.copyWith(
                           color: context.colors.iconPrimary,
                           height: 1.0,
@@ -210,7 +241,7 @@ class HamburgerMenu extends HookConsumerWidget {
                           preserveOriginalColors: true,
                         ),
                         icon: Icons.grid_view_rounded,
-                        title: 'Board Editor',
+                        title: 'Board',
                         textStyle: AppTypography.textSmRegular.copyWith(
                           color: context.colors.iconPrimary,
                           height: 20.h / 14.h,
@@ -218,19 +249,6 @@ class HamburgerMenu extends HookConsumerWidget {
                         onPressed: () {
                           Navigator.of(context).pop();
                           callbacks.onAnalysisBoardPressed();
-                        },
-                        showChevron: true,
-                      ),
-                      _MenuItem(
-                        icon: Icons.favorite_border,
-                        title: 'Favorites',
-                        textStyle: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.iconPrimary,
-                          height: 20.h / 14.h,
-                        ),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          callbacks.onFavoritesPressed();
                         },
                         showChevron: true,
                       ),
@@ -258,27 +276,9 @@ class HamburgerMenu extends HookConsumerWidget {
                         showChevron: true,
                       ),
                       _MenuItem(
-                        icon: Icons.desktop_mac_outlined,
-                        title: 'ChessEver Desktop',
-                        textStyle: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.iconPrimary,
-                          height: 20.h / 14.h,
-                        ),
-                        onPressed: () async {
-                          final uri = Uri.parse('https://chessever.com');
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                        },
-                        showChevron: true,
-                      ),
-                      _MenuItem(
                         customIcon: SvgWidget(
                           SvgAsset.leaveFeedback,
-                          semanticsLabel: 'Leave Feedback Icon',
+                          semanticsLabel: 'Feedback Icon',
                           height: 20.h,
                           width: 20.w,
                           colorFilter:
@@ -290,7 +290,7 @@ class HamburgerMenu extends HookConsumerWidget {
                                   : null,
                         ),
                         icon: Icons.rate_review_outlined,
-                        title: 'Leave Feedback',
+                        title: 'Feedback',
                         textStyle: AppTypography.textSmRegular.copyWith(
                           color: context.colors.iconPrimary,
                           height: 20.h / 14.h,
@@ -307,7 +307,7 @@ class HamburgerMenu extends HookConsumerWidget {
                       ),
                       _MenuItem(
                         icon: Icons.star_outline,
-                        title: 'Rate this app',
+                        title: 'Rate',
                         textStyle: AppTypography.textSmRegular.copyWith(
                           color: context.colors.iconPrimary,
                           height: 20.h / 14.h,
@@ -331,10 +331,7 @@ class HamburgerMenu extends HookConsumerWidget {
                                   )
                                   : null,
                         ),
-                        title:
-                            versionString.isNotEmpty
-                                ? 'Version $versionString'
-                                : 'Version',
+                        title: 'About',
                         textStyle: AppTypography.textSmRegular.copyWith(
                           color: context.colors.iconPrimary,
                           height: 20.h / 14.h,
