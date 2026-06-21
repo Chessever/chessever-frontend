@@ -66,6 +66,15 @@ import 'package:chessever2/providers/push_token_sync_provider.dart';
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
 
+/// Page-scoped route observer. Unlike [routeObserver] (which tracks every
+/// [ModalRoute], including popup menus, dialogs and bottom sheets), this only
+/// fires `didPushNext`/`didPopNext` when a full [PageRoute] covers/uncovers the
+/// subscriber. Screens that tear themselves down while covered must subscribe
+/// here — otherwise a transient popup (e.g. the event card share/copy-pgn menu)
+/// would blank the page underneath it.
+final RouteObserver<PageRoute<dynamic>> pageRouteObserver =
+    RouteObserver<PageRoute<dynamic>>();
+
 // Global navigator key for upgrader dialog
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -1135,6 +1144,7 @@ class MyApp extends HookConsumerWidget {
         navigatorKey: navigatorKey,
         navigatorObservers: [
           routeObserver,
+          pageRouteObserver,
           HeroineController(),
           AnalyticsService.instance.routeObserver,
         ],

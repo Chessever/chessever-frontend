@@ -50,9 +50,41 @@ final knockoutTournamentStateProvider = Provider.autoDispose
         }
       }
 
+      // Team brackets (e.g. "16-team Knockout") must NEVER use the player
+      // knockout view: that view groups games by 1v1 player matchups, which
+      // shatters a team-vs-team round (many boards) into meaningless
+      // single-game "matches". Route these to the group-event (team) view.
+      //
+      // The discriminator is the curated FORMAT token, NOT "every player has a
+      // team". Two look-alikes prove why:
+      //  - A 16-team double-leg knockout has repeated pairs + "game-1/2" slugs,
+      //    so the structural detector ALSO flags it as knockout — gating must
+      //    cover the inferred path too, not just the format string.
+      //  - Individual events like the FIDE World Cup ("206-player ... Knockout")
+      //    tag every player with a club/team, so an "all players have a team"
+      //    test would wrongly demote them out of the (correct) knockout view.
+      // Hence: "N-team" => team event; an explicit "N-player" format always
+      // stays a player knockout even when team metadata is present; a bare
+      // "Knockout" with every player teamed (e.g. corporate brackets) is team.
+      final teamPlayers =
+          (tourMetadata?.players.isNotEmpty ?? false)
+              ? tourMetadata!.players
+              : (tourDetail?.aboutTourModel.players ??
+                  const <TournamentPlayer>[]);
+      final lowerFormat = (formatString ?? '').toLowerCase();
+      final formatSaysTeam = lowerFormat.contains('team');
+      final formatSaysPlayer = lowerFormat.contains('player');
+      final allPlayersHaveTeam =
+          teamPlayers.isNotEmpty &&
+          teamPlayers.every((p) => p.team != null);
+      final isTeamEvent =
+          formatSaysTeam || (!formatSaysPlayer && allPlayersHaveTeam);
+
       // Check format string first (fast), only analyze games if inconclusive
-      final explicitKnockout = _formatSuggestsKnockout(formatString);
+      final explicitKnockout =
+          !isTeamEvent && _formatSuggestsKnockout(formatString);
       final inferredKnockout =
+          !isTeamEvent &&
           !explicitKnockout &&
           models.isNotEmpty &&
           KnockoutMatchDetector.isKnockoutMatchFormat(models);

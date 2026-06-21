@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/main.dart' show pageRouteObserver;
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
@@ -104,8 +104,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     super.didChangeDependencies();
     if (_routeSubscribed) return;
     final route = ModalRoute.of(context);
-    if (route == null) return;
-    routeObserver.subscribe(this, route);
+    // Subscribe to the enclosing PAGE route only. pageRouteObserver ignores
+    // transient popups (the share/copy-pgn menu, dialogs, sheets) so they no
+    // longer blank this tab; only a real page push (tournament/board) does.
+    if (route is! PageRoute) return;
+    pageRouteObserver.subscribe(this, route);
     _routeSubscribed = true;
     _routeIsCurrent = route.isCurrent;
   }
@@ -117,7 +120,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     _animatedEventIds.clear();
     _animatedGameIds.clear();
     if (_routeSubscribed) {
-      routeObserver.unsubscribe(this);
+      pageRouteObserver.unsubscribe(this);
     }
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
