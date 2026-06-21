@@ -2,10 +2,12 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:dio/dio.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:flutter/foundation.dart';
@@ -92,6 +94,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       LinkedHashMap<String, _PositionAggregateCacheEntry>();
   final Map<String, Future<List<MoveAggregate>>> _inFlightAggregateRequests =
       {};
+  String? _enabledLocalPlayerTreeId;
 
   /// Play SFX for a SAN move string if sound is enabled.
   void _playSfx(String san) {
@@ -212,6 +215,25 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final fetchId = ++_fetchToken;
     final requestedFen = state.currentFen;
     final filtersSnapshot = state.filters;
+
+    final localPlayerId = _localTreePlayerId(filtersSnapshot);
+    if (localPlayerId != null && isLocalPlayerTreeEnabledFor(localPlayerId)) {
+      final localState = ref.read(playerOpeningTreeProvider(localPlayerId));
+      ref.read(playerOpeningTreeProvider(localPlayerId).notifier).start();
+      final localMoves = localState.index.movesForFen(
+        requestedFen,
+        filters: _localTreeCriteria(filtersSnapshot, localPlayerId),
+      );
+      state = state.copyWith(
+        moveAggregates: localMoves,
+        isLoading: localState.progress.isRunning,
+        error:
+            localState.progress.status == PlayerOpeningTreeStatus.error
+                ? localState.progress.error
+                : null,
+      );
+      return;
+    }
 
     final startsFromInitial =
         state.game != null && _isInitialFen(state.game!.startingFen);
@@ -840,6 +862,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     GamebasePlayer player,
     GamebaseFilters filters,
   ) {
+    final compatibleFilters = _treeCompatibleFilters(filters);
     state = GamebaseExplorerState(
       currentFen: _kInitialFen,
       game: ChessGame(
@@ -859,14 +882,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       filters: GamebaseFilters(
         playerIds: [player.id],
         selectedPlayers: [player],
-        timeControls: filters.timeControls,
-        minRating: filters.minRating,
-        maxRating: filters.maxRating,
-        playerColor: filters.playerColor,
-        gameResult: filters.gameResult,
-        isOnline: filters.isOnline,
-        yearFrom: filters.yearFrom,
-        yearTo: filters.yearTo,
+        timeControls: compatibleFilters.timeControls,
+        playerColor: compatibleFilters.playerColor,
+        isOnline: compatibleFilters.isOnline,
       ),
     );
     _scheduleFetch();
@@ -1095,8 +1113,51 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   /// Update filters and refetch data
   void updateFilters(GamebaseFilters filters) {
-    state = state.copyWith(filters: filters);
+    final localPlayerId = _localTreePlayerId(filters);
+    final nextFilters =
+        localPlayerId != null && isLocalPlayerTreeEnabledFor(localPlayerId)
+            ? _treeCompatibleFilters(filters)
+            : filters;
+    state = state.copyWith(filters: nextFilters);
     _scheduleFetch();
+  }
+
+  void syncLocalPlayerTree(String playerId) {
+    if (!isLocalPlayerTreeEnabledFor(playerId)) return;
+    final localState = ref.read(playerOpeningTreeProvider(playerId));
+    final localMoves = localState.index.movesForFen(
+      state.currentFen,
+      filters: _localTreeCriteria(state.filters, playerId),
+    );
+    state = state.copyWith(
+      moveAggregates: localMoves,
+      isLoading: localState.progress.isRunning,
+      error:
+          localState.progress.status == PlayerOpeningTreeStatus.error
+              ? localState.progress.error
+              : null,
+    );
+  }
+
+  void enableLocalPlayerTree(String playerId) {
+    final trimmed = playerId.trim();
+    if (trimmed.isEmpty) return;
+    _enabledLocalPlayerTreeId = trimmed;
+    final localPlayerId = _localTreePlayerId(state.filters);
+    if (localPlayerId == trimmed) {
+      state = state.copyWith(filters: _treeCompatibleFilters(state.filters));
+    }
+  }
+
+  void disableLocalPlayerTree() {
+    _enabledLocalPlayerTreeId = null;
+  }
+
+  bool isLocalPlayerTreeEnabledFor(String playerId) {
+    final trimmed = playerId.trim();
+    return trimmed.isNotEmpty &&
+        _enabledLocalPlayerTreeId == trimmed &&
+        _localTreePlayerId(state.filters) == trimmed;
   }
 
   /// Toggle a time control filter
@@ -1264,6 +1325,183 @@ final gamebaseExplorerProvider = StateNotifierProvider.autoDispose<
   GamebaseExplorerNotifier,
   GamebaseExplorerState
 >((ref) => GamebaseExplorerNotifier(ref));
+
+String? _localTreePlayerId(GamebaseFilters filters) {
+  if (filters.playerIds.length != 1) return null;
+  final playerId = filters.playerIds.first.trim();
+  return playerId.isEmpty ? null : playerId;
+}
+
+GamebaseFilters _treeCompatibleFilters(GamebaseFilters filters) {
+  return filters.copyWith(
+    minRating: null,
+    maxRating: null,
+    gameResult: null,
+    yearFrom: null,
+    yearTo: null,
+  );
+}
+
+PlayerOpeningTreeFilterCriteria _localTreeCriteria(
+  GamebaseFilters filters,
+  String playerId,
+) {
+  return PlayerOpeningTreeFilterCriteria(
+    playerId: playerId,
+    timeControl:
+        filters.timeControls.isNotEmpty ? filters.timeControls.first : null,
+    color: filters.playerColor?.name,
+    isOnline: filters.isOnline,
+  );
+}
+
+final playerOpeningTreeProvider = StateNotifierProvider.family<
+  PlayerOpeningTreeBuildController,
+  PlayerOpeningTreeState,
+  String
+>((ref, playerId) => PlayerOpeningTreeBuildController(ref, playerId));
+
+class PlayerOpeningTreeBuildController
+    extends StateNotifier<PlayerOpeningTreeState> {
+  PlayerOpeningTreeBuildController(this._ref, this._playerId)
+    : super(PlayerOpeningTreeState(playerId: _playerId));
+
+  static const int _maxPly = 24;
+  static const Duration _pollInterval = Duration(seconds: 1);
+
+  final Ref _ref;
+  final String _playerId;
+  int _generation = 0;
+
+  void start({bool force = false}) {
+    if (!force &&
+        (state.progress.status == PlayerOpeningTreeStatus.building ||
+            state.progress.status == PlayerOpeningTreeStatus.complete)) {
+      return;
+    }
+    final generation = ++_generation;
+    state = PlayerOpeningTreeState(
+      playerId: _playerId,
+      progress: const PlayerOpeningTreeProgress(
+        status: PlayerOpeningTreeStatus.building,
+      ),
+    );
+    unawaited(_run(generation));
+  }
+
+  void retry() => start(force: true);
+
+  void cancel() {
+    _generation++;
+    state = state.copyWith(
+      progress: state.progress.copyWith(
+        status: PlayerOpeningTreeStatus.canceled,
+        error: null,
+      ),
+    );
+  }
+
+  Future<void> _run(int generation) async {
+    try {
+      final repository = _ref.read(gamebaseRepositoryProvider);
+      final buildResponse = await repository.startPlayerOpeningTreeBuild(
+        playerId: _playerId,
+        maxPly: _maxPly,
+        forceRebuild: false,
+      );
+      if (!mounted || generation != _generation) return;
+
+      final buildData = _responseData(buildResponse);
+      final treeId = buildData['treeId']?.toString().trim() ?? '';
+      if (treeId.isEmpty) {
+        throw Exception('Backend did not return a player tree id.');
+      }
+
+      state = state.copyWith(treeId: treeId);
+
+      while (mounted && generation == _generation) {
+        final statusResponse = await repository.getPlayerOpeningTreeStatus(
+          playerId: _playerId,
+          treeId: treeId,
+        );
+        if (!mounted || generation != _generation) return;
+
+        final statusData = _responseData(statusResponse);
+        final status =
+            statusData['status']?.toString().trim().toLowerCase() ?? '';
+        if (status == 'error') {
+          throw Exception(
+            statusData['error']?.toString().trim().isNotEmpty == true
+                ? statusData['error'].toString()
+                : 'Backend tree build failed.',
+          );
+        }
+
+        final treeResponse = await repository.getPlayerOpeningTree(
+          playerId: _playerId,
+          treeId: treeId,
+        );
+        if (!mounted || generation != _generation) return;
+        if (treeResponse != null) {
+          _completeFromTreeResponse(treeId, treeResponse);
+          return;
+        }
+
+        state = state.copyWith(
+          treeId: treeId,
+          progress: const PlayerOpeningTreeProgress(
+            status: PlayerOpeningTreeStatus.building,
+          ),
+        );
+        await Future<void>.delayed(_pollInterval);
+      }
+    } catch (e) {
+      if (!mounted || generation != _generation) return;
+      state = state.copyWith(
+        progress: state.progress.copyWith(
+          status: PlayerOpeningTreeStatus.error,
+          error: _playerTreeErrorMessage(e),
+        ),
+      );
+    }
+  }
+
+  void _completeFromTreeResponse(
+    String treeId,
+    Map<String, dynamic> treeResponse,
+  ) {
+    final snapshot = PlayerOpeningTreeSnapshot.fromJson(
+      _responseData(treeResponse),
+    );
+    final index = PlayerOpeningTreeIndex.fromSnapshot(snapshot);
+    state = PlayerOpeningTreeState(
+      playerId: _playerId,
+      treeId: treeId,
+      index: index,
+      progress: PlayerOpeningTreeProgress(
+        status: PlayerOpeningTreeStatus.complete,
+        indexedPositions: index.positionCount,
+        error: null,
+      ),
+    );
+  }
+}
+
+String _playerTreeErrorMessage(Object error) {
+  if (error is DioException) {
+    final statusCode = error.response?.statusCode;
+    final body = error.response?.data?.toString().trim();
+    final bodyText = body == null || body.isEmpty ? '' : ' body=$body';
+    return 'HTTP ${statusCode ?? 'unknown'} ${error.type.name}$bodyText';
+  }
+  return error.toString().replaceFirst('Exception: ', '');
+}
+
+Map<String, dynamic> _responseData(Map<String, dynamic> response) {
+  final data = response['data'];
+  if (data is Map) return Map<String, dynamic>.from(data);
+  return response;
+}
 
 /// Provider for managing the current page index of the opening explorer panels (0: Moves, 1: Notation).
 final explorerPageIndexProvider = StateProvider.autoDispose<int>((ref) => 0);

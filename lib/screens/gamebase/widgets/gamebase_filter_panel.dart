@@ -21,12 +21,24 @@ class GamebaseFilterPanel extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gamebaseExplorerProvider);
     final isExpanded = useState(false);
+    final localPlayerId =
+        state.filters.playerIds.length == 1
+            ? state.filters.playerIds.first.trim()
+            : null;
+    final isTreeBackedPlayerScope =
+        localPlayerId != null &&
+        localPlayerId.isNotEmpty &&
+        ref
+            .read(gamebaseExplorerProvider.notifier)
+            .isLocalPlayerTreeEnabledFor(localPlayerId);
 
     return Container(
       decoration: BoxDecoration(
         color: context.colors.surface,
         border: Border(
-          bottom: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.05)),
+          bottom: BorderSide(
+            color: context.colors.textPrimary.withValues(alpha: 0.05),
+          ),
         ),
       ),
       child: Column(
@@ -50,7 +62,10 @@ class GamebaseFilterPanel extends HookConsumerWidget {
                     ? CrossFadeState.showSecond
                     : CrossFadeState.showFirst,
             firstChild: const SizedBox.shrink(),
-            secondChild: _FilterContent(filters: state.filters),
+            secondChild: _FilterContent(
+              filters: state.filters,
+              isTreeBackedPlayerScope: isTreeBackedPlayerScope,
+            ),
           ),
         ],
       ),
@@ -83,12 +98,17 @@ class _FilterHeader extends StatelessWidget {
             Icon(
               Icons.filter_list_rounded,
               size: 20.sp,
-              color: hasActiveFilters ? context.colors.textPrimary : context.colors.textSecondary,
+              color:
+                  hasActiveFilters
+                      ? context.colors.textPrimary
+                      : context.colors.textSecondary,
             ),
             SizedBox(width: 8.w),
             Text(
               'Filters',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             if (hasActiveFilters) ...[
               SizedBox(width: 8.w),
@@ -139,9 +159,13 @@ class _FilterHeader extends StatelessWidget {
 
 /// Expandable filter content with all filter options.
 class _FilterContent extends HookConsumerWidget {
-  const _FilterContent({required this.filters});
+  const _FilterContent({
+    required this.filters,
+    required this.isTreeBackedPlayerScope,
+  });
 
   final GamebaseFilters filters;
+  final bool isTreeBackedPlayerScope;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -157,12 +181,13 @@ class _FilterContent extends HookConsumerWidget {
 
           SizedBox(height: 16.h),
 
-          // Result Section
-          _SectionLabel(label: 'Result'),
-          SizedBox(height: 8.h),
-          _GameResultChips(selectedResult: filters.gameResult),
-
-          SizedBox(height: 16.h),
+          if (!isTreeBackedPlayerScope) ...[
+            // Result Section
+            _SectionLabel(label: 'Result'),
+            SizedBox(height: 8.h),
+            _GameResultChips(selectedResult: filters.gameResult),
+            SizedBox(height: 16.h),
+          ],
 
           // Format Section (OTB / Online) — temporarily hidden
           // _SectionLabel(label: 'Format'),
@@ -178,15 +203,16 @@ class _FilterContent extends HookConsumerWidget {
             SizedBox(height: 16.h),
           ],
 
-          // Rating level section
-          _SectionLabel(label: 'Level'),
-          SizedBox(height: 8.h),
-          _RatingTierInputs(
-            minRating: filters.minRating,
-            maxRating: filters.maxRating,
-          ),
-
-          SizedBox(height: 16.h),
+          if (!isTreeBackedPlayerScope) ...[
+            // Rating level section
+            _SectionLabel(label: 'Level'),
+            SizedBox(height: 8.h),
+            _RatingTierInputs(
+              minRating: filters.minRating,
+              maxRating: filters.maxRating,
+            ),
+            SizedBox(height: 16.h),
+          ],
 
           // Player Search Section
           _SectionLabel(label: 'Player'),
@@ -401,11 +427,16 @@ class _FilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : context.colors.surfaceRecessed,
+          color:
+              isSelected
+                  ? context.colors.textPrimary.withValues(alpha: 0.12)
+                  : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(
             color:
-                isSelected ? context.colors.textPrimary.withValues(alpha: 0.25) : Colors.transparent,
+                isSelected
+                    ? context.colors.textPrimary.withValues(alpha: 0.25)
+                    : Colors.transparent,
             width: 1,
           ),
         ),
@@ -416,12 +447,17 @@ class _FilterChip extends StatelessWidget {
               icon,
               size: 16.sp,
               color:
-                  iconColor ?? (isSelected ? context.colors.textPrimary : context.colors.textSecondary),
+                  iconColor ??
+                  (isSelected
+                      ? context.colors.textPrimary
+                      : context.colors.textSecondary),
             ),
             SizedBox(width: 6.w),
             Text(
               label,
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ],
         ),
@@ -493,16 +529,24 @@ class _PlayerSearchField extends HookConsumerWidget {
         decoration: BoxDecoration(
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.25)),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.25),
+          ),
         ),
         child: Row(
           children: [
-            Icon(Icons.person_rounded, size: 20.sp, color: context.colors.textPrimary),
+            Icon(
+              Icons.person_rounded,
+              size: 20.sp,
+              color: context.colors.textPrimary,
+            ),
             SizedBox(width: 8.w),
             Expanded(
               child: Text(
                 selectedPlayer.titleAndName,
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -537,9 +581,8 @@ class _PlayerSearchField extends HookConsumerWidget {
         onTap: () async {
           await requirePremiumGuard(context, ref);
         },
-        child: const AbsorbPointer(
-          ignoringSemantics: true,
-          child: _PlayerSearchInput(),
+        child: const ExcludeSemantics(
+          child: AbsorbPointer(child: _PlayerSearchInput()),
         ),
       );
     }
@@ -583,11 +626,13 @@ class _PlayerSearchInput extends HookConsumerWidget {
           child: TextField(
             controller: searchController,
             focusNode: focusNode,
-            style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textPrimary,
+            ),
             decoration: InputDecoration(
               hintText: 'Search player...',
               hintStyle: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary.withOpacity(0.5),
+                color: context.colors.textSecondary.withValues(alpha: 0.5),
               ),
               prefixIcon: Icon(
                 Icons.search_rounded,
@@ -648,7 +693,8 @@ class _PlayerSearchInput extends HookConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 4.h),
                   itemCount: players.length,
                   separatorBuilder:
-                      (_, __) => Divider(color: context.colors.divider, height: 1),
+                      (_, __) =>
+                          Divider(color: context.colors.divider, height: 1),
                   itemBuilder: (context, index) {
                     final player = players[index];
                     return _PlayerSearchResult(
@@ -753,7 +799,11 @@ class _PlayerSearchResult extends StatelessWidget {
               ),
             ),
             // Add icon
-            Icon(Icons.add_rounded, size: 20.sp, color: context.colors.textPrimary),
+            Icon(
+              Icons.add_rounded,
+              size: 20.sp,
+              color: context.colors.textPrimary,
+            ),
           ],
         ),
       ),

@@ -98,6 +98,7 @@ class MyLikesGameCard extends ConsumerWidget {
   String _eventName(SavedAnalysis analysis) {
     final md = analysis.chessGame.metadata;
     return chooseLibraryEventName(
+          canonicalEventName: md['BroadcastName']?.toString(),
           metadataEvent: md['Event']?.toString(),
           site: md['Site']?.toString(),
           whiteName: analysis.whiteName,

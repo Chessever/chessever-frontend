@@ -27,6 +27,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -97,6 +98,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     final scopedPlayer = preserveScope ? widget.initialPlayer : null;
 
     if (fetch && scopedPlayer != null) {
+      notifier.enableLocalPlayerTree(scopedPlayer.id);
+      ref.read(playerOpeningTreeProvider(scopedPlayer.id).notifier).start();
       final filters = preserveScope ? widget.initialFilters : null;
       if (filters != null) {
         notifier.initializeWithPlayerAndFilters(scopedPlayer, filters);
@@ -104,6 +107,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         notifier.initializeWithPlayer(scopedPlayer);
       }
     } else {
+      notifier.disableLocalPlayerTree();
       notifier.reset(fetch: fetch);
     }
 
@@ -283,6 +287,25 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         );
 
     final state = ref.watch(gamebaseExplorerProvider);
+    final scopedPlayerId = widget.initialPlayer?.id;
+    if (scopedPlayerId != null && scopedPlayerId.isNotEmpty) {
+      ref.listen<PlayerOpeningTreeState>(
+        playerOpeningTreeProvider(scopedPlayerId),
+        (previous, next) {
+          if (previous?.index == next.index &&
+              previous?.progress.status == next.progress.status &&
+              previous?.progress.error == next.progress.error) {
+            return;
+          }
+          Future.microtask(() {
+            if (!mounted) return;
+            ref
+                .read(gamebaseExplorerProvider.notifier)
+                .syncLocalPlayerTree(scopedPlayerId);
+          });
+        },
+      );
+    }
 
     return ScreenWrapper(
       child: PopScope(
@@ -1160,12 +1183,14 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     final canUsePlayerFilter = _canUsePlayerFilter(
       ref.read(subscriptionProvider).isSubscribed,
     );
+    final treeBackedPlayerScope = widget.scopedPlayer != null;
     final finalFilters = _sanitizePlayerFilters(
       _draftFilters.copyWith(
-        minRating: _effectiveMinRating,
-        maxRating: _effectiveMaxRating,
-        yearFrom: _effectiveYearFrom,
-        yearTo: _effectiveYearTo,
+        minRating: treeBackedPlayerScope ? null : _effectiveMinRating,
+        maxRating: treeBackedPlayerScope ? null : _effectiveMaxRating,
+        gameResult: treeBackedPlayerScope ? null : _draftFilters.gameResult,
+        yearFrom: treeBackedPlayerScope ? null : _effectiveYearFrom,
+        yearTo: treeBackedPlayerScope ? null : _effectiveYearTo,
       ),
       canUsePlayerFilter: canUsePlayerFilter,
     );
@@ -1184,14 +1209,16 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   }
 
   bool _hasActiveDraft(GamebaseFilters filters) {
+    final isTreeBackedPlayerScope = widget.scopedPlayer != null;
     final hasTimeOrRatingOrYear =
         filters.timeControls.isNotEmpty ||
-        _effectiveMinRating != null ||
-        _effectiveMaxRating != null ||
-        _effectiveYearFrom != null ||
-        _effectiveYearTo != null;
+        (!isTreeBackedPlayerScope &&
+            (_effectiveMinRating != null ||
+                _effectiveMaxRating != null ||
+                _effectiveYearFrom != null ||
+                _effectiveYearTo != null));
     final hasColor = filters.playerColor != null;
-    final hasResult = filters.gameResult != null;
+    final hasResult = !isTreeBackedPlayerScope && filters.gameResult != null;
     final hasFormat = filters.isOnline != null;
     if (widget.scopedPlayer == null) {
       return hasTimeOrRatingOrYear ||
@@ -1234,6 +1261,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       _draftFilters,
       canUsePlayerFilter: canUsePlayerFilter,
     );
+    final isTreeBackedPlayerScope = widget.scopedPlayer != null;
     final hasActiveDraft = _hasActiveDraft(filters);
 
     return SafeArea(
@@ -1319,45 +1347,47 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 ),
                 SizedBox(height: 16.sp),
 
-                // Result filter
-                Text(
-                  'Result',
-                  style: TextStyle(
-                    color: context.colors.textSecondary,
-                    fontSize: 12.f,
-                    fontWeight: FontWeight.w500,
+                if (!isTreeBackedPlayerScope) ...[
+                  // Result filter
+                  Text(
+                    'Result',
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-                SizedBox(height: 8.sp),
-                Wrap(
-                  spacing: 8.sp,
-                  children:
-                      GamebaseGameResult.values.map((r) {
-                        final isSelected = filters.gameResult == r;
-                        return FilterChip(
-                          label: Text(r.displayText),
-                          selected: isSelected,
-                          onSelected: (_) => _toggleResult(r),
-                          selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                          showCheckmark: false,
-                          labelStyle: TextStyle(
-                            color:
-                                isSelected
-                                    ? kPrimaryColor
-                                    : context.colors.textPrimary,
-                            fontSize: 12.f,
-                          ),
-                          backgroundColor: context.colors.surface,
-                          side: BorderSide(
-                            color:
-                                isSelected
-                                    ? kPrimaryColor
-                                    : context.colors.divider,
-                          ),
-                        );
-                      }).toList(),
-                ),
-                SizedBox(height: 16.sp),
+                  SizedBox(height: 8.sp),
+                  Wrap(
+                    spacing: 8.sp,
+                    children:
+                        GamebaseGameResult.values.map((r) {
+                          final isSelected = filters.gameResult == r;
+                          return FilterChip(
+                            label: Text(r.displayText),
+                            selected: isSelected,
+                            onSelected: (_) => _toggleResult(r),
+                            selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                            showCheckmark: false,
+                            labelStyle: TextStyle(
+                              color:
+                                  isSelected
+                                      ? kPrimaryColor
+                                      : context.colors.textPrimary,
+                              fontSize: 12.f,
+                            ),
+                            backgroundColor: context.colors.surface,
+                            side: BorderSide(
+                              color:
+                                  isSelected
+                                      ? kPrimaryColor
+                                      : context.colors.divider,
+                            ),
+                          );
+                        }).toList(),
+                  ),
+                  SizedBox(height: 16.sp),
+                ],
 
                 // Color filter (visible when a player is selected)
                 if (widget.scopedPlayer != null ||
@@ -1514,49 +1544,50 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 ),
                 SizedBox(height: 16.sp),
                 */
+                if (!isTreeBackedPlayerScope) ...[
+                  // Rating level
+                  Text(
+                    'Level',
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8.sp),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    child: RatingTierFilter(
+                      selectedMinRating: _selectedMinRating,
+                      onChanged:
+                          (value) => setState(() => _selectedMinRating = value),
+                    ),
+                  ),
+                  SizedBox(height: 24.sp),
 
-                // Rating level
-                Text(
-                  'Level',
-                  style: TextStyle(
-                    color: context.colors.textSecondary,
-                    fontSize: 12.f,
-                    fontWeight: FontWeight.w500,
+                  // Year range
+                  Text(
+                    'Year Range',
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-                SizedBox(height: 8.sp),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4.w),
-                  child: RatingTierFilter(
-                    selectedMinRating: _selectedMinRating,
-                    onChanged:
-                        (value) => setState(() => _selectedMinRating = value),
+                  SizedBox(height: 8.sp),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    child: WheelRangeFilter(
+                      minValue: _yearMin,
+                      maxValue: _yearMax,
+                      currentStart: _yearRange.start,
+                      currentEnd: _yearRange.end,
+                      divisions: (_yearMax - _yearMin).toInt(),
+                      onChanged: _onYearRangeChanged,
+                    ),
                   ),
-                ),
-                SizedBox(height: 24.sp),
-
-                // Year range
-                Text(
-                  'Year Range',
-                  style: TextStyle(
-                    color: context.colors.textSecondary,
-                    fontSize: 12.f,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 8.sp),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: WheelRangeFilter(
-                    minValue: _yearMin,
-                    maxValue: _yearMax,
-                    currentStart: _yearRange.start,
-                    currentEnd: _yearRange.end,
-                    divisions: (_yearMax - _yearMin).toInt(),
-                    onChanged: _onYearRangeChanged,
-                  ),
-                ),
-                SizedBox(height: 24.sp),
+                  SizedBox(height: 24.sp),
+                ],
 
                 if (widget.scopedPlayer == null) ...[
                   // Player search (hidden in player-scoped explorer)

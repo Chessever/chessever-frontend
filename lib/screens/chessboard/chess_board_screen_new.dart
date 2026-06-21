@@ -774,6 +774,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late Animation<double> _swipeScaleAnimation;
   late Animation<double> _swipeMoveAnimation;
   final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
+  late final LikeFlightAnchor _likeFlightAnchor;
 
   // Step 3/3 ("Double-Tap to Like") — chained after the Switch Views step via
   // [likeTutorialRequestProvider]. Hosted here (not in a nested panel) so the
@@ -790,6 +791,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void initState() {
     super.initState();
+    _likeFlightAnchor = LikeFlightAnchor();
     // Defensive: Ensure currentIndex is within bounds of games list
     final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
     _pageController = PageController(initialPage: safeIndex);
@@ -2120,6 +2122,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _removeLikeTutorialOverlay();
     _swipeController.dispose();
     _pageController.dispose();
+    _likeFlightAnchor.dispose();
     super.dispose();
   }
 
@@ -2186,6 +2189,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   @override
   Widget build(BuildContext context) {
+    Widget withLikeFlightScope(Widget child) {
+      return ProviderScope(
+        overrides: [
+          likeFlightAnchorProvider.overrideWithValue(_likeFlightAnchor),
+        ],
+        child: child,
+      );
+    }
+
     // Step 3/3 of the new-user teaching chain: when Switch Views (step 2)
     // finishes or is skipped it bumps this counter; show the like teaching on
     // the next frame so it appears right after the previous card, never atop
@@ -2256,12 +2268,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     if (gamesModel == null || gamesModel.gamesTourModels.isEmpty) {
-      return _LoadingScreen(
-        games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
-        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
-        onGameChanged: (index) {},
-        lastViewedIndex: _lastViewedIndex,
-        isActivePage: true,
+      return withLikeFlightScope(
+        _LoadingScreen(
+          games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
+          currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+          onGameChanged: (index) {},
+          lastViewedIndex: _lastViewedIndex,
+          isActivePage: true,
+        ),
       );
     }
 
@@ -2292,12 +2306,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     final syncedGames = List<GamesTourModel>.from(liveGames);
     if (syncedGames.isEmpty) {
-      return _LoadingScreen(
-        games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
-        currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
-        onGameChanged: (index) {},
-        lastViewedIndex: _lastViewedIndex,
-        isActivePage: true,
+      return withLikeFlightScope(
+        _LoadingScreen(
+          games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
+          currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
+          onGameChanged: (index) {},
+          lastViewedIndex: _lastViewedIndex,
+          isActivePage: true,
+        ),
       );
     }
 
@@ -2335,170 +2351,172 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // This prevents rebuilds when other games in the tournament get updated
     final isTablet = ResponsiveHelper.isTablet;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          Navigator.of(context).pop(_lastViewedIndex);
-        }
-      },
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: (context.isLightTheme
-                ? SystemUiOverlayStyle.dark
-                : SystemUiOverlayStyle.light)
-            .copyWith(
-              statusBarColor: context.colors.background,
-              systemNavigationBarColor: context.colors.background,
-            ),
-        child:
-        // ignore: deprecated_member_use
-        ShowCaseWidget(
-          onFinish: _onWalkthroughFinished,
-          builder: (context) {
-            if (!_hasCheckedWalkthrough) {
-              _hasCheckedWalkthrough = true;
-              WidgetsBinding.instance.addPostFrameCallback((_) async {
-                await _checkAndShowWalkthrough(context);
-                // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
-                // if (mounted && context.mounted) {
-                //   await _maybeShowLiveWidgetsIntro(context);
-                // }
-              });
-            }
-            return Builder(
-              builder: (innerContext) {
-                return Scaffold(
-                  key: e2eKey(E2eIds.chessBoardRoot),
-                  backgroundColor: innerContext.colors.background,
-                  resizeToAvoidBottomInset: false,
-                  // REMOVED: RawGestureDetector was blocking PageView swipes
-                  body: Stack(
-                    children: [
-                      PageView.builder(
-                        padEnds: true,
-                        // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
-                        // pages for accessibility which is too expensive for complex chess views.
-                        // This significantly reduces memory pressure during rapid swiping.
-                        allowImplicitScrolling: false,
-                        dragStartBehavior: DragStartBehavior.down,
-                        // Allow swiping on tablet as well; landscape block caused gestures to
-                        // feel broken on larger devices. Keep physics simple to avoid half-drags.
-                        physics:
-                            isTablet
-                                ? const PageScrollPhysics(
-                                  parent: ClampingScrollPhysics(),
-                                )
-                                : const PageScrollPhysics(),
-                        controller: _pageController,
-                        onPageChanged: _onPageChanged,
-                        itemCount: syncedGames.length,
-                        itemBuilder: (context, index) {
-                          // Build current page and adjacent pages
-                          if (index == _currentPageIndex - 1 ||
-                              index == _currentPageIndex ||
-                              index == _currentPageIndex + 1) {
-                            final game = syncedGames[index];
-                            final params = _createParams(game, index);
+    return withLikeFlightScope(
+      PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) {
+            Navigator.of(context).pop(_lastViewedIndex);
+          }
+        },
+        child: AnnotatedRegion<SystemUiOverlayStyle>(
+          value: (context.isLightTheme
+                  ? SystemUiOverlayStyle.dark
+                  : SystemUiOverlayStyle.light)
+              .copyWith(
+                statusBarColor: context.colors.background,
+                systemNavigationBarColor: context.colors.background,
+              ),
+          child:
+          // ignore: deprecated_member_use
+          ShowCaseWidget(
+            onFinish: _onWalkthroughFinished,
+            builder: (context) {
+              if (!_hasCheckedWalkthrough) {
+                _hasCheckedWalkthrough = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  await _checkAndShowWalkthrough(context);
+                  // REMOVED (Trello nl3WwXwQ): PiP/Live Activity teaching dialog discontinued.
+                  // if (mounted && context.mounted) {
+                  //   await _maybeShowLiveWidgetsIntro(context);
+                  // }
+                });
+              }
+              return Builder(
+                builder: (innerContext) {
+                  return Scaffold(
+                    key: e2eKey(E2eIds.chessBoardRoot),
+                    backgroundColor: innerContext.colors.background,
+                    resizeToAvoidBottomInset: false,
+                    // REMOVED: RawGestureDetector was blocking PageView swipes
+                    body: Stack(
+                      children: [
+                        PageView.builder(
+                          padEnds: true,
+                          // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
+                          // pages for accessibility which is too expensive for complex chess views.
+                          // This significantly reduces memory pressure during rapid swiping.
+                          allowImplicitScrolling: false,
+                          dragStartBehavior: DragStartBehavior.down,
+                          // Allow swiping on tablet as well; landscape block caused gestures to
+                          // feel broken on larger devices. Keep physics simple to avoid half-drags.
+                          physics:
+                              isTablet
+                                  ? const PageScrollPhysics(
+                                    parent: ClampingScrollPhysics(),
+                                  )
+                                  : const PageScrollPhysics(),
+                          controller: _pageController,
+                          onPageChanged: _onPageChanged,
+                          itemCount: syncedGames.length,
+                          itemBuilder: (context, index) {
+                            // Build current page and adjacent pages
+                            if (index == _currentPageIndex - 1 ||
+                                index == _currentPageIndex ||
+                                index == _currentPageIndex + 1) {
+                              final game = syncedGames[index];
+                              final params = _createParams(game, index);
 
-                            // PERFORMANCE FIX: Wrap each page in Consumer to isolate rebuilds.
-                            // This way, evaluation/PV updates only rebuild the affected page,
-                            // not the entire PageView and all siblings.
-                            return Consumer(
-                              builder: (context, ref, _) {
-                                try {
-                                  final stateAsync = ref.watch(
-                                    chessBoardScreenProviderNew(params),
-                                  );
-                                  return stateAsync.when(
-                                    data: (chessBoardState) {
-                                      _ensureLatestMoveSelected(
-                                        ref: ref,
-                                        pageIndex: index,
-                                        state: chessBoardState,
-                                      );
-                                      // PERFORMANCE FIX: Removed useless setState for analysisMode.
-                                      // The variable was tracked but never used for rendering,
-                                      // causing full parent rebuilds on every analysis mode change.
-                                      return _GamePage(
-                                        game: chessBoardState.game,
-                                        state: chessBoardState,
-                                        games: syncedGames,
-                                        currentGameIndex: index,
-                                        currentPageIndex: _currentPageIndex,
-                                        onGameChanged: _navigateToGame,
-                                        lastViewedIndex: _lastViewedIndex,
-                                        hideEventInfo: widget.hideEventInfo,
-                                        playerProfileDataSource:
-                                            widget.playerProfileDataSource,
-                                        onToggleGamebase: _toggleGamebase,
-                                        showGamebaseButton:
-                                            widget.showGamebaseButton,
-                                        showClock: widget.showClock,
-                                        savedAnalysisData:
-                                            _getSavedAnalysisDataForIndex(
-                                              index,
-                                            ),
-                                      );
-                                    },
-                                    loading:
-                                        () => _LoadingScreen(
-                                          games: liveGames,
+                              // PERFORMANCE FIX: Wrap each page in Consumer to isolate rebuilds.
+                              // This way, evaluation/PV updates only rebuild the affected page,
+                              // not the entire PageView and all siblings.
+                              return Consumer(
+                                builder: (context, ref, _) {
+                                  try {
+                                    final stateAsync = ref.watch(
+                                      chessBoardScreenProviderNew(params),
+                                    );
+                                    return stateAsync.when(
+                                      data: (chessBoardState) {
+                                        _ensureLatestMoveSelected(
+                                          ref: ref,
+                                          pageIndex: index,
+                                          state: chessBoardState,
+                                        );
+                                        // PERFORMANCE FIX: Removed useless setState for analysisMode.
+                                        // The variable was tracked but never used for rendering,
+                                        // causing full parent rebuilds on every analysis mode change.
+                                        return _GamePage(
+                                          game: chessBoardState.game,
+                                          state: chessBoardState,
+                                          games: syncedGames,
                                           currentGameIndex: index,
+                                          currentPageIndex: _currentPageIndex,
                                           onGameChanged: _navigateToGame,
                                           lastViewedIndex: _lastViewedIndex,
                                           hideEventInfo: widget.hideEventInfo,
-                                          isActivePage:
-                                              index == _currentPageIndex,
-                                        ),
-                                    error: (e, _) => ErrorWidget(e),
-                                  );
-                                } catch (e) {
-                                  // Fallback for when provider isn't ready
-                                  return _LoadingScreen(
-                                    games: liveGames,
-                                    currentGameIndex: index,
-                                    onGameChanged: _navigateToGame,
-                                    lastViewedIndex: _lastViewedIndex,
-                                    hideEventInfo: widget.hideEventInfo,
-                                    isActivePage: index == _currentPageIndex,
-                                  );
-                                }
-                              },
-                            );
-                          } else {
-                            return SizedBox.shrink();
-                          }
-                        },
-                      ),
-                      // Removed redundant IgnorePointer/AnimatedBuilder that was here
-                      if (_showTutorialOverlay)
-                        Positioned.fill(
-                          child: _SwipeTutorialOverlay(
-                            key: _tutorialOverlayKey,
-                            animationController: _swipeController,
-                            moveAnimation: _swipeMoveAnimation,
-                            fadeAnimation: _swipeFadeAnimation,
-                            scaleAnimation: _swipeScaleAnimation,
-                            currentPageIndex: _currentPageIndex,
-                            totalItems: syncedGames.length,
-                            currentStep: 1,
-                            totalSteps: 3,
-                            onDismiss: () {
-                              _onWalkthroughFinished();
-                              _requestSwitchViewsTutorial();
-                            },
-                            onDontShowAgain: () async {
-                              await _suppressWalkthrough();
-                              _onWalkthroughFinished();
-                            },
-                          ),
+                                          playerProfileDataSource:
+                                              widget.playerProfileDataSource,
+                                          onToggleGamebase: _toggleGamebase,
+                                          showGamebaseButton:
+                                              widget.showGamebaseButton,
+                                          showClock: widget.showClock,
+                                          savedAnalysisData:
+                                              _getSavedAnalysisDataForIndex(
+                                                index,
+                                              ),
+                                        );
+                                      },
+                                      loading:
+                                          () => _LoadingScreen(
+                                            games: liveGames,
+                                            currentGameIndex: index,
+                                            onGameChanged: _navigateToGame,
+                                            lastViewedIndex: _lastViewedIndex,
+                                            hideEventInfo: widget.hideEventInfo,
+                                            isActivePage:
+                                                index == _currentPageIndex,
+                                          ),
+                                      error: (e, _) => ErrorWidget(e),
+                                    );
+                                  } catch (e) {
+                                    // Fallback for when provider isn't ready
+                                    return _LoadingScreen(
+                                      games: liveGames,
+                                      currentGameIndex: index,
+                                      onGameChanged: _navigateToGame,
+                                      lastViewedIndex: _lastViewedIndex,
+                                      hideEventInfo: widget.hideEventInfo,
+                                      isActivePage: index == _currentPageIndex,
+                                    );
+                                  }
+                                },
+                              );
+                            } else {
+                              return SizedBox.shrink();
+                            }
+                          },
                         ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
+                        // Removed redundant IgnorePointer/AnimatedBuilder that was here
+                        if (_showTutorialOverlay)
+                          Positioned.fill(
+                            child: _SwipeTutorialOverlay(
+                              key: _tutorialOverlayKey,
+                              animationController: _swipeController,
+                              moveAnimation: _swipeMoveAnimation,
+                              fadeAnimation: _swipeFadeAnimation,
+                              scaleAnimation: _swipeScaleAnimation,
+                              currentPageIndex: _currentPageIndex,
+                              totalItems: syncedGames.length,
+                              currentStep: 1,
+                              totalSteps: 3,
+                              onDismiss: () {
+                                _onWalkthroughFinished();
+                                _requestSwitchViewsTutorial();
+                              },
+                              onDontShowAgain: () async {
+                                await _suppressWalkthrough();
+                                _onWalkthroughFinished();
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );
