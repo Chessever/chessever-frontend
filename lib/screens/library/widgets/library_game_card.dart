@@ -13,11 +13,12 @@ import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Unified game card for library screens.
 /// Uses the same design as GamebaseSearchGameCard for consistency.
-class LibraryGameCard extends ConsumerWidget {
+class LibraryGameCard extends HookConsumerWidget {
   const LibraryGameCard({
     super.key,
     required this.game,
@@ -55,35 +56,47 @@ class LibraryGameCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rawName = eventName ?? game.tourSlug ?? game.tourId;
-    final cleanedName =
-        rawName.replaceAll('-', ' ').replaceAll('_', ' ').trim();
-    final isGeneric =
-        cleanedName.isEmpty ||
-        cleanedName.toLowerCase() == 'gamebase' ||
-        cleanedName.toLowerCase() == 'search' ||
-        cleanedName.toLowerCase() == 'library';
 
-    final displayEventName =
-        isGeneric ? 'Library' : StringUtils.slugToTitle(rawName);
+    // useMemoized: the event-name cleanup (two replaceAll passes + slug→title)
+    // is a pure function of rawName, keyed on a value-stable String — so it's
+    // computed once and reused across scroll-driven rebuilds / live updates
+    // instead of re-running every frame this card rebuilds.
+    final displayEventName = useMemoized(() {
+      final cleanedName =
+          rawName.replaceAll('-', ' ').replaceAll('_', ' ').trim();
+      final isGeneric =
+          cleanedName.isEmpty ||
+          cleanedName.toLowerCase() == 'gamebase' ||
+          cleanedName.toLowerCase() == 'search' ||
+          cleanedName.toLowerCase() == 'library';
+      return isGeneric ? 'Library' : StringUtils.slugToTitle(rawName);
+    }, [rawName]);
 
     final timeControlIcon = _getTimeControlIcon(game, displayEventName);
     final displayEco = eco ?? game.eco ?? ''; // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);
 
-    final visibleTags = normalizeLikeTagLabels(tags).toList();
-    final counts = tagCounts;
-    if (counts != null && visibleTags.length > 1) {
-      final canonicalOrder = <String, int>{
-        for (var i = 0; i < kLikeTags.length; i++) kLikeTags[i].label: i,
-      };
-      visibleTags.sort((a, b) {
-        final cmp = (counts[b] ?? 0).compareTo(counts[a] ?? 0);
-        if (cmp != 0) return cmp;
-        final ia = canonicalOrder[a] ?? kLikeTags.length;
-        final ib = canonicalOrder[b] ?? kLikeTags.length;
-        return ia.compareTo(ib);
-      });
-    }
+    // useMemoized: tag normalize + count-desc sort (builds a canonical-order
+    // map then sorts) recomputed only when the tag list/counts reference
+    // changes — no resort when the enclosing list re-renders this card with
+    // the same inputs.
+    final visibleTags = useMemoized(() {
+      final result = normalizeLikeTagLabels(tags).toList();
+      final counts = tagCounts;
+      if (counts != null && result.length > 1) {
+        final canonicalOrder = <String, int>{
+          for (var i = 0; i < kLikeTags.length; i++) kLikeTags[i].label: i,
+        };
+        result.sort((a, b) {
+          final cmp = (counts[b] ?? 0).compareTo(counts[a] ?? 0);
+          if (cmp != 0) return cmp;
+          final ia = canonicalOrder[a] ?? kLikeTags.length;
+          final ib = canonicalOrder[b] ?? kLikeTags.length;
+          return ia.compareTo(ib);
+        });
+      }
+      return result;
+    }, [tags, tagCounts]);
 
     return TappableScale(
       onTap: () {

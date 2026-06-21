@@ -333,10 +333,15 @@ class _CenterContent extends ConsumerWidget {
     // need a dark ink, dark theme = translucent-light bg so the original
     // kBlackColor / surface tokens read fine.
     final isLight = context.isLightTheme;
-    final spoilerState = ref.watch(
-      eventNoSpoilersProvider(matchWithComparison.game.tourId),
+    // .select() narrows this card's rebuilds to the one derived flag it needs:
+    // it no longer rebuilds when unrelated fields of EventNoSpoilersState churn.
+    // (Riverpod best practice — minimize rebuild surface on a widget that
+    // renders in every game-card list, including deep navigation stacks.)
+    final hideSpoilers = ref.watch(
+      eventNoSpoilersProvider(
+        matchWithComparison.game.tourId,
+      ).select((state) => state.isLoading || state.enabled),
     );
-    final hideSpoilers = spoilerState.isLoading || spoilerState.enabled;
 
     // If game is not ongoing, show result text unless this event is spoiler-free.
     if (effectiveStatus != GameStatus.ongoing) {
