@@ -7115,14 +7115,20 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
         (s) => s.valueOrNull?.showEngineGauge ?? true,
       ),
     );
-    final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
+    // .select() narrows to the derived "hide spoilers" flag (Riverpod best
+    // practice — same pattern as the game card; avoids rebuilding the board
+    // sidebar when unrelated EventNoSpoilersState fields change).
+    final hideSpoilers = ref.watch(
+      eventNoSpoilersProvider(
+        game.tourId,
+      ).select((s) => s.isLoading || s.enabled),
+    );
     final showEngineGauge =
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
         state.showEngineAnalysis &&
-        !((spoilerState.isLoading || spoilerState.enabled) &&
-            game.gameStatus.isFinished);
+        !(hideSpoilers && game.gameStatus.isFinished);
 
     final effectiveEvalWidth = showEngineGauge ? evalBarWidth : 0.0;
 
@@ -7201,14 +7207,20 @@ class _BoardWithSidebar extends ConsumerWidget {
         (s) => s.valueOrNull?.showEngineGauge ?? true,
       ),
     );
-    final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
+    // .select() narrows to the derived "hide spoilers" flag (Riverpod best
+    // practice — same pattern as the game card; avoids rebuilding the board
+    // sidebar when unrelated EventNoSpoilersState fields change).
+    final hideSpoilers = ref.watch(
+      eventNoSpoilersProvider(
+        game.tourId,
+      ).select((s) => s.isLoading || s.enabled),
+    );
     final showEngineGauge =
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
         state.showEngineAnalysis &&
-        !((spoilerState.isLoading || spoilerState.enabled) &&
-            game.gameStatus.isFinished);
+        !(hideSpoilers && game.gameStatus.isFinished);
 
     return LayoutBuilder(
       builder: (context, constraints) {
