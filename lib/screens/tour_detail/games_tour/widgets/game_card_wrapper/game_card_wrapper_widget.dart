@@ -101,28 +101,35 @@ class GameCardWrapperWidget extends ConsumerWidget {
           );
     }
 
-    return isChessBoardVisible
-        ? ChessBoardFromFENNew(
-          key: ValueKey(keyValue),
-          gamesTourModel: liveGame,
-          onChanged: navigateToGame,
-          pinnedIds: gamesData.pinnedGamedIs,
-          onPinToggle: handlePinToggle,
-          fixedBottomSide: fixedBottomSide,
-          allowStockfishFallback: effectiveAllowStockfishFallback,
-          liveBatchKey: liveBatchKey,
-        )
-        : GameCard(
-          key: ValueKey(keyValue),
-          matchComparison: MatchWithComparison(
-            game: liveGame,
-            comparison: MatchComparison.sameOrder,
-          ),
-          pinnedIds: gamesData.pinnedGamedIs,
-          onPinToggle: handlePinToggle,
-          onShare: (game) => showGameShareOverlay(context, ref, game),
-          allowStockfishFallback: effectiveAllowStockfishFallback,
-          onTap: navigateToGame,
-        );
+    // Per-card RepaintBoundary: isolates a card's live clock/eval repaints from
+    // its siblings. In For You/Current many cards share one ListView item (the
+    // event section), so without this a single live tick repaints the whole
+    // section. One cheap compositing layer, big win on live-heavy lists.
+    return RepaintBoundary(
+      child:
+          isChessBoardVisible
+              ? ChessBoardFromFENNew(
+                key: ValueKey(keyValue),
+                gamesTourModel: liveGame,
+                onChanged: navigateToGame,
+                pinnedIds: gamesData.pinnedGamedIs,
+                onPinToggle: handlePinToggle,
+                fixedBottomSide: fixedBottomSide,
+                allowStockfishFallback: effectiveAllowStockfishFallback,
+                liveBatchKey: liveBatchKey,
+              )
+              : GameCard(
+                key: ValueKey(keyValue),
+                matchComparison: MatchWithComparison(
+                  game: liveGame,
+                  comparison: MatchComparison.sameOrder,
+                ),
+                pinnedIds: gamesData.pinnedGamedIs,
+                onPinToggle: handlePinToggle,
+                onShare: (game) => showGameShareOverlay(context, ref, game),
+                allowStockfishFallback: effectiveAllowStockfishFallback,
+                onTap: navigateToGame,
+              ),
+    );
   }
 }

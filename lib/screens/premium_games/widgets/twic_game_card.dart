@@ -9,7 +9,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -59,13 +58,10 @@ class TwicGameCard extends ConsumerWidget {
               ],
             ),
           ),
-        )
-        .animate()
-        .fadeIn(
-          duration: 200.ms,
-          delay: Duration(milliseconds: (animationIndex % 10) * 40),
-        )
-        .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
+        );
+    // Staggered fadeIn/slideY entrance removed: animated Opacity (saveLayer)
+    // per card with an animationIndex stagger cascaded jank across the premium
+    // games list. Cards paint instantly now.
   }
 
   Future<void> _handleTap(BuildContext context, WidgetRef ref) async {

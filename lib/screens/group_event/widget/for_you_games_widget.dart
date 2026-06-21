@@ -33,7 +33,6 @@ import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -882,13 +881,10 @@ class _ForYouEventSection extends ConsumerWidget {
       ],
     );
 
-    if (shouldAnimate) {
-      return section
-          .animate()
-          .fadeIn(duration: 200.ms)
-          .slideY(begin: 0.02, end: 0, duration: 200.ms);
-    }
-
+    // Entrance animation removed: fading whole event sections on first paint
+    // forced a saveLayer per section across the cold-open viewport — the main
+    // source of "awful perf the moment For You opens". Sections now appear
+    // instantly; new live games still animate via the motor _AnimatedGameCardSlot.
     return section;
   }
 }
@@ -973,13 +969,7 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
       ],
     );
 
-    if (shouldAnimate) {
-      return column
-          .animate()
-          .fadeIn(duration: 200.ms)
-          .slideY(begin: 0.02, end: 0, duration: 200.ms);
-    }
-
+    // Entrance animation removed (see phone section) — instant paint over fade.
     return column;
   }
 }
@@ -1508,16 +1498,9 @@ class _ForYouGameCard extends ConsumerWidget {
       ),
     );
 
-    if (shouldAnimate) {
-      return card
-          .animate()
-          .fadeIn(
-            duration: 150.ms,
-            delay: Duration(milliseconds: gameIndex * 50),
-          )
-          .slideY(begin: 0.03, end: 0, duration: 150.ms);
-    }
-
+    // Staggered fadeIn/slideY per card removed: it ran an animated Opacity
+    // (saveLayer) per card with a gameIndex*50ms stagger, cascading jank right
+    // when the list first populates. Cards paint instantly now.
     return card;
   }
 }

@@ -191,6 +191,15 @@ Future<void> main() async {
         widgetsBinding = SentryWidgetsFlutterBinding.ensureInitialized();
       }
       _e2eStartupLog('binding initialized: ${widgetsBinding.runtimeType}');
+
+      // Image cache headroom: dense game-card lists (flags, avatars, board
+      // snapshots) across deep navigation stacks thrash the default 100MB
+      // budget and force re-decodes on back-navigation. More headroom keeps
+      // popped screens warm so scrolling and back-nav stay smooth.
+      PaintingBinding.instance.imageCache
+        ..maximumSize = 1500
+        ..maximumSizeBytes = 200 * 1024 * 1024;
+
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
       _e2eStartupLog('native splash preserved');
 

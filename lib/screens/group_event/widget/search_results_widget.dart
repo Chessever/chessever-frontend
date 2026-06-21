@@ -381,18 +381,12 @@ class _SearchEventCardState extends ConsumerState<_SearchEventCard>
       ),
     );
 
-    // Use global set to track animations - survives tab switches and rebuilds
+    // Per-result staggered fadeIn/slideY removed: it ran an animated Opacity
+    // (saveLayer) per card with a listIndex stagger, cascading jank across the
+    // search results list. Bookkeeping kept; results paint instantly.
     if (!searchAnimatedEventIds.contains(eventId)) {
       searchAnimatedEventIds.add(eventId);
-      return card
-          .animate()
-          .fadeIn(
-            duration: 200.ms,
-            delay: Duration(milliseconds: (widget.listIndex % 10) * 30),
-          )
-          .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
     }
-
     return card;
   }
 }

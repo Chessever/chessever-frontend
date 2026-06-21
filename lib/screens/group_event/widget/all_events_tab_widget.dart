@@ -28,75 +28,17 @@ class AllEventsTabWidget extends ConsumerStatefulWidget {
   ConsumerState<AllEventsTabWidget> createState() => _AllEventsTabWidgetState();
 }
 
-class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    // Start animation when widget is built
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _animationController.forward();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
+class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
   Widget _buildEventCard(GroupEventCardModel tourEventCardModel, int index) {
-    // Create staggered animation for each item
-    final itemAnimation = Tween<Offset>(
-      begin: const Offset(0, -0.5),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Interval(
-          (index * 0.1).clamp(0.0, 1.0),
-          ((index * 0.1) + 0.6).clamp(0.0, 1.0),
-          curve: Curves.easeOutCubic,
-        ),
-      ),
-    );
-
-    final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Interval(
-          (index * 0.1).clamp(0.0, 1.0),
-          ((index * 0.1) + 0.6).clamp(0.0, 1.0),
-          curve: Curves.easeOut,
-        ),
-      ),
-    );
-
+    // Entrance slide/fade removed: it ran a FadeTransition (saveLayer) per card
+    // with a per-index stagger driven off an AnimationController on cold open —
+    // the main jank when the Current tab first appears. Cards paint instantly.
     final heroSuffix = 'all-$index';
 
-    Widget eventCard = EventCard(
+    return EventCard(
       tourEventCardModel: tourEventCardModel,
       heroTagSuffix: heroSuffix,
       onTap: () => widget.onSelect(tourEventCardModel),
-    );
-
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        return SlideTransition(
-          position: itemAnimation,
-          child: FadeTransition(opacity: fadeAnimation, child: eventCard),
-        );
-      },
     );
   }
 

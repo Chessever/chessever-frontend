@@ -796,14 +796,36 @@ class _LastMoveNotation extends StatelessWidget {
   }
 }
 
+// Bounded memo cache. The displayed notation is a PURE function of
+// (lastMove, fen), so we cache it to keep the expensive FEN parse
+// (Setup.parseFen + Chess.fromSetup) off the scroll path — it would otherwise
+// run for every visible card on every rebuild/scroll frame.
+final Map<String, String?> _lastMoveNotationCache = <String, String?>{};
+const int _lastMoveNotationCacheCap = 4096;
+
 String? formatGameCardLastMoveNotation({
   required String? lastMove,
   required String? fen,
 }) {
+  final cacheKey = '${lastMove ?? ''}|${fen ?? ''}';
+  final cached = _lastMoveNotationCache[cacheKey];
+  if (cached != null || _lastMoveNotationCache.containsKey(cacheKey)) {
+    return cached;
+  }
+
   final notation = _LastMoveNotation(lastMove: lastMove, fen: fen);
   final moveNotation = notation._convertUciToSan() ?? lastMove;
-  if (moveNotation == null || moveNotation.isEmpty) return null;
-  return notation._formatMoveWithNumber(moveNotation);
+  final String? result =
+      (moveNotation == null || moveNotation.isEmpty)
+          ? null
+          : notation._formatMoveWithNumber(moveNotation);
+
+  // Cheap FIFO eviction keeps the cache bounded across long live sessions.
+  if (_lastMoveNotationCache.length >= _lastMoveNotationCacheCap) {
+    _lastMoveNotationCache.remove(_lastMoveNotationCache.keys.first);
+  }
+  _lastMoveNotationCache[cacheKey] = result;
+  return result;
 }
 
 String _displayTextSupporter(MatchWithComparison game) {

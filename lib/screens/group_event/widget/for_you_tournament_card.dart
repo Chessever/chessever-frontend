@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -61,7 +63,7 @@ class ForYouTournamentCard extends ConsumerWidget {
         heroTagSuffix: 'for-you-${model.id}',
         onTap: () => _onTournamentTap(context, ref),
       ),
-    ).animate().fadeIn(duration: 200.ms).slideY(begin: 0.02, end: 0);
+    );
   }
 
   Widget _buildLoadingCard(BuildContext context) {
@@ -126,72 +128,43 @@ class ForYouTournamentCard extends ConsumerWidget {
   Future<void> _onTournamentTap(BuildContext context, WidgetRef ref) async {
     HapticFeedbackService.cardTap();
 
-    try {
-      // Always resolve via repository using groupKey (group_broadcast_id)
-      final tournament = await ref.read(_tournamentProvider(groupKey).future);
+    // Navigate INSTANTLY from local card data — never block the tap on a
+    // network round-trip. The games list keys off the group id (== groupKey,
+    // identical here), so upgrading to the fully-resolved tournament in the
+    // background triggers no games refetch and no flicker.
+    final fallbackTournament = GroupBroadcast(
+      id: groupKey,
+      name: _formatTournamentName(tourName),
+      createdAt: DateTime.now(),
+      search: [groupKey, tourId, tourName],
+      dateStart: hasLiveGames ? DateTime.now() : null,
+      maxAvgElo: null,
+      dateEnd: null,
+      timeControl: null,
+    );
 
-      // Set the selected tournament
-      ref.read(selectedBroadcastModelProvider.notifier).state = tournament;
+    ref.read(selectedBroadcastModelProvider.notifier).state = fallbackTournament;
+    ref.read(selectedTourModeProvider.notifier).state =
+        TournamentDetailScreenMode.games;
+    Navigator.pushNamed(context, '/tournament_detail_screen');
 
-      // Navigate to tournament detail (games tab)
-      if (context.mounted) {
-        ref.read(selectedTourModeProvider.notifier).state =
-            TournamentDetailScreenMode.games;
-        Navigator.pushNamed(context, '/tournament_detail_screen');
-      }
-    } catch (e) {
-      debugPrint(
-        '[ForYouTournamentCard] Error navigating to tournament $groupKey: $e',
-      );
-
-      // Tournament couldn't be resolved; fall back to a minimal tournament so
-      // the detail screen still opens with available games.
-      if (context.mounted) {
-        try {
-          // Create a minimal tournament object with groupKey as ID
-          final fallbackTournament = GroupBroadcast(
-            id: groupKey,
-            name: _formatTournamentName(tourName),
-            createdAt: DateTime.now(),
-            search: [
-              groupKey,
-              tourId,
-              tourName,
-            ], // Search terms for the tournament
-            dateStart: hasLiveGames ? DateTime.now() : null,
-            maxAvgElo: null,
-            dateEnd: null,
-            timeControl: null,
-          );
-
-          // Set the fallback tournament
-          ref.read(selectedBroadcastModelProvider.notifier).state =
-              fallbackTournament;
-
-          // Navigate to tournament detail screen (games tab)
-          if (context.mounted) {
-            ref.read(selectedTourModeProvider.notifier).state =
-                TournamentDetailScreenMode.games;
-            Navigator.pushNamed(context, '/tournament_detail_screen');
-          }
-        } catch (fallbackError) {
-          debugPrint(
-            '[ForYouTournamentCard] Failed to navigate with fallback: $fallbackError',
-          );
-
-          // As a last resort, show a snackbar to the user
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Unable to open tournament details'),
-                backgroundColor: Colors.orange,
-                behavior: SnackBarBehavior.floating,
-              ),
+    // Upgrade to the fully-resolved tournament once it loads — but only if the
+    // user is still viewing this same tournament (guard against a newer tap).
+    unawaited(
+      ref
+          .read(_tournamentProvider(groupKey).future)
+          .then((tournament) {
+            if (ref.read(selectedBroadcastModelProvider)?.id == groupKey) {
+              ref.read(selectedBroadcastModelProvider.notifier).state =
+                  tournament;
+            }
+          })
+          .catchError((Object e) {
+            debugPrint(
+              '[ForYouTournamentCard] background resolve failed for $groupKey: $e',
             );
-          }
-        }
-      }
-    }
+          }),
+    );
   }
 }
 
