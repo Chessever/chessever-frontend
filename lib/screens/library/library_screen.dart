@@ -20,8 +20,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -130,12 +132,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       // Some platforms reject custom extensions — fall back to any-file picker.
       try {
         result = await FilePicker.platform.pickFiles(type: FileType.any);
-      } catch (e2) {
+      } catch (e2, st2) {
+        talker.handle(e2, st2);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Could not open file picker: $e2',
+              userFacingError(e2, fallback: 'Could not open the file picker. Please try again.'),
               style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
@@ -259,13 +262,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           _searchFocusNode.requestFocus();
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (mounted) {
         HapticFeedback.lightImpact();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to create item: $e',
+              userFacingError(e, fallback: 'Could not create this item. Please try again.'),
               style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor,
@@ -452,7 +456,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               if (contentState.isLoading)
                 _buildLoadingSliver()
               else if (contentState.hasError)
-                _buildErrorSliver(contentState.error.toString())
+                _buildErrorSliver(userFacingError(contentState.error))
               else
                 _buildFoldersSliver(contentState.folders),
               SliverToBoxAdapter(child: SizedBox(height: 24.h)),

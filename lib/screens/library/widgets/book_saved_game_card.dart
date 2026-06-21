@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -24,7 +25,11 @@ class BookSavedGameCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = _bookAnalysisToGamesTourModel(analysis);
-    final eventName = _eventNameFromMetadata(analysis.chessGame.metadata);
+    final eventName = _eventNameFromMetadata(
+      analysis.chessGame.metadata,
+      whiteName: game.whitePlayer.name,
+      blackName: game.blackPlayer.name,
+    );
 
     return LibraryGameCard(
       game: game,
@@ -121,21 +126,24 @@ class BookSavedGameCard extends StatelessWidget {
     );
   }
 
-  String _eventNameFromMetadata(Map<String, dynamic> md) {
-    final eventRaw = md['Event'] as String? ?? md['Site'] as String? ?? '';
-    return _formatEventName(eventRaw);
+  String _eventNameFromMetadata(
+    Map<String, dynamic> md, {
+    required String whiteName,
+    required String blackName,
+  }) {
+    return chooseLibraryEventName(
+          metadataEvent: md['Event']?.toString(),
+          site: md['Site']?.toString(),
+          whiteName: whiteName,
+          blackName: blackName,
+        ) ??
+        'Library';
   }
 
   int _parseRating(Object? raw) {
     final value = raw?.toString().trim() ?? '';
     if (value.isEmpty) return 0;
     return int.tryParse(value) ?? 0;
-  }
-
-  String _formatEventName(String raw) {
-    final cleaned = raw.replaceAll('-', ' ').replaceAll('_', ' ').trim();
-    if (cleaned.isEmpty) return 'Unknown event';
-    return cleaned;
   }
 
   String _countryCodeFromMetadata(

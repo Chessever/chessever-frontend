@@ -4,6 +4,7 @@ import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
 import 'package:chessever2/screens/favorites/player_games/models/player_identifier.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -155,7 +156,10 @@ class PlayerGamesNotifier
       state = AsyncValue.data(
         currentState.copyWith(
           isLoading: false,
-          error: 'Failed to load more games: $e',
+          error: userFacingError(
+            e,
+            fallback: 'Could not load more games. Please try again.',
+          ),
         ),
       );
     }

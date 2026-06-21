@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_search_provider.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -11,6 +12,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -72,7 +74,7 @@ class _GamebaseDatabaseSearchScreenState
                 () => const Center(
                   child: CircularProgressIndicator(color: kPrimaryColor),
                 ),
-            error: (error, _) => _ErrorState(message: error.toString()),
+            error: (error, _) => _ErrorState(message: userFacingError(error)),
             data: (state) {
               return Column(
                 children: [
@@ -451,11 +453,20 @@ class _GamesList extends ConsumerWidget {
                     : null,
           );
 
-          final tourId =
+          final rawTourId =
               (row['tour_id']?.toString() ??
                       row['tournament_id']?.toString() ??
-                      event.trim())
+                      '')
                   .trim();
+          // Resolve the real tournament from the Site URL so broadcast
+          // round/pairing Event headers never surface as the event label.
+          final tourId = resolveGamebaseEventName(
+            event: event,
+            site: site,
+            tourId: rawTourId.isNotEmpty ? rawTourId : null,
+            whiteName: whiteName,
+            blackName: blackName,
+          );
 
           return GamesTourModel(
             gameId: safeId,

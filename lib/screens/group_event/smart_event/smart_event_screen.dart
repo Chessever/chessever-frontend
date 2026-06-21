@@ -207,12 +207,22 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     if (!wasSaved) return;
 
     final notifier = ref.read(favoriteEventsProvider.notifier);
+    // Editing tier/name keeps the same dismissScopeId, so the hidden-tournament
+    // config still applies — carry it across the remove+re-add (read BEFORE the
+    // remove, while the old row's metadata is still the source of truth).
+    final hiddenIds = ref.read(
+      smartEventDismissedEventIdsProvider(updated.dismissScopeId),
+    );
     await notifier.removeFavorite(savedId);
     await notifier.addFavorite(
       eventId: updated.favoriteEventId,
       eventName: updated.displayName,
       maxAvgElo: updated.minElo > 0 ? updated.minElo : null,
-      extraMetadata: updated.toFavoriteMetadata(),
+      extraMetadata: {
+        ...updated.toFavoriteMetadata(),
+        if (hiddenIds.isNotEmpty)
+          smartEventHiddenMetadataKey: hiddenIds.toList(growable: false),
+      },
     );
   }
 
@@ -672,7 +682,13 @@ class _AppBar extends ConsumerWidget {
 
               final notifier = ref.read(favoriteEventsProvider.notifier);
               if (isSaved) {
+                // Deleting the favorite row also drops its hidden-tournament
+                // config (stored in that row's metadata), so the deletion is
+                // isolated — re-creating the same filters later starts fresh.
                 await notifier.removeFavorite(savedRequest.favoriteEventId);
+                // Drop any lingering session hides for this scope so the next
+                // unsaved view of the same filters doesn't resurrect them.
+                resetSmartEventSessionHidden(ref, savedRequest.dismissScopeId);
                 // Removing the saved smart event must also wipe the applied
                 // filter that generates its card on home — otherwise the
                 // generated card lingers even though the favorite is gone.
@@ -689,12 +705,25 @@ class _AppBar extends ConsumerWidget {
               // popup write-back) so the saved card and the generated cards
               // reflect the same criteria.
               if (isDirty) await onApplyChanges();
+              // Carry any tournaments hidden while previewing (session state)
+              // into the saved row's metadata so the config survives the save.
+              final sessionHidden = ref.read(
+                smartEventDismissedEventIdsProvider(request.dismissScopeId),
+              );
               await notifier.addFavorite(
                 eventId: request.favoriteEventId,
                 eventName: request.displayName,
                 maxAvgElo: request.minElo > 0 ? request.minElo : null,
-                extraMetadata: request.toFavoriteMetadata(),
+                extraMetadata: {
+                  ...request.toFavoriteMetadata(),
+                  if (sessionHidden.isNotEmpty)
+                    smartEventHiddenMetadataKey:
+                        sessionHidden.toList(growable: false),
+                },
               );
+              // Config now lives on the saved row; clear the transient copy so
+              // a later delete can't resurrect it from session state.
+              resetSmartEventSessionHidden(ref, request.dismissScopeId);
             },
           ),
         ],
@@ -1146,9 +1175,17 @@ class _SmartEventRequestScope extends InheritedWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({this.message = 'No games right now', super.key});
+  const _EmptyState({
+    this.message = 'No games right now',
+    this.action,
+    super.key,
+  });
 
   final String message;
+
+  /// Optional control rendered below the message — e.g. "Show hidden
+  /// tournaments" so an all-hidden view is never a dead-end.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -1171,6 +1208,7 @@ class _EmptyState extends StatelessWidget {
                 color: context.colors.textPrimaryMuted,
               ),
             ),
+            if (action != null) ...[SizedBox(height: 16.h), action!],
           ],
         ),
       ),
@@ -2014,6 +2052,29 @@ class _AboutTabState extends ConsumerState<_AboutTab>
     );
     final async = ref.watch(smartAggregateEventRepositoryProvider(query));
 
+    final dismissScopeId = request.dismissScopeId;
+    final hiddenCount =
+        ref.watch(smartEventDismissedEventIdsProvider(dismissScopeId)).length;
+    Widget buildShowHiddenButton() {
+      return Center(
+        child: TextButton.icon(
+          onPressed:
+              () =>
+                  setSmartEventHiddenIds(ref, dismissScopeId, const <String>{}),
+          icon: Icon(
+            Icons.visibility_outlined,
+            size: 16.ic,
+            color: kPrimaryColor,
+          ),
+          label: Text(
+            'Show $hiddenCount hidden '
+            'tournament${hiddenCount == 1 ? '' : 's'}',
+            style: AppTypography.textSmMedium.copyWith(color: kPrimaryColor),
+          ),
+        ),
+      );
+    }
+
     if (async.hasValue) {
       _lastLoadedEvent = async.requireValue;
     }
@@ -2040,7 +2101,10 @@ class _AboutTabState extends ConsumerState<_AboutTab>
         message:
             hasNarrowingControls
                 ? 'No tournaments match your filters'
+                : hiddenCount > 0
+                ? 'You hid every tournament from this view'
                 : 'No games right now',
+        action: hiddenCount > 0 ? buildShowHiddenButton() : null,
       );
     }
 
@@ -2114,6 +2178,7 @@ class _AboutTabState extends ConsumerState<_AboutTab>
             ),
           ),
         ),
+        if (hiddenCount > 0) ...[SizedBox(height: 12.h), buildShowHiddenButton()],
       ],
     );
   }
@@ -2506,25 +2571,22 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     void restore() {
-      final notifier = ref.read(
-        smartEventDismissedEventIdsProvider(scopeId).notifier,
-      );
-      notifier.state = {...notifier.state}..remove(event.id);
+      final current = ref.read(smartEventDismissedEventIdsProvider(scopeId));
+      setSmartEventHiddenIds(ref, scopeId, {...current}..remove(event.id));
     }
 
     void dismiss() {
-      final notifier = ref.read(
-        smartEventDismissedEventIdsProvider(scopeId).notifier,
-      );
-      notifier.state = {...notifier.state, event.id};
+      final current = ref.read(smartEventDismissedEventIdsProvider(scopeId));
+      setSmartEventHiddenIds(ref, scopeId, {...current, event.id});
 
+      const visibleFor = Duration(seconds: 4);
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
+      final controller = messenger.showSnackBar(
         SnackBar(
           content: const Text('Tournament hidden from this view'),
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
+          duration: visibleFor,
           action: SnackBarAction(
             label: 'Undo',
             textColor: kPrimaryColor,
@@ -2532,6 +2594,15 @@ class _DismissibleIncludedEventCard extends ConsumerWidget {
           ),
         ),
       );
+      // A floating snackbar's auto-hide timer can stall when the host ticker is
+      // paused (accessibleNavigation, route transitions), leaving the toast on
+      // screen indefinitely. Force-close as a safety net so it always clears
+      // itself — a no-op if it already closed (timer fired or Undo tapped).
+      var closed = false;
+      unawaited(controller.closed.then((_) => closed = true));
+      Future.delayed(visibleFor + const Duration(seconds: 1), () {
+        if (!closed) controller.close();
+      });
     }
 
     Future<bool> confirmHide() async {

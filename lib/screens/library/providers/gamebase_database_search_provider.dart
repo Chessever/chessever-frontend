@@ -4,6 +4,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -517,7 +518,13 @@ class GamebaseDatabaseSearchNotifier
       if (!mounted || token != _token) return;
       debugPrint('[GamebaseDatabaseSearch] error: $e');
       state = AsyncValue.data(
-        current.copyWith(isQueryLoading: false, lastQueryError: e.toString()),
+        current.copyWith(
+          isQueryLoading: false,
+          lastQueryError: userFacingError(
+            e,
+            fallback: 'Could not run this search. Please try again.',
+          ),
+        ),
       );
       if (kDebugMode) {
         debugPrintStack(stackTrace: st);

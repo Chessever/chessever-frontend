@@ -28,7 +28,9 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
@@ -437,12 +439,16 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to select all games: $e',
+            userFacingError(
+              e,
+              fallback: 'Could not select all games. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -1172,7 +1178,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     if (state.error != null && state.allGames.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: _buildErrorState(state.error!),
+        child: _buildErrorState(userFacingError(state.error)),
       );
     }
 

@@ -13,6 +13,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/search/gameSearch/game_search_overlay.dart';
 import 'package:flutter/material.dart';
@@ -125,7 +126,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
           error: (e, _) {
             return Center(
               child: Text(
-                'Error: $e',
+                userFacingError(e),
                 style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
                 textAlign: TextAlign.center,
               ),
@@ -137,7 +138,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
       error: (e, _) {
         return Center(
           child: Text(
-            'Error: $e',
+            userFacingError(e),
             style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
             textAlign: TextAlign.center,
           ),

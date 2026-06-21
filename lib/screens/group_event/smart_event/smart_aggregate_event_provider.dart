@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -630,10 +633,95 @@ class SmartAggregateEvent {
   );
 }
 
-/// Session-scoped set of tournaments the user hid from a smart event view,
-/// keyed by [SmartEventRequest.dismissScopeId].
-final smartEventDismissedEventIdsProvider = StateProvider.autoDispose
-    .family<Set<String>, String>((ref, scopeId) => const <String>{});
+/// Metadata key under which a saved smart event stores its hidden tournaments.
+const smartEventHiddenMetadataKey = 'hiddenEventIds';
+
+/// Parse the hidden-tournament IDs out of a favorite's `metadata` JSONB.
+Set<String> readSmartEventHiddenIds(Map<String, dynamic> metadata) {
+  final raw = metadata[smartEventHiddenMetadataKey];
+  if (raw is List) return raw.map((e) => e.toString()).toSet();
+  return const <String>{};
+}
+
+/// Live, session-only hidden tournaments for an UNSAVED smart event — there's
+/// no favorite row to persist to yet. Keyed by
+/// [SmartEventRequest.dismissScopeId]; folded into the saved row's metadata
+/// when the user saves the event. Intentionally NOT persisted: an unsaved smart
+/// event is a transient preview.
+final _smartEventSessionHiddenIdsProvider = StateProvider.family<
+    Set<String>,
+    String
+>((ref, dismissScopeId) => const <String>{});
+
+/// The saved favorite (if any) whose smart event matches [dismissScopeId].
+/// `dismissScopeId` is tier/elo-independent, so this resolves the same saved
+/// event regardless of the in-screen tier dropdown.
+final smartEventSavedFavoriteProvider = Provider.family<FavoriteEvent?, String>((
+  ref,
+  dismissScopeId,
+) {
+  final favorites = ref.watch(favoriteEventsProvider).valueOrNull ?? const [];
+  for (final favorite in favorites) {
+    if (!isSmartFavoriteEvent(favorite)) continue;
+    if (SmartEventRequest.fromFavoriteEvent(favorite).dismissScopeId ==
+        dismissScopeId) {
+      return favorite;
+    }
+  }
+  return null;
+});
+
+/// The tournaments hidden from a smart event view, keyed by
+/// [SmartEventRequest.dismissScopeId]. Source of truth:
+///   • saved event   → its `user_favorite_events.metadata.hiddenEventIds`
+///                      (server-side via Supabase, synced across devices)
+///   • unsaved event → session-only [_smartEventSessionHiddenIdsProvider]
+///
+/// Because a saved event's config lives on its own row, DELETING the event
+/// drops the config automatically — re-creating an identical filter set later
+/// starts fresh instead of resurrecting the deleted event's hides. (The old
+/// content-keyed local store had no such lifecycle and leaked configs across
+/// re-creations.)
+final smartEventDismissedEventIdsProvider = Provider.family<Set<String>, String>(
+  (ref, dismissScopeId) {
+    final favorite = ref.watch(smartEventSavedFavoriteProvider(dismissScopeId));
+    if (favorite != null) return readSmartEventHiddenIds(favorite.metadata);
+    return ref.watch(_smartEventSessionHiddenIdsProvider(dismissScopeId));
+  },
+);
+
+/// Persist the hidden tournaments for a smart event. Routes to the saved
+/// favorite's metadata (server-side, isolated to that row) when the event is
+/// saved, or to session state when it isn't yet saved.
+void setSmartEventHiddenIds(
+  WidgetRef ref,
+  String dismissScopeId,
+  Set<String> ids,
+) {
+  final favorite = ref.read(smartEventSavedFavoriteProvider(dismissScopeId));
+  if (favorite != null) {
+    unawaited(
+      ref
+          .read(favoriteEventsProvider.notifier)
+          .updateMetadata(favorite.eventId, {
+            smartEventHiddenMetadataKey: ids.toList(growable: false),
+          }),
+    );
+  } else {
+    ref
+        .read(_smartEventSessionHiddenIdsProvider(dismissScopeId).notifier)
+        .state = ids;
+  }
+}
+
+/// Drop the unsaved/session hidden set for a scope. Call once its config has
+/// been folded into a saved row (on save) or when the event is deleted, so a
+/// later unsaved view of the same scope can't resurrect stale session hides.
+void resetSmartEventSessionHidden(WidgetRef ref, String dismissScopeId) {
+  ref
+      .read(_smartEventSessionHiddenIdsProvider(dismissScopeId).notifier)
+      .state = const <String>{};
+}
 
 /// THE single data path for the smart event view. One server fetch per query
 /// (events narrowed to the `group_broadcasts_current` view — the same source

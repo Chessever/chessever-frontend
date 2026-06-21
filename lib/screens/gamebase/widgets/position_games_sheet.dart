@@ -9,7 +9,9 @@ import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dar
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -330,10 +332,11 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
         _isInitialLoading = false;
         _isLoadingMore = false;
       });
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted || requestToken != _requestToken) return;
       setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
+        _error = userFacingError(e);
         _isInitialLoading = false;
         _isLoadingMore = false;
       });

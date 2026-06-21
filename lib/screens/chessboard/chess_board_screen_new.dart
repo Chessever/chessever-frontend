@@ -59,8 +59,10 @@ import 'package:chessever2/providers/pip_mode_provider.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
@@ -1350,17 +1352,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   void _ensureAudioListener(ChessBoardProviderParams params) {
-    if (_audioParams == params) return;
+    if (_audioParams == params && _audioSub?.closed == false) return;
     _audioParams = params;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _audioParams != params) return;
       _audioSub?.close();
+      _audioSub = null;
       _audioSub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
         chessBoardScreenProviderNew(params),
-        _handleAudioProviderChange,
+        (prev, next) {
+          if (prev == null) return;
+          _handleAudioProviderChange(prev, next);
+        },
         onError: (e, st) {
           debugPrint("Error in chessBoardScreenProviderNew listener: $e");
         },
+        fireImmediately: true,
       );
     });
   }
@@ -1397,7 +1404,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final state = nextState;
 
     // Verify this update is for the currently viewed game
-    final providerGameIndex = _currentPageIndex;
+    if (widget.games.isEmpty) {
+      return;
+    }
+
+    final providerGameIndex = _currentPageIndex.clamp(
+      0,
+      widget.games.length - 1,
+    );
     final viewGameId = widget.games[providerGameIndex].gameId;
     if (state.game.gameId != viewGameId) {
       return;
@@ -1798,6 +1812,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
+    _ensureAudioListener(params);
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    if (boardSettings?.soundEnabled == true) {
+      unawaited(AudioPlayerService.instance.prepareForForegroundPlayback());
+    }
     try {
       final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
       unawaited(notifier.onBecameVisible(force: true));
@@ -9353,10 +9372,11 @@ class _FenPositionGamesTableState
         _isInitialLoading = false;
         _isLoadingMore = false;
       });
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted || requestToken != _requestToken) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
         _isInitialLoading = false;
         _isLoadingMore = false;
       });

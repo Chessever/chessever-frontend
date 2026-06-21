@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -104,7 +105,13 @@ class FavoritesCombinedGamesNotifier
     } catch (e) {
       debugPrint('[FavoritesGames] Initial load error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: userFacingError(
+          e,
+          fallback: 'Could not load games. Please try again.',
+        ),
+      );
     }
   }
 
@@ -319,7 +326,13 @@ class FavoritesCombinedGamesNotifier
     } catch (e) {
       debugPrint('[FavoritesSearch] Error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: userFacingError(
+          e,
+          fallback: 'Could not load games. Please try again.',
+        ),
+      );
     }
   }
 
@@ -423,7 +436,13 @@ class FavoritesCombinedGamesNotifier
     } catch (e) {
       debugPrint('[FavoritesGames] Fetch error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: userFacingError(
+          e,
+          fallback: 'Could not load games. Please try again.',
+        ),
+      );
     }
   }
 

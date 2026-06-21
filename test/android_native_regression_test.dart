@@ -38,6 +38,24 @@ void main() {
       expect(source, contains('await SoLoud.instance.init();'));
       expect(source, contains('SoLoud.instance.loadAsset'));
       expect(source, contains('player.play(_resolve(type));'));
+      expect(source, contains('Stopwatch()..start()'));
+      expect(source, isNot(contains('DateTime.now()')));
+      expect(source, contains('handle.isError'));
+      expect(source, contains('handle.id <= 0'));
+      expect(source, contains('player.getIsValidVoiceHandle(handle)'));
+      expect(source, contains('prepareForForegroundPlayback()'));
+      expect(source, contains('_recoverAndroidPlayback(type);'));
+      expect(source, contains('Future<void> _recoverAndroidSfxAssets()'));
+      expect(source, contains('Future<void> _reloadAndroidSfxAssets()'));
+      expect(
+        source,
+        contains('Future<void> _waitForAndroidRecoveryIfNeeded()'),
+      );
+      expect(source, contains('await _waitForAndroidRecoveryIfNeeded();'));
+      expect(source, contains('await androidRecovery;'));
+      expect(source, contains('final inFlightInitialization = _initializing;'));
+      expect(source, contains('await inFlightInitialization;'));
+      expect(source, contains('await player.disposeAllSources();'));
       _expectBefore(
         source,
         anchor: 'Future<void> _playWithRecovery',
@@ -47,6 +65,22 @@ void main() {
             'Android failed playback should not start an app-side '
             'deinit/reinit loop.',
       );
+    });
+
+    test('chessboard keeps the SFX listener recoverable', () {
+      final source =
+          File(
+            'lib/screens/chessboard/chess_board_screen_new.dart',
+          ).readAsStringSync();
+
+      expect(source, contains('_audioSub?.closed == false'));
+      expect(source, contains('fireImmediately: true'));
+      expect(source, contains('_ensureAudioListener(params);'));
+      expect(
+        source,
+        contains('AudioPlayerService.instance.prepareForForegroundPlayback()'),
+      );
+      expect(source, contains('_currentPageIndex.clamp('));
     });
 
     test('root startup does not prewarm Stockfish on Android', () {

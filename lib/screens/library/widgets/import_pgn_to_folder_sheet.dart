@@ -13,8 +13,10 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -216,12 +218,13 @@ class _ImportPgnToFolderPageState
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to create item: $e',
+            userFacingError(e, fallback: 'Could not create this item. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -332,12 +335,13 @@ class _ImportPgnToFolderPageState
         ),
       );
       HapticFeedbackService.success();
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Import failed: $e',
+            userFacingError(e, fallback: 'Could not import this PGN. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),

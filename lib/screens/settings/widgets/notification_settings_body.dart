@@ -1,7 +1,7 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/live_activity_mode_provider.dart';
+import 'package:chessever2/providers/notification_permission_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
-import 'package:chessever2/providers/notifications_settings_provider.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart'
     show TrackPersist;
@@ -34,11 +34,14 @@ class NotificationSettingsBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pushSettings = ref.watch(notificationsSettingsProvider);
+    // Master toggle reflects the live OS notification permission — not a stored
+    // app preference. Permission is owned by the OS; we mirror it and route the
+    // user to native controls when they tap.
+    final permissionAsync = ref.watch(notificationPermissionProvider);
     final prefsAsync = ref.watch(notificationPreferencesProvider);
     final prefs = prefsAsync.valueOrNull ?? NotificationPreferences.defaults;
     final prefsLoading = prefsAsync.isLoading;
-    final pushEnabled = pushSettings.enabled;
+    final pushEnabled = permissionAsync.valueOrNull ?? false;
     final interactive = pushEnabled && !prefsLoading;
 
     // Live game widgets (PiP + Live Activity) live with notifications now —
@@ -52,10 +55,13 @@ class NotificationSettingsBody extends ConsumerWidget {
         NotifPushCard(
           enabled: pushEnabled,
           onChanged: (value) {
+            // Permission can't be set from code — hand off to native controls.
+            // The provider re-reads the OS state afterwards (and on resume), so
+            // the toggle reflects whatever the user actually chose.
             trackPersist(
               ref
-                  .read(notificationsSettingsProvider.notifier)
-                  .setEnabled(value),
+                  .read(notificationPermissionProvider.notifier)
+                  .handleMasterToggle(),
             );
           },
           interactive: interactive,

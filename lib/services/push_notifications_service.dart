@@ -19,6 +19,7 @@ class PushNotificationsService {
   String? _pendingUserId;
   final List<void Function(OSPushSubscriptionChangedState)>
   _pendingPushObservers = [];
+  final List<void Function(bool)> _pendingPermissionObservers = [];
 
   Future<void> initialize({required String appId}) {
     if (_initialized) return Future.value();
@@ -57,19 +58,22 @@ class PushNotificationsService {
     LiveUpdatesService.instance.markOneSignalReady();
     await LiveUpdatesService.instance.setup();
 
-    // Apply opt-in state based on local preference and current OS permission.
-    // This prevents release builds from forcing users into opt-out when iOS
-    // permission is already granted but no local preference exists yet.
-    final hasPermission = OneSignal.Notifications.permission;
-    final storedEnabled = await _loadLocalEnabledNullable();
-
-    if (storedEnabled == null && hasPermission) {
+    // The OS notification permission is the single source of truth for whether
+    // push is "on" — it is not a separate app preference. Align the OneSignal
+    // subscription and the server flag with the real OS grant.
+    //
+    // We read it via _isPermissionGranted(), NOT the raw `permission` cache: that
+    // cache defaults to false and is hydrated by an un-awaited native call inside
+    // OneSignal.initialize(), so reading it here returns a stale false — the Android
+    // upgrade bug that silently opted granted users out.
+    final granted = await _isPermissionGranted();
+    if (granted) {
       await _persistLocalEnabled(true);
       await _syncPreferenceToSupabase(true);
       OneSignal.User.pushSubscription.optIn();
-    } else if (storedEnabled == true && hasPermission) {
-      OneSignal.User.pushSubscription.optIn();
     } else {
+      await _persistLocalEnabled(false);
+      await _syncPreferenceToSupabase(false);
       OneSignal.User.pushSubscription.optOut();
     }
 
@@ -78,6 +82,13 @@ class PushNotificationsService {
         OneSignal.User.pushSubscription.addObserver(observer);
       }
       _pendingPushObservers.clear();
+    }
+
+    if (_pendingPermissionObservers.isNotEmpty) {
+      for (final observer in _pendingPermissionObservers) {
+        OneSignal.Notifications.addPermissionObserver(observer);
+      }
+      _pendingPermissionObservers.clear();
     }
 
     // Keep RC's customer profile in sync with the device's OneSignal subscription
@@ -137,6 +148,60 @@ class PushNotificationsService {
   /// Whether OS-level notification permission is currently granted.
   bool get hasPermission => _initialized && OneSignal.Notifications.permission;
 
+  /// Robustly resolve whether the OS currently allows notifications.
+  ///
+  /// `OneSignal.Notifications.permission` is a Dart-side cache that starts as
+  /// `false` and is hydrated from native by `lifecycleInit()` — a call that
+  /// `OneSignal.initialize()` fires but does NOT await. Reading the cache right
+  /// after init can therefore return a stale `false` even when notifications are
+  /// granted. This is exactly what bit Android upgrades: an existing grant is
+  /// carried forward by the OS, but the cache hasn't caught up yet.
+  ///
+  /// `canRequest()` is a fresh native round-trip on the same MethodChannel as the
+  /// pending `OneSignal#permission` hydration call. Method channels are FIFO, so
+  /// once `canRequest()` resolves the cache has been populated — we re-read it.
+  Future<bool> _isPermissionGranted() async {
+    if (OneSignal.Notifications.permission) return true;
+    // Force/await a native hop; the permission cache hydration lands before this
+    // resolves (same channel, enqueued earlier during initialize()).
+    await OneSignal.Notifications.canRequest();
+    return OneSignal.Notifications.permission;
+  }
+
+  /// Live OS notification-permission state, read reliably (see [_isPermissionGranted]).
+  Future<bool> isPermissionGranted() async {
+    await _waitForInitializeIfPending();
+    if (!_initialized) return false;
+    return _isPermissionGranted();
+  }
+
+  /// Whether the OS will still show a permission prompt (true only if never asked).
+  /// false ⇒ already granted OR permanently denied — in both cases the only way
+  /// to change it is the system settings page.
+  Future<bool> canRequestPermission() async {
+    await _waitForInitializeIfPending();
+    if (!_initialized) return false;
+    return OneSignal.Notifications.canRequest();
+  }
+
+  /// Subscribe to OS notification-permission changes. Fires when the user flips
+  /// the system notification switch outside the app (Settings), so the toggle can
+  /// reflect the live native state instead of a stored guess.
+  void addNativePermissionObserver(void Function(bool) observer) {
+    if (_initialized) {
+      OneSignal.Notifications.addPermissionObserver(observer);
+      return;
+    }
+    _pendingPermissionObservers.add(observer);
+  }
+
+  void removeNativePermissionObserver(void Function(bool) observer) {
+    if (_initialized) {
+      OneSignal.Notifications.removePermissionObserver(observer);
+    }
+    _pendingPermissionObservers.remove(observer);
+  }
+
   Future<bool> requestPermissionWithDialog() async {
     await _waitForInitializeIfPending();
     if (!_initialized) return false;
@@ -167,27 +232,30 @@ class PushNotificationsService {
   Future<void> requestPermissionIfNotGranted() async {
     await _waitForInitializeIfPending();
     if (!_initialized) return;
-    if (OneSignal.Notifications.permission) {
-      final enabled = await _loadLocalEnabledNullable();
-      if (enabled != false) {
-        await _persistLocalEnabled(true);
-        await _persistPromptedOnce();
-        await _syncPreferenceToSupabase(true);
-        OneSignal.User.pushSubscription.optIn();
-      }
+
+    // Reliable read — hydrates the SDK permission cache via a native hop, so an
+    // already-granted device (e.g. Android upgrade carrying the grant forward) is
+    // never misread as denied.
+    if (await _isPermissionGranted()) {
+      await _persistLocalEnabled(true);
+      await _persistPromptedOnce();
+      await _syncPreferenceToSupabase(true);
+      OneSignal.User.pushSubscription.optIn();
       return;
     }
 
-    final canRequest = await OneSignal.Notifications.canRequest();
-    if (!canRequest) {
+    // Not granted. If the OS will still show a prompt, show it. Otherwise do NOT
+    // try to "fix" anything from here — the user changes the permission via the
+    // system settings page (surfaced by the notification toggle UI). We only
+    // mirror the real OS state so the backend doesn't push to a muted device.
+    if (await OneSignal.Notifications.canRequest()) {
+      await requestPermissionWithDialog();
+    } else {
       await _persistLocalEnabled(false);
       await _persistPromptedOnce();
       await _syncPreferenceToSupabase(false);
       OneSignal.User.pushSubscription.optOut();
-      return;
     }
-
-    await requestPermissionWithDialog();
   }
 
   Future<void> setPushEnabled(bool enabled) async {

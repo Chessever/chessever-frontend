@@ -177,13 +177,11 @@ final myLikesViewProvider = FutureProvider.autoDispose<MyLikesData>((
   final subscription = ref.watch(subscriptionProvider);
   final folder = await ref.watch(likedGamesFolderProvider.future);
 
-  // Filter + sort are premium-only. While the subscription is still resolving
-  // (cold start) we treat the user as subscribed so we don't wipe a real
-  // premium user's saved filter for a frame. Tag filtering is a separate
-  // liked-game classification and remains available to everyone.
-  final canFilterAndSort = subscription.isSubscribed || subscription.isLoading;
-  final effectiveFilter =
-      canFilterAndSort ? filterState.filter : GameFilter.defaultFilter();
+  // Search, filter, sort and tag filtering are all free inside My Likes. The
+  // only free-tier restriction is the 7-day read window (`isLikedGameLocked`
+  // below); `subscription` is still read for that. So the active filter
+  // applies for everyone.
+  final effectiveFilter = filterState.filter;
 
   final results = await Future.wait([
     repo.getLikedAnalysesForView(

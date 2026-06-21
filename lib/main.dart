@@ -691,7 +691,7 @@ void _initializePostStartupServices() {
 
   ForegroundTaskScheduler.schedule(
     key: 'startup_audio_assets',
-    // Past the splash→auth brand-logo assemble so SoLoud's native init stall
+    // Past the splash→auth brand-logo assemble so native audio init stall
     // can't make the wall-clock logo controller skip frames. See
     // [kAudioWarmupDelay].
     delay: kAudioWarmupDelay,

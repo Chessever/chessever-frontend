@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -15,8 +16,10 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -97,7 +100,8 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
   final Set<String> _expandedFolderIds = <String>{};
   bool _isSaving = false;
 
-  Future<ChessGame> _resolveChessGame() async {
+  Future<({ChessGame chessGame, String? sourceTournamentId})>
+  _resolveChessGame() async {
     final gameRepository = ref.read(gameRepositoryProvider);
     final gamebaseRepository = ref.read(gamebaseRepositoryProvider);
 
@@ -163,16 +167,32 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       meta['BlackElo'] = widget.game.blackPlayer.rating.toString();
     }
 
-    final resolvedEventName = _resolveEventName(
+    final canonicalEvent = await ref
+        .read(libraryRepositoryProvider)
+        .resolveCanonicalGameEvent(
+          sourceGameId: widget.game.gameId,
+          sourceTournamentId: widget.game.tourId,
+        );
+
+    final resolvedEventName = chooseLibraryEventName(
+      canonicalEventName: canonicalEvent?.eventName,
       metadataEvent: meta['Event']?.toString(),
-      tourSlug: widget.game.tourSlug,
+      site: meta['Site']?.toString(),
+      tourSlug: canonicalEvent?.tourSlug ?? widget.game.tourSlug,
       tourId: widget.game.tourId,
+      whiteName: widget.game.whitePlayer.name,
+      blackName: widget.game.blackPlayer.name,
     );
     if (resolvedEventName != null) {
       meta['Event'] = resolvedEventName;
     }
 
-    return chessGame.copyWith(metadata: meta);
+    return (
+      chessGame: chessGame.copyWith(metadata: meta),
+      sourceTournamentId:
+          canonicalEvent?.sourceTournamentId ??
+          normalizeSourceTournamentId(widget.game.tourId),
+    );
   }
 
   void _toggleFolderSelection(LibraryFolder folder) {
@@ -249,12 +269,16 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to create item: $e',
+            userFacingError(
+              e,
+              fallback: 'Could not create this item. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -264,39 +288,6 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         ),
       );
     }
-  }
-
-  String? _resolveEventName({
-    required String? metadataEvent,
-    required String? tourSlug,
-    required String? tourId,
-  }) {
-    final fromMetadata = metadataEvent?.trim() ?? '';
-    if (_isReadableEventName(fromMetadata)) return fromMetadata;
-    final fromSlug = tourSlug?.trim() ?? '';
-    if (_isReadableEventName(fromSlug)) return _humanizeSlug(fromSlug);
-    return null;
-  }
-
-  bool _isReadableEventName(String value) {
-    if (value.isEmpty) return false;
-    final lower = value.toLowerCase();
-    if (lower == 'library' ||
-        lower == 'gamebase' ||
-        lower == 'opening_explorer') {
-      return false;
-    }
-    return true;
-  }
-
-  String _humanizeSlug(String value) {
-    if (!value.contains('-') && !value.contains('_')) return value;
-    final words =
-        value.split(RegExp(r'[-_]+')).where((s) => s.isNotEmpty).toList();
-    if (words.isEmpty) return value;
-    return words
-        .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
-        .join(' ');
   }
 
   Future<void> _handleAddToSelected(List<LibraryFolder> selected) async {
@@ -327,7 +318,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
     setState(() => _isSaving = true);
     try {
-      final chessGame = await _resolveChessGame();
+      final resolvedGame = await _resolveChessGame();
       final userId =
           ref.read(libraryRepositoryProvider).supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
@@ -344,8 +335,8 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
           title:
               '${widget.game.whitePlayer.name} vs ${widget.game.blackPlayer.name}',
           sourceGameId: widget.game.gameId,
-          sourceTournamentId: widget.game.tourId,
-          chessGame: chessGame,
+          sourceTournamentId: resolvedGame.sourceTournamentId,
+          chessGame: resolvedGame.chessGame,
           analysisState: const {},
           variationComments: const {},
           lastViewedPosition: -1,
@@ -381,12 +372,16 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         ),
       );
       HapticFeedbackService.success();
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to add game: $e',
+            userFacingError(
+              e,
+              fallback: 'Could not add this game. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -782,10 +777,12 @@ class _FolderSelectionTile extends StatelessWidget {
                   : (folder.parentId == null
                       ? Icons.folder_rounded
                       : Icons.folder_open_rounded),
-              color: folder.isLikedGames
-                  ? context.colors.danger
-                  : context.colors.textPrimary
-                      .withValues(alpha: isSmall ? 0.6 : 1.0),
+              color:
+                  folder.isLikedGames
+                      ? context.colors.danger
+                      : context.colors.textPrimary.withValues(
+                        alpha: isSmall ? 0.6 : 1.0,
+                      ),
               size: isSmall ? 20.sp : 24.sp,
             ),
             SizedBox(width: 12.w),

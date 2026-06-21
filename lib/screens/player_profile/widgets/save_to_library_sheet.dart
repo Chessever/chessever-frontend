@@ -5,9 +5,11 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -110,11 +112,17 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to load all games: $e'),
+          content: Text(
+            userFacingError(
+              e,
+              fallback: 'Could not load all games. Please try again.',
+            ),
+          ),
           backgroundColor: kRedColor,
         ),
       );

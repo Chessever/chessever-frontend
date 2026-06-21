@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/twic_event_aggregates_provider.dart';
@@ -511,11 +512,22 @@ class DatabaseGamesPaginationNotifier
           final formatCode =
               (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
 
-          final tourId =
+          final rawTourId =
               (preview['tour_id']?.toString() ??
                       preview['tournament_id']?.toString() ??
-                      event.trim())
+                      '')
                   .trim();
+          // Gamebase stores the raw PGN Event header; for broadcast-ingested
+          // games that is a round/pairing label. Resolve the real tournament
+          // (recovered from the Site broadcast URL) so the card never shows a
+          // pairing string.
+          final tourId = resolveGamebaseEventName(
+            event: event,
+            site: site,
+            tourId: rawTourId.isNotEmpty ? rawTourId : null,
+            whiteName: whiteName,
+            blackName: blackName,
+          );
 
           return GamesTourModel(
             gameId: safeId,
@@ -863,11 +875,20 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
           final formatCode =
               (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
 
-          final tourId =
+          final rawTourId =
               (row['tour_id']?.toString() ??
                       row['tournament_id']?.toString() ??
-                      event.trim())
+                      '')
                   .trim();
+          // See _fetchPage: resolve the real tournament from the Site URL so
+          // broadcast round/pairing headers never surface as the event label.
+          final tourId = resolveGamebaseEventName(
+            event: event,
+            site: site,
+            tourId: rawTourId.isNotEmpty ? rawTourId : null,
+            whiteName: whiteName,
+            blackName: blackName,
+          );
 
           return GamesTourModel(
             gameId: safeId,

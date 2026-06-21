@@ -3,6 +3,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -145,7 +146,10 @@ class CountrymenCombinedGamesNotifier
     } catch (e) {
       debugPrint('[CountrymenGames] Initial load error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: userFacingError(e, fallback: 'Failed to load games.'),
+      );
     }
   }
 
@@ -297,7 +301,10 @@ class CountrymenCombinedGamesNotifier
     } catch (e) {
       debugPrint('[CountrymenSearch] Error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: userFacingError(e, fallback: 'Failed to load games.'),
+      );
     }
   }
 
@@ -386,7 +393,10 @@ class CountrymenCombinedGamesNotifier
     } catch (e) {
       debugPrint('[CountrymenGames] Fetch error: $e');
       if (!mounted) return;
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: userFacingError(e, fallback: 'Failed to load games.'),
+      );
     }
   }
 

@@ -9,8 +9,10 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -185,9 +187,10 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       _twicIsLoading = false;
       _twicIsLoadingMore = false;
       setState(() {});
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted || token != _loadToken) return;
-      _twicError = e.toString();
+      _twicError = userFacingError(e);
       _twicIsLoading = false;
       _twicIsLoadingMore = false;
       setState(() {});
@@ -276,7 +279,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
             );
           },
           loading: () => _buildLoadingState(),
-          error: (error, _) => _buildErrorState(error.toString()),
+          error: (error, _) => _buildErrorState(userFacingError(error)),
         ),
       );
     }

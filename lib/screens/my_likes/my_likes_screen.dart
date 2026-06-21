@@ -13,7 +13,9 @@ import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -97,9 +99,10 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
 
   Future<void> _showFilterDialog() async {
     HapticFeedbackService.buttonPress();
-    // Dialog opens for everyone — free users get to see what's available.
-    // Premium gate fires only when a non-default filter/sort is applied,
-    // so Reset (which pops a default filter) and Cancel never pop paywall.
+    // Search + filter + sort inside My Likes are free for everyone. The only
+    // free-tier restriction left is the 7-day read window (locked cards can't
+    // be opened), enforced in [_openAnalysis] / [myLikesViewProvider] — not
+    // here. So no paywall on applying a filter or sort.
     final result = await showGameFilterDialog(
       context: context,
       currentFilter: ref.read(myLikesFilterProvider).filter,
@@ -116,11 +119,6 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     );
     if (result == null || !mounted) return;
 
-    final isPremiumChange = result.hasActiveFilters || result.hasActiveSorts;
-    if (isPremiumChange) {
-      final unlocked = await requirePremiumGuard(context, ref);
-      if (!unlocked || !mounted) return;
-    }
     ref.read(myLikesFilterProvider.notifier).applyFilter(result);
   }
 
@@ -208,7 +206,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     if (data != null) {
       body = _buildBody(data);
     } else if (viewAsync.hasError) {
-      body = _buildErrorState(viewAsync.error.toString());
+      body = _buildErrorState(userFacingError(viewAsync.error));
     } else {
       body = _buildLoadingState();
     }
@@ -372,12 +370,13 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         analyses: analyses,
         databaseName: 'My Likes',
       );
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Export failed: $e',
+            userFacingError(e, fallback: 'Export failed. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -428,12 +427,13 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         sharePositionOrigin: origin,
       );
       HapticFeedbackService.success();
-    } catch (e) {
+    } catch (e, st) {
+      talker.handle(e, st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Share failed: $e',
+            userFacingError(e, fallback: 'Could not share this. Please try again.'),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),

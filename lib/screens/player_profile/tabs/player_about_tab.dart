@@ -15,6 +15,7 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -410,7 +411,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     );
                   },
                   loading: () => _buildLoadingAnalytics(),
-                  error: (error, _) => _buildErrorMessage(error.toString()),
+                  error: (error, _) => _buildErrorMessage(userFacingError(error)),
                 ),
           ],
         ),
@@ -672,7 +673,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
         baseAnalytics == null &&
         openingAnalytics == null &&
         analytics == null) {
-      return _buildErrorMessage(statsError.toString());
+      return _buildErrorMessage(userFacingError(statsError));
     }
 
     final base = baseAnalytics ?? analytics ?? openingAnalytics;
