@@ -43,6 +43,18 @@ String? broadcastSlugFromSite(String? site) {
   return (slug == null || slug.isEmpty) ? null : slug;
 }
 
+/// Slugify a gamebase event NAME into the form ChessEver stores in
+/// `tours.slug` (lichess-style: lowercase, non-alphanumeric runs collapsed to a
+/// single hyphen). Gamebase event names are ASCII, so this matches the
+/// diacritic-stripped lichess slug — e.g. "Druzynowe Mistrzostwa Polski -
+/// Ekstraliga 2026" -> "druzynowe-mistrzostwa-polski-ekstraliga-2026". Used to
+/// route a database event to its real ChessEver broadcast when the game `Site`
+/// is a venue string (no Lichess URL) rather than a broadcast link.
+String eventNameToBroadcastSlug(String name) {
+  final dashed = name.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  return dashed.replaceAll(RegExp(r'^-+|-+$'), '');
+}
+
 /// Extracts the `Site` header value from a PGN string, or null when the header
 /// is absent or a placeholder (`?`). TWIC games carry the canonical Lichess
 /// broadcast URL only in this header.

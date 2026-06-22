@@ -45,11 +45,19 @@ Future<void> openProfileEvent({
     return;
   }
 
-  // TWIC/database event: try the canonical event page via the Lichess slug.
-  final slug = broadcastSlugFromSite(site);
-  if (slug != null) {
+  // TWIC/database event: resolve the canonical ChessEver broadcast. Try the
+  // Lichess `Site` slug first (broadcast-linked games), then the slugified
+  // event name (games whose Site is a venue string, e.g. "Pasching AUT") —
+  // the name slugifies to the same `tours.slug` ChessEver stores.
+  final siteSlug = broadcastSlugFromSite(site);
+  final nameSlug = eventNameToBroadcastSlug(eventName);
+  final candidates = <String>{
+    if (siteSlug != null && siteSlug.isNotEmpty) siteSlug,
+    if (nameSlug.isNotEmpty) nameSlug,
+  };
+  for (final candidate in candidates) {
     try {
-      final broadcast = await repo.getGroupBroadcastBySlug(slug);
+      final broadcast = await repo.getGroupBroadcastBySlug(candidate);
       if (broadcast != null) {
         ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
         if (!context.mounted) return;
@@ -57,7 +65,7 @@ Future<void> openProfileEvent({
         return;
       }
     } catch (_) {
-      // Slug lookup failed — fall through to the database view.
+      // Try the next candidate / fall through to the database view.
     }
   }
 

@@ -34,6 +34,7 @@ import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -2040,28 +2041,24 @@ class _EventSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Render instantly from the already-loaded community card. The previous
-    // per-card broadcast-art lookup did a network slug search on scroll-in,
-    // producing a blank -> placeholder -> image-seconds-later cascade. Not
-    // worth the jank; broadcast art can return later via a batched pre-resolve.
-    final displayCard = eventCard;
+    // Always render the full EventCard from a card we build synchronously from
+    // data already in hand (no async provider, no network). This keeps the
+    // fixed-size image box reserved from the first frame, so the layout never
+    // jumps from a short text fallback to the taller image card.
+    final displayCard = eventCard ?? _buildSyncCommunityCard();
 
     return GestureDetector(
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Event card or fallback
-          if (displayCard != null)
-            EventCard(
-              tourEventCardModel: displayCard,
-              heroTagSuffix: '_player_games_$tourId',
-              // Embedded inside a SliverList (unbounded height) — must use
-              // the compact phone layout to avoid Stack-expand crash.
-              forceCompactLayout: true,
-            )
-          else
-            _buildFallbackCard(context),
+          EventCard(
+            tourEventCardModel: displayCard,
+            heroTagSuffix: '_player_games_$tourId',
+            // Embedded inside a SliverList (unbounded height) — must use
+            // the compact phone layout to avoid Stack-expand crash.
+            forceCompactLayout: true,
+          ),
 
           // Player stats row
           _buildStatsRow(context),
@@ -2070,23 +2067,34 @@ class _EventSection extends ConsumerWidget {
     );
   }
 
-  Widget _buildFallbackCard(BuildContext context) {
-    final eventName = eventData?.tourName ?? _formatSlug(tourSlug ?? tourId);
-    return Container(
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(8.br)),
+  /// Build a community event card synchronously from the data the header
+  /// already has (event name, dates, location). Used so the card renders fully
+  /// on first frame instead of flashing a short fallback while an async card
+  /// provider resolves.
+  GroupEventCardModel _buildSyncCommunityCard() {
+    final title = (eventData?.tourName ?? tourSlug ?? tourId).trim();
+    final id = 'twic_event_$tourId';
+    final start = eventData?.startDate;
+    final end = eventData?.endDate;
+    return GroupEventCardModel(
+      id: id,
+      title: title.isEmpty ? 'Event' : title,
+      dates: TimeUtils.formatDateRange(start, end),
+      maxAvgElo: eventData?.avgElo ?? eventData?.maxElo ?? 0,
+      timeUntilStart: TimeUtils.timeUntilStart(start),
+      tourEventCategory: GroupEventCardModel.getCategory(
+        groupId: id,
+        groupName: title,
+        startDate: start,
+        endDate: end,
+        liveGroupIds: const [],
       ),
-      padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 16.sp),
-      child: Text(
-        eventName,
-        style: AppTypography.textSmMedium.copyWith(
-          color: context.colors.textPrimary,
-          height: 1.2,
-        ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
+      timeControl: '',
+      endDate: end,
+      startDate: start,
+      location: site ?? eventData?.site,
+      searchTerms: [title],
+      eventSource: EventSource.communityEvent,
     );
   }
 
@@ -2144,14 +2152,6 @@ class _EventSection extends ConsumerWidget {
       return score.toInt().toString();
     }
     return score.toStringAsFixed(1);
-  }
-
-  String _formatSlug(String slug) {
-    return slug
-        .split('-')
-        .where((w) => w.isNotEmpty)
-        .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
-        .join(' ');
   }
 
   Color _getScoreColor(BuildContext context) {
