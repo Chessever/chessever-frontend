@@ -5,6 +5,7 @@ import 'package:chessever2/repository/gamebase/search/gamebase_search_models_ext
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart' show Games;
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart'
     show GamebasePlayer;
 import 'package:dio/dio.dart';
@@ -191,6 +192,8 @@ class PlayerEventData {
     required this.tourId,
     required this.tourName,
     this.tourSlug,
+    this.canonicalKey,
+    this.broadcastSlug,
     required this.gamesPlayed,
     this.score,
     this.startDate,
@@ -204,6 +207,8 @@ class PlayerEventData {
   final String tourId;
   final String tourName;
   final String? tourSlug;
+  final String? canonicalKey;
+  final String? broadcastSlug;
   final int gamesPlayed;
   final double? score;
   final DateTime? startDate;
@@ -645,6 +650,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
           blackName: blackName,
           result: result,
           event: canonicalEvent,
+          site: row['site']?.toString(),
           date: date,
           eco: eco,
           opening: opening,
@@ -1322,6 +1328,8 @@ PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
     tourId: title,
     tourName: title,
     tourSlug: title,
+    canonicalKey: item.canonicalKey,
+    broadcastSlug: item.broadcastSlug ?? broadcastSlugFromSite(item.site),
     gamesPlayed: item.gameCount,
     score: item.score,
     startDate: item.startDate,
@@ -1351,6 +1359,8 @@ List<PlayerEventData> mergePlayerEventsByCanonical(
       tourId: existing.tourId,
       tourName: existing.tourName,
       tourSlug: existing.tourSlug,
+      canonicalKey: existing.canonicalKey ?? e.canonicalKey,
+      broadcastSlug: existing.broadcastSlug ?? e.broadcastSlug,
       gamesPlayed: existing.gamesPlayed + e.gamesPlayed,
       score:
           (existing.score == null && e.score == null)
@@ -1407,8 +1417,10 @@ List<PlayerEventData> _buildTwicPlayerEventsFromGames(
 
     final first = eventGames.first;
     final title = preferredTwicEventTitle(
+      pgnEvent: eventFromPgn(first.pgn),
       tourSlug: first.tourSlug,
       tourId: first.tourId,
+      site: siteFromPgn(first.pgn),
       fallback: 'Gamebase',
     );
     final ratings = <int>[];
@@ -1428,10 +1440,11 @@ List<PlayerEventData> _buildTwicPlayerEventsFromGames(
         tourId: title,
         tourName: title,
         tourSlug: title,
+        broadcastSlug: broadcastSlugFromSite(siteFromPgn(first.pgn)),
         gamesPlayed: eventGames.length,
         startDate: eventGames.first.lastMoveTime,
         endDate: eventGames.last.lastMoveTime,
-        site: _siteFromPgn(first.pgn),
+        site: siteFromPgn(first.pgn),
         dominantTimeControl: first.timeControl,
         avgElo: avgElo,
         maxElo: maxElo,
@@ -1445,13 +1458,6 @@ List<PlayerEventData> _buildTwicPlayerEventsFromGames(
     return bDate.compareTo(aDate);
   });
   return events;
-}
-
-String? _siteFromPgn(String? pgn) {
-  if (pgn == null) return null;
-  final match = RegExp(r'^\[Site\s+"(.*)"\]$', multiLine: true).firstMatch(pgn);
-  final site = match?.group(1)?.trim();
-  return site == null || site.isEmpty || site == '?' ? null : site;
 }
 
 String _formatEventTimeControl(String? raw) {
@@ -1468,39 +1474,95 @@ String _formatEventTimeControl(String? raw) {
   }
 }
 
+List<String> twicBroadcastSlugCandidatesForEvent(PlayerEventData event) {
+  final candidates = <String>{
+    if ((event.broadcastSlug ?? '').trim().isNotEmpty)
+      event.broadcastSlug!.trim(),
+    if (broadcastSlugFromSite(event.site) != null)
+      broadcastSlugFromSite(event.site)!,
+    if (event.tourName.trim().isNotEmpty)
+      eventNameToBroadcastSlug(event.tourName),
+  };
+  candidates.removeWhere((slug) => slug.trim().isEmpty);
+  return candidates.toList(growable: false);
+}
+
+GroupEventCardModel buildTwicPlayerEventFallbackCard(PlayerEventData event) {
+  final title = event.tourName.trim();
+  final id = 'twic_event_${event.tourId}';
+  return GroupEventCardModel(
+    id: id,
+    title: title.isEmpty ? 'Event' : title,
+    dates: TimeUtils.formatDateRange(event.startDate, event.endDate),
+    maxAvgElo: event.avgElo ?? event.maxElo ?? 0,
+    timeUntilStart: TimeUtils.timeUntilStart(event.startDate),
+    tourEventCategory: GroupEventCardModel.getCategory(
+      groupId: id,
+      groupName: title,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      liveGroupIds: const [],
+    ),
+    timeControl: _formatEventTimeControl(event.dominantTimeControl),
+    endDate: event.endDate,
+    startDate: event.startDate,
+    location: event.site,
+    searchTerms: [title],
+    eventSource: EventSource.communityEvent,
+  );
+}
+
+Future<Map<String, GroupEventCardModel>> resolveTwicPlayerEventCards({
+  required Iterable<PlayerEventData> events,
+  required GroupBroadcastRepository groupBroadcastRepo,
+}) async {
+  final eventList = events.toList(growable: false);
+  if (eventList.isEmpty) return const {};
+
+  final slugs = <String>{
+    for (final event in eventList)
+      ...twicBroadcastSlugCandidatesForEvent(event),
+  };
+  final cloudCardsBySlug = <String, GroupEventCardModel?>{};
+
+  await Future.wait(
+    slugs.map((slug) async {
+      try {
+        final broadcast = await groupBroadcastRepo.getGroupBroadcastBySlug(
+          slug,
+        );
+        cloudCardsBySlug[slug] =
+            broadcast == null
+                ? null
+                : GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
+      } catch (_) {
+        cloudCardsBySlug[slug] = null;
+      }
+    }),
+  );
+
+  final cards = <String, GroupEventCardModel>{};
+  for (final event in eventList) {
+    GroupEventCardModel? cloudCard;
+    for (final slug in twicBroadcastSlugCandidatesForEvent(event)) {
+      cloudCard = cloudCardsBySlug[slug];
+      if (cloudCard != null) break;
+    }
+    cards[event.tourId] = cloudCard ?? buildTwicPlayerEventFallbackCard(event);
+  }
+  return cards;
+}
+
 final playerTwicEventCardsProvider = FutureProvider.family
     .autoDispose<Map<String, GroupEventCardModel>, PlayerProfileKey>((
       ref,
       playerKey,
     ) async {
       final events = await ref.watch(playerEventsKeyProvider(playerKey).future);
-      final eventCards = <String, GroupEventCardModel>{};
-
-      for (final event in events) {
-        final id = 'twic_event_${event.tourId}';
-        eventCards[event.tourId] = GroupEventCardModel(
-          id: id,
-          title: event.tourName,
-          dates: TimeUtils.formatDateRange(event.startDate, event.endDate),
-          maxAvgElo: event.avgElo ?? event.maxElo ?? 0,
-          timeUntilStart: TimeUtils.timeUntilStart(event.startDate),
-          tourEventCategory: GroupEventCardModel.getCategory(
-            groupId: id,
-            groupName: event.tourName,
-            startDate: event.startDate,
-            endDate: event.endDate,
-            liveGroupIds: const [],
-          ),
-          timeControl: _formatEventTimeControl(event.dominantTimeControl),
-          endDate: event.endDate,
-          startDate: event.startDate,
-          location: event.site,
-          searchTerms: [event.tourName],
-          eventSource: EventSource.communityEvent,
-        );
-      }
-
-      return eventCards;
+      return resolveTwicPlayerEventCards(
+        events: events,
+        groupBroadcastRepo: ref.read(groupBroadcastRepositoryProvider),
+      );
     });
 
 final playerProfileDataKeyProvider = FutureProvider.family

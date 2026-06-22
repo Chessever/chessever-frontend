@@ -518,7 +518,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   ) {
     final grouped = <String, List<GamesTourModel>>{};
     for (final game in games) {
-      grouped.putIfAbsent(game.tourId, () => []).add(game);
+      final eventKey =
+          widget.dataSource == PlayerProfileDataSource.twic
+              ? twicCanonicalEventTitleForGame(game)
+              : game.tourId;
+      grouped.putIfAbsent(eventKey, () => []).add(game);
     }
     return grouped;
   }
@@ -1246,7 +1250,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           eventCard: eventCard,
           eventData: eventData,
           tourId: tourId,
-          tourSlug: eventGames.first.tourSlug,
+          tourSlug:
+              widget.dataSource == PlayerProfileDataSource.twic
+                  ? tourId
+                  : eventGames.first.tourSlug,
           gameCount: eventGames.length,
           playerScore: playerScore,
           site: eventData?.site ?? siteFromPgn(eventGames.first.pgn),
@@ -1357,11 +1364,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           site: entry.site,
           gameCount: entry.gameCount,
           playerScore: entry.playerScore,
-          onTap: () => _navigateToEvent(
-            tourId: entry.tourId,
-            eventName: entry.eventData?.tourName ?? entry.tourId,
-            site: entry.site,
-          ),
+          onTap:
+              () => _navigateToEvent(
+                tourId: entry.tourId,
+                eventName: entry.eventData?.tourName ?? entry.tourId,
+                site: entry.site,
+              ),
         ),
       );
     }
@@ -1437,9 +1445,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 ? () => _toggleGameSelection(entry.game.gameId)
                 : () => _showAddToFolderSheet(entry.game),
         onLiveAdd:
-            isSelectionMode ? null : (liveGame) => _showAddToFolderSheet(liveGame),
+            isSelectionMode
+                ? null
+                : (liveGame) => _showAddToFolderSheet(liveGame),
         onTap:
-            isSelectionMode ? () => _toggleGameSelection(entry.game.gameId) : null,
+            isSelectionMode
+                ? () => _toggleGameSelection(entry.game.gameId)
+                : null,
       );
 
       if (isSelectionMode) {

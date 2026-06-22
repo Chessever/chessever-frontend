@@ -35,12 +35,14 @@ Future<void> openProfileEvent({
       final broadcast = await repo.getGroupBroadcastById(tourId);
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       if (!context.mounted) return;
+      ref.read(selectedTourModeProvider.notifier).state =
+          TournamentDetailScreenMode.games;
       Navigator.pushNamed(context, '/tournament_detail_screen');
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
     }
     return;
   }
@@ -61,6 +63,8 @@ Future<void> openProfileEvent({
       if (broadcast != null) {
         ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
         if (!context.mounted) return;
+        ref.read(selectedTourModeProvider.notifier).state =
+            TournamentDetailScreenMode.games;
         Navigator.pushNamed(context, '/tournament_detail_screen');
         return;
       }
@@ -76,7 +80,8 @@ Future<void> openProfileEvent({
   if (!context.mounted) return;
   Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => DatabaseEventScreen(eventName: eventName.trim(), site: site),
+      builder:
+          (_) => DatabaseEventScreen(eventName: eventName.trim(), site: site),
     ),
   );
 }

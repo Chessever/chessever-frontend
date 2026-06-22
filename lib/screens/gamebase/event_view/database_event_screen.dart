@@ -25,18 +25,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Pushed as the fallback from a player-profile event tap when no canonical
 /// ChessEver event exists.
 class DatabaseEventScreen extends ConsumerWidget {
-  const DatabaseEventScreen({
-    super.key,
-    required this.eventName,
-    this.site,
-  });
+  const DatabaseEventScreen({super.key, required this.eventName, this.site});
 
   final String eventName;
   final String? site;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(gamebaseEventViewProvider(eventName));
+    final request = GamebaseEventViewRequest(eventName: eventName, site: site);
+    final async = ref.watch(gamebaseEventViewProvider(request));
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -56,11 +53,14 @@ class DatabaseEventScreen extends ConsumerWidget {
                   return _EventTabs(view: view);
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => _ErrorState(
-                  message: userFacingError(error),
-                  onRetry: () =>
-                      ref.invalidate(gamebaseEventViewProvider(eventName)),
-                ),
+                error:
+                    (error, _) => _ErrorState(
+                      message: userFacingError(error),
+                      onRetry:
+                          () => ref.invalidate(
+                            gamebaseEventViewProvider(request),
+                          ),
+                    ),
               ),
             ),
           ],
@@ -122,8 +122,9 @@ class _EventTabs extends StatelessWidget {
         children: [
           TabBar(
             labelColor: context.colors.textPrimary,
-            unselectedLabelColor:
-                context.colors.textPrimary.withValues(alpha: 0.5),
+            unselectedLabelColor: context.colors.textPrimary.withValues(
+              alpha: 0.5,
+            ),
             indicatorColor: context.colors.textPrimary,
             labelStyle: AppTypography.textSmMedium,
             tabs: [
@@ -254,15 +255,9 @@ class _AboutRow extends StatelessWidget {
 /// team/knockout match header, or one game (referenced by its global index in
 /// [_GamesTabState._orderedGames]).
 class _GamesRow {
-  const _GamesRow.header(this.header)
-      : match = null,
-        gameIndex = -1;
-  const _GamesRow.match(this.match)
-      : header = null,
-        gameIndex = -1;
-  const _GamesRow.game(this.gameIndex)
-      : header = null,
-        match = null;
+  const _GamesRow.header(this.header) : match = null, gameIndex = -1;
+  const _GamesRow.match(this.match) : header = null, gameIndex = -1;
+  const _GamesRow.game(this.gameIndex) : header = null, match = null;
 
   final String? header;
   final _MatchData? match;
@@ -379,8 +374,8 @@ class _GamesTabState extends State<_GamesTab> {
     for (final game in games) {
       final a = team ? game.white.team : _playerKey(game.white);
       final b = team ? game.black.team : _playerKey(game.black);
-      final key = ([(a ?? '').toLowerCase(), (b ?? '').toLowerCase()]..sort())
-          .join('|');
+      final key = ([(a ?? '').toLowerCase(), (b ?? '').toLowerCase()]
+        ..sort()).join('|');
       byKey.putIfAbsent(key, () => <GamebaseEventGame>[]).add(game);
     }
     return byKey.values.toList(growable: false);
@@ -395,12 +390,10 @@ class _GamesTabState extends State<_GamesTab> {
   _MatchData _matchData(List<GamebaseEventGame> group, {required bool team}) {
     final first = group.first;
     final leftId = team ? (first.white.team ?? '') : _playerKey(first.white);
-    final leftLabel = team
-        ? (first.white.team ?? 'Team')
-        : _playerLabel(first.white);
-    final rightLabel = team
-        ? (first.black.team ?? 'Team')
-        : _playerLabel(first.black);
+    final leftLabel =
+        team ? (first.white.team ?? 'Team') : _playerLabel(first.white);
+    final rightLabel =
+        team ? (first.black.team ?? 'Team') : _playerLabel(first.black);
 
     var left = 0.0;
     var right = 0.0;
@@ -521,10 +514,11 @@ class _GamesTabState extends State<_GamesTab> {
           allGames: allGames,
           gameIndex: row.gameIndex,
           animationIndex: row.gameIndex,
-          onAdd: () => showAddToFolderSheet(
-            context: context,
-            game: _modelFor(row.gameIndex),
-          ),
+          onAdd:
+              () => showAddToFolderSheet(
+                context: context,
+                game: _modelFor(row.gameIndex),
+              ),
           showRound: false,
           hideEventInfo: false,
           playerProfileDataSource: PlayerProfileDataSource.twic,
@@ -650,12 +644,13 @@ class _MatchSide extends StatelessWidget {
         ),
       ),
     );
-    final flag = (fed != null && fed!.trim().isNotEmpty)
-        ? Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4.w),
-            child: _FedFlag(countryCode: fed!),
-          )
-        : const SizedBox.shrink();
+    final flag =
+        (fed != null && fed!.trim().isNotEmpty)
+            ? Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4.w),
+              child: _FedFlag(countryCode: fed!),
+            )
+            : const SizedBox.shrink();
 
     return Row(
       mainAxisAlignment:
@@ -743,13 +738,13 @@ class _StandingsTab extends StatelessWidget {
   }
 
   Widget _noStandings(BuildContext context) => Center(
-        child: Text(
-          'Standings unavailable',
-          style: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
-          ),
-        ),
-      );
+    child: Text(
+      'Standings unavailable',
+      style: AppTypography.textSmRegular.copyWith(
+        color: context.colors.textPrimary.withValues(alpha: 0.5),
+      ),
+    ),
+  );
 }
 
 class _StandingsHeaderRow extends StatelessWidget {
@@ -791,7 +786,8 @@ class _PlayerStandingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = (player.title ?? '').trim();
     final name = (player.name ?? 'Unknown').trim();
-    final record = '${player.wins}W · ${player.draws}D · ${player.losses}L'
+    final record =
+        '${player.wins}W · ${player.draws}D · ${player.losses}L'
         '${player.elo != null ? '  ·  ${player.elo}' : ''}';
 
     return Container(
@@ -882,7 +878,8 @@ class _TeamStandingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final record = '${team.wins}W · ${team.draws}D · ${team.losses}L'
+    final record =
+        '${team.wins}W · ${team.draws}D · ${team.losses}L'
         '  ·  ${team.played} matches';
 
     return Container(
@@ -958,8 +955,9 @@ class _FedFlag extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final valid =
-        ref.read(locationServiceProvider).getValidCountryCode(countryCode);
+    final valid = ref
+        .read(locationServiceProvider)
+        .getValidCountryCode(countryCode);
     if (valid.isEmpty) return SizedBox(width: 20.w, height: 14.h);
     return SizedBox(
       width: 20.w,

@@ -12,7 +12,6 @@ import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -49,6 +48,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
   void onScrollToTopRequested() {
     animateScrollControllerToTop(_scrollController);
   }
+
   static const int _twicPageSize = 24;
   List<PlayerEventData> _twicEvents = const [];
   bool _twicIsLoading = false;
@@ -57,6 +57,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
   int _twicNextPage = 0;
   int? _twicTotalEvents;
   String? _twicError;
+  Map<String, GroupEventCardModel> _twicEventCards = const {};
   int _loadToken = 0;
 
   @override
@@ -118,6 +119,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       _twicTotalEvents = null;
       _twicError = null;
       _twicEvents = const [];
+      _twicEventCards = const {};
       _twicIsLoading = true;
       _twicIsLoadingMore = false;
       if (mounted) setState(() {});
@@ -170,6 +172,11 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
           return bDate.compareTo(aDate);
         });
+      _twicEventCards = await resolveTwicPlayerEventCards(
+        events: _twicEvents,
+        groupBroadcastRepo: ref.read(groupBroadcastRepositoryProvider),
+      );
+      if (!mounted || token != _loadToken) return;
 
       _twicHasMore = response.metadata.hasMore;
       // Server totalCount counts raw per-pairing rows; show the distinct merged
@@ -236,6 +243,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                   hasMorePages: _twicHasMore,
                   isLoadingMore: _twicIsLoadingMore,
                   totalEventsOverride: _twicTotalEvents,
+                  eventCardsOverride: _twicEventCards,
                   onLoadMore: () => _loadTwicEvents(),
                 ),
       );
@@ -328,7 +336,9 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               SizedBox(height: 20.h),
               Text(
                 'No tournaments found',
-                style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
               SizedBox(height: 8.h),
               Padding(
@@ -400,7 +410,9 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               SizedBox(height: 16.h),
               Text(
                 'Failed to load tournaments',
-                style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
               SizedBox(height: 8.h),
               Padding(
@@ -461,6 +473,7 @@ class _EventsListContent extends ConsumerWidget {
     this.hasMorePages = false,
     this.isLoadingMore = false,
     this.totalEventsOverride,
+    this.eventCardsOverride,
     this.onLoadMore,
   });
 
@@ -474,54 +487,8 @@ class _EventsListContent extends ConsumerWidget {
   final bool hasMorePages;
   final bool isLoadingMore;
   final int? totalEventsOverride;
+  final Map<String, GroupEventCardModel>? eventCardsOverride;
   final Future<void> Function()? onLoadMore;
-
-  Map<String, GroupEventCardModel> _buildTwicEventCards(
-    List<PlayerEventData> events,
-  ) {
-    final cards = <String, GroupEventCardModel>{};
-    for (final event in events) {
-      final title = event.tourName.trim();
-      if (title.isEmpty) continue;
-
-      final id = 'twic_event_${event.tourId}';
-      cards[event.tourId] = GroupEventCardModel(
-        id: id,
-        title: title,
-        dates: TimeUtils.formatDateRange(event.startDate, event.endDate),
-        maxAvgElo: event.avgElo ?? event.maxElo ?? 0,
-        timeUntilStart: TimeUtils.timeUntilStart(event.startDate),
-        tourEventCategory: GroupEventCardModel.getCategory(
-          groupId: id,
-          groupName: title,
-          startDate: event.startDate,
-          endDate: event.endDate,
-          liveGroupIds: const [],
-        ),
-        timeControl: _formatTwicEventTimeControl(event.dominantTimeControl),
-        endDate: event.endDate,
-        startDate: event.startDate,
-        location: event.site,
-        searchTerms: [title],
-        eventSource: EventSource.communityEvent,
-      );
-    }
-    return cards;
-  }
-
-  String _formatTwicEventTimeControl(String? raw) {
-    final normalized = raw?.trim().toUpperCase();
-    switch (normalized) {
-      case 'CLASSICAL':
-        return 'Standard';
-      case 'RAPID':
-        return 'Rapid';
-      case 'BLITZ':
-        return 'Blitz';
-      default:
-        return 'Standard';
-    }
-  }
 
   /// Check if an event matches the time control filter
   bool _eventMatchesTimeControl(
@@ -680,7 +647,13 @@ class _EventsListContent extends ConsumerWidget {
     }
 
     if (dataSource == PlayerProfileDataSource.twic) {
-      return buildEventList(_buildTwicEventCards(events));
+      final cards =
+          eventCardsOverride ??
+          {
+            for (final event in events)
+              event.tourId: buildTwicPlayerEventFallbackCard(event),
+          };
+      return buildEventList(cards);
     }
 
     final eventCardsAsync =
@@ -789,7 +762,9 @@ class _FilterActiveBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Showing ${timeControl.displayText} events only',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
           Text(
@@ -823,7 +798,9 @@ class _StatsHeader extends StatelessWidget {
       children: [
         Text(
           'Tournament Statistics',
-          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -857,7 +834,9 @@ class _StatsHeader extends StatelessWidget {
         SizedBox(height: 24.h),
         Text(
           'Participated Events',
-          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 12.h),
       ],
@@ -939,7 +918,9 @@ class _EventsPaginationFooter extends StatelessWidget {
             SizedBox(width: 10.w),
             Text(
               'Loading more events...',
-              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textPrimaryMuted,
+              ),
             ),
           ],
         ),
@@ -965,7 +946,9 @@ class _EventsPaginationFooter extends StatelessWidget {
       child: Center(
         child: Text(
           'Loading more events...',
-          style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
+          style: AppTypography.textXsRegular.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
         ),
       ),
     );
@@ -1024,13 +1007,17 @@ class _PlayerEventCard extends ConsumerWidget {
                         Icon(
                           Icons.sports_esports_outlined,
                           size: 14.sp,
-                          color: context.colors.textPrimary.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                         SizedBox(width: 4.w),
                         Text(
                           '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                         ),
                       ],
@@ -1074,10 +1061,7 @@ class _PlayerEventCard extends ConsumerWidget {
         .slideY(begin: 0.02, end: 0);
   }
 
-  Future<void> _navigateToTournament(
-    BuildContext context,
-    WidgetRef ref,
-  ) {
+  Future<void> _navigateToTournament(BuildContext context, WidgetRef ref) {
     return openProfileEvent(
       context: context,
       ref: ref,
@@ -1161,7 +1145,10 @@ class _FallbackEventCard extends StatelessWidget {
                                     child: Text(
                                       _formatDate(event.startDate!),
                                       style: AppTypography.textXsMedium
-                                          .copyWith(color: context.colors.textPrimaryMuted),
+                                          .copyWith(
+                                            color:
+                                                context.colors.textPrimaryMuted,
+                                          ),
                                       overflow: TextOverflow.ellipsis,
                                       maxLines: 1,
                                     ),
@@ -1224,13 +1211,17 @@ class _FallbackEventCard extends StatelessWidget {
                         Icon(
                           Icons.sports_esports_outlined,
                           size: 14.sp,
-                          color: context.colors.textPrimary.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                         SizedBox(width: 4.w),
                         Text(
                           '${event.gamesPlayed} ${event.gamesPlayed == 1 ? 'game' : 'games'}',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                         ),
                       ],
@@ -1326,7 +1317,7 @@ class _SkeletonEventImage extends StatelessWidget {
           borderRadius: BorderRadius.circular(6.br),
           child: Skeletonizer(
             enabled: true,
-            effect:  ShimmerEffect(
+            effect: ShimmerEffect(
               baseColor: context.colors.surfaceRecessed,
               highlightColor: context.colors.divider,
               duration: Duration(seconds: 1),
@@ -1351,17 +1342,17 @@ class _SkeletonEventImage extends StatelessWidget {
 /// dedupes/caches per slug so each broadcast is fetched at most once.
 final broadcastEventCardBySlugProvider = FutureProvider.autoDispose
     .family<GroupEventCardModel?, String>((ref, slug) async {
-  final trimmed = slug.trim();
-  if (trimmed.isEmpty) return null;
-  try {
-    final repo = ref.read(groupBroadcastRepositoryProvider);
-    final broadcast = await repo.getGroupBroadcastBySlug(trimmed);
-    if (broadcast == null) return null;
-    return GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
-  } catch (_) {
-    return null;
-  }
-});
+      final trimmed = slug.trim();
+      if (trimmed.isEmpty) return null;
+      try {
+        final repo = ref.read(groupBroadcastRepositoryProvider);
+        final broadcast = await repo.getGroupBroadcastBySlug(trimmed);
+        if (broadcast == null) return null;
+        return GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
+      } catch (_) {
+        return null;
+      }
+    });
 
 /// Provider to fetch GroupEventCardModel for player events
 final playerEventCardsProvider = FutureProvider.family

@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -9,6 +10,12 @@ void main() {
         isTrue,
       );
       expect(isTwicRoundDisplayTitle('Rd 9 - Some Pairing'), isTrue);
+      expect(
+        isTwicRoundDisplayTitle(
+          'Quarter Finals | Game 1: Abdusattorov, Nodirbek - Carlsen, Magnus',
+        ),
+        isTrue,
+      );
       expect(
         isTwicRoundDisplayTitle(
           "5. Chess 365 Training Camp Instructors' Chess Tournament",
@@ -81,5 +88,71 @@ void main() {
         '5 Satranc 365 Egitim Kampi Ogrenciler Arasi Yildirim Satranc Turnuvasi',
       );
     });
+
+    test('recovers parent event from site for knockout game labels', () {
+      expect(
+        preferredTwicEventTitle(
+          pgnEvent:
+              'Quarter Finals | Game 1: Abdusattorov, Nodirbek - Carlsen, Magnus',
+          tourSlug:
+              'Quarter Finals | Game 1: Abdusattorov, Nodirbek - Carlsen, Magnus',
+          tourId:
+              'Quarter Finals | Game 1: Abdusattorov, Nodirbek - Carlsen, Magnus',
+          site:
+              'https://lichess.org/broadcast/norway-chess-2026/round-1/abcd/efgh',
+          fallback: 'Gamebase',
+        ),
+        'Norway Chess 2026',
+      );
+    });
+
+    test('canonical game title collapses same knockout event games', () {
+      final game1 = _twicGame(
+        id: 'g1',
+        event:
+            'Quarter Finals | Game 1: Abdusattorov, Nodirbek - Carlsen, Magnus',
+      );
+      final game2 = _twicGame(
+        id: 'g2',
+        event:
+            'Quarter Finals | Game 2: Carlsen, Magnus - Abdusattorov, Nodirbek',
+      );
+
+      expect(twicCanonicalEventTitleForGame(game1), 'Norway Chess 2026');
+      expect(
+        twicCanonicalEventKeyForGame(game1),
+        twicCanonicalEventKeyForGame(game2),
+      );
+    });
   });
+}
+
+GamesTourModel _twicGame({required String id, required String event}) {
+  final player = PlayerCard(
+    name: 'Player',
+    federation: '',
+    title: '',
+    rating: 2700,
+    countryCode: '',
+    team: null,
+  );
+  final pgn =
+      '[Event "$event"]\n'
+      '[Site "https://lichess.org/broadcast/norway-chess-2026/round-1/abcd/efgh"]\n';
+
+  return GamesTourModel(
+    gameId: id,
+    source: GameSource.twic,
+    whitePlayer: player,
+    blackPlayer: player,
+    whiteTimeDisplay: '--:--',
+    blackTimeDisplay: '--:--',
+    whiteClockCentiseconds: 0,
+    blackClockCentiseconds: 0,
+    gameStatus: GameStatus.ongoing,
+    roundId: 'twic_profile',
+    tourId: event,
+    tourSlug: event,
+    pgn: pgn,
+  );
 }

@@ -68,6 +68,8 @@ class GamebaseEventSearchItem {
     required this.id,
     required this.event,
     required this.gameCount,
+    this.canonicalKey,
+    this.broadcastSlug,
     this.wins,
     this.draws,
     this.losses,
@@ -83,6 +85,8 @@ class GamebaseEventSearchItem {
   final String id;
   final String event;
   final int gameCount;
+  final String? canonicalKey;
+  final String? broadcastSlug;
   final int? wins;
   final int? draws;
   final int? losses;
@@ -104,6 +108,8 @@ class GamebaseEventSearchItem {
       id: json['id'] as String? ?? '',
       event: json['event'] as String? ?? '',
       gameCount: (json['gameCount'] as num?)?.toInt() ?? 0,
+      canonicalKey: json['canonicalKey'] as String?,
+      broadcastSlug: json['broadcastSlug'] as String?,
       wins: (json['wins'] as num?)?.toInt(),
       draws: (json['draws'] as num?)?.toInt(),
       losses: (json['losses'] as num?)?.toInt(),

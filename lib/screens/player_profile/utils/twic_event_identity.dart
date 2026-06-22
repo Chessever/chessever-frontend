@@ -6,6 +6,11 @@ final RegExp _roundTitlePattern = RegExp(
   caseSensitive: false,
 );
 
+final RegExp _gamePairingTitlePattern = RegExp(
+  r'^\s*(?:.+\|\s*)?(?:game|match|board)\s*\d+[A-Za-z]?(?:\.\d+)?\s*[:\-–—]',
+  caseSensitive: false,
+);
+
 /// Matches the parent broadcast slug in a Lichess broadcast `Site` URL, e.g.
 /// `https://lichess.org/broadcast/<parent-slug>/round-7/<roundId>/<chapterId>`
 /// -> `<parent-slug>`. This is the only place the canonical parent-event name
@@ -51,7 +56,10 @@ String? broadcastSlugFromSite(String? site) {
 /// route a database event to its real ChessEver broadcast when the game `Site`
 /// is a venue string (no Lichess URL) rather than a broadcast link.
 String eventNameToBroadcastSlug(String name) {
-  final dashed = name.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  final dashed = name.trim().toLowerCase().replaceAll(
+    RegExp(r'[^a-z0-9]+'),
+    '-',
+  );
   return dashed.replaceAll(RegExp(r'^-+|-+$'), '');
 }
 
@@ -60,10 +68,20 @@ String eventNameToBroadcastSlug(String name) {
 /// broadcast URL only in this header.
 String? siteFromPgn(String? pgn) {
   if (pgn == null || pgn.isEmpty) return null;
-  final match =
-      RegExp(r'^\[Site\s+"(.*)"\]$', multiLine: true).firstMatch(pgn);
+  final match = RegExp(r'^\[Site\s+"(.*)"\]$', multiLine: true).firstMatch(pgn);
   final site = match?.group(1)?.trim();
   return (site == null || site.isEmpty || site == '?') ? null : site;
+}
+
+/// Extracts the `Event` header value from a PGN string, or null when absent.
+String? eventFromPgn(String? pgn) {
+  if (pgn == null || pgn.isEmpty) return null;
+  final match = RegExp(
+    r'^\[Event\s+"(.*)"\]$',
+    multiLine: true,
+  ).firstMatch(pgn);
+  final event = match?.group(1)?.trim();
+  return (event == null || event.isEmpty || event == '?') ? null : event;
 }
 
 /// Returns true for TWIC/Gamebase labels that describe a round or pairing,
@@ -75,7 +93,8 @@ String? siteFromPgn(String? pgn) {
 bool isTwicRoundDisplayTitle(String? value) {
   final text = value?.trim();
   if (text == null || text.isEmpty) return false;
-  return _roundTitlePattern.hasMatch(text);
+  return _roundTitlePattern.hasMatch(text) ||
+      _gamePairingTitlePattern.hasMatch(text);
 }
 
 bool _isUsefulEventTitle(String? value) {
@@ -114,13 +133,19 @@ String preferredTwicEventTitle({
 }
 
 String twicCanonicalEventKeyForGame(GamesTourModel game) {
-  final title = preferredTwicEventTitle(
-    tourSlug: game.tourSlug,
-    tourId: game.tourId,
-    fallback: game.gameId,
-  );
+  final title = twicCanonicalEventTitleForGame(game);
   return title
       .toLowerCase()
       .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
       .trim();
+}
+
+String twicCanonicalEventTitleForGame(GamesTourModel game) {
+  return preferredTwicEventTitle(
+    pgnEvent: eventFromPgn(game.pgn),
+    tourSlug: game.tourSlug,
+    tourId: game.tourId,
+    site: siteFromPgn(game.pgn),
+    fallback: game.gameId,
+  );
 }

@@ -22,10 +22,39 @@ export 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id
 /// Synthesized event view for an exact gamebase event [name]. Cached one week
 /// server-side; the client just renders. Shared by the virtual tour/games
 /// adapters and [DatabaseEventScreen].
+class GamebaseEventViewRequest {
+  const GamebaseEventViewRequest({
+    required this.eventName,
+    this.site,
+    this.slug,
+  });
+
+  final String eventName;
+  final String? site;
+  final String? slug;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GamebaseEventViewRequest &&
+          eventName == other.eventName &&
+          site == other.site &&
+          slug == other.slug;
+
+  @override
+  int get hashCode => Object.hash(eventName, site, slug);
+}
+
 final gamebaseEventViewProvider = FutureProvider.autoDispose
-    .family<GamebaseEventView?, String>((ref, eventName) async {
-  return ref.read(gamebaseRepositoryProvider).getEventView(eventName);
-});
+    .family<GamebaseEventView?, GamebaseEventViewRequest>((ref, request) async {
+      return ref
+          .read(gamebaseRepositoryProvider)
+          .getEventView(
+            request.eventName,
+            site: request.site,
+            slug: request.slug,
+          );
+    });
 
 /// Minimal synthetic broadcast to drive [selectedBroadcastModelProvider]. The
 /// real data is loaded lazily by the tour/games notifiers via the sentinel id.
@@ -94,12 +123,10 @@ List<Games> virtualGamesFromView(GamebaseEventView view) {
   for (final round in view.rounds) {
     for (final g in round.games) {
       seq++;
-      final whiteName = (g.white.name ?? '').trim().isEmpty
-          ? 'White'
-          : g.white.name!.trim();
-      final blackName = (g.black.name ?? '').trim().isEmpty
-          ? 'Black'
-          : g.black.name!.trim();
+      final whiteName =
+          (g.white.name ?? '').trim().isEmpty ? 'White' : g.white.name!.trim();
+      final blackName =
+          (g.black.name ?? '').trim().isEmpty ? 'Black' : g.black.name!.trim();
       out.add(
         Games(
           id: g.id,

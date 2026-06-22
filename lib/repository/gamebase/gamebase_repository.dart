@@ -495,13 +495,21 @@ class GamebaseRepository {
   /// verifying the view before the one-week cache is trusted.
   Future<GamebaseEventView?> getEventView(
     String name, {
+    String? site,
+    String? slug,
     bool refresh = false,
   }) async {
     try {
+      final trimmedSite = site?.trim();
+      final trimmedSlug = slug?.trim();
       final response = await _dio.get(
         '$_baseUrl/api/event',
         queryParameters: {
           'name': name,
+          if (trimmedSite != null && trimmedSite.isNotEmpty)
+            'site': trimmedSite,
+          if (trimmedSlug != null && trimmedSlug.isNotEmpty)
+            'slug': trimmedSlug,
           if (refresh) 'refresh': true,
         },
         options: Options(headers: _headers),

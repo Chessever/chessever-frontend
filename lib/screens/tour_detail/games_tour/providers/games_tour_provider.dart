@@ -94,9 +94,14 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       // skip the Supabase fetch/cache and the periodic refresh entirely.
       if (isVirtualGamebaseId(tourId)) {
         final eventName = eventNameFromVirtualId(tourId);
-        final view = eventName == null
-            ? null
-            : await ref.read(gamebaseEventViewProvider(eventName).future);
+        final view =
+            eventName == null
+                ? null
+                : await ref.read(
+                  gamebaseEventViewProvider(
+                    GamebaseEventViewRequest(eventName: eventName),
+                  ).future,
+                );
         if (mounted) {
           state = AsyncValue.data(
             view == null ? const <Games>[] : virtualGamesFromView(view),

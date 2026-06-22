@@ -164,11 +164,12 @@ class _TourDetailScreenNotifier
       );
       _currentLiveTourIds = liveTourIds;
 
-      final tours = isVirtualGamebaseId(groupBroadcast.id)
-          ? await _loadVirtualTours(groupBroadcast.id)
-          : await ref
-              .read(tourLocalStorageProvider)
-              .getTours(groupBroadcast.id);
+      final tours =
+          isVirtualGamebaseId(groupBroadcast.id)
+              ? await _loadVirtualTours(groupBroadcast.id)
+              : await ref
+                  .read(tourLocalStorageProvider)
+                  .getTours(groupBroadcast.id);
 
       if (tours.isEmpty) {
         setDataState(
@@ -217,7 +218,11 @@ class _TourDetailScreenNotifier
   Future<List<Tour>> _loadVirtualTours(String broadcastId) async {
     final eventName = eventNameFromVirtualId(broadcastId);
     if (eventName == null) return const <Tour>[];
-    final view = await ref.read(gamebaseEventViewProvider(eventName).future);
+    final view = await ref.read(
+      gamebaseEventViewProvider(
+        GamebaseEventViewRequest(eventName: eventName),
+      ).future,
+    );
     if (view == null) return const <Tour>[];
     return virtualToursFromView(view);
   }
