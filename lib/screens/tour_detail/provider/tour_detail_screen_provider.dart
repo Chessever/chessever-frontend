@@ -4,6 +4,7 @@ import 'package:chessever2/repository/local_storage/tournament/tour_local_storag
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
@@ -163,9 +164,11 @@ class _TourDetailScreenNotifier
       );
       _currentLiveTourIds = liveTourIds;
 
-      final tours = await ref
-          .read(tourLocalStorageProvider)
-          .getTours(groupBroadcast.id);
+      final tours = isVirtualGamebaseId(groupBroadcast.id)
+          ? await _loadVirtualTours(groupBroadcast.id)
+          : await ref
+              .read(tourLocalStorageProvider)
+              .getTours(groupBroadcast.id);
 
       if (tours.isEmpty) {
         setDataState(
@@ -207,6 +210,16 @@ class _TourDetailScreenNotifier
     } catch (e, st) {
       setErrorState(e, st);
     }
+  }
+
+  /// Tours for a synthesized gamebase-only event (sentinel broadcast id).
+  /// Returns one synthetic tour built from the cached gamebase event view.
+  Future<List<Tour>> _loadVirtualTours(String broadcastId) async {
+    final eventName = eventNameFromVirtualId(broadcastId);
+    if (eventName == null) return const <Tour>[];
+    final view = await ref.read(gamebaseEventViewProvider(eventName).future);
+    if (view == null) return const <Tour>[];
+    return virtualToursFromView(view);
   }
 
   @override

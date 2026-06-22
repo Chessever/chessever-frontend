@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:dartchess/dartchess.dart';
 
@@ -310,7 +311,12 @@ class GamesTourModel {
 
       return GamesTourModel(
         gameId: game.id,
-        source: GameSource.supabase,
+        // Gamebase-only events (synthesized into the broadcast view) carry a
+        // sentinel tourId; tag their games so the board re-fetches the full
+        // PGN by gamebase UUID instead of hitting Supabase.
+        source: isVirtualGamebaseId(game.tourId)
+            ? GameSource.gamebase
+            : GameSource.supabase,
         whitePlayer: PlayerCard.fromPlayer(white),
         blackPlayer: PlayerCard.fromPlayer(black),
         whiteTimeDisplay: whiteTimeDisplay,

@@ -448,6 +448,39 @@ class Tour {
     this.avgElo,
   });
 
+  /// Build a synthetic Tour for a gamebase-only event so it can render in the
+  /// real tournament detail screen. [_TourInfo] is private, so this factory is
+  /// the only way to construct one outside this file.
+  factory Tour.virtual({
+    required String id,
+    required String name,
+    required String slug,
+    required List<DateTime> dates,
+    required List<TournamentPlayer> players,
+    String? format,
+    String? timeControl,
+    String? location,
+    int? avgElo,
+  }) {
+    return Tour(
+      id: id,
+      name: name,
+      slug: slug,
+      info: _TourInfo(
+        format: format,
+        fideTc: timeControl,
+        location: location,
+      ),
+      createdAt: DateTime.now(),
+      url: '',
+      tier: 0,
+      dates: dates,
+      players: players,
+      groupBroadcastId: id,
+      avgElo: avgElo,
+    );
+  }
+
   factory Tour.fromJson(Map<String, dynamic> json) {
     final playersRaw = json['players'];
     final playersList = playersRaw is List ? playersRaw : const <dynamic>[];

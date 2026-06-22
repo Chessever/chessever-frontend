@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/gamebase/event_view/database_event_screen.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -61,16 +62,24 @@ Future<void> openProfileEvent({
     }
   }
 
-  // No canonical event — synthesize a full event view (About/Games/Standings)
-  // from the gamebase. DatabaseEventScreen handles its own loading/empty/error
-  // states and falls back to a database search when the event can't be built.
+  // No canonical event — synthesize one from the gamebase and open it in the
+  // SAME tournament detail view broadcast events use (via a sentinel
+  // GroupBroadcast). If the gamebase has no view for it, fall back to the
+  // DatabaseEventScreen empty/search experience.
+  final cleanName = eventName.trim();
+  final view = await ref.read(gamebaseEventViewProvider(cleanName).future);
   if (!context.mounted) return;
-  Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => DatabaseEventScreen(
-        eventName: eventName.trim(),
-        site: site,
+
+  if (view == null) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DatabaseEventScreen(eventName: cleanName, site: site),
       ),
-    ),
-  );
+    );
+    return;
+  }
+
+  ref.read(selectedBroadcastModelProvider.notifier).state =
+      virtualGroupBroadcastForEvent(cleanName);
+  Navigator.pushNamed(context, '/tournament_detail_screen');
 }

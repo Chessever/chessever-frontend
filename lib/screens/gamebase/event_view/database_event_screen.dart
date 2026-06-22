@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -18,14 +18,6 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-/// Synthesized event view for an exact gamebase event [name]. Cached one week
-/// server-side; the client just renders.
-final gamebaseEventViewProvider = FutureProvider.autoDispose
-    .family<GamebaseEventView?, String>((ref, eventName) async {
-  final repo = ref.read(gamebaseRepositoryProvider);
-  return repo.getEventView(eventName);
-});
 
 /// Event page for events that exist only in the gamebase (no broadcast page in
 /// the cloud Supabase). Reconstructs an About / Games / Standings experience

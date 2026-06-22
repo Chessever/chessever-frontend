@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -88,6 +89,22 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   Future<void> _loadInitialGames() async {
     try {
+      // Gamebase-only event (sentinel tour id): build games from the cached
+      // gamebase event view; these are finished games with no live feed, so
+      // skip the Supabase fetch/cache and the periodic refresh entirely.
+      if (isVirtualGamebaseId(tourId)) {
+        final eventName = eventNameFromVirtualId(tourId);
+        final view = eventName == null
+            ? null
+            : await ref.read(gamebaseEventViewProvider(eventName).future);
+        if (mounted) {
+          state = AsyncValue.data(
+            view == null ? const <Games>[] : virtualGamesFromView(view),
+          );
+        }
+        return;
+      }
+
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
       final games = await gamesLocalStorageProvider.fetchAndSaveGames(tourId);
 
@@ -145,6 +162,10 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
               Duration(seconds: _stableTourJitterSeconds);
 
   void _startPeriodicRefresh() {
+    // Gamebase-only events are finished with no live feed; never poll Supabase
+    // for them (it would return nothing and wipe the synthesized games).
+    if (isVirtualGamebaseId(tourId)) return;
+
     _stopPeriodicRefresh();
 
     final interval = _safetyNetInterval;
