@@ -1300,18 +1300,28 @@ Future<List<PlayerEventData>> _getTwicPlayerEvents(
     pageSize: 100,
   );
 
-  return response.events
-      .where((item) => item.event.trim().isNotEmpty)
-      .map(playerEventDataFromGamebaseEvent)
-      .toList(growable: false);
+  return mergePlayerEventsByCanonical(
+    response.events
+        .where((item) => item.event.trim().isNotEmpty)
+        .map(playerEventDataFromGamebaseEvent),
+  );
 }
 
 PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
-  final event = item.event.trim();
+  final rawEvent = item.event.trim();
+  // The /events endpoint groups by raw `g.event`, which for broadcast-ingested
+  // games is a per-pairing label ("Round 10: A - B"). Recover the canonical
+  // parent event (from the Lichess `Site` slug) so pairings collapse into one
+  // event, matching what the Games tab does.
+  final title = preferredTwicEventTitle(
+    pgnEvent: rawEvent,
+    site: item.site,
+    fallback: rawEvent.isNotEmpty ? rawEvent : 'Gamebase',
+  );
   return PlayerEventData(
-    tourId: event,
-    tourName: event,
-    tourSlug: event,
+    tourId: title,
+    tourName: title,
+    tourSlug: title,
     gamesPlayed: item.gameCount,
     score: item.score,
     startDate: item.startDate,
@@ -1321,6 +1331,59 @@ PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
     avgElo: item.avgElo,
     maxElo: item.maxElo,
   );
+}
+
+/// Merge events that share a canonical [PlayerEventData.tourId] (e.g. every
+/// "Round N: ..." pairing of one broadcast collapses to a single event).
+/// Sums games/score, widens the date span, keeps the richest metadata.
+/// Insertion order of first appearance is preserved.
+List<PlayerEventData> mergePlayerEventsByCanonical(
+  Iterable<PlayerEventData> events,
+) {
+  final byKey = <String, PlayerEventData>{};
+  for (final e in events) {
+    final existing = byKey[e.tourId];
+    if (existing == null) {
+      byKey[e.tourId] = e;
+      continue;
+    }
+    byKey[e.tourId] = PlayerEventData(
+      tourId: existing.tourId,
+      tourName: existing.tourName,
+      tourSlug: existing.tourSlug,
+      gamesPlayed: existing.gamesPlayed + e.gamesPlayed,
+      score:
+          (existing.score == null && e.score == null)
+              ? null
+              : (existing.score ?? 0) + (e.score ?? 0),
+      startDate: _earlierDate(existing.startDate, e.startDate),
+      endDate: _laterDate(existing.endDate, e.endDate),
+      site: existing.site ?? e.site,
+      dominantTimeControl:
+          existing.dominantTimeControl ?? e.dominantTimeControl,
+      avgElo: _largerInt(existing.avgElo, e.avgElo),
+      maxElo: _largerInt(existing.maxElo, e.maxElo),
+    );
+  }
+  return byKey.values.toList(growable: false);
+}
+
+DateTime? _earlierDate(DateTime? a, DateTime? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return a.isBefore(b) ? a : b;
+}
+
+DateTime? _laterDate(DateTime? a, DateTime? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return a.isAfter(b) ? a : b;
+}
+
+int? _largerInt(int? a, int? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return a > b ? a : b;
 }
 
 List<PlayerEventData> _buildTwicPlayerEventsFromGames(

@@ -1226,8 +1226,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final eventDataList = eventsAsync.valueOrNull ?? [];
     final eventDataMap = {for (final e in eventDataList) e.tourId: e};
 
-    // Build list items
-    final items = <Widget>[];
+    // Build cheap row descriptors only. The actual card widgets are created
+    // lazily by SliverChildBuilderDelegate for visible rows.
+    final listEntries = <_PlayerGamesListEntry>[];
     bool isFirstGameCard = true;
     bool isFirstEvent = true;
 
@@ -1239,25 +1240,16 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       final playerScore = _computePlayerScore(eventGames);
 
       // Event header (card + stats row)
-      items.add(
-        Padding(
-          padding: EdgeInsets.only(
-            top: isFirstEvent ? 8.h : 20.h,
-            bottom: 12.h,
-          ),
-          child: _EventSection(
-            eventCard: eventCard,
-            eventData: eventData,
-            tourId: tourId,
-            tourSlug: eventGames.first.tourSlug,
-            gameCount: eventGames.length,
-            playerScore: playerScore,
-            onTap: () => _navigateToEvent(
-              tourId: tourId,
-              eventName: eventData?.tourName ?? tourId,
-              site: eventData?.site ?? siteFromPgn(eventGames.first.pgn),
-            ),
-          ),
+      listEntries.add(
+        _PlayerEventHeaderEntry(
+          eventCard: eventCard,
+          eventData: eventData,
+          tourId: tourId,
+          tourSlug: eventGames.first.tourSlug,
+          gameCount: eventGames.length,
+          playerScore: playerScore,
+          site: eventData?.site ?? siteFromPgn(eventGames.first.pgn),
+          isFirstEvent: isFirstEvent,
         ),
       );
       isFirstEvent = false;
@@ -1275,26 +1267,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             rowGames.add(eventGames[i + j]);
           }
 
-          items.add(
-            Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
-              child: Row(
-                children: [
-                  for (int j = 0; j < gridColumns; j++) ...[
-                    if (j > 0) SizedBox(width: 12.sp),
-                    Expanded(
-                      child:
-                          j < rowGames.length
-                              ? _buildGridGame(
-                                rowGames[j],
-                                gameIdToIndex[rowGames[j].gameId] ?? 0,
-                                games,
-                              )
-                              : const SizedBox.shrink(),
-                    ),
-                  ],
-                ],
-              ),
+          listEntries.add(
+            _PlayerGridRowEntry(
+              games: rowGames,
+              gridColumns: gridColumns,
+              isLast: isLast,
             ),
           );
         }
@@ -1308,73 +1285,21 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           if (isFirstGameCard) isFirstGameCard = false;
 
           if (isChessBoardVisible) {
-            items.add(
-              Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
-                child: BoardGameCardWrapperWidget(
-                  key: ValueKey('player_board_game_${game.gameId}'),
-                  game: game,
-                  orderedGames: games,
-                  gameIndex: globalIndex,
-                  allowStockfishFallback: true,
-                  streamEnabled: true,
-                  onChangedWithLiveGames: (updatedGames) async {
-                    final hasPremium = await requirePremiumGuard(context, ref);
-                    if (!hasPremium) return;
-                    if (!mounted) return;
-
-                    ref
-                        .read(gameCardWrapperProvider)
-                        .navigateToChessBoard(
-                          context: context,
-                          orderedGames: updatedGames,
-                          gameIndex: globalIndex,
-                          onReturnFromChessboard: (_) {},
-                          viewSource: ChessboardView.playerProfile,
-                        );
-                  },
-                  pinnedIds: const [],
-                  onPinToggle: (_) {},
-                ),
+            listEntries.add(
+              _PlayerBoardGameEntry(
+                game: game,
+                gameIndex: globalIndex,
+                isLast: isLast,
               ),
             );
           } else {
-            final isSelected = _selectedGameIds.contains(game.gameId);
-            Widget gameCard = LiveGamebaseSearchGameCard(
-              game: game,
-              allGames: games,
-              gameIndex: globalIndex,
-              animationIndex: items.length,
-              showRound: true,
-              showSwipeHint: showHint,
-              showGamebaseButton: false,
-              playerProfileDataSource: widget.dataSource,
-              streamEnabled: true,
-              onAdd:
-                  isSelectionMode
-                      ? () => _toggleGameSelection(game.gameId)
-                      : () => _showAddToFolderSheet(game),
-              onLiveAdd:
-                  isSelectionMode
-                      ? null
-                      : (liveGame) => _showAddToFolderSheet(liveGame),
-              onTap:
-                  isSelectionMode
-                      ? () => _toggleGameSelection(game.gameId)
-                      : null,
-            );
-
-            if (isSelectionMode) {
-              gameCard = _buildSelectableCardWrapper(
-                gameCard,
-                isSelected: isSelected,
-              );
-            }
-
-            items.add(
-              Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
-                child: gameCard,
+            listEntries.add(
+              _PlayerCardGameEntry(
+                game: game,
+                gameIndex: globalIndex,
+                animationIndex: listEntries.length,
+                showHint: showHint,
+                isLast: isLast,
               ),
             );
           }
@@ -1383,12 +1308,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     }
 
     if (widget.dataSource == PlayerProfileDataSource.twic) {
-      items.add(
-        Padding(
-          padding: EdgeInsets.only(top: 12.h),
-          child: _buildTwicPaginationFooter(state),
-        ),
-      );
+      listEntries.add(const _PlayerPaginationFooterEntry());
     }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -1402,11 +1322,146 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       ),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) => items[index],
-          childCount: items.length,
+          (context, index) => _buildListEntry(
+            listEntries[index],
+            state: state,
+            games: games,
+            isSelectionMode: isSelectionMode,
+            gameIdToIndex: gameIdToIndex,
+          ),
+          childCount: listEntries.length,
         ),
       ),
     );
+  }
+
+  Widget _buildListEntry(
+    _PlayerGamesListEntry entry, {
+    required PlayerProfileGamesState state,
+    required List<GamesTourModel> games,
+    required bool isSelectionMode,
+    required Map<String, int> gameIdToIndex,
+  }) {
+    if (entry is _PlayerEventHeaderEntry) {
+      return Padding(
+        padding: EdgeInsets.only(
+          top: entry.isFirstEvent ? 8.h : 20.h,
+          bottom: 12.h,
+        ),
+        child: _EventSection(
+          eventCard: entry.eventCard,
+          eventData: entry.eventData,
+          tourId: entry.tourId,
+          tourSlug: entry.tourSlug,
+          site: entry.site,
+          gameCount: entry.gameCount,
+          playerScore: entry.playerScore,
+          onTap: () => _navigateToEvent(
+            tourId: entry.tourId,
+            eventName: entry.eventData?.tourName ?? entry.tourId,
+            site: entry.site,
+          ),
+        ),
+      );
+    }
+
+    if (entry is _PlayerGridRowEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: entry.isLast ? 0 : 12.h),
+        child: Row(
+          children: [
+            for (int j = 0; j < entry.gridColumns; j++) ...[
+              if (j > 0) SizedBox(width: 12.sp),
+              Expanded(
+                child:
+                    j < entry.games.length
+                        ? _buildGridGame(
+                          entry.games[j],
+                          gameIdToIndex[entry.games[j].gameId] ?? 0,
+                          games,
+                        )
+                        : const SizedBox.shrink(),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    if (entry is _PlayerBoardGameEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: entry.isLast ? 0 : 12.h),
+        child: BoardGameCardWrapperWidget(
+          key: ValueKey('player_board_game_${entry.game.gameId}'),
+          game: entry.game,
+          orderedGames: games,
+          gameIndex: entry.gameIndex,
+          allowStockfishFallback: true,
+          streamEnabled: true,
+          onChangedWithLiveGames: (updatedGames) async {
+            final hasPremium = await requirePremiumGuard(context, ref);
+            if (!hasPremium) return;
+            if (!mounted) return;
+
+            ref
+                .read(gameCardWrapperProvider)
+                .navigateToChessBoard(
+                  context: context,
+                  orderedGames: updatedGames,
+                  gameIndex: entry.gameIndex,
+                  onReturnFromChessboard: (_) {},
+                  viewSource: ChessboardView.playerProfile,
+                );
+          },
+          pinnedIds: const [],
+          onPinToggle: (_) {},
+        ),
+      );
+    }
+
+    if (entry is _PlayerCardGameEntry) {
+      final isSelected = _selectedGameIds.contains(entry.game.gameId);
+      Widget gameCard = LiveGamebaseSearchGameCard(
+        game: entry.game,
+        allGames: games,
+        gameIndex: entry.gameIndex,
+        animationIndex: entry.animationIndex,
+        showRound: true,
+        showSwipeHint: entry.showHint,
+        showGamebaseButton: false,
+        playerProfileDataSource: widget.dataSource,
+        streamEnabled: true,
+        onAdd:
+            isSelectionMode
+                ? () => _toggleGameSelection(entry.game.gameId)
+                : () => _showAddToFolderSheet(entry.game),
+        onLiveAdd:
+            isSelectionMode ? null : (liveGame) => _showAddToFolderSheet(liveGame),
+        onTap:
+            isSelectionMode ? () => _toggleGameSelection(entry.game.gameId) : null,
+      );
+
+      if (isSelectionMode) {
+        gameCard = _buildSelectableCardWrapper(
+          gameCard,
+          isSelected: isSelected,
+        );
+      }
+
+      return Padding(
+        padding: EdgeInsets.only(bottom: entry.isLast ? 0 : 12.h),
+        child: gameCard,
+      );
+    }
+
+    if (entry is _PlayerPaginationFooterEntry) {
+      return Padding(
+        padding: EdgeInsets.only(top: 12.h),
+        child: _buildTwicPaginationFooter(state),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildGridGame(
@@ -1821,6 +1876,76 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 }
 
+abstract class _PlayerGamesListEntry {
+  const _PlayerGamesListEntry();
+}
+
+class _PlayerEventHeaderEntry extends _PlayerGamesListEntry {
+  const _PlayerEventHeaderEntry({
+    required this.eventCard,
+    required this.eventData,
+    required this.tourId,
+    required this.tourSlug,
+    required this.gameCount,
+    required this.playerScore,
+    required this.site,
+    required this.isFirstEvent,
+  });
+
+  final GroupEventCardModel? eventCard;
+  final PlayerEventData? eventData;
+  final String tourId;
+  final String? tourSlug;
+  final int gameCount;
+  final double playerScore;
+  final String? site;
+  final bool isFirstEvent;
+}
+
+class _PlayerGridRowEntry extends _PlayerGamesListEntry {
+  const _PlayerGridRowEntry({
+    required this.games,
+    required this.gridColumns,
+    required this.isLast,
+  });
+
+  final List<GamesTourModel> games;
+  final int gridColumns;
+  final bool isLast;
+}
+
+class _PlayerBoardGameEntry extends _PlayerGamesListEntry {
+  const _PlayerBoardGameEntry({
+    required this.game,
+    required this.gameIndex,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final int gameIndex;
+  final bool isLast;
+}
+
+class _PlayerCardGameEntry extends _PlayerGamesListEntry {
+  const _PlayerCardGameEntry({
+    required this.game,
+    required this.gameIndex,
+    required this.animationIndex,
+    required this.showHint,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final int gameIndex;
+  final int animationIndex;
+  final bool showHint;
+  final bool isLast;
+}
+
+class _PlayerPaginationFooterEntry extends _PlayerGamesListEntry {
+  const _PlayerPaginationFooterEntry();
+}
+
 class _SelectionActionButton extends StatelessWidget {
   const _SelectionActionButton({
     required this.label,
@@ -1892,12 +2017,13 @@ class _SelectionActionButton extends StatelessWidget {
 }
 
 /// Event section header: EventCard (or fallback) + player stats row
-class _EventSection extends StatelessWidget {
+class _EventSection extends ConsumerWidget {
   const _EventSection({
     this.eventCard,
     this.eventData,
     required this.tourId,
     this.tourSlug,
+    this.site,
     required this.gameCount,
     required this.playerScore,
     this.onTap,
@@ -1907,21 +2033,31 @@ class _EventSection extends StatelessWidget {
   final PlayerEventData? eventData;
   final String tourId;
   final String? tourSlug;
+  final String? site;
   final int gameCount;
   final double playerScore;
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Prefer the real ChessEver broadcast card (image + metadata) when this
+    // event exists in our Supabase; otherwise the community card / fallback.
+    final slug = broadcastSlugFromSite(site);
+    final richCard =
+        (slug != null && slug.isNotEmpty)
+            ? ref.watch(broadcastEventCardBySlugProvider(slug)).valueOrNull
+            : null;
+    final displayCard = richCard ?? eventCard;
+
     return GestureDetector(
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Event card or fallback
-          if (eventCard != null)
+          if (displayCard != null)
             EventCard(
-              tourEventCardModel: eventCard!,
+              tourEventCardModel: displayCard,
               heroTagSuffix: '_player_games_$tourId',
               // Embedded inside a SliverList (unbounded height) — must use
               // the compact phone layout to avoid Stack-expand crash.

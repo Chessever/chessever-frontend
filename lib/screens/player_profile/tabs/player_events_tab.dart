@@ -4,6 +4,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -159,20 +160,22 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           .map(playerEventDataFromGamebaseEvent)
           .toList(growable: false);
 
-      final byTourId = <String, PlayerEventData>{
-        for (final event in _twicEvents) event.tourId: event,
-      };
-      for (final event in incoming) {
-        byTourId[event.tourId] = event;
-      }
-      _twicEvents = byTourId.values.toList(growable: false)..sort((a, b) {
-        final aDate = a.endDate ?? a.startDate ?? DateTime(1900);
-        final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
+      // The /events endpoint groups by raw `g.event`, so broadcast-ingested
+      // events arrive as one row per "Round N: A - B" pairing. Merge by the
+      // canonical event identity (recovered from the Site slug) so the list
+      // shows real events, not rounds. Merging across pages is safe because we
+      // re-merge the full accumulated set each page.
+      _twicEvents = mergePlayerEventsByCanonical([..._twicEvents, ...incoming])
+        ..sort((a, b) {
+          final aDate = a.endDate ?? a.startDate ?? DateTime(1900);
+          final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
+          return bDate.compareTo(aDate);
+        });
 
       _twicHasMore = response.metadata.hasMore;
-      _twicTotalEvents = response.metadata.totalCount ?? _twicTotalEvents;
+      // Server totalCount counts raw per-pairing rows; show the distinct merged
+      // event count instead so the header isn't inflated.
+      _twicTotalEvents = _twicEvents.length;
       if (response.events.isEmpty) {
         _twicHasMore = false;
       }
@@ -986,13 +989,22 @@ class _PlayerEventCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Prefer the real ChessEver broadcast card (image + metadata) when this
+    // event exists in our Supabase; otherwise the community card.
+    final slug = broadcastSlugFromSite(playerEventData.site);
+    final richCard =
+        (slug != null && slug.isNotEmpty)
+            ? ref.watch(broadcastEventCardBySlugProvider(slug)).valueOrNull
+            : null;
+    final displayCard = richCard ?? eventCard;
+
     return GestureDetector(
           onTap: () => _navigateToTournament(context, ref),
           child: Column(
             children: [
               // Standard event card
               EventCard(
-                tourEventCardModel: eventCard,
+                tourEventCardModel: displayCard,
                 heroTagSuffix: 'player-profile-$index',
                 // Embedded inside a SliverList (unbounded height) — must use
                 // the compact phone layout to avoid Stack-expand crash.
@@ -1336,6 +1348,25 @@ class _SkeletonEventImage extends StatelessWidget {
     );
   }
 }
+
+/// Resolves the canonical ChessEver broadcast event card (real image +
+/// metadata) for a TWIC/database event via its Lichess broadcast [slug].
+/// Returns null when no matching broadcast exists in our Supabase (a
+/// gamebase-only event) — callers fall back to the community card. Riverpod
+/// dedupes/caches per slug so each broadcast is fetched at most once.
+final broadcastEventCardBySlugProvider = FutureProvider.autoDispose
+    .family<GroupEventCardModel?, String>((ref, slug) async {
+  final trimmed = slug.trim();
+  if (trimmed.isEmpty) return null;
+  try {
+    final repo = ref.read(groupBroadcastRepositoryProvider);
+    final broadcast = await repo.getGroupBroadcastBySlug(trimmed);
+    if (broadcast == null) return null;
+    return GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
+  } catch (_) {
+    return null;
+  }
+});
 
 /// Provider to fetch GroupEventCardModel for player events
 final playerEventCardsProvider = FutureProvider.family
