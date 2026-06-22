@@ -778,6 +778,60 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
   // which skipped its built-in piece-translation animation. Keep the key
   // stable; chessground clears its own selection on the next board tap.
 
+  // chessground v10 drives the interactive board through a controller instead
+  // of rebuilding the widget with a new fen. We own it here and feed it new
+  // positions via [updatePosition] whenever the external fen changes.
+  late final ChessboardController _boardController;
+
+  @override
+  void initState() {
+    super.initState();
+    _boardController = ChessboardController(game: _gameDataFor(widget.fen));
+  }
+
+  @override
+  void didUpdateWidget(covariant _GamebaseChessBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.fen != widget.fen) {
+      _boardController.updatePosition(_gameDataFor(widget.fen));
+    }
+  }
+
+  @override
+  void dispose() {
+    _boardController.dispose();
+    super.dispose();
+  }
+
+  /// Builds chessground [GameData] from a fen. Falls back to a non-interactive
+  /// snapshot when the fen is not a legal chess position (the board still
+  /// renders the placement via the lenient [readFen]).
+  GameData _gameDataFor(String fen) {
+    Chess? position;
+    try {
+      position = Chess.fromSetup(Setup.parseFen(fen));
+    } catch (_) {
+      position = null;
+    }
+    if (position == null) {
+      return GameData(
+        fen: fen,
+        playerSide: PlayerSide.none,
+        sideToMove: Side.white,
+        validMoves: const {},
+      );
+    }
+    return GameData(
+      fen: fen,
+      playerSide:
+          position.turn == Side.white ? PlayerSide.white : PlayerSide.black,
+      sideToMove: position.turn,
+      validMoves: makeLegalMoves(position),
+      kingSquareInCheck:
+          position.isCheck ? position.board.kingOf(position.turn) : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
@@ -809,9 +863,9 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
         borderRadius: BorderRadius.circular(4.br),
         child:
             position == null
-                ? Chessboard.fixed(
+                ? StaticChessboard(
                   size: widget.boardSize,
-                  settings: ChessboardSettings(
+                  settings: StaticChessboardSettings(
                     enableCoordinates: boardSettings.showCoordinates,
                     colorScheme: boardSettings.colorScheme,
                     pieceAssets: boardSettings.pieceAssets,
@@ -821,6 +875,7 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                 )
                 : Chessboard(
                   size: widget.boardSize,
+                  controller: _boardController,
                   settings: ChessboardSettings(
                     enableCoordinates: boardSettings.showCoordinates,
                     animationDuration: const Duration(milliseconds: 200),
@@ -828,42 +883,29 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                     pieceAssets: boardSettings.pieceAssets,
                     pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
                     autoQueenPromotionOnPremove: false,
+                    enablePremoves: false,
                   ),
                   orientation: widget.isFlipped ? Side.black : Side.white,
-                  fen: widget.fen,
-                  game: GameData(
-                    playerSide:
-                        position.turn == Side.white
-                            ? PlayerSide.white
-                            : PlayerSide.black,
-                    validMoves: makeLegalMoves(position),
-                    sideToMove: position.turn,
-                    isCheck: position.isCheck,
-                    promotionMove: null,
-                    onMove: (Move move, {bool? viaDragAndDrop}) async {
-                      // Playing this move would land past the free-tier
-                      // boundary — surface the paywall instead of advancing
-                      // and then blurring the panel. Chessground snaps the
-                      // piece back when state doesn't change.
-                      if (!kDebugMode &&
-                          !ref.read(subscriptionProvider).isSubscribed) {
-                        final currentMoveNumber =
-                            ref
-                                .read(gamebaseExplorerProvider)
-                                .currentMoveNumber;
-                        if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
-                          if (!context.mounted) return;
-                          final unlocked = await requirePremiumGuard(
-                            context,
-                            ref,
-                          );
-                          if (!unlocked) return;
-                        }
+                  // chessground v10: promotion is resolved inside the board,
+                  // so onMove receives the fully-resolved move (promotion role
+                  // already set) and lives on the widget, not GameData.
+                  onMove: (Move move, {bool? viaDragAndDrop}) async {
+                    // Playing this move would land past the free-tier
+                    // boundary — surface the paywall instead of advancing
+                    // and then blurring the panel. Chessground snaps the
+                    // piece back when state doesn't change.
+                    if (!kDebugMode &&
+                        !ref.read(subscriptionProvider).isSubscribed) {
+                      final currentMoveNumber =
+                          ref.read(gamebaseExplorerProvider).currentMoveNumber;
+                      if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
+                        if (!context.mounted) return;
+                        final unlocked = await requirePremiumGuard(context, ref);
+                        if (!unlocked) return;
                       }
-                      notifier.makeMove(move.uci);
-                    },
-                    onPromotionSelection: (_) {},
-                  ),
+                    }
+                    notifier.makeMove(move.uci);
+                  },
                 ),
       ),
     );

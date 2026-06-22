@@ -15,7 +15,6 @@ import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart' hide Board;
-import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -743,14 +742,15 @@ class _BoardWithEvalBar extends ConsumerWidget {
                 orientation: editorState.orientation,
                 pieces: editorState.pieces,
                 pointerMode: editorState.pointerMode,
+                // chessground v10: squareHighlights is a plain Map (was IMap).
                 squareHighlights:
                     editorState.selectedDragSquare != null
-                        ? IMap({
+                        ? {
                           editorState.selectedDragSquare!: SquareHighlight(
                             details: boardSettings.colorScheme.selected,
                           ),
-                        })
-                        : const IMap.empty(),
+                        }
+                        : const {},
                 settings: ChessboardSettings(
                   colorScheme: boardSettings.colorScheme,
                   pieceAssets: boardSettings.pieceAssets,

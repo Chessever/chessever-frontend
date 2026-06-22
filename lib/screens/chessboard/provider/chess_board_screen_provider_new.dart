@@ -4037,23 +4037,18 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
-    if (isPromotionPawnMove(move)) {
-      _releaseLog('🎯 ANALYSIS MOVE: Promotion detected, storing move');
-      _releaseLog('🎯 ANALYSIS MOVE: Promotion move UCI: ${move.uci}');
-      _releaseLog(
-        '🎯 ANALYSIS MOVE: Promotion move from: ${move.from}, to: ${move.to}',
-      );
-      _releaseLog(
-        '🎯 ANALYSIS MOVE: Current position FEN: ${boardPosition.fen}',
-      );
-      state = AsyncValue.data(
-        currentState.copyWith(
-          analysisState: currentState.analysisState.copyWith(
-            promotionMove: move,
-          ),
+    // chessground v10 resolves promotion inside the board: [move] already has
+    // its promotion role set (the board showed the selector and waited for the
+    // user). We no longer defer the move here. Clear any pending programmatic
+    // promotion (set by PV/variant playback) so it doesn't linger in state —
+    // the navigator sync below preserves it via copyWith otherwise.
+    if (currentState.analysisState.promotionMove != null) {
+      currentState = currentState.copyWith(
+        analysisState: currentState.analysisState.copyWith(
+          promotionMove: null,
         ),
       );
-      return;
+      state = AsyncValue.data(currentState);
     }
 
     if (_analysisGame != null) {
@@ -4174,115 +4169,28 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  void onAnalysisPromotionSelection(Role? role) {
-    if (_analysisGame != null) {
-      if (role == null) {
-        state = AsyncValue.data(
-          state.value!.copyWith(
-            analysisState: state.value!.analysisState.copyWith(
-              promotionMove: null,
-            ),
-          ),
-        );
-        HapticFeedback.selectionClick();
-        return;
-      }
+  // chessground v10 handles promotion selection inside the board widget; the
+  // resolved move arrives through [onAnalysisMove]. The old
+  // `onAnalysisPromotionSelection` callback (and its navigator/manual apply
+  // plumbing) is therefore gone — programmatic promotions (PV/variant playback)
+  // set `analysisState.promotionMove`, which the board mirrors onto
+  // `ChessboardController.pendingPromotion` to show the selector.
 
-      final pending = state.value?.analysisState.promotionMove;
-      if (pending != null) {
-        _releaseLog('🎯 PROMOTION SELECTION: Pending move UCI: ${pending.uci}');
-        _releaseLog(
-          '🎯 PROMOTION SELECTION: Pending from: ${pending.from}, to: ${pending.to}',
-        );
-        _releaseLog('🎯 PROMOTION SELECTION: Selected role: $role');
-
-        final currentState = state.value!;
-        final boardPosition = currentState.analysisState.position;
-        final move = pending.withPromotion(role);
-
-        _releaseLog(
-          '🎯 PROMOTION SELECTION: Final move UCI with promotion: ${move.uci}',
-        );
-        _releaseLog('🎯 PROMOTION SELECTION: Board FEN: ${boardPosition.fen}');
-
-        // Verify navigator is in sync before applying promotion
-        if (_analysisNavigator != null) {
-          final navigatorState = ref.read(
-            chessGameNavigatorProvider(_analysisGame!),
-          );
-          _releaseLog(
-            '🎯 PROMOTION SELECTION: Navigator FEN: ${navigatorState.currentFen}',
-          );
-
-          if (navigatorState.currentFen == boardPosition.fen) {
-            _releaseLog(
-              '🎯 PROMOTION SELECTION: Navigator in sync, applying via navigator',
-            );
-            const pointerEquality = ListEquality<int>();
-            final boardPointer = currentState.analysisState.movePointer;
-            _releaseLog(
-              '🎯 POINTER SYNC CHECK: Board pointer=$boardPointer, Navigator pointer=${navigatorState.movePointer}',
-            );
-            if (!pointerEquality.equals(
-              navigatorState.movePointer,
-              boardPointer,
-            )) {
-              _releaseLog(
-                '🎯 POINTER SYNC: Pointers differ, syncing navigator to board pointer=$boardPointer',
-              );
-              _analysisNavigator?.goToMovePointerUnchecked(boardPointer);
-            } else {
-              _releaseLog(
-                '🎯 POINTER SYNC: Pointers already in sync at $boardPointer',
-              );
-            }
-            _analysisNavigator?.makeOrGoToMove(move.uci);
-
-            // Sync state after navigation
-            final updatedState = ref.read(
-              chessGameNavigatorProvider(_analysisGame!),
-            );
-            _syncAnalysisFromNavigator(updatedState);
-
-            HapticFeedback.mediumImpact();
-          } else {
-            _releaseLog(
-              '🎯 PROMOTION SELECTION: Navigator OUT OF SYNC, using manual fallback',
-            );
-            // Use manual application as fallback
-            _applyManualAnalysisMove(currentState, boardPosition, move);
-            HapticFeedback.mediumImpact();
-          }
-        } else {
-          _releaseLog(
-            '🎯 PROMOTION SELECTION: No navigator, using manual fallback',
-          );
-          _applyManualAnalysisMove(currentState, boardPosition, move);
-          HapticFeedback.mediumImpact();
-        }
-
-        state = AsyncValue.data(
-          state.value!.copyWith(
-            analysisState: state.value!.analysisState.copyWith(
-              promotionMove: null,
-            ),
-          ),
-        );
-      }
-      return;
-    }
-
-    var currentState = state.value;
+  /// Clears a pending programmatic promotion when the in-board promotion
+  /// selector closes without a move (the user dismissed it). Guarded so it only
+  /// writes when there is something to clear — making it a safe no-op when
+  /// called from the board's `didUpdateWidget`-time controller sync.
+  void onAnalysisPromotionDismissed() {
+    final currentState = state.value;
     if (currentState == null) return;
-    if (role == null) {
-      state = AsyncValue.data(
-        currentState.copyWith(
-          analysisState: currentState.analysisState.copyWith(
-            promotionMove: null,
-          ),
+    if (currentState.analysisState.promotionMove == null) return;
+    state = AsyncValue.data(
+      currentState.copyWith(
+        analysisState: currentState.analysisState.copyWith(
+          promotionMove: null,
         ),
-      );
-    }
+      ),
+    );
   }
 
   /// Navigate forward in analysis mode (through main line when no variant selected)

@@ -132,7 +132,9 @@ class AnalysisBoardState {
   const AnalysisBoardState({
     this.lastMove,
     this.promotionMove,
-    this.validMoves = const IMap.empty(),
+    // chessground v10: ValidMoves is now a plain Map<Square, Set<Square>>
+    // (was IMap<Square, ISet<Square>>), matching dartchess 0.13 makeLegalMoves.
+    this.validMoves = const {},
     this.positionHistory = const [],
     this.moveSans = const [],
     this.allMoves = const [],

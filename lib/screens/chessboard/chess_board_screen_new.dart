@@ -623,27 +623,9 @@ Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
   return kLastMoveHighlightColor;
 }
 
-bool _isLightBoardSquare(Square square) {
-  // a1 is dark; odd parity is light.
-  return (square.file + square.rank) % 2 == 1;
-}
-
-IMap<Square, SquareHighlight> _buildLastMoveSquareHighlights(Move? lastMove) {
-  if (lastMove == null) return const IMap.empty();
-
-  final highlights = <Square, SquareHighlight>{};
-  for (final square in lastMove.squares) {
-    final color =
-        _isLightBoardSquare(square)
-            ? kLastMoveHighlightLightSquare
-            : kLastMoveHighlightDarkSquare;
-    highlights[square] = SquareHighlight(
-      details: HighlightDetails(solidColor: color),
-    );
-  }
-
-  return highlights.lock;
-}
+// chessground v10 removed squareHighlights from the interactive board, so the
+// custom dual-color last-move tint is gone — the board now highlights the last
+// move natively via colorScheme.lastMove (kLastMoveHighlightColor).
 
 bool _gameHasCustomVariations(ChessGame? game) {
   if (game == null) return false;
@@ -7362,9 +7344,13 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     with TickerProviderStateMixin {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
-  bool _clearBoardSelectionForFrame = false;
   bool _selectionRestoreScheduled = false;
   int? _lastSelectionClearRequestId;
+
+  // chessground v10: the interactive board is driven by a [ChessboardController]
+  // instead of being rebuilt with a new `fen`. We own it here, seed it in
+  // initState, and push new positions via [updatePosition] in didUpdateWidget.
+  late final ChessboardController _boardController;
 
   // Swipe-to-flip: drag-driven progress + a fixed-duration commit animation.
   // Progress is the unit-π rotation factor (×π → radians for Transform.rotateX).
@@ -7436,9 +7422,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _selectionRestoreScheduled = false;
-      if (_clearBoardSelectionForFrame) {
-        setState(() => _clearBoardSelectionForFrame = false);
-      }
+      // Restore interactivity after the one-frame non-interactive update that
+      // dropped the board's tap-selection. The fen is unchanged here, so the
+      // controller only flips playerSide back — no piece re-animation.
+      _boardController.updatePosition(
+        _gameDataFor(widget.chessBoardState.analysisState),
+      );
     });
   }
 
@@ -7739,6 +7728,40 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _flipCommitCtrl.duration = _flipPhaseFullDuration;
       _flipCommitCtrl.forward(from: 0.0);
     }
+
+    // chessground v10: drive the board through its controller. Mutating the
+    // controller from didUpdateWidget is the standard controller-sync pattern
+    // (like setting TextEditingController.text) and is safe even though the
+    // board rebuilds in response. Nav arrows bump the selection-clear request
+    // right before moving, so detect it here and flip the board non-interactive
+    // for the update to drop a stale tap-selection, then restore next frame.
+    final reqId = ref.read(
+      boardSelectionClearRequestProvider(
+        _boardSelectionClearKey(widget.game, widget.index),
+      ),
+    );
+    final clearSelection =
+        _lastSelectionClearRequestId != null &&
+        _lastSelectionClearRequestId != reqId;
+    _lastSelectionClearRequestId = reqId;
+    _boardController.updatePosition(
+      _gameDataFor(
+        widget.chessBoardState.analysisState,
+        nonInteractive: clearSelection,
+      ),
+    );
+    if (clearSelection) _scheduleSelectionRestore();
+
+    // Mirror a *programmatic* promotion (PV/variant playback sets
+    // analysisState.promotionMove) onto the controller so the board shows its
+    // selector. React only to changes: a user-initiated promotion is driven by
+    // the board internally and never touches analysisState.promotionMove, so
+    // this guard never cancels it.
+    final oldPromotion = oldWidget.chessBoardState.analysisState.promotionMove;
+    final newPromotion = widget.chessBoardState.analysisState.promotionMove;
+    if (oldPromotion?.uci != newPromotion?.uci) {
+      _boardController.pendingPromotion = newPromotion;
+    }
   }
 
   @override
@@ -7747,6 +7770,28 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     _likeFlightAnchor = ref.read(likeFlightAnchorProvider);
     final analysisState = widget.chessBoardState.analysisState;
     _wasAtEnd = _isAtGameEnd(analysisState);
+    _boardController = ChessboardController(game: _gameDataFor(analysisState));
+    // Seed a pending programmatic promotion if one already exists at mount
+    // (e.g. PiP-recovery remount or hot-reload mid-promotion) so the selector
+    // still appears — didUpdateWidget only mirrors *changes*.
+    if (analysisState.promotionMove != null) {
+      _boardController.pendingPromotion = analysisState.promotionMove;
+    }
+    // When the board's promotion selector closes (pick or dismiss) it clears
+    // pendingPromotion. Mirror that back so a *cancelled* programmatic promotion
+    // doesn't leave analysisState.promotionMove stale (guarded clear → safe).
+    // pendingPromotionNotifier is @internal but is the only signal for "selector
+    // closed" — the controller doesn't notifyListeners on promotion changes.
+    // ignore: invalid_use_of_internal_member
+    _boardController.pendingPromotionNotifier.addListener(
+      _onBoardPendingPromotionChanged,
+    );
+    // Baseline the selection-clear request so the first nav move is detected.
+    _lastSelectionClearRequestId = ref.read(
+      boardSelectionClearRequestProvider(
+        _boardSelectionClearKey(widget.game, widget.index),
+      ),
+    );
 
     // If starting at the end position, show effect immediately
     final gameStatus = widget.game.gameStatus;
@@ -7780,10 +7825,61 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   @override
   void dispose() {
     _cancelLikeInteraction(resetAnchor: true);
+    // ignore: invalid_use_of_internal_member
+    _boardController.pendingPromotionNotifier.removeListener(
+      _onBoardPendingPromotionChanged,
+    );
+    _boardController.dispose();
     _flipCommitCtrl.dispose();
     _flipProgress.dispose();
     _burstController.dispose();
     super.dispose();
+  }
+
+  /// The board cleared its promotion selector (the user picked a piece or
+  /// dismissed it). If a *programmatic* promotion is still recorded in app state
+  /// we clear it: a user-picked move already clears it via [onAnalysisMove], but
+  /// a dismissed one would otherwise linger and block re-opening the selector.
+  /// The notifier setter is null on a closed selector; the provider clear is
+  /// guarded so the null we set ourselves during didUpdateWidget is a no-op.
+  void _onBoardPendingPromotionChanged() {
+    if (_boardController.pendingPromotion != null) return;
+    ref
+        .read(
+          chessBoardScreenProviderNew(
+            ChessBoardProviderParams(game: widget.game, index: widget.index),
+          ).notifier,
+        )
+        .onAnalysisPromotionDismissed();
+  }
+
+  /// Builds the chessground [GameData] snapshot for an analysis state.
+  ///
+  /// chessground v10 folds the position (`fen`), `lastMove` and check square
+  /// into [GameData]; the controller animates between successive snapshots.
+  ///
+  /// Pass [nonInteractive] to force `playerSide: none` — the board drops its
+  /// tap-selection when it becomes non-interactive (see [_onControllerChange]
+  /// in chessground), which is how we clear a stale selection on navigation.
+  GameData _gameDataFor(
+    AnalysisBoardState analysis, {
+    bool nonInteractive = false,
+  }) {
+    final position = analysis.position;
+    final sideToMove = position.turn;
+    final playerSide =
+        nonInteractive
+            ? PlayerSide.none
+            : (sideToMove == Side.white ? PlayerSide.white : PlayerSide.black);
+    return GameData(
+      fen: position.fen,
+      playerSide: playerSide,
+      sideToMove: sideToMove,
+      validMoves: analysis.validMoves,
+      lastMove: analysis.lastMove,
+      kingSquareInCheck:
+          position.isCheck ? position.board.kingOf(sideToMove) : null,
+    );
   }
 
   // Drive the live rotation from the phase tween. easeInOutCubic keeps
@@ -8326,20 +8422,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       index: widget.index,
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final selectionClearRequestId = ref.watch(
-      boardSelectionClearRequestProvider(
-        _boardSelectionClearKey(widget.game, widget.index),
-      ),
-    );
-    if (_lastSelectionClearRequestId == null) {
-      _lastSelectionClearRequestId = selectionClearRequestId;
-    } else if (_lastSelectionClearRequestId != selectionClearRequestId) {
-      _lastSelectionClearRequestId = selectionClearRequestId;
-      _clearBoardSelectionForFrame = true;
-    }
-    if (_clearBoardSelectionForFrame) {
-      _scheduleSelectionRestore();
-    }
+    // chessground v10: the board's tap-selection is cleared via the controller
+    // (playerSide:none) in didUpdateWidget when a selection-clear is requested,
+    // not by recomputing playerSide here.
     final analysisGame = widget.chessBoardState.analysisState.game;
     final activeMovePointer = widget.chessBoardState.analysisState.movePointer;
     final activeMove = _moveForPointer(analysisGame, activeMovePointer);
@@ -8483,20 +8568,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // PERF: RepaintBoundary isolates chessboard repaints from propagating
     // to parent widgets during piece animations and drag operations
 
-    final String displayFen = widget.chessBoardState.analysisState.position.fen;
-
-    final lastMoveHighlights = _buildLastMoveSquareHighlights(
-      widget.chessBoardState.analysisState.lastMove,
-    );
-    final squareHighlightsMap = <Square, SquareHighlight>{};
-    for (final entry
-        in (gameEndingData?.squareHighlights ?? const IMap.empty()).entries) {
-      squareHighlightsMap[entry.key] = entry.value;
-    }
-    for (final entry in lastMoveHighlights.entries) {
-      squareHighlightsMap.putIfAbsent(entry.key, () => entry.value);
-    }
-
     final pvShapes =
         (widget.chessBoardState.showEngineAnalysis &&
                 widget.chessBoardState.showPrincipalVariations &&
@@ -8505,23 +8576,26 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             : const ISet<Shape>.empty();
 
     final annotationShapes = _extractAnnotationShapes(activeMove);
-    final allShapes = pvShapes.addAll(annotationShapes);
-    final sideToMove = widget.chessBoardState.analysisState.position.turn;
-    final playerSide =
-        _clearBoardSelectionForFrame
-            ? PlayerSide.none
-            : (sideToMove == Side.white ? PlayerSide.white : PlayerSide.black);
+    // chessground v10 takes a plain Set<Shape> (was ISet<Shape>).
+    final allShapes = <Shape>{...pvShapes, ...annotationShapes};
     final androidPipRecoveryEpoch = ref.watch(
       _androidPipBoardRecoveryEpochProvider(
         _androidPipBoardRecoveryKey(widget.game, widget.index),
       ),
     );
 
+    // chessground v10: the board is driven by [_boardController] — seeded in
+    // initState and fed new positions in didUpdateWidget. The position (fen),
+    // lastMove, check square and playerSide live on the controller's GameData;
+    // last-move highlighting is native (colorScheme.lastMove) and game-ending
+    // square tints are drawn as overlays in the Stack below. Here we only pass
+    // per-build visuals (engine/annotation shapes) and the move callback.
     final chessboard = Chessboard(
       key: ValueKey(
         'analysis-board-${widget.game.gameId}-${widget.index}-$androidPipRecoveryEpoch',
       ),
       size: widget.size,
+      controller: _boardController,
       settings: ChessboardSettings(
         enableCoordinates: showCoordinates,
         animationDuration: const Duration(milliseconds: 200),
@@ -8529,6 +8603,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         dragTargetKind: DragTargetKind.none,
         pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
         autoQueenPromotionOnPremove: false,
+        // Analysis only lets you move the side to move (playerSide tracks it),
+        // so premoves are never reachable — disable them explicitly.
+        enablePremoves: false,
         pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
         // Use theme colors from settings with our custom app colors
         colorScheme: colorScheme,
@@ -8536,24 +8613,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         pieceAssets: pieceAssets,
       ),
       orientation: widget.isFlipped ? Side.black : Side.white,
-      fen: displayFen,
-      lastMove: widget.chessBoardState.analysisState.lastMove,
       shapes: allShapes,
-      squareHighlights: IMap(squareHighlightsMap),
-      annotations: gameEndingData?.annotations ?? const IMap.empty(),
-      game: GameData(
-        playerSide: playerSide,
-        validMoves: widget.chessBoardState.analysisState.validMoves,
-        sideToMove: sideToMove,
-        isCheck: widget.chessBoardState.analysisState.position.isCheck,
-        promotionMove: widget.chessBoardState.analysisState.promotionMove,
-        onMove: (Move move, {bool? viaDragAndDrop}) {
-          notifier.onAnalysisMove(move, viaDragAndDrop: viaDragAndDrop);
-        },
-        onPromotionSelection: (Role? role) {
-          notifier.onAnalysisPromotionSelection(role);
-        },
-      ),
+      // chessground v10: promotion is resolved inside the board, so onMove
+      // receives the fully-resolved move (promotion role already set).
+      onMove: (Move move, {bool? viaDragAndDrop}) {
+        notifier.onAnalysisMove(move, viaDragAndDrop: viaDragAndDrop);
+      },
     );
 
     // If game ended with a winner, add rotated king overlay with motor animation
@@ -8615,12 +8680,40 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       final blackKingSquare = board.kingOf(Side.black);
 
       if (whiteKingSquare != null && blackKingSquare != null) {
+        // chessground v10 dropped squareHighlights on the interactive board, so
+        // the draw's mint tint on both king squares is painted as overlays
+        // (mirroring the win red tint), redrawing each king above the tint so it
+        // stays visible. 0xCCADE1CD is the same mint the old squareHighlight used.
+        Widget drawKingTint(Square square, PieceKind kind) {
+          final effectiveFile = widget.isFlipped ? 7 - square.file : square.file;
+          final effectiveRank = widget.isFlipped ? square.rank : 7 - square.rank;
+          final isLightSquare = (effectiveFile + effectiveRank) % 2 == 0;
+          final baseSquareColor =
+              isLightSquare ? colorScheme.lightSquare : colorScheme.darkSquare;
+          return _FallenKingOverlay(
+            left: effectiveFile * squareSize,
+            top: effectiveRank * squareSize,
+            squareSize: squareSize,
+            pieceImage: pieceAssets[kind]!,
+            squareColor: Color.alphaBlend(
+              const Color(0xCCADE1CD),
+              baseSquareColor,
+            ),
+            rotate: false,
+          );
+        }
+
         return _wrapWithFlipGesture(
           RepaintBoundary(
             child: Stack(
               children: [
                 chessboard,
                 if (boardAnnotationBadge != null) boardAnnotationBadge,
+                // Mint tint behind each king (re-draws the king on top)
+                if (pieceAssets[PieceKind.whiteKing] != null)
+                  drawKingTint(whiteKingSquare, PieceKind.whiteKing),
+                if (pieceAssets[PieceKind.blackKing] != null)
+                  drawKingTint(blackKingSquare, PieceKind.blackKing),
                 // Animated peace icon on white king
                 _AnimatedPeaceIcon(
                   square: whiteKingSquare,
@@ -8667,54 +8760,17 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       return null;
     }
 
-    // Convert dartchess Square to chessground Square
-    final whiteKingCgSquare = Square.fromName(whiteKingSquare.name);
-    final blackKingCgSquare = Square.fromName(blackKingSquare.name);
-
+    // chessground v10 dropped squareHighlights on the interactive board, so the
+    // king-square tints are now painted as overlays in build(). This only needs
+    // to report the loser's king square (draw tints both kings, recomputed there).
     if (gameStatus == GameStatus.draw) {
-      // Draw: mint green background for both kings (peace icon added as overlay)
-      return _GameEndingData(
-        squareHighlights: IMap({
-          whiteKingCgSquare: const SquareHighlight(
-            details: HighlightDetails(
-              solidColor: Color(0xCCADE1CD), // Mint green with alpha
-            ),
-          ),
-          blackKingCgSquare: const SquareHighlight(
-            details: HighlightDetails(
-              solidColor: Color(0xCCADE1CD), // Mint green with alpha
-            ),
-          ),
-        }),
-        annotations: const IMap.empty(),
-        loserKingSquare: null,
-      );
+      return const _GameEndingData(loserKingSquare: null);
     } else if (gameStatus == GameStatus.whiteWins) {
       // White wins: black king is the loser
-      return _GameEndingData(
-        squareHighlights: IMap({
-          blackKingCgSquare: const SquareHighlight(
-            details: HighlightDetails(
-              solidColor: Color(0xCCF53236), // Red with alpha
-            ),
-          ),
-        }),
-        annotations: const IMap.empty(),
-        loserKingSquare: blackKingSquare,
-      );
+      return _GameEndingData(loserKingSquare: blackKingSquare);
     } else if (gameStatus == GameStatus.blackWins) {
       // Black wins: white king is the loser
-      return _GameEndingData(
-        squareHighlights: IMap({
-          whiteKingCgSquare: const SquareHighlight(
-            details: HighlightDetails(
-              solidColor: Color(0xCCF53236), // Red with alpha
-            ),
-          ),
-        }),
-        annotations: const IMap.empty(),
-        loserKingSquare: whiteKingSquare,
-      );
+      return _GameEndingData(loserKingSquare: whiteKingSquare);
     }
 
     return null;
@@ -8723,15 +8779,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
 /// Data class for game ending visual effects
 class _GameEndingData {
-  final IMap<Square, SquareHighlight> squareHighlights;
-  final IMap<Square, Annotation> annotations;
   final Square? loserKingSquare;
 
-  const _GameEndingData({
-    required this.squareHighlights,
-    required this.annotations,
-    required this.loserKingSquare,
-  });
+  const _GameEndingData({required this.loserKingSquare});
 }
 
 /// Animated fallen king overlay using motor springs
@@ -8743,12 +8793,18 @@ class _FallenKingOverlay extends StatefulWidget {
   final ImageProvider pieceImage;
   final Color squareColor;
 
+  /// When true (win), the king topples with a bouncy -45° spring. When false
+  /// (draw mint tint) it sits upright — the overlay is only used to re-draw the
+  /// king above a tinted square.
+  final bool rotate;
+
   const _FallenKingOverlay({
     required this.left,
     required this.top,
     required this.squareSize,
     required this.pieceImage,
     required this.squareColor,
+    this.rotate = true,
   });
 
   @override
@@ -8786,23 +8842,30 @@ class _FallenKingOverlayState extends State<_FallenKingOverlay> {
                 child: const SizedBox.expand(),
               ),
               Center(
-                // Animate rotation with motor's bouncy spring
-                child: SingleMotionBuilder(
-                  motion: const CupertinoMotion.bouncy(),
-                  value:
-                      _animate
-                          ? -math.pi / 4
-                          : 0.0, // -45 degrees when animated
-                  builder: (context, rotation, child) {
-                    return Transform.rotate(
-                      angle: rotation,
-                      // Rotate around exact center - no offset needed
-                      alignment: Alignment.center,
-                      child: child,
-                    );
-                  },
-                  child: Image(image: widget.pieceImage, fit: BoxFit.contain),
-                ),
+                child:
+                    widget.rotate
+                        // Animate rotation with motor's bouncy spring
+                        ? SingleMotionBuilder(
+                          motion: const CupertinoMotion.bouncy(),
+                          value:
+                              _animate
+                                  ? -math.pi / 4
+                                  : 0.0, // -45 degrees when animated
+                          builder: (context, rotation, child) {
+                            return Transform.rotate(
+                              angle: rotation,
+                              // Rotate around exact center - no offset needed
+                              alignment: Alignment.center,
+                              child: child,
+                            );
+                          },
+                          child: Image(
+                            image: widget.pieceImage,
+                            fit: BoxFit.contain,
+                          ),
+                        )
+                        // Upright (draw): just re-draw the king above the tint.
+                        : Image(image: widget.pieceImage, fit: BoxFit.contain),
               ),
             ],
           ),

@@ -1209,9 +1209,9 @@ class _ChessBoardWidget extends ConsumerWidget {
                   ],
         ),
         child: AbsorbPointer(
-          child: Chessboard.fixed(
+          child: StaticChessboard(
             size: boardSize,
-            settings: ChessboardSettings(
+            settings: StaticChessboardSettings(
               enableCoordinates:
                   showCoordinates && boardSettings.showCoordinates,
               // Use theme colors from settings with our custom app colors
