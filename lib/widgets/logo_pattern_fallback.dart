@@ -1,9 +1,9 @@
 import 'package:chessever2/utils/png_asset.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
-/// A fallback widget that displays the app logo in a beautiful repeating pattern.
-/// Use this instead of placeholder icons when no image is available.
+/// Fallback image shown when no event/broadcast artwork is available.
+/// A single, centered ChessEver logo on its dark backdrop — NOT a repeating
+/// tile (the old tiled pattern looked busy/ugly at card sizes).
 class LogoPatternFallback extends StatelessWidget {
   const LogoPatternFallback({
     super.key,
@@ -12,58 +12,30 @@ class LogoPatternFallback extends StatelessWidget {
     this.borderRadius,
   });
 
-  /// Size of each logo in the pattern
+  /// Retained for call-site compatibility; no longer affects the layout.
   final double logoSize;
 
-  /// Opacity of the logos (0.0 to 1.0)
+  /// Opacity of the logo (0.0 to 1.0).
   final double opacity;
 
-  /// Optional border radius for clipping
+  /// Optional border radius for clipping.
   final BorderRadius? borderRadius;
 
   @override
   Widget build(BuildContext context) {
-    final divisor = logoSize / 32.0;
-    final scale = divisor > 0 && divisor.isFinite ? 4.0 / divisor : 4.0;
-
-    final pattern = Container(
-      decoration: BoxDecoration(
-        gradient:  LinearGradient(
-          colors: [context.colors.surface, Color(0xFF252525)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: borderRadius,
-      ),
+    // The logo art sits on black; covering the box edge-to-edge keeps the
+    // backdrop seamless while showing a single centered mark.
+    final image = ColoredBox(
+      color: Colors.black,
       child: Opacity(
         opacity: opacity,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final w = constraints.maxWidth;
-            final h = constraints.maxHeight;
-            if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
-              return const SizedBox.expand();
-            }
-            return DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: borderRadius,
-                image: DecorationImage(
-                  image: const AssetImage(PngAsset.premium2Icon),
-                  repeat: ImageRepeat.repeat,
-                  scale: scale,
-                ),
-              ),
-              child: const SizedBox.expand(),
-            );
-          },
-        ),
+        child: Image.asset(PngAsset.newAppLogo, fit: BoxFit.cover),
       ),
     );
 
     if (borderRadius != null) {
-      return ClipRRect(borderRadius: borderRadius!, child: pattern);
+      return ClipRRect(borderRadius: borderRadius!, child: image);
     }
-
-    return pattern;
+    return image;
   }
 }
