@@ -26,6 +26,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
@@ -651,6 +652,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       backgroundColor: context.colors.surface,
       child: CustomScrollView(
         controller: _scrollController,
+        scrollCacheExtent: kListScrollCacheExtent,
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),

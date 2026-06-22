@@ -19,6 +19,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -451,6 +452,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       child: CustomScrollView(
         key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
         controller: _scrollController,
+        scrollCacheExtent: kListScrollCacheExtent,
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),

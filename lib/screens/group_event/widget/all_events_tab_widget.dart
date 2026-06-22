@@ -4,6 +4,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:flutter/material.dart';
@@ -102,6 +103,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
 
     return CustomScrollView(
       controller: widget.scrollController,
+      scrollCacheExtent: kListScrollCacheExtent,
       slivers: [
         if (widget.smartData != null)
           SliverPadding(
@@ -154,6 +156,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
     final smartOffset = widget.smartData != null ? 1 : 0;
     return ListView.builder(
       controller: widget.scrollController,
+      scrollCacheExtent: kListScrollCacheExtent,
       padding: EdgeInsets.only(
         left: 20.sp,
         right: 20.sp,

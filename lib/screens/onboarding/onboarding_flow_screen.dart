@@ -920,6 +920,12 @@ class _UserAvatarVisual extends HookWidget {
                       ? Image.network(
                         avatarUrl!,
                         fit: BoxFit.cover,
+                        cacheWidth:
+                            (110 * MediaQuery.devicePixelRatioOf(context))
+                                .toInt(),
+                        cacheHeight:
+                            (110 * MediaQuery.devicePixelRatioOf(context))
+                                .toInt(),
                         errorBuilder: (_, __, ___) => _buildInitials(context),
                       )
                       : _buildInitials(context),

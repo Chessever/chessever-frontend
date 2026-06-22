@@ -26,6 +26,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -1540,6 +1541,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
           child: ListView.builder(
             key: PageStorageKey<String>('smart_event_games_${request.scopeId}'),
             controller: _scrollController,
+            scrollCacheExtent: kListScrollCacheExtent,
             padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
@@ -2325,6 +2327,7 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
             ),
             child: ListView.builder(
               controller: _scrollController,
+              scrollCacheExtent: kListScrollCacheExtent,
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
                 8.sp,

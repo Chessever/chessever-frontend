@@ -7,6 +7,7 @@ import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -260,6 +261,7 @@ class _SearchResultsListView extends ConsumerWidget {
     return CustomScrollView(
       key: PageStorageKey<String>('search_results_$searchQuery'),
       controller: scrollController,
+      scrollCacheExtent: kListScrollCacheExtent,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -313,7 +315,7 @@ class _SearchResultsListView extends ConsumerWidget {
       itemCount: tournaments.length + (hasPlayerCards ? 1 : 0),
       addAutomaticKeepAlives: true,
       addRepaintBoundaries: true,
-      cacheExtent: 2000,
+      scrollCacheExtent: kListScrollCacheExtent,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),

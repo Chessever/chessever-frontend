@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_d
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -139,6 +140,7 @@ class GamesListView extends ConsumerWidget {
             itemScrollController: itemScrollController,
             itemPositionsListener: itemPositionsListener,
             itemCount: itemCount,
+            minCacheExtent: listCacheExtentPixels(context),
             itemBuilder: (context, index) {
               final lookup = _lookupItem(
                 index: index,

@@ -5,6 +5,7 @@ import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -104,6 +105,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
           backgroundColor: context.colors.surface,
           child: CustomScrollView(
             controller: _scrollController,
+            scrollCacheExtent: kListScrollCacheExtent,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),

@@ -31,6 +31,12 @@ class TournamentGroupHeader extends StatelessWidget {
                 width: 56.w,
                 height: 56.h,
                 fit: BoxFit.cover,
+                // Decode at the rendered size, not the original broadcast
+                // resolution — keeps scroll FPS up in the player-games list.
+                cacheWidth:
+                    (56 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                cacheHeight:
+                    (56 * MediaQuery.devicePixelRatioOf(context)).toInt(),
                 errorBuilder:
                     (context, error, stackTrace) => _buildPlaceholderImage(context),
                 loadingBuilder: (context, child, loadingProgress) {

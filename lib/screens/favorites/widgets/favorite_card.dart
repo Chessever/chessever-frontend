@@ -119,6 +119,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
           'https://flagcdn.com/w20/no.png',
           width: 20.w,
           height: 14.h,
+          cacheWidth: 20,
+          cacheHeight: 14,
           errorBuilder:
               (context, error, stackTrace) =>
                   Text('🇳🇴', style: TextStyle(fontSize: 16.sp)),
@@ -128,6 +130,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
           'https://flagcdn.com/w20/us.png',
           width: 20.w,
           height: 14.h,
+          cacheWidth: 20,
+          cacheHeight: 14,
           errorBuilder:
               (context, error, stackTrace) =>
                   Text('🇺🇸', style: TextStyle(fontSize: 16.sp)),
@@ -137,6 +141,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
           'https://flagcdn.com/w20/in.png',
           width: 20.w,
           height: 14.h,
+          cacheWidth: 20,
+          cacheHeight: 14,
           errorBuilder:
               (context, error, stackTrace) =>
                   Text('🇮🇳', style: TextStyle(fontSize: 16.sp)),
@@ -146,6 +152,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
           'https://flagcdn.com/w20/uz.png',
           width: 20.w,
           height: 14.h,
+          cacheWidth: 20,
+          cacheHeight: 14,
           errorBuilder:
               (context, error, stackTrace) =>
                   Text('🇺🇿', style: TextStyle(fontSize: 16.sp)),

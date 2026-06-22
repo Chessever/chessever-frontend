@@ -37,11 +37,16 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
-const double _kForYouCompactCacheExtent = 360;
-const double _kForYouBoardCacheExtent = 180;
+// Cache ~1.5 viewports for the compact card feed and ~1 viewport for the
+// heavier board feed. The previous fixed 360/180px extents were smaller than a
+// single event section, so sections reloaded from scratch on scroll-back.
+const ScrollCacheExtent _kForYouCompactCacheExtent =
+    ScrollCacheExtent.viewport(1.5);
+const ScrollCacheExtent _kForYouBoardCacheExtent =
+    ScrollCacheExtent.viewport(1.0);
 const Duration _kForYouScrollIdleDelay = Duration(milliseconds: 180);
 
-double _forYouCacheExtentForMode(GamesListViewMode mode) {
+ScrollCacheExtent _forYouCacheExtentForMode(GamesListViewMode mode) {
   return mode == GamesListViewMode.gamesCard
       ? _kForYouCompactCacheExtent
       : _kForYouBoardCacheExtent;
@@ -516,9 +521,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      scrollCacheExtent: ScrollCacheExtent.pixels(
-        _forYouCacheExtentForMode(viewMode),
-      ),
+      scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
       addAutomaticKeepAlives: false,
       addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
@@ -630,9 +633,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      scrollCacheExtent: ScrollCacheExtent.pixels(
-        _forYouCacheExtentForMode(viewMode),
-      ),
+      scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
       addAutomaticKeepAlives: false,
       addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
