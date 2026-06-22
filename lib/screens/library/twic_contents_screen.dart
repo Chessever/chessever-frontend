@@ -31,7 +31,12 @@ import 'package:skeletonizer/skeletonizer.dart';
 /// Uses [gamebaseDatabaseGamesPaginatedProvider] directly for a focused
 /// game-only experience with infinite scroll.
 class TwicContentsScreen extends ConsumerStatefulWidget {
-  const TwicContentsScreen({super.key});
+  const TwicContentsScreen({super.key, this.initialEvent});
+
+  /// When set, the database opens pre-filtered to this exact event name
+  /// (the gamebase `event` value). Used when routing a TWIC/database event
+  /// tap from a player profile that has no canonical ChessEver event page.
+  final String? initialEvent;
 
   @override
   ConsumerState<TwicContentsScreen> createState() => _TwicContentsScreenState();
@@ -57,6 +62,22 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _chipScrollController.addListener(_onChipScroll);
+
+    final initialEvent = widget.initialEvent?.trim();
+    if (initialEvent != null && initialEvent.isNotEmpty) {
+      // Pre-fill the search with the event name. Search (not the event filter)
+      // is the robust prefill: it flips `hasUserInputProvider` true so the
+      // screen leaves its default browse view, surfaces the matching event
+      // chip for one-tap precise filtering, and never empties out if the
+      // gamebase `event` string differs slightly. These providers are
+      // autoDispose, so set them post-frame once this widget is subscribed.
+      _searchController.text = initialEvent;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(twicSelectedEventProvider.notifier).state = null;
+        ref.read(librarySearchQueryProvider.notifier).state = initialEvent;
+      });
+    }
   }
 
   @override

@@ -4,7 +4,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -128,21 +128,13 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       if (mounted) setState(() {});
     }
 
+    // Load events straight from the paginated /events endpoint, page by page.
+    // Do NOT derive events by downloading the player's entire game history
+    // (playerEventsKeyProvider -> playerGamesDataKeyProvider pages through
+    // every game) — that is what made this tab spin forever. The events
+    // endpoint returns the exact `game.event` names, which also match what
+    // /api/event expects when an event card is tapped.
     final token = _loadToken;
-    if (reset) {
-      final derivedEvents = await ref.read(playerEventsKeyProvider(_playerKey).future);
-      if (!mounted || token != _loadToken) return;
-      if (derivedEvents.isNotEmpty) {
-        _twicEvents = derivedEvents;
-        _twicTotalEvents = derivedEvents.length;
-        _twicHasMore = false;
-        _twicIsLoading = false;
-        _twicIsLoadingMore = false;
-        setState(() {});
-        return;
-      }
-    }
-
     final repo = ref.read(gamebaseRepositoryProvider);
     final playerId = await ref.read(twicPlayerIdProvider(_playerKey).future);
     if (!mounted || token != _loadToken) return;
@@ -668,6 +660,7 @@ class _EventsListContent extends ConsumerWidget {
                 eventCard: eventCard,
                 playerEventData: event,
                 index: eventIndex,
+                dataSource: dataSource,
               ),
             );
           }
@@ -741,24 +734,15 @@ class _EventsListContent extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     PlayerEventData event,
-  ) async {
-    HapticFeedbackService.buttonPress();
-    try {
-      final broadcast = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastById(event.tourId);
-      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-
-      if (!context.mounted) return;
-      if (ref.read(selectedBroadcastModelProvider) != null) {
-        Navigator.pushNamed(context, '/tournament_detail_screen');
-      }
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
-    }
+  ) {
+    return openProfileEvent(
+      context: context,
+      ref: ref,
+      dataSource: dataSource,
+      tourId: event.tourId,
+      eventName: event.tourName,
+      site: event.site,
+    );
   }
 }
 
@@ -992,11 +976,13 @@ class _PlayerEventCard extends ConsumerWidget {
     required this.eventCard,
     required this.playerEventData,
     required this.index,
+    required this.dataSource,
   });
 
   final GroupEventCardModel eventCard;
   final PlayerEventData playerEventData;
   final int index;
+  final PlayerProfileDataSource dataSource;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1084,24 +1070,15 @@ class _PlayerEventCard extends ConsumerWidget {
   Future<void> _navigateToTournament(
     BuildContext context,
     WidgetRef ref,
-  ) async {
-    HapticFeedbackService.buttonPress();
-    try {
-      final broadcast = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastById(playerEventData.tourId);
-      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-
-      if (!context.mounted) return;
-      if (ref.read(selectedBroadcastModelProvider) != null) {
-        Navigator.pushNamed(context, '/tournament_detail_screen');
-      }
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
-    }
+  ) {
+    return openProfileEvent(
+      context: context,
+      ref: ref,
+      dataSource: dataSource,
+      tourId: playerEventData.tourId,
+      eventName: playerEventData.tourName,
+      site: playerEventData.site,
+    );
   }
 
   Color _getScoreColor(BuildContext context, double score, int totalGames) {

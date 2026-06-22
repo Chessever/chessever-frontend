@@ -341,6 +341,33 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  /// Resolve a ChessEver event from a Lichess broadcast parent [slug] — the
+  /// `<slug>` in `lichess.org/broadcast/<slug>/<id>`, stored verbatim in
+  /// `tours.slug`. Used to route TWIC/database events to their canonical
+  /// ChessEver event page when one exists. Returns null when no tour carries
+  /// that slug (e.g. chess.com / OTB-only events that live only in the
+  /// gamebase).
+  Future<GroupBroadcast?> getGroupBroadcastBySlug(String slug) async {
+    final trimmed = slug.trim();
+    if (trimmed.isEmpty) return null;
+    return handleApiCall<GroupBroadcast?>(() async {
+      final tourRow = await _getTourRowBySlug(trimmed);
+      if (tourRow == null) return null;
+
+      // Prefer the canonical group_broadcasts record when the tour links one.
+      final groupBroadcastId = tourRow['group_broadcast_id'] as String?;
+      if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
+        final fromGroupId = await _getGroupBroadcastByIdOrNull(
+          groupBroadcastId,
+        );
+        if (fromGroupId != null) return fromGroupId;
+      }
+
+      // Fall back to a synthesized GroupBroadcast from the tour row.
+      return _mapTourRowToGroupBroadcast(tourRow);
+    });
+  }
+
   Future<GroupBroadcast> getPastGroupBroadcastById(String id) async {
     return handleApiCall(() async {
       final response =
@@ -471,6 +498,15 @@ class GroupBroadcastRepository extends BaseRepository {
 
   Future<Map<String, dynamic>?> _getTourRowById(String id) async {
     return supabase.from('tours').select().eq('id', id).maybeSingle();
+  }
+
+  Future<Map<String, dynamic>?> _getTourRowBySlug(String slug) async {
+    // limit(1) over maybeSingle(): a slug can repeat across category tours
+    // (Open, U17, ...) that share a parent broadcast.
+    final response =
+        await supabase.from('tours').select().eq('slug', slug).limit(1);
+    if (response.isEmpty) return null;
+    return response.first;
   }
 
   Future<Map<String, dynamic>?> _getTourRowByGroupId(String id) async {

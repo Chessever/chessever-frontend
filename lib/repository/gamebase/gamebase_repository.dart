@@ -489,6 +489,36 @@ class GamebaseRepository {
     }
   }
 
+  /// Fetch the synthesized event view for an exact event [name] from the
+  /// gamebase (`GET /api/event`). Returns null when the event has no games.
+  /// [refresh] forces a server-side rebuild + cache rewarm — used while
+  /// verifying the view before the one-week cache is trusted.
+  Future<GamebaseEventView?> getEventView(
+    String name, {
+    bool refresh = false,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/event',
+        queryParameters: {
+          'name': name,
+          if (refresh) 'refresh': true,
+        },
+        options: Options(headers: _headers),
+      );
+
+      final body = response.data;
+      if (body is! Map) return null;
+      final data = body['data'];
+      if (data is! Map) return null;
+      return GamebaseEventView.fromData(Map<String, dynamic>.from(data));
+    } on DioException catch (e) {
+      // 404 = event not present in the gamebase. Treat as "no view".
+      if (e.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   Future<GamebaseGlobalSearchResponse> globalSearch({
     required String query,
     List<String>? resources,

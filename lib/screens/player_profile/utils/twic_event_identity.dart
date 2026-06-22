@@ -30,6 +30,30 @@ String? eventTitleFromBroadcastSite(String? site) {
   return title.isEmpty ? null : title;
 }
 
+/// Extracts the Lichess broadcast parent slug from a `Site` URL, e.g.
+/// `https://lichess.org/broadcast/<slug>/round-7/<roundId>/<chapterId>` ->
+/// `<slug>`. This slug is stored verbatim in the ChessEver `tours.slug`
+/// column, so it is the reliable key for matching a TWIC/database event to
+/// its canonical ChessEver event page. Returns null when [site] is not a
+/// recognizable Lichess broadcast URL.
+String? broadcastSlugFromSite(String? site) {
+  final value = site?.trim();
+  if (value == null || value.isEmpty) return null;
+  final slug = _lichessBroadcastSitePattern.firstMatch(value)?.group(1)?.trim();
+  return (slug == null || slug.isEmpty) ? null : slug;
+}
+
+/// Extracts the `Site` header value from a PGN string, or null when the header
+/// is absent or a placeholder (`?`). TWIC games carry the canonical Lichess
+/// broadcast URL only in this header.
+String? siteFromPgn(String? pgn) {
+  if (pgn == null || pgn.isEmpty) return null;
+  final match =
+      RegExp(r'^\[Site\s+"(.*)"\]$', multiLine: true).firstMatch(pgn);
+  final site = match?.group(1)?.trim();
+  return (site == null || site.isEmpty || site == '?') ? null : site;
+}
+
 /// Returns true for TWIC/Gamebase labels that describe a round or pairing,
 /// not the parent tournament/event.
 ///

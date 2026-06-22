@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
-import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -10,6 +9,8 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
     show PlayerProfileTab, selectedPlayerProfileTabProvider;
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
@@ -20,7 +21,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -552,23 +552,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return score;
   }
 
-  Future<void> _navigateToEvent(String tourId) async {
-    HapticFeedbackService.buttonPress();
-    try {
-      final broadcast = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastById(tourId);
-      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-      if (!mounted) return;
-      if (ref.read(selectedBroadcastModelProvider) != null) {
-        Navigator.pushNamed(context, '/tournament_detail_screen');
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
-    }
+  Future<void> _navigateToEvent({
+    required String tourId,
+    required String eventName,
+    String? site,
+  }) {
+    return openProfileEvent(
+      context: context,
+      ref: ref,
+      dataSource: widget.dataSource,
+      tourId: tourId,
+      eventName: eventName,
+      site: site,
+    );
   }
 
   @override
@@ -1256,7 +1252,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             tourSlug: eventGames.first.tourSlug,
             gameCount: eventGames.length,
             playerScore: playerScore,
-            onTap: () => _navigateToEvent(tourId),
+            onTap: () => _navigateToEvent(
+              tourId: tourId,
+              eventName: eventData?.tourName ?? tourId,
+              site: eventData?.site ?? siteFromPgn(eventGames.first.pgn),
+            ),
           ),
         ),
       );

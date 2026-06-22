@@ -841,17 +841,14 @@ class _ForYouEventSection extends ConsumerWidget {
       orElse: () => false,
     );
 
-    // AnimatedSize smoothly collapses the section when it resolves empty,
-    // avoiding visual jumps when multiple sections disappear in sequence.
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      alignment: Alignment.topCenter,
-      child:
-          shouldHide
-              ? const SizedBox.shrink()
-              : _buildContent(context, ref, snapshotAsync),
-    );
+    // No AnimatedSize: animating the section's height when its lazy games
+    // snapshot resolves (loading→data) turned every reveal into a 300ms
+    // expand/collapse that fought the scroll — "drawer" jank on fast up/down
+    // flicks. Settle to final height in one frame instead; an instant resize
+    // reads far better mid-scroll than a sustained height tween.
+    return shouldHide
+        ? const SizedBox.shrink()
+        : _buildContent(context, ref, snapshotAsync);
   }
 
   Widget _buildContent(
@@ -915,15 +912,11 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
       orElse: () => false,
     );
 
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      alignment: Alignment.topCenter,
-      child:
-          shouldHide
-              ? const SizedBox.shrink()
-              : _buildContent(context, ref, snapshotAsync),
-    );
+    // See _ForYouEventSection: no AnimatedSize. Instant height settle avoids
+    // the scroll-fighting "drawer" expand/collapse when games resolve lazily.
+    return shouldHide
+        ? const SizedBox.shrink()
+        : _buildContent(context, ref, snapshotAsync);
   }
 
   Widget _buildContent(
