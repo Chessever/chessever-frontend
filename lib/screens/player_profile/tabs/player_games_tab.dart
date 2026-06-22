@@ -2040,14 +2040,11 @@ class _EventSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Prefer the real ChessEver broadcast card (image + metadata) when this
-    // event exists in our Supabase; otherwise the community card / fallback.
-    final slug = broadcastSlugFromSite(site);
-    final richCard =
-        (slug != null && slug.isNotEmpty)
-            ? ref.watch(broadcastEventCardBySlugProvider(slug)).valueOrNull
-            : null;
-    final displayCard = richCard ?? eventCard;
+    // Render instantly from the already-loaded community card. The previous
+    // per-card broadcast-art lookup did a network slug search on scroll-in,
+    // producing a blank -> placeholder -> image-seconds-later cascade. Not
+    // worth the jank; broadcast art can return later via a batched pre-resolve.
+    final displayCard = eventCard;
 
     return GestureDetector(
       onTap: onTap,

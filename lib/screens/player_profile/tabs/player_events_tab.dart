@@ -4,7 +4,6 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
-import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -989,14 +988,10 @@ class _PlayerEventCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Prefer the real ChessEver broadcast card (image + metadata) when this
-    // event exists in our Supabase; otherwise the community card.
-    final slug = broadcastSlugFromSite(playerEventData.site);
-    final richCard =
-        (slug != null && slug.isNotEmpty)
-            ? ref.watch(broadcastEventCardBySlugProvider(slug)).valueOrNull
-            : null;
-    final displayCard = richCard ?? eventCard;
+    // Render instantly from the already-loaded community card. The previous
+    // per-card broadcast-art lookup did a network slug search on scroll-in,
+    // producing a blank -> placeholder -> image-seconds-later cascade.
+    final displayCard = eventCard;
 
     return GestureDetector(
           onTap: () => _navigateToTournament(context, ref),
