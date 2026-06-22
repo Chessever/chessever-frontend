@@ -3120,11 +3120,29 @@ class PlayerProfileGamesNotifier
     final whiteEloRaw = (row['whiteElo'] as num?)?.toInt() ?? 0;
     final blackEloRaw = (row['blackElo'] as num?)?.toInt() ?? 0;
 
+    // TWIC broadcast games carry a per-pairing label in `event`
+    // ("Round 6: A - B") and the real parent event only in the `site` Lichess
+    // broadcast slug. Recover the canonical event name (same logic the other
+    // TWIC builders + library use) so cards show the event, not the round, and
+    // games group under one event instead of one-per-pairing.
+    final canonicalEvent = preferredTwicEventTitle(
+      pgnEvent: event,
+      tourSlug: row['tourSlug']?.toString(),
+      tourId: row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
+      site: rowSite,
+      fallback: event.isNotEmpty ? event : 'Gamebase',
+    );
+    final canonicalTourId =
+        (row['tour_id']?.toString() ??
+                row['tournament_id']?.toString() ??
+                canonicalEvent)
+            .trim();
+
     final pgn = buildHeaderOnlyPgn(
       whiteName: whiteName,
       blackName: blackName,
       result: result,
-      event: event.isNotEmpty ? event : 'Gamebase',
+      event: canonicalEvent,
       site: rowSite,
       date: date,
       eco: eco,
@@ -3188,8 +3206,8 @@ class PlayerProfileGamesNotifier
           (eco != null && eco.trim().isNotEmpty)
               ? eco.trim()
               : (timeControl ?? ''),
-      tourId: event.isNotEmpty ? event : 'Gamebase',
-      tourSlug: event.isNotEmpty ? event : 'Gamebase',
+      tourId: canonicalTourId.isNotEmpty ? canonicalTourId : canonicalEvent,
+      tourSlug: canonicalEvent,
       lastMove: rowLastMove,
       fen: rowFen,
       pgn: pgn,
