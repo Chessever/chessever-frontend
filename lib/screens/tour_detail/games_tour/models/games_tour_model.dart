@@ -1,5 +1,5 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:dartchess/dartchess.dart';
 

@@ -2,10 +2,13 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+export 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 
 /// Adapts a gamebase-only event (no broadcast page in our Supabase) into the
 /// Supabase-shaped models the real [TournamentDetailScreen] consumes, so a
@@ -15,16 +18,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Everything is keyed by a sentinel `gamebase::<eventName>` id. Every consumer
 /// branch is guarded by [isVirtualGamebaseId], so real tournaments take their
 /// exact existing code path (zero behaviour change).
-
-const String _virtualPrefix = 'gamebase::';
-
-String virtualBroadcastId(String eventName) => '$_virtualPrefix${eventName.trim()}';
-
-bool isVirtualGamebaseId(String? id) =>
-    id != null && id.startsWith(_virtualPrefix);
-
-String? eventNameFromVirtualId(String? id) =>
-    isVirtualGamebaseId(id) ? id!.substring(_virtualPrefix.length) : null;
 
 /// Synthesized event view for an exact gamebase event [name]. Cached one week
 /// server-side; the client just renders. Shared by the virtual tour/games
