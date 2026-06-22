@@ -133,7 +133,9 @@ LiveGameUpdate? _watchLiveUpdate(
   LiveGameWatchParams params,
   _LiveGameMergeMode mode,
 ) {
-  if (!params.streamEnabled || !ref.watch(shouldStreamProvider)) {
+  if (!params.streamEnabled ||
+      !ref.watch(shouldStreamProvider) ||
+      ref.watch(liveGameCardsPausedProvider)) {
     return null;
   }
 

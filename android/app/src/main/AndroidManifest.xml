@@ -155,6 +155,9 @@
            android:name="flutterEmbedding"
            android:value="2" />
       <meta-data
+          android:name="io.flutter.embedding.android.EnableHcpp"
+          android:value="true" />
+      <meta-data
           android:name="com.onesignal.NotificationServiceExtension"
           android:value="com.chessEver.app.NotificationServiceExtension" />
      <!-- Custom small icon for OneSignal push notifications (status bar) -->

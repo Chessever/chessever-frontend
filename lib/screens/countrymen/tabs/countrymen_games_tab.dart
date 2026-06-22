@@ -635,8 +635,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     // Group games by date
     final gamesByDate = _groupGamesByDate(games);
 
-    // Build list items: date headers + games
-    final items = <Widget>[];
+    // Build cheap row descriptors only. The actual cards are created lazily
+    // for visible rows by SliverChildBuilderDelegate.
+    final listEntries = <_CountrymenGamesListEntry>[];
     bool isFirstGameCard = true;
     final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
     final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
@@ -653,15 +654,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       final isCollapsed = _collapsedDates.contains(dateKey);
 
       // Date header
-      items.add(
-        Padding(
-          padding: EdgeInsets.only(bottom: 12.h),
-          child: _DateHeader(
-            dateLabel: _formatDateHeader(dateKey),
-            gameCount: dateGames.length,
-            isExpanded: !isCollapsed,
-            onToggle: () => _toggleDateSection(dateKey),
-          ),
+      listEntries.add(
+        _CountrymenDateHeaderEntry(
+          dateKey: dateKey,
+          gameCount: dateGames.length,
+          isExpanded: !isCollapsed,
         ),
       );
 
@@ -682,27 +679,12 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               rowGames.add(dateGames[i + j]);
             }
 
-            items.add(
-              Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                child: Row(
-                  children: [
-                    for (int j = 0; j < gridColumns; j++) ...[
-                      if (j > 0) SizedBox(width: 12.sp),
-                      Expanded(
-                        child:
-                            j < rowGames.length
-                                ? _buildGridGame(
-                                  rowGames[j],
-                                  gameIdToIndex[rowGames[j].gameId] ?? 0,
-                                  games,
-                                  items.length,
-                                )
-                                : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ],
-                ),
+            listEntries.add(
+              _CountrymenGridRowEntry(
+                games: rowGames,
+                gridColumns: gridColumns,
+                isLast: isLast,
+                listIndex: listEntries.length,
               ),
             );
           }
@@ -719,45 +701,23 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
             if (isChessBoardVisible) {
               // Board mode: use GameCardWrapperWidget with chessboard visible
-              items.add(
-                _CountrymenLiveBoardGameCard(
-                  key: ValueKey('cmen_game_${game.gameId}_${viewMode.index}'),
+              listEntries.add(
+                _CountrymenBoardGameEntry(
                   game: game,
-                  gamesData: gamesData,
                   gameIndex: gameIndex,
-                  listIndex: items.length,
-                  allGames: games,
-                  isChessBoardVisible: true,
+                  listIndex: listEntries.length,
                   isLast: isLast,
-                  streamEnabled: true,
                 ),
               );
             } else {
               // Card mode: use LiveGamebaseSearchGameCard for live position updates
-              items.add(
-                Padding(
-                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: LiveGamebaseSearchGameCard(
-                    game: game,
-                    allGames: games,
-                    gameIndex: gameIndex,
-                    animationIndex: items.length,
-                    showRound: true,
-                    showSwipeHint: showHint,
-                    showGamebaseButton: false,
-                    streamEnabled: true,
-                    onAdd: () => _showAddToFolderSheet(context, game),
-                    onLiveAdd:
-                        (liveGame) => _showAddToFolderSheet(context, liveGame),
-                    onLiveTap: (liveGame, updatedGames, liveIndex) async {
-                      final hasPremium = await requirePremiumGuard(
-                        context,
-                        ref,
-                      );
-                      if (!hasPremium) return;
-                      _navigateToChessBoard(liveGame, updatedGames, liveIndex);
-                    },
-                  ),
+              listEntries.add(
+                _CountrymenCardGameEntry(
+                  game: game,
+                  gameIndex: gameIndex,
+                  animationIndex: listEntries.length,
+                  showHint: showHint,
+                  isLast: isLast,
                 ),
               );
             }
@@ -768,38 +728,12 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     // Loading indicator for auto-scroll loading
     if (state.isLoading && state.games.isNotEmpty) {
-      items.add(
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 24.h),
-          child: Center(
-            child: SizedBox(
-              width: 24.w,
-              height: 24.h,
-              child: CircularProgressIndicator(
-                color: context.colors.textPrimary,
-                strokeWidth: 2,
-              ),
-            ),
-          ),
-        ),
-      );
+      listEntries.add(const _CountrymenFooterEntry.loading());
     } else if (state.hasMore && state.games.isNotEmpty) {
       // Spacer to ensure scroll triggers auto-load
-      items.add(SizedBox(height: 60.h));
+      listEntries.add(const _CountrymenFooterEntry.spacer());
     } else if (!state.hasMore && state.games.isNotEmpty) {
-      items.add(
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 16.h),
-          child: Center(
-            child: Text(
-              'No more games',
-              style: AppTypography.textXsRegular.copyWith(
-                color: const Color(0xFF52525B),
-              ),
-            ),
-          ),
-        ),
-      );
+      listEntries.add(const _CountrymenFooterEntry.end());
     }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -813,12 +747,134 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       ),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) => items[index],
-          childCount: items.length,
+          (context, index) => _buildListEntry(
+            listEntries[index],
+            games: games,
+            gamesData: gamesData,
+            gameIdToIndex: gameIdToIndex,
+            viewMode: viewMode,
+          ),
+          childCount: listEntries.length,
           addAutomaticKeepAlives: false,
         ),
       ),
     );
+  }
+
+  Widget _buildListEntry(
+    _CountrymenGamesListEntry entry, {
+    required List<GamesTourModel> games,
+    required GamesScreenModel gamesData,
+    required Map<String, int> gameIdToIndex,
+    required GamesListViewMode viewMode,
+  }) {
+    if (entry is _CountrymenDateHeaderEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: 12.h),
+        child: _DateHeader(
+          dateLabel: _formatDateHeader(entry.dateKey),
+          gameCount: entry.gameCount,
+          isExpanded: entry.isExpanded,
+          onToggle: () => _toggleDateSection(entry.dateKey),
+        ),
+      );
+    }
+
+    if (entry is _CountrymenGridRowEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: entry.isLast ? 16.h : 12.h),
+        child: Row(
+          children: [
+            for (int j = 0; j < entry.gridColumns; j++) ...[
+              if (j > 0) SizedBox(width: 12.sp),
+              Expanded(
+                child:
+                    j < entry.games.length
+                        ? _buildGridGame(
+                          entry.games[j],
+                          gameIdToIndex[entry.games[j].gameId] ?? 0,
+                          games,
+                          entry.listIndex,
+                        )
+                        : const SizedBox.shrink(),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    if (entry is _CountrymenBoardGameEntry) {
+      return _CountrymenLiveBoardGameCard(
+        key: ValueKey('cmen_game_${entry.game.gameId}_${viewMode.index}'),
+        game: entry.game,
+        gamesData: gamesData,
+        gameIndex: entry.gameIndex,
+        listIndex: entry.listIndex,
+        allGames: games,
+        isChessBoardVisible: true,
+        isLast: entry.isLast,
+        streamEnabled: true,
+      );
+    }
+
+    if (entry is _CountrymenCardGameEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: entry.isLast ? 16.h : 12.h),
+        child: LiveGamebaseSearchGameCard(
+          game: entry.game,
+          allGames: games,
+          gameIndex: entry.gameIndex,
+          animationIndex: entry.animationIndex,
+          showRound: true,
+          showSwipeHint: entry.showHint,
+          showGamebaseButton: false,
+          streamEnabled: true,
+          onAdd: () => _showAddToFolderSheet(context, entry.game),
+          onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
+          onLiveTap: (liveGame, updatedGames, liveIndex) async {
+            final hasPremium = await requirePremiumGuard(context, ref);
+            if (!hasPremium) return;
+            _navigateToChessBoard(liveGame, updatedGames, liveIndex);
+          },
+        ),
+      );
+    }
+
+    if (entry is _CountrymenFooterEntry) {
+      switch (entry.type) {
+        case _CountrymenFooterType.loading:
+          return Padding(
+            padding: EdgeInsets.symmetric(vertical: 24.h),
+            child: Center(
+              child: SizedBox(
+                width: 24.w,
+                height: 24.h,
+                child: CircularProgressIndicator(
+                  color: context.colors.textPrimary,
+                  strokeWidth: 2,
+                ),
+              ),
+            ),
+          );
+        case _CountrymenFooterType.spacer:
+          return SizedBox(height: 60.h);
+        case _CountrymenFooterType.end:
+          return Padding(
+            padding: EdgeInsets.symmetric(vertical: 16.h),
+            child: Center(
+              child: Text(
+                'No more games',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: const Color(0xFF52525B),
+                ),
+              ),
+            ),
+          );
+      }
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildGridGame(
@@ -1104,6 +1160,80 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       }
     });
   }
+}
+
+abstract class _CountrymenGamesListEntry {
+  const _CountrymenGamesListEntry();
+}
+
+class _CountrymenDateHeaderEntry extends _CountrymenGamesListEntry {
+  const _CountrymenDateHeaderEntry({
+    required this.dateKey,
+    required this.gameCount,
+    required this.isExpanded,
+  });
+
+  final String dateKey;
+  final int gameCount;
+  final bool isExpanded;
+}
+
+class _CountrymenGridRowEntry extends _CountrymenGamesListEntry {
+  const _CountrymenGridRowEntry({
+    required this.games,
+    required this.gridColumns,
+    required this.isLast,
+    required this.listIndex,
+  });
+
+  final List<GamesTourModel> games;
+  final int gridColumns;
+  final bool isLast;
+  final int listIndex;
+}
+
+class _CountrymenBoardGameEntry extends _CountrymenGamesListEntry {
+  const _CountrymenBoardGameEntry({
+    required this.game,
+    required this.gameIndex,
+    required this.listIndex,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final int gameIndex;
+  final int listIndex;
+  final bool isLast;
+}
+
+class _CountrymenCardGameEntry extends _CountrymenGamesListEntry {
+  const _CountrymenCardGameEntry({
+    required this.game,
+    required this.gameIndex,
+    required this.animationIndex,
+    required this.showHint,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final int gameIndex;
+  final int animationIndex;
+  final bool showHint;
+  final bool isLast;
+}
+
+enum _CountrymenFooterType { loading, spacer, end }
+
+class _CountrymenFooterEntry extends _CountrymenGamesListEntry {
+  const _CountrymenFooterEntry.loading()
+    : type = _CountrymenFooterType.loading;
+
+  const _CountrymenFooterEntry.spacer()
+    : type = _CountrymenFooterType.spacer;
+
+  const _CountrymenFooterEntry.end() : type = _CountrymenFooterType.end;
+
+  final _CountrymenFooterType type;
 }
 
 /// Date section header - similar to RoundHeader

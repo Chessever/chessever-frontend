@@ -850,8 +850,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     // Group games by date
     final gamesByDate = _groupGamesByDate(games);
 
-    // Build list items: date headers + games
-    final items = <Widget>[];
+    // Build cheap row descriptors only. The actual cards are created lazily
+    // for visible rows by SliverChildBuilderDelegate.
+    final listEntries = <_FavoritesGamesListEntry>[];
     bool isFirstGameCard = true;
     final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
     final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
@@ -874,15 +875,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       final isCollapsed = _collapsedDates.contains(dateKey);
 
       // Date header
-      items.add(
-        Padding(
-          padding: EdgeInsets.only(bottom: 12.h),
-          child: _DateHeader(
-            dateLabel: _formatDateHeader(dateKey),
-            gameCount: dateGames.length,
-            isExpanded: !isCollapsed,
-            onToggle: () => _toggleDateSection(dateKey),
-          ),
+      listEntries.add(
+        _FavoritesDateHeaderEntry(
+          dateKey: dateKey,
+          gameCount: dateGames.length,
+          isExpanded: !isCollapsed,
         ),
       );
 
@@ -903,27 +900,12 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               rowGames.add(dateGames[i + j]);
             }
 
-            items.add(
-              Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                child: Row(
-                  children: [
-                    for (int j = 0; j < gridColumns; j++) ...[
-                      if (j > 0) SizedBox(width: 12.sp),
-                      Expanded(
-                        child:
-                            j < rowGames.length
-                                ? _buildGridGame(
-                                  rowGames[j],
-                                  gameIdToIndex[rowGames[j].gameId] ?? 0,
-                                  games,
-                                  items.length,
-                                )
-                                : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ],
-                ),
+            listEntries.add(
+              _FavoritesGridRowEntry(
+                games: rowGames,
+                gridColumns: gridColumns,
+                isLast: isLast,
+                listIndex: listEntries.length,
               ),
             );
           }
@@ -939,41 +921,23 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
             if (isChessBoardVisible) {
               // Board mode: use GameCardWrapperWidget with chessboard visible
-              items.add(
-                _FavoritesLiveBoardGameCard(
-                  key: ValueKey('fav_game_${game.gameId}_${viewMode.index}'),
+              listEntries.add(
+                _FavoritesBoardGameEntry(
                   game: game,
-                  gamesData: gamesData,
                   gameIndex: gameIndex,
-                  listIndex: items.length,
-                  allGames: games,
-                  isChessBoardVisible: true,
+                  listIndex: listEntries.length,
                   isLast: isLast,
-                  streamEnabled: true,
-                  onNavigateToChessBoard: _navigateToChessBoard,
                 ),
               );
             } else {
               // Card mode: use LiveGamebaseSearchGameCard for live position updates
-              items.add(
-                Padding(
-                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: LiveGamebaseSearchGameCard(
-                    game: game,
-                    allGames: games,
-                    gameIndex: gameIndex,
-                    animationIndex: items.length,
-                    showRound: true,
-                    showSwipeHint: showHint,
-                    showGamebaseButton: false,
-                    streamEnabled: true,
-                    onAdd: () => _showAddToFolderSheet(context, game),
-                    onLiveAdd:
-                        (liveGame) => _showAddToFolderSheet(context, liveGame),
-                    onLiveTap: (liveGame, updatedGames, liveIndex) {
-                      _navigateToChessBoard(liveGame, updatedGames, liveIndex);
-                    },
-                  ),
+              listEntries.add(
+                _FavoritesCardGameEntry(
+                  game: game,
+                  gameIndex: gameIndex,
+                  animationIndex: listEntries.length,
+                  showHint: showHint,
+                  isLast: isLast,
                 ),
               );
             }
@@ -984,50 +948,145 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
     // Loading indicator for auto-scroll loading
     if (state.isLoading && state.games.isNotEmpty) {
-      items.add(
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 24.h),
-          child: Center(
-            child: SizedBox(
-              width: 24.w,
-              height: 24.h,
-              child: CircularProgressIndicator(
-                color: context.colors.textPrimary,
-                strokeWidth: 2,
-              ),
-            ),
-          ),
-        ),
-      );
+      listEntries.add(const _FavoritesFooterEntry.loading());
     } else if (state.hasMore && state.games.isNotEmpty) {
       // Spacer to ensure scroll triggers auto-load
-      items.add(SizedBox(height: 60.h));
+      listEntries.add(const _FavoritesFooterEntry.spacer());
     } else if (!state.hasMore && state.games.isNotEmpty) {
-      items.add(
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 16.h),
-          child: Center(
-            child: Text(
-              'No more games',
-              style: AppTypography.textXsRegular.copyWith(
-                color: const Color(0xFF52525B),
-              ),
-            ),
-          ),
-        ),
-      );
+      listEntries.add(const _FavoritesFooterEntry.end());
     }
 
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) => items[index],
-          childCount: items.length,
+          (context, index) => _buildListEntry(
+            listEntries[index],
+            games: games,
+            gamesData: gamesData,
+            gameIdToIndex: gameIdToIndex,
+            viewMode: viewMode,
+          ),
+          childCount: listEntries.length,
           addAutomaticKeepAlives: false,
         ),
       ),
     );
+  }
+
+  Widget _buildListEntry(
+    _FavoritesGamesListEntry entry, {
+    required List<GamesTourModel> games,
+    required GamesScreenModel gamesData,
+    required Map<String, int> gameIdToIndex,
+    required GamesListViewMode viewMode,
+  }) {
+    if (entry is _FavoritesDateHeaderEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: 12.h),
+        child: _DateHeader(
+          dateLabel: _formatDateHeader(entry.dateKey),
+          gameCount: entry.gameCount,
+          isExpanded: entry.isExpanded,
+          onToggle: () => _toggleDateSection(entry.dateKey),
+        ),
+      );
+    }
+
+    if (entry is _FavoritesGridRowEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: entry.isLast ? 16.h : 12.h),
+        child: Row(
+          children: [
+            for (int j = 0; j < entry.gridColumns; j++) ...[
+              if (j > 0) SizedBox(width: 12.sp),
+              Expanded(
+                child:
+                    j < entry.games.length
+                        ? _buildGridGame(
+                          entry.games[j],
+                          gameIdToIndex[entry.games[j].gameId] ?? 0,
+                          games,
+                          entry.listIndex,
+                        )
+                        : const SizedBox.shrink(),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    if (entry is _FavoritesBoardGameEntry) {
+      return _FavoritesLiveBoardGameCard(
+        key: ValueKey('fav_game_${entry.game.gameId}_${viewMode.index}'),
+        game: entry.game,
+        gamesData: gamesData,
+        gameIndex: entry.gameIndex,
+        listIndex: entry.listIndex,
+        allGames: games,
+        isChessBoardVisible: true,
+        isLast: entry.isLast,
+        streamEnabled: true,
+        onNavigateToChessBoard: _navigateToChessBoard,
+      );
+    }
+
+    if (entry is _FavoritesCardGameEntry) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: entry.isLast ? 16.h : 12.h),
+        child: LiveGamebaseSearchGameCard(
+          game: entry.game,
+          allGames: games,
+          gameIndex: entry.gameIndex,
+          animationIndex: entry.animationIndex,
+          showRound: true,
+          showSwipeHint: entry.showHint,
+          showGamebaseButton: false,
+          streamEnabled: true,
+          onAdd: () => _showAddToFolderSheet(context, entry.game),
+          onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
+          onLiveTap: (liveGame, updatedGames, liveIndex) {
+            _navigateToChessBoard(liveGame, updatedGames, liveIndex);
+          },
+        ),
+      );
+    }
+
+    if (entry is _FavoritesFooterEntry) {
+      switch (entry.type) {
+        case _FavoritesFooterType.loading:
+          return Padding(
+            padding: EdgeInsets.symmetric(vertical: 24.h),
+            child: Center(
+              child: SizedBox(
+                width: 24.w,
+                height: 24.h,
+                child: CircularProgressIndicator(
+                  color: context.colors.textPrimary,
+                  strokeWidth: 2,
+                ),
+              ),
+            ),
+          );
+        case _FavoritesFooterType.spacer:
+          return SizedBox(height: 60.h);
+        case _FavoritesFooterType.end:
+          return Padding(
+            padding: EdgeInsets.symmetric(vertical: 16.h),
+            child: Center(
+              child: Text(
+                'No more games',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: const Color(0xFF52525B),
+                ),
+              ),
+            ),
+          );
+      }
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildGridGame(
@@ -1303,6 +1362,78 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       }
     });
   }
+}
+
+abstract class _FavoritesGamesListEntry {
+  const _FavoritesGamesListEntry();
+}
+
+class _FavoritesDateHeaderEntry extends _FavoritesGamesListEntry {
+  const _FavoritesDateHeaderEntry({
+    required this.dateKey,
+    required this.gameCount,
+    required this.isExpanded,
+  });
+
+  final String dateKey;
+  final int gameCount;
+  final bool isExpanded;
+}
+
+class _FavoritesGridRowEntry extends _FavoritesGamesListEntry {
+  const _FavoritesGridRowEntry({
+    required this.games,
+    required this.gridColumns,
+    required this.isLast,
+    required this.listIndex,
+  });
+
+  final List<GamesTourModel> games;
+  final int gridColumns;
+  final bool isLast;
+  final int listIndex;
+}
+
+class _FavoritesBoardGameEntry extends _FavoritesGamesListEntry {
+  const _FavoritesBoardGameEntry({
+    required this.game,
+    required this.gameIndex,
+    required this.listIndex,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final int gameIndex;
+  final int listIndex;
+  final bool isLast;
+}
+
+class _FavoritesCardGameEntry extends _FavoritesGamesListEntry {
+  const _FavoritesCardGameEntry({
+    required this.game,
+    required this.gameIndex,
+    required this.animationIndex,
+    required this.showHint,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final int gameIndex;
+  final int animationIndex;
+  final bool showHint;
+  final bool isLast;
+}
+
+enum _FavoritesFooterType { loading, spacer, end }
+
+class _FavoritesFooterEntry extends _FavoritesGamesListEntry {
+  const _FavoritesFooterEntry.loading() : type = _FavoritesFooterType.loading;
+
+  const _FavoritesFooterEntry.spacer() : type = _FavoritesFooterType.spacer;
+
+  const _FavoritesFooterEntry.end() : type = _FavoritesFooterType.end;
+
+  final _FavoritesFooterType type;
 }
 
 /// Date section header - similar to RoundHeader

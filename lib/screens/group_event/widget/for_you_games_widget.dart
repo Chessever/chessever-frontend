@@ -126,6 +126,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     if (_routeSubscribed) {
       pageRouteObserver.unsubscribe(this);
     }
+    ForegroundTaskScheduler.cancel('for_you_games_route_return_$hashCode');
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
@@ -166,7 +167,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     _setAppResumed(true);
     ForegroundTaskScheduler.schedule(
       key: 'for_you_games_resume_$hashCode',
-      task: _refreshRealtimeGamesNow,
+      task: () => _refreshRealtimeGamesNow(forceFeedRefresh: true),
     );
   }
 
@@ -183,7 +184,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     if (!isActive) {
       _stopTransientWork();
     } else if (refreshNow) {
-      _refreshRealtimeGamesNow();
+      ForegroundTaskScheduler.schedule(
+        key: 'for_you_games_route_return_$hashCode',
+        task: () => _refreshRealtimeGamesNow(resetStreams: false),
+      );
     }
   }
 
@@ -198,25 +202,32 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   void _stopTransientWork() {
+    ForegroundTaskScheduler.cancel('for_you_games_route_return_$hashCode');
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
   }
 
-  void _refreshRealtimeGamesNow() {
+  void _refreshRealtimeGamesNow({
+    bool forceFeedRefresh = false,
+    bool resetStreams = true,
+  }) {
     if (!mounted || _isDisposing) return;
     if (!_routeIsCurrent || !_appIsResumed) return;
     final route = ModalRoute.of(context);
     if (route?.isCurrent != true) return;
     final selected = ref.read(selectedGroupCategoryProvider);
     if (selected == GroupEventCategory.forYou) {
-      ref.invalidate(gameUpdatesStreamProvider);
-      ref.invalidate(liveGameUpdateStreamProvider);
-      ref.invalidate(gameUpdatesBatchStreamProvider);
+      if (resetStreams) {
+        ref.invalidate(gameUpdatesStreamProvider);
+        ref.invalidate(liveGameUpdateStreamProvider);
+        ref.invalidate(gameUpdatesBatchStreamProvider);
+      }
+      final notifier = ref.read(forYouEventsProvider.notifier);
       unawaited(
-        ref
-            .read(forYouEventsProvider.notifier)
-            .refreshIfStale(maxAge: Duration.zero),
+        forceFeedRefresh
+            ? notifier.refreshIfStale(maxAge: Duration.zero)
+            : notifier.refreshIfStale(),
       );
     }
   }

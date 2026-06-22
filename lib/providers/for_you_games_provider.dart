@@ -792,10 +792,6 @@ final eventGamesProvider = StateNotifierProvider.autoDispose.family<
   AsyncValue<ForYouEventGamesSnapshot>,
   String
 >((ref, eventId) {
-  final link = ref.keepAlive();
-  final timer = Timer(const Duration(minutes: 5), link.close);
-  ref.onDispose(timer.cancel);
-
   final controller = _ForYouEventGamesController(ref: ref, eventId: eventId);
 
   ref.onCancel(controller.handleCancel);
@@ -915,6 +911,7 @@ class _ForYouEventGamesController
         eventId: eventId,
         loadGames: _safeGetGames,
       );
+      if (!mounted) return;
       // On cold start (no previous snapshot), only surface the cache result
       // when it actually contains renderable games. An empty cache result
       // would prematurely kill the shimmer while the network refresh below
@@ -934,12 +931,14 @@ class _ForYouEventGamesController
       debugPrint('[ForYou] Cache-first snapshot failed for $eventId: $error');
     }
 
+    if (!mounted) return;
     try {
       final refreshedSnapshot = await _computeForYouEventGamesSnapshot(
         ref: ref,
         eventId: eventId,
         loadGames: _safeRefreshGames,
       );
+      if (!mounted) return;
       final currentSnapshot = state.valueOrNull;
       if (currentSnapshot == null ||
           !areEquivalentForYouSnapshots(currentSnapshot, refreshedSnapshot)) {
@@ -952,6 +951,7 @@ class _ForYouEventGamesController
       debugPrint('[ForYou] Refreshed snapshot failed for $eventId: $error');
     }
 
+    if (!mounted) return;
     if (state.valueOrNull == null) {
       state = AsyncValue.error(loadError, loadStack);
     } else if (previousSnapshot != null && mounted) {
