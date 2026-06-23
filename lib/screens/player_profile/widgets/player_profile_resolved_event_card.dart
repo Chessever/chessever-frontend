@@ -12,6 +12,7 @@ class PlayerProfileResolvedEventCard extends ConsumerWidget {
     required this.heroTagSuffix,
     required this.onTap,
     required this.statsRow,
+    this.trailingWidget,
     this.crossAxisAlignment = CrossAxisAlignment.center,
   });
 
@@ -20,6 +21,7 @@ class PlayerProfileResolvedEventCard extends ConsumerWidget {
   final String heroTagSuffix;
   final ValueChanged<GroupEventCardModel> onTap;
   final Widget statsRow;
+  final Widget? trailingWidget;
   final CrossAxisAlignment crossAxisAlignment;
 
   @override
@@ -38,6 +40,7 @@ class PlayerProfileResolvedEventCard extends ConsumerWidget {
             fallbackCard: fallbackCard,
             resolvedCard: resolvedCard,
             heroTagSuffix: heroTagSuffix,
+            trailingWidget: trailingWidget,
           ),
           statsRow,
         ],
@@ -51,11 +54,13 @@ class _ResolvedEventCardFade extends StatelessWidget {
     required this.fallbackCard,
     required this.resolvedCard,
     required this.heroTagSuffix,
+    required this.trailingWidget,
   });
 
   final GroupEventCardModel fallbackCard;
   final GroupEventCardModel? resolvedCard;
   final String heroTagSuffix;
+  final Widget? trailingWidget;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +74,7 @@ class _ResolvedEventCardFade extends StatelessWidget {
           tourEventCardModel: fallbackCard,
           heroTagSuffix: heroTagSuffix,
           forceCompactLayout: true,
+          trailingWidget: trailingWidget,
         ),
         if (resolved != null)
           Positioned.fill(
@@ -85,6 +91,7 @@ class _ResolvedEventCardFade extends StatelessWidget {
                   tourEventCardModel: resolved,
                   heroTagSuffix: heroTagSuffix,
                   forceCompactLayout: true,
+                  trailingWidget: trailingWidget,
                 ),
               ),
             ),

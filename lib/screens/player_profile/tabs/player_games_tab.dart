@@ -88,9 +88,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   bool _liveCardsPausedForScroll = false;
   late final StateController<Set<String>> _liveGameCardsPauseReasons;
   final Set<String> _selectedGameIds = <String>{};
+  final Set<String> _collapsedEventKeys = <String>{};
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   String get _liveCardsPauseReason => 'player_games_scroll_$hashCode';
+
+  void _toggleEventCollapsed(String eventKey) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (!_collapsedEventKeys.add(eventKey)) {
+        _collapsedEventKeys.remove(eventKey);
+      }
+    });
+  }
   // Keep rendering while backgrounded so the OS app-switcher snapshot is not
   // blank. Route coverage still removes the tab from active provider work.
   bool get _isActiveOnScreen => _routeIsCurrent;
@@ -1225,9 +1235,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           playerScore: playerScore,
           site: eventData?.site ?? siteFromPgn(eventGames.first.pgn),
           isFirstEvent: isFirstEvent,
+          isCollapsed: _collapsedEventKeys.contains(tourId),
         ),
       );
       isFirstEvent = false;
+
+      if (_collapsedEventKeys.contains(tourId)) {
+        continue;
+      }
 
       // Games under this event
       if (isGridMode) {
@@ -1331,6 +1346,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           site: entry.site,
           gameCount: entry.gameCount,
           playerScore: entry.playerScore,
+          isCollapsed: entry.isCollapsed,
+          onToggleCollapsed: () => _toggleEventCollapsed(entry.tourId),
         ),
       );
     }
@@ -1863,6 +1880,7 @@ class _PlayerEventHeaderEntry extends _PlayerGamesListEntry {
     required this.playerScore,
     required this.site,
     required this.isFirstEvent,
+    required this.isCollapsed,
   });
 
   final PlayerEventData? eventData;
@@ -1872,6 +1890,7 @@ class _PlayerEventHeaderEntry extends _PlayerGamesListEntry {
   final double playerScore;
   final String? site;
   final bool isFirstEvent;
+  final bool isCollapsed;
 }
 
 class _PlayerGridRowEntry extends _PlayerGamesListEntry {
@@ -1916,6 +1935,38 @@ class _PlayerCardGameEntry extends _PlayerGamesListEntry {
 
 class _PlayerPaginationFooterEntry extends _PlayerGamesListEntry {
   const _PlayerPaginationFooterEntry();
+}
+
+class _PlayerEventCollapseToggle extends StatelessWidget {
+  const _PlayerEventCollapseToggle({
+    required this.isCollapsed,
+    required this.onTap,
+  });
+
+  final bool isCollapsed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: isCollapsed ? 'Expand event games' : 'Collapse event games',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8.br),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(4.w, 4.h, 0, 4.h),
+          child: Icon(
+            isCollapsed
+                ? Icons.keyboard_arrow_down_rounded
+                : Icons.keyboard_arrow_up_rounded,
+            size: 18.sp,
+            color: context.colors.textPrimary.withValues(alpha: 0.65),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SelectionActionButton extends StatelessWidget {
@@ -1998,6 +2049,8 @@ class _EventSection extends ConsumerWidget {
     this.site,
     required this.gameCount,
     required this.playerScore,
+    required this.isCollapsed,
+    required this.onToggleCollapsed,
   });
 
   final PlayerEventData? eventData;
@@ -2007,6 +2060,8 @@ class _EventSection extends ConsumerWidget {
   final String? site;
   final int gameCount;
   final double playerScore;
+  final bool isCollapsed;
+  final VoidCallback onToggleCollapsed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2026,6 +2081,10 @@ class _EventSection extends ConsumerWidget {
       heroTagSuffix: '_player_games_$tourId',
       crossAxisAlignment: CrossAxisAlignment.stretch,
       onTap: (displayCard) => _navigateToEvent(context, ref, displayCard),
+      trailingWidget: _PlayerEventCollapseToggle(
+        isCollapsed: isCollapsed,
+        onTap: onToggleCollapsed,
+      ),
       statsRow: _buildStatsRow(context),
     );
   }
