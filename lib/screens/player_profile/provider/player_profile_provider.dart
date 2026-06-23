@@ -633,14 +633,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
         final opening = row['opening']?.toString();
         final variation = row['variation']?.toString();
         final event = (row['event']?.toString() ?? 'Gamebase').trim();
-        final canonicalEvent = preferredTwicEventTitle(
-          pgnEvent: event,
-          tourSlug: row['tourSlug']?.toString(),
-          tourId:
-              row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
-          site: row['site']?.toString(),
-          fallback: event.isNotEmpty ? event : 'Gamebase',
-        );
+        final canonicalEvent = _canonicalTwicEventFromGamebaseRow(row, event);
 
         final whiteName = (row['white']?.toString() ?? 'White').trim();
         final blackName = (row['black']?.toString() ?? 'Black').trim();
@@ -730,6 +723,32 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
   });
 
   return games;
+}
+
+String? _trimmedTwicRowString(Map<String, dynamic> row, String key) {
+  final value = row[key]?.toString().trim();
+  return (value == null || value.isEmpty || value == '?') ? null : value;
+}
+
+String _canonicalTwicEventFromGamebaseRow(
+  Map<String, dynamic> row,
+  String rawEvent,
+) {
+  final explicit = _trimmedTwicRowString(row, 'canonicalEvent');
+  if (explicit != null && !isTwicRoundDisplayTitle(explicit)) {
+    return explicit;
+  }
+
+  return preferredTwicEventTitle(
+    pgnEvent: rawEvent,
+    tourSlug: _trimmedTwicRowString(row, 'tourSlug'),
+    tourId:
+        _trimmedTwicRowString(row, 'tour_id') ??
+        _trimmedTwicRowString(row, 'tournament_id') ??
+        _trimmedTwicRowString(row, 'canonicalKey'),
+    site: _trimmedTwicRowString(row, 'site'),
+    fallback: rawEvent.isNotEmpty ? rawEvent : 'Gamebase',
+  );
 }
 
 Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
@@ -833,14 +852,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
 
         final event = (row['event']?.toString() ?? 'Gamebase').trim();
         final site = row['site']?.toString();
-        final canonicalEvent = preferredTwicEventTitle(
-          pgnEvent: event,
-          tourSlug: row['tourSlug']?.toString(),
-          tourId:
-              row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
-          site: site,
-          fallback: event.isNotEmpty ? event : 'Gamebase',
-        );
+        final canonicalEvent = _canonicalTwicEventFromGamebaseRow(row, event);
         final eco = row['eco']?.toString();
         final opening = row['opening']?.toString();
         final variation = row['variation']?.toString();
@@ -3309,13 +3321,7 @@ class PlayerProfileGamesNotifier
     // broadcast slug. Recover the canonical event name (same logic the other
     // TWIC builders + library use) so cards show the event, not the round, and
     // games group under one event instead of one-per-pairing.
-    final canonicalEvent = preferredTwicEventTitle(
-      pgnEvent: event,
-      tourSlug: row['tourSlug']?.toString(),
-      tourId: row['tour_id']?.toString() ?? row['tournament_id']?.toString(),
-      site: rowSite,
-      fallback: event.isNotEmpty ? event : 'Gamebase',
-    );
+    final canonicalEvent = _canonicalTwicEventFromGamebaseRow(row, event);
     final canonicalTourId =
         (row['tour_id']?.toString() ??
                 row['tournament_id']?.toString() ??

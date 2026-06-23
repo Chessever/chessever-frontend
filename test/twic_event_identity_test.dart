@@ -106,6 +106,20 @@ void main() {
       );
     });
 
+    test('broadcast site parent wins over phase titles that look useful', () {
+      expect(
+        preferredTwicEventTitle(
+          pgnEvent: 'Carlsen vs. Caruana | Speed Chess | QF',
+          tourSlug: 'Carlsen vs. Caruana | Speed Chess | QF',
+          tourId: 'Carlsen vs. Caruana | Speed Chess | QF',
+          site:
+              'https://lichess.org/broadcast/chesscom-speed-chess-championship--knockout-stage/quarterfinals--3/k7cf6T18/FrdyOwpQ',
+          fallback: 'Gamebase',
+        ),
+        'Chesscom Speed Chess Championship Knockout Stage',
+      );
+    });
+
     test('canonical game title collapses same knockout event games', () {
       final game1 = _twicGame(
         id: 'g1',

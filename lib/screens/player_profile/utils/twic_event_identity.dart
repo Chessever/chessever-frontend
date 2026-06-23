@@ -116,16 +116,15 @@ String preferredTwicEventTitle({
   final pgn = pgnEvent?.trim();
   final slug = tourSlug?.trim();
   final id = tourId?.trim();
+  final fromSite = eventTitleFromBroadcastSite(site);
 
+  if (fromSite != null) return fromSite;
   if (_isUsefulEventTitle(pgn)) return pgn!;
   if (_isUsefulEventTitle(slug)) return slug!;
   if (_isUsefulEventTitle(id)) return id!;
 
-  // PGN Event / tour fields were only round/pairing labels. For TWIC broadcast
-  // games the canonical parent event survives solely in the Lichess `Site` URL.
-  final fromSite = eventTitleFromBroadcastSite(site);
-  if (fromSite != null) return fromSite;
-
+  // PGN Event / tour fields were only round/pairing labels, or no Lichess
+  // broadcast URL was available.
   if (pgn != null && pgn.isNotEmpty && pgn != '?') return pgn;
   if (slug != null && slug.isNotEmpty) return slug;
   if (id != null && id.isNotEmpty) return id;
