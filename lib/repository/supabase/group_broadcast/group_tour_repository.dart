@@ -184,6 +184,38 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  /// Fetch the For You feed with current-window, status, time-control and Elo
+  /// filters resolved in Postgres. This avoids the client fetching broad pages
+  /// from `group_broadcasts_current` and looping until a live/completed match
+  /// appears.
+  Future<List<GroupBroadcast>> getForYouGroupBroadcasts({
+    int limit = 20,
+    int offset = 0,
+    List<String>? timeControlFilters,
+    int? minElo,
+    int? maxElo,
+    Set<String>? statusFilters,
+  }) async {
+    return handleApiCall(() async {
+      final response = await supabase.rpc(
+        'get_for_you_group_broadcasts',
+        params: {
+          'p_limit': limit,
+          'p_offset': offset,
+          'p_time_controls': timeControlFilters ?? const <String>[],
+          'p_min_elo': minElo,
+          'p_max_elo': maxElo,
+          'p_statuses': statusFilters?.toList() ?? const <String>[],
+        },
+      );
+
+      if (response == null) return <GroupBroadcast>[];
+      return (response as List)
+          .map((json) => GroupBroadcast.fromJson(json))
+          .toList();
+    });
+  }
+
   Future<List<GroupBroadcast>> getCurrentGroupBroadcastsByIds(
     List<String> ids,
   ) async {
@@ -503,8 +535,11 @@ class GroupBroadcastRepository extends BaseRepository {
   Future<Map<String, dynamic>?> _getTourRowBySlug(String slug) async {
     // limit(1) over maybeSingle(): a slug can repeat across category tours
     // (Open, U17, ...) that share a parent broadcast.
-    final response =
-        await supabase.from('tours').select().eq('slug', slug).limit(1);
+    final response = await supabase
+        .from('tours')
+        .select()
+        .eq('slug', slug)
+        .limit(1);
     if (response.isEmpty) return null;
     return response.first;
   }

@@ -13,12 +13,9 @@ import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -34,17 +31,17 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
 // Cache ~1.5 viewports for the compact card feed and ~1 viewport for the
 // heavier board feed. The previous fixed 360/180px extents were smaller than a
 // single event section, so sections reloaded from scratch on scroll-back.
-const ScrollCacheExtent _kForYouCompactCacheExtent =
-    ScrollCacheExtent.viewport(1.5);
-const ScrollCacheExtent _kForYouBoardCacheExtent =
-    ScrollCacheExtent.viewport(1.0);
-const Duration _kForYouScrollIdleDelay = Duration(milliseconds: 180);
+const ScrollCacheExtent _kForYouCompactCacheExtent = ScrollCacheExtent.viewport(
+  1.5,
+);
+const ScrollCacheExtent _kForYouBoardCacheExtent = ScrollCacheExtent.viewport(
+  1.0,
+);
 
 ScrollCacheExtent _forYouCacheExtentForMode(GamesListViewMode mode) {
   return mode == GamesListViewMode.gamesCard
@@ -66,10 +63,9 @@ LiveGamesBatchKey _forYouLiveBatchKey({
 /// For You tab widget - displays events with their top 4 games
 ///
 /// KEY DESIGN:
-/// - Events load IMMEDIATELY (same source as Current tab)
-/// - Games load LAZILY per event (with shimmer)
-/// - Always exactly 4 games per event (hardcoded)
-/// - Favorite players get priority in game selection
+/// - Events are selected by the backend feed RPC
+/// - Games come from one batched top-Elo RPC
+/// - Always up to 4 highest-Elo boards per event
 class ForYouGamesWidget extends ConsumerStatefulWidget {
   const ForYouGamesWidget({super.key, required this.scrollController});
 
@@ -81,24 +77,14 @@ class ForYouGamesWidget extends ConsumerStatefulWidget {
 
 class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
-  final Set<String> _animatedEventIds = <String>{};
-  final Set<String> _animatedGameIds = <String>{};
-  Timer? _scrollIdleTimer;
   bool _routeSubscribed = false;
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
-  bool _liveCardsPausedForScroll = false;
   bool _isDisposing = false;
-  late final StateController<Set<String>> _liveGameCardsPauseReasons;
-
-  String get _liveCardsPauseReason => 'for_you_scroll_$hashCode';
 
   @override
   void initState() {
     super.initState();
-    _liveGameCardsPauseReasons = ref.read(
-      liveGameCardsPauseReasonsProvider.notifier,
-    );
     WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
   }
@@ -121,15 +107,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void dispose() {
     _isDisposing = true;
     widget.scrollController.removeListener(_onScroll);
-    _animatedEventIds.clear();
-    _animatedGameIds.clear();
     if (_routeSubscribed) {
       pageRouteObserver.unsubscribe(this);
     }
     ForegroundTaskScheduler.cancel('for_you_games_route_return_$hashCode');
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
-    _scrollIdleTimer?.cancel();
-    _setLiveCardsPausedForScroll(false);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -204,8 +186,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _stopTransientWork() {
     ForegroundTaskScheduler.cancel('for_you_games_route_return_$hashCode');
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
-    _scrollIdleTimer?.cancel();
-    _setLiveCardsPausedForScroll(false);
   }
 
   void _refreshRealtimeGamesNow({
@@ -235,33 +215,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _onScroll() {
     if (!mounted || _isDisposing) return;
     if (!widget.scrollController.hasClients) return;
-    _markLiveCardsScrolling();
     final max = widget.scrollController.position.maxScrollExtent;
     final current = widget.scrollController.position.pixels;
     if (max - current <= 300) {
       ref.read(forYouEventsProvider.notifier).loadMore();
     }
-  }
-
-  void _markLiveCardsScrolling() {
-    _setLiveCardsPausedForScroll(true);
-    _scrollIdleTimer?.cancel();
-    _scrollIdleTimer = Timer(_kForYouScrollIdleDelay, _markLiveCardsIdle);
-  }
-
-  void _markLiveCardsIdle() {
-    if (!mounted || _isDisposing) return;
-    _setLiveCardsPausedForScroll(false);
-  }
-
-  void _setLiveCardsPausedForScroll(bool paused) {
-    if (_liveCardsPausedForScroll == paused) return;
-    _liveCardsPausedForScroll = paused;
-    setLiveGameCardsPausedWithNotifier(
-      _liveGameCardsPauseReasons,
-      reason: _liveCardsPauseReason,
-      paused: paused,
-    );
   }
 
   @override
@@ -309,9 +267,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       debugPrint('[ForYouGamesWidget] Error: ${state.error}');
       final message = state.error?.trim();
       return GenericErrorWidget(
-        message: message != null && message.isNotEmpty
-            ? userFacingError(message)
-            : null,
+        message:
+            message != null && message.isNotEmpty
+                ? userFacingError(message)
+                : null,
         onRetry: () => ref.read(forYouEventsProvider.notifier).refresh(),
       );
     }
@@ -562,8 +521,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           key: ValueKey('event_${event.id}'),
           event: event,
           isFirst: index == 1 + smartOffset,
-          animatedEventIds: _animatedEventIds,
-          animatedGameIds: _animatedGameIds,
         );
       },
     );
@@ -684,8 +641,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                 child: _ForYouTabletEventColumn(
                   key: ValueKey('tablet_col_${event1.id}'),
                   event: event1,
-                  animatedEventIds: _animatedEventIds,
-                  animatedGameIds: _animatedGameIds,
                 ),
               ),
               SizedBox(width: columnSpacing),
@@ -696,8 +651,6 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                         ? _ForYouTabletEventColumn(
                           key: ValueKey('tablet_col_${event2.id}'),
                           event: event2,
-                          animatedEventIds: _animatedEventIds,
-                          animatedGameIds: _animatedGameIds,
                         )
                         : const SizedBox.shrink(),
               ),
@@ -805,22 +758,17 @@ class _ForYouEventSection extends ConsumerWidget {
     super.key,
     required this.event,
     required this.isFirst,
-    required this.animatedEventIds,
-    required this.animatedGameIds,
   });
 
   final GroupEventCardModel event;
   final bool isFirst;
-  final Set<String> animatedEventIds;
-  final Set<String> animatedGameIds;
 
   /// Builds the EventCard with proper constraints for tablet
   /// Tablet uses image-as-background layout which needs bounded height
   Widget _buildEventCard(BuildContext context, WidgetRef ref) {
     final eventCard = EventCard(
       tourEventCardModel: event,
-      showHeartIndicator: true,
-      favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
+      showHeartIndicator: false,
       heroTagSuffix: '_foryou',
       onTap: () {
         ref
@@ -867,11 +815,6 @@ class _ForYouEventSection extends ConsumerWidget {
     WidgetRef ref,
     AsyncValue<ForYouEventGamesSnapshot> snapshotAsync,
   ) {
-    final shouldAnimate = !animatedEventIds.contains(event.id);
-    if (shouldAnimate) {
-      animatedEventIds.add(event.id);
-    }
-
     final section = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -882,18 +825,10 @@ class _ForYouEventSection extends ConsumerWidget {
         ),
 
         // Games for this event (uses same snapshot, no duplicate fetch)
-        _ForYouEventGames(
-          eventId: event.id,
-          snapshotAsync: snapshotAsync,
-          animatedGameIds: animatedGameIds,
-        ),
+        _ForYouEventGames(eventId: event.id, snapshotAsync: snapshotAsync),
       ],
     );
 
-    // Entrance animation removed: fading whole event sections on first paint
-    // forced a saveLayer per section across the cold-open viewport — the main
-    // source of "awful perf the moment For You opens". Sections now appear
-    // instantly; new live games still animate via the motor _AnimatedGameCardSlot.
     return section;
   }
 }
@@ -901,16 +836,9 @@ class _ForYouEventSection extends ConsumerWidget {
 /// Single column in the 2-column tablet grid.
 /// Owns a single shared snapshot for visibility and content.
 class _ForYouTabletEventColumn extends ConsumerWidget {
-  const _ForYouTabletEventColumn({
-    super.key,
-    required this.event,
-    required this.animatedEventIds,
-    required this.animatedGameIds,
-  });
+  const _ForYouTabletEventColumn({super.key, required this.event});
 
   final GroupEventCardModel event;
-  final Set<String> animatedEventIds;
-  final Set<String> animatedGameIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -935,11 +863,6 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
     WidgetRef ref,
     AsyncValue<ForYouEventGamesSnapshot> snapshotAsync,
   ) {
-    final shouldAnimate = !animatedEventIds.contains(event.id);
-    if (shouldAnimate) {
-      animatedEventIds.add(event.id);
-    }
-
     // Aspect ratio for event card in column layout
     // Landscape: wider cards since we have 2 columns
     // Portrait: taller cards for better visual
@@ -954,8 +877,7 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
           aspectRatio: eventCardAspectRatio,
           child: EventCard(
             tourEventCardModel: event,
-            showHeartIndicator: true,
-            favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
+            showHeartIndicator: false,
             heroTagSuffix: '_foryou_tablet_col',
             onTap: () {
               ref
@@ -969,12 +891,10 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
         _ForYouTabletColumnGames(
           eventId: event.id,
           snapshotAsync: snapshotAsync,
-          animatedGameIds: animatedGameIds,
         ),
       ],
     );
 
-    // Entrance animation removed (see phone section) — instant paint over fade.
     return column;
   }
 }
@@ -985,12 +905,10 @@ class _ForYouTabletColumnGames extends StatelessWidget {
   const _ForYouTabletColumnGames({
     required this.eventId,
     required this.snapshotAsync,
-    required this.animatedGameIds,
   });
 
   final String eventId;
   final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
-  final Set<String> animatedGameIds;
 
   @override
   Widget build(BuildContext context) {
@@ -1014,8 +932,6 @@ class _ForYouTabletColumnGames extends StatelessWidget {
           games: gameModels,
         );
 
-        // Build 2-column grid of games (2 per row, max 2 rows = 4 games)
-        // Wrap with animated slots for smooth transitions when games change
         final List<Widget> rows = [];
         for (int i = 0; i < gameModels.length; i += 2) {
           final game1 = gameModels[i];
@@ -1028,34 +944,28 @@ class _ForYouTabletColumnGames extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: _AnimatedGameCardSlot(
-                      key: ValueKey('tablet_slot_$i'),
-                      gameId: game1.gameId,
-                      child: _TabletGameCard(
-                        game: game1,
-                        orderedGames: orderedGames,
-                        index: i,
-                        eventId: eventId,
-                        pinnedIds: snapshot.pinnedIds,
-                        liveBatchKey: liveBatchKey,
-                      ),
+                    child: _TabletGameCard(
+                      key: ValueKey('tablet_game_${game1.gameId}'),
+                      game: game1,
+                      orderedGames: orderedGames,
+                      index: i,
+                      eventId: eventId,
+                      pinnedIds: snapshot.pinnedIds,
+                      liveBatchKey: liveBatchKey,
                     ),
                   ),
                   SizedBox(width: 8.sp),
                   Expanded(
                     child:
                         game2 != null
-                            ? _AnimatedGameCardSlot(
-                              key: ValueKey('tablet_slot_${i + 1}'),
-                              gameId: game2.gameId,
-                              child: _TabletGameCard(
-                                game: game2,
-                                orderedGames: orderedGames,
-                                index: i + 1,
-                                eventId: eventId,
-                                pinnedIds: snapshot.pinnedIds,
-                                liveBatchKey: liveBatchKey,
-                              ),
+                            ? _TabletGameCard(
+                              key: ValueKey('tablet_game_${game2.gameId}'),
+                              game: game2,
+                              orderedGames: orderedGames,
+                              index: i + 1,
+                              eventId: eventId,
+                              pinnedIds: snapshot.pinnedIds,
+                              liveBatchKey: liveBatchKey,
                             )
                             : const SizedBox.shrink(),
                   ),
@@ -1130,6 +1040,7 @@ class _ForYouTabletColumnGames extends StatelessWidget {
 /// Clean game card for tablet grid - full game card style, not compact
 class _TabletGameCard extends ConsumerWidget {
   const _TabletGameCard({
+    super.key,
     required this.game,
     required this.orderedGames,
     required this.index,
@@ -1181,15 +1092,10 @@ class _TabletGameCard extends ConsumerWidget {
 /// Games section for one event - loads lazily with shimmer.
 /// Receives the shared snapshot from the parent section widget.
 class _ForYouEventGames extends ConsumerWidget {
-  const _ForYouEventGames({
-    required this.eventId,
-    required this.snapshotAsync,
-    required this.animatedGameIds,
-  });
+  const _ForYouEventGames({required this.eventId, required this.snapshotAsync});
 
   final String eventId;
   final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
-  final Set<String> animatedGameIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1232,23 +1138,17 @@ class _ForYouEventGames extends ConsumerWidget {
           );
         }
 
-        // List mode: one game per row with smooth transition animation
         return Column(
           children: List.generate(displayedGames.length, (index) {
             final game = displayedGames[index];
-            return _AnimatedGameCardSlot(
-              key: ValueKey('slot_$index'),
-              gameId: game.gameId,
-              child: _ForYouGameCard(
-                key: ValueKey('game_${game.gameId}'),
-                game: game,
-                gamesData: gamesData,
-                gameIndex: index,
-                eventId: eventId,
-                animatedGameIds: animatedGameIds,
-                viewMode: viewMode,
-                liveBatchKey: liveBatchKey,
-              ),
+            return _ForYouGameCard(
+              key: ValueKey('game_${game.gameId}'),
+              game: game,
+              gamesData: gamesData,
+              gameIndex: index,
+              eventId: eventId,
+              viewMode: viewMode,
+              liveBatchKey: liveBatchKey,
             );
           }),
         );
@@ -1293,74 +1193,66 @@ class _ForYouEventGames extends ConsumerWidget {
           child: Row(
             children: [
               Expanded(
-                child: _AnimatedGameCardSlot(
-                  key: ValueKey('grid_slot_$i'),
-                  gameId: game1.gameId,
-                  child: GridGameCardWrapperWidget(
-                    key: ValueKey('grid_game_${game1.gameId}'),
-                    game: game1,
-                    orderedGames: orderedGames,
-                    gameIndex: i,
-                    liveBatchKey: liveBatchKey,
-                    allowStockfishFallback: false,
-                    streamEnabled: true,
-                    onChangedWithLiveGames:
-                        (updatedGames) => ref
-                            .read(gameCardWrapperProvider)
-                            .navigateToChessBoard(
-                              context: context,
-                              orderedGames: updatedGames,
-                              gameIndex: i,
-                              onReturnFromChessboard: (_) {},
-                              viewSource: ChessboardView.forYou,
-                            ),
-                    pinnedIds: pinnedIds,
-                    onPinToggle:
-                        (_) => ref
-                            .read(forYouPinActionProvider)
-                            .togglePin(
-                              eventId: eventId,
-                              gameId: game1.gameId,
-                              tourId: game1.tourId,
-                            ),
-                  ),
+                child: GridGameCardWrapperWidget(
+                  key: ValueKey('grid_game_${game1.gameId}'),
+                  game: game1,
+                  orderedGames: orderedGames,
+                  gameIndex: i,
+                  liveBatchKey: liveBatchKey,
+                  allowStockfishFallback: false,
+                  streamEnabled: true,
+                  onChangedWithLiveGames:
+                      (updatedGames) => ref
+                          .read(gameCardWrapperProvider)
+                          .navigateToChessBoard(
+                            context: context,
+                            orderedGames: updatedGames,
+                            gameIndex: i,
+                            onReturnFromChessboard: (_) {},
+                            viewSource: ChessboardView.forYou,
+                          ),
+                  pinnedIds: pinnedIds,
+                  onPinToggle:
+                      (_) => ref
+                          .read(forYouPinActionProvider)
+                          .togglePin(
+                            eventId: eventId,
+                            gameId: game1.gameId,
+                            tourId: game1.tourId,
+                          ),
                 ),
               ),
               SizedBox(width: 12.sp),
               Expanded(
                 child:
                     game2 != null
-                        ? _AnimatedGameCardSlot(
-                          key: ValueKey('grid_slot_${i + 1}'),
-                          gameId: game2.gameId,
-                          child: GridGameCardWrapperWidget(
-                            key: ValueKey('grid_game_${game2.gameId}'),
-                            game: game2,
-                            orderedGames: orderedGames,
-                            gameIndex: i + 1,
-                            liveBatchKey: liveBatchKey,
-                            allowStockfishFallback: false,
-                            streamEnabled: true,
-                            onChangedWithLiveGames:
-                                (updatedGames) => ref
-                                    .read(gameCardWrapperProvider)
-                                    .navigateToChessBoard(
-                                      context: context,
-                                      orderedGames: updatedGames,
-                                      gameIndex: i + 1,
-                                      onReturnFromChessboard: (_) {},
-                                      viewSource: ChessboardView.forYou,
-                                    ),
-                            pinnedIds: pinnedIds,
-                            onPinToggle:
-                                (_) => ref
-                                    .read(forYouPinActionProvider)
-                                    .togglePin(
-                                      eventId: eventId,
-                                      gameId: game2.gameId,
-                                      tourId: game2.tourId,
-                                    ),
-                          ),
+                        ? GridGameCardWrapperWidget(
+                          key: ValueKey('grid_game_${game2.gameId}'),
+                          game: game2,
+                          orderedGames: orderedGames,
+                          gameIndex: i + 1,
+                          liveBatchKey: liveBatchKey,
+                          allowStockfishFallback: false,
+                          streamEnabled: true,
+                          onChangedWithLiveGames:
+                              (updatedGames) => ref
+                                  .read(gameCardWrapperProvider)
+                                  .navigateToChessBoard(
+                                    context: context,
+                                    orderedGames: updatedGames,
+                                    gameIndex: i + 1,
+                                    onReturnFromChessboard: (_) {},
+                                    viewSource: ChessboardView.forYou,
+                                  ),
+                          pinnedIds: pinnedIds,
+                          onPinToggle:
+                              (_) => ref
+                                  .read(forYouPinActionProvider)
+                                  .togglePin(
+                                    eventId: eventId,
+                                    gameId: game2.gameId,
+                                    tourId: game2.tourId,
+                                  ),
                         )
                         : const SizedBox.shrink(),
               ),
@@ -1375,39 +1267,16 @@ class _ForYouEventGames extends ConsumerWidget {
 
   /// Shimmer placeholders for 4 games
   Widget _buildGameShimmers(GamesListViewMode viewMode) {
-    final mockPlayer = PlayerCard(
-      name: 'Loading...',
-      federation: '',
-      title: 'GM',
-      rating: 2700,
-      countryCode: 'USA',
-      team: '',
-    );
-
-    final mockGame = GamesTourModel(
-      roundId: 'roundId',
-      tourId: 'tourId',
-      gameId: 'gameId',
-      whitePlayer: mockPlayer,
-      blackPlayer: mockPlayer,
-      whiteTimeDisplay: '--:--',
-      blackTimeDisplay: '--:--',
-      whiteClockCentiseconds: 0,
-      blackClockCentiseconds: 0,
-      gameStatus: GameStatus.ongoing,
-    );
-
     if (viewMode == GamesListViewMode.chessBoardGrid) {
-      // 2 rows of 2 games each
       return Column(
         children: List.generate(2, (rowIndex) {
           return Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
             child: Row(
               children: [
-                Expanded(child: _GameShimmer(mockGame: mockGame)),
+                Expanded(child: _GameSkeletonBox(height: 72.sp)),
                 SizedBox(width: 12.sp),
-                Expanded(child: _GameShimmer(mockGame: mockGame)),
+                Expanded(child: _GameSkeletonBox(height: 72.sp)),
               ],
             ),
           );
@@ -1415,42 +1284,38 @@ class _ForYouEventGames extends ConsumerWidget {
       );
     }
 
-    // List mode: 4 shimmer cards
     return Column(
       children: List.generate(kGamesPerEvent, (index) {
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
-          child: _GameShimmer(mockGame: mockGame),
+          child: _GameSkeletonBox(height: 72.sp),
         );
       }),
     );
   }
 }
 
-/// Shimmer for a single game card
-class _GameShimmer extends StatelessWidget {
-  const _GameShimmer({required this.mockGame});
+class _GameSkeletonBox extends StatelessWidget {
+  const _GameSkeletonBox({required this.height});
 
-  final GamesTourModel mockGame;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     return SkeletonWidget(
       ignoreContainers: true,
-      child: GameCard(
-        onTap: () {},
-        matchComparison: MatchWithComparison(
-          game: mockGame,
-          comparison: MatchComparison.sameOrder,
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(8.br),
         ),
-        onPinToggle: (_) {},
-        pinnedIds: const [],
       ),
     );
   }
 }
 
-/// Single game card with animation
+/// Single game card.
 class _ForYouGameCard extends ConsumerWidget {
   const _ForYouGameCard({
     super.key,
@@ -1458,7 +1323,6 @@ class _ForYouGameCard extends ConsumerWidget {
     required this.gamesData,
     required this.gameIndex,
     required this.eventId,
-    required this.animatedGameIds,
     required this.viewMode,
     required this.liveBatchKey,
   });
@@ -1467,20 +1331,14 @@ class _ForYouGameCard extends ConsumerWidget {
   final GamesScreenModel gamesData;
   final int gameIndex;
   final String eventId;
-  final Set<String> animatedGameIds;
   final GamesListViewMode viewMode;
   final LiveGamesBatchKey liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
-    final shouldAnimate = !animatedGameIds.contains(game.gameId);
 
-    if (shouldAnimate) {
-      animatedGameIds.add(game.gameId);
-    }
-
-    final card = Padding(
+    return Padding(
       padding: EdgeInsets.only(bottom: 12.sp),
       child: GameCardWrapperWidget(
         game: game,
@@ -1502,11 +1360,6 @@ class _ForYouGameCard extends ConsumerWidget {
         onReturnFromChessboard: (_) {},
       ),
     );
-
-    // Staggered fadeIn/slideY per card removed: it ran an animated Opacity
-    // (saveLayer) per card with a gameIndex*50ms stagger, cascading jank right
-    // when the list first populates. Cards paint instantly now.
-    return card;
   }
 }
 
@@ -1518,28 +1371,6 @@ class _ForYouEventSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mockPlayer = PlayerCard(
-      name: 'Loading...',
-      federation: '',
-      title: 'GM',
-      rating: 2700,
-      countryCode: 'USA',
-      team: '',
-    );
-
-    final mockGame = GamesTourModel(
-      roundId: 'roundId',
-      tourId: 'tourId',
-      gameId: 'gameId',
-      whitePlayer: mockPlayer,
-      blackPlayer: mockPlayer,
-      whiteTimeDisplay: '--:--',
-      blackTimeDisplay: '--:--',
-      whiteClockCentiseconds: 0,
-      blackClockCentiseconds: 0,
-      gameStatus: GameStatus.ongoing,
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1554,94 +1385,13 @@ class _ForYouEventSkeleton extends StatelessWidget {
             ),
           ),
         ),
-        // Game card skeletons
         ...List.generate(kGamesPerEvent, (index) {
           return Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
-            child: SkeletonWidget(
-              ignoreContainers: true,
-              child: GameCard(
-                onTap: () {},
-                matchComparison: MatchWithComparison(
-                  game: mockGame,
-                  comparison: MatchComparison.sameOrder,
-                ),
-                onPinToggle: (_) {},
-                pinnedIds: const [],
-              ),
-            ),
+            child: _GameSkeletonBox(height: 72.sp),
           );
         }),
       ],
-    );
-  }
-}
-
-// ============================================================================
-// ANIMATED GAME CARD TRANSITION
-// ============================================================================
-
-/// Animated wrapper for game cards using motor springs
-/// Provides smooth crossfade with scale when game at a slot changes
-class _AnimatedGameCardSlot extends StatefulWidget {
-  const _AnimatedGameCardSlot({
-    super.key,
-    required this.gameId,
-    required this.child,
-  });
-
-  final String gameId;
-  final Widget child;
-
-  @override
-  State<_AnimatedGameCardSlot> createState() => _AnimatedGameCardSlotState();
-}
-
-class _AnimatedGameCardSlotState extends State<_AnimatedGameCardSlot> {
-  double _animationProgress = 0.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationProgress = 1.0; // Start fully visible
-  }
-
-  @override
-  void didUpdateWidget(covariant _AnimatedGameCardSlot oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // If game changed, trigger animation
-    if (oldWidget.gameId != widget.gameId) {
-      _animationProgress = 0.0;
-      // Animate to 1.0
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _animationProgress = 1.0;
-          });
-        }
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleMotionBuilder(
-      motion: const CupertinoMotion.bouncy(),
-      value: _animationProgress,
-      builder: (context, value, child) {
-        // Scale and fade in effect
-        final scale = 0.92 + (0.08 * value);
-        final opacity = value.clamp(0.0, 1.0);
-
-        return Opacity(
-          opacity: opacity,
-          child: Transform.scale(
-            scale: scale,
-            alignment: Alignment.center,
-            child: widget.child,
-          ),
-        );
-      },
     );
   }
 }

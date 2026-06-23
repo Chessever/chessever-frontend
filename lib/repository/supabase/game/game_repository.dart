@@ -1237,7 +1237,8 @@ class GameRepository extends BaseRepository {
       // hasn't started — mirrors the home Current/For You contract that the
       // most up-to-date row a query may return is a live game, never a
       // pre-uploaded future pairing on a `next_round_start` round.
-      final selectCols = '$baseCols,\nrounds!games_round_id_fkey!inner(starts_at)';
+      final selectCols =
+          '$baseCols,\nrounds!games_round_id_fkey!inner(starts_at)';
       final nowIso = DateTime.now().toUtc().toIso8601String();
       final trimmedQuery = query?.trim();
 
@@ -1411,6 +1412,37 @@ class GameRepository extends BaseRepository {
       }
 
       return latestByRoundId;
+    });
+  }
+
+  /// Returns the highest-Elo game cards for each For You event in one RPC.
+  Future<Map<String, List<Games>>> getForYouTopGamesByEventIds({
+    required List<String> eventIds,
+    int boardsPerEvent = 4,
+  }) async {
+    if (eventIds.isEmpty) return <String, List<Games>>{};
+
+    return handleApiCall(() async {
+      final response = await supabase.rpc(
+        'get_for_you_top_games',
+        params: {'p_event_ids': eventIds, 'p_boards_per_event': boardsPerEvent},
+      );
+
+      final gamesByEventId = <String, List<Games>>{};
+      for (final item in response as List) {
+        final json = Map<String, dynamic>.from(item as Map);
+        final eventId = json['event_id'] as String?;
+        if (eventId == null || eventId.isEmpty) continue;
+
+        gamesByEventId
+            .putIfAbsent(eventId, () => <Games>[])
+            .add(Games.fromJson(json));
+      }
+
+      return {
+        for (final entry in gamesByEventId.entries)
+          entry.key: _deduplicateGames(entry.value),
+      };
     });
   }
 
