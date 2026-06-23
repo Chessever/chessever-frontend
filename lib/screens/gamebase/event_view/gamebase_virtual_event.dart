@@ -15,13 +15,13 @@ export 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id
 /// gamebase event tap opens the SAME view as a broadcasted event instead of a
 /// bespoke screen.
 ///
-/// Everything is keyed by a sentinel `gamebase::<eventName>` id. Every consumer
-/// branch is guarded by [isVirtualGamebaseId], so real tournaments take their
-/// exact existing code path (zero behaviour change).
+/// Everything is keyed by a sentinel virtual id. Every consumer branch is
+/// guarded by [isVirtualGamebaseId], so real tournaments take their exact
+/// existing code path (zero behaviour change).
 
-/// Synthesized event view for an exact gamebase event [name]. Cached one week
+/// Synthesized event view for an exact gamebase event. Cached one week
 /// server-side; the client just renders. Shared by the virtual tour/games
-/// adapters and [DatabaseEventScreen].
+/// adapters used by the real tournament detail screen.
 class GamebaseEventViewRequest {
   const GamebaseEventViewRequest({
     required this.eventName,
@@ -58,10 +58,14 @@ final gamebaseEventViewProvider = FutureProvider.autoDispose
 
 /// Minimal synthetic broadcast to drive [selectedBroadcastModelProvider]. The
 /// real data is loaded lazily by the tour/games notifiers via the sentinel id.
-GroupBroadcast virtualGroupBroadcastForEvent(String eventName) {
+GroupBroadcast virtualGroupBroadcastForEvent(
+  String eventName, {
+  String? site,
+  String? slug,
+}) {
   final clean = eventName.trim();
   return GroupBroadcast(
-    id: virtualBroadcastId(clean),
+    id: virtualBroadcastId(clean, site: site, slug: slug),
     createdAt: DateTime.now(),
     name: clean,
     search: [clean],
@@ -69,11 +73,11 @@ GroupBroadcast virtualGroupBroadcastForEvent(String eventName) {
 }
 
 /// One synthetic [Tour] representing the whole gamebase event.
-List<Tour> virtualToursFromView(GamebaseEventView view) {
+List<Tour> virtualToursFromView(GamebaseEventView view, {String? virtualId}) {
   final about = view.about;
   return [
     Tour.virtual(
-      id: virtualBroadcastId(view.event),
+      id: virtualId ?? virtualBroadcastId(view.event),
       name: view.event,
       slug: view.event,
       // Render as a standard tournament (player standings + game list). We do
@@ -116,8 +120,8 @@ List<TournamentPlayer> _virtualPlayers(GamebaseEventView view) {
 /// is header-only on purpose — the board re-fetches the full game by [id]
 /// (gamebase UUID) on tap, which works because [GamesTourModel.fromGame] tags
 /// these with `GameSource.gamebase` (sentinel-guarded).
-List<Games> virtualGamesFromView(GamebaseEventView view) {
-  final tourId = virtualBroadcastId(view.event);
+List<Games> virtualGamesFromView(GamebaseEventView view, {String? virtualId}) {
+  final tourId = virtualId ?? virtualBroadcastId(view.event);
   final out = <Games>[];
   var seq = 0;
   for (final round in view.rounds) {

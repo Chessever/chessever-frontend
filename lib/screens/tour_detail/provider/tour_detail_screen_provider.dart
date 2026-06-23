@@ -216,15 +216,19 @@ class _TourDetailScreenNotifier
   /// Tours for a synthesized gamebase-only event (sentinel broadcast id).
   /// Returns one synthetic tour built from the cached gamebase event view.
   Future<List<Tour>> _loadVirtualTours(String broadcastId) async {
-    final eventName = eventNameFromVirtualId(broadcastId);
-    if (eventName == null) return const <Tour>[];
+    final virtualKey = virtualEventKeyFromId(broadcastId);
+    if (virtualKey == null) return const <Tour>[];
     final view = await ref.read(
       gamebaseEventViewProvider(
-        GamebaseEventViewRequest(eventName: eventName),
+        GamebaseEventViewRequest(
+          eventName: virtualKey.eventName,
+          site: virtualKey.site,
+          slug: virtualKey.slug,
+        ),
       ).future,
     );
     if (view == null) return const <Tour>[];
-    return virtualToursFromView(view);
+    return virtualToursFromView(view, virtualId: broadcastId);
   }
 
   @override

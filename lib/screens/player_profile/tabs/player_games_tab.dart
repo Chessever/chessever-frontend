@@ -561,6 +561,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     required String tourId,
     required String eventName,
     String? site,
+    String? canonicalBroadcastId,
   }) {
     return openProfileEvent(
       context: context,
@@ -569,6 +570,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       tourId: tourId,
       eventName: eventName,
       site: site,
+      canonicalBroadcastId: canonicalBroadcastId,
     );
   }
 
@@ -1369,6 +1371,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 tourId: entry.tourId,
                 eventName: entry.eventData?.tourName ?? entry.tourId,
                 site: entry.site,
+                canonicalBroadcastId:
+                    entry.eventCard?.eventSource == EventSource.lichessBroadcast
+                        ? entry.eventCard?.id
+                        : null,
               ),
         ),
       );

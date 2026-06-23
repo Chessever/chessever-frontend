@@ -1069,6 +1069,10 @@ class _PlayerEventCard extends ConsumerWidget {
       tourId: playerEventData.tourId,
       eventName: playerEventData.tourName,
       site: playerEventData.site,
+      canonicalBroadcastId:
+          eventCard.eventSource == EventSource.lichessBroadcast
+              ? eventCard.id
+              : null,
     );
   }
 

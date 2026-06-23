@@ -5,10 +5,9 @@ final selectedBroadcastModelProvider = StateProvider<GroupBroadcast?>(
   (ref) => null,
 );
 
-final selectedTourModeProvider =
-    AutoDisposeStateProvider<TournamentDetailScreenMode>(
-      (ref) => TournamentDetailScreenMode.games,
-    );
+final selectedTourModeProvider = StateProvider<TournamentDetailScreenMode>(
+  (ref) => TournamentDetailScreenMode.games,
+);
 
 /// For Tabs
 enum TournamentDetailScreenMode { about, games, standings }
