@@ -29,6 +29,11 @@ class PushTokenSyncController {
     _started = true;
 
     ref.listen(currentUserProvider, (previous, next) {
+      final previousUserId = previous?.id;
+      if (previousUserId != null && next == null) {
+        unawaited(_markCurrentSubscriptionDeprecated(previousUserId));
+      }
+
       _userId = next?.id;
       if (_userId == null) return;
       unawaited(_syncCurrentSubscription());
@@ -93,7 +98,7 @@ class PushTokenSyncController {
       userId: userId,
       subscriptionId: currentId,
       token: current.token,
-      optedIn: current.optedIn ?? true,
+      optedIn: current.optedIn,
     );
   }
 
@@ -110,6 +115,17 @@ class PushTokenSyncController {
           .eq('subscription_id', subscriptionId);
     } catch (_) {
       // Don't block app flow on token updates.
+    }
+  }
+
+  Future<void> _markCurrentSubscriptionDeprecated(String userId) async {
+    try {
+      final dynamic subscription = OneSignal.User.pushSubscription;
+      final String? id = subscription.id as String?;
+      if (id == null || id.isEmpty) return;
+      await _markDeprecated(userId, id);
+    } catch (_) {
+      // Don't block logout on OneSignal/Supabase state races.
     }
   }
 

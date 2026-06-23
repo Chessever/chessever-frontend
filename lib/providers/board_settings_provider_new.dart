@@ -6,7 +6,9 @@ import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/board_settings/models/board_settings_model.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
+import 'package:chessever2/utils/chessground_image_cache.dart';
 import 'package:chessground/chessground.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -193,7 +195,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
         debugPrint('[BoardSettings] No user logged in, returning defaults');
-        return const BoardSettingsNew();
+        const settings = BoardSettingsNew();
+        await _preloadPieceImages(settings);
+        return settings;
       }
 
       // Fetch from Supabase (source of truth)
@@ -218,7 +222,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
             '[BoardSettings] Info: ${e.toString().contains('duplicate') ? 'Settings already exist' : 'Error creating defaults: $e'}',
           );
         }
-        return const BoardSettingsNew();
+        const settings = BoardSettingsNew();
+        await _preloadPieceImages(settings);
+        return settings;
       }
 
       final model = BoardSettingsModel.fromSupabase(response);
@@ -252,6 +258,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
 
       // Cache locally
       await _cacheSettings(settings);
+      await _preloadPieceImages(settings);
 
       debugPrint('[BoardSettings] Fetched settings from Supabase');
       return settings;
@@ -335,10 +342,14 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
   Future<void> setPieceSetIndex(int index) async {
     final clamped = index.clamp(0, PieceSet.values.length - 1);
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    if (currentState.pieceStyleIndex == clamped) {
+      return;
+    }
     final newSettings = currentState.copyWith(pieceStyleIndex: clamped);
     debugPrint(
       '♟️ BoardSettings: Piece set changed to index=$clamped (${PieceSet.values[clamped].label})',
     );
+    await _preloadPieceImages(newSettings, clearBeforeLoad: true);
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -428,6 +439,23 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
 
   // Private methods
 
+  Future<void> _preloadPieceImages(
+    BoardSettingsNew settings, {
+    bool clearBeforeLoad = false,
+  }) async {
+    try {
+      await ChessgroundPieceImageCache.ensurePieceSetLoaded(
+        settings.pieceSet,
+        clearBeforeLoad: clearBeforeLoad,
+      );
+    } catch (e, st) {
+      debugPrint('[BoardSettings] Chessground piece image preload failed: $e');
+      if (kDebugMode) {
+        debugPrintStack(stackTrace: st);
+      }
+    }
+  }
+
   Future<void> _persist(BoardSettingsNew settings) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -508,7 +536,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       final json = await db.getString(_cacheKey);
       if (json == null) {
         debugPrint('[BoardSettings] No cached settings, using defaults');
-        return const BoardSettingsNew();
+        const settings = BoardSettingsNew();
+        await _preloadPieceImages(settings);
+        return settings;
       }
 
       final map = jsonDecode(json) as Map<String, dynamic>;
@@ -538,11 +568,14 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         pipModeIndex: map['pipModeIndex'] as int? ?? 1,
         liveActivityModeIndex: map['liveActivityModeIndex'] as int? ?? 0,
       );
+      await _preloadPieceImages(settings);
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;
     } catch (e) {
       debugPrint('[BoardSettings] Error getting cached settings: $e');
-      return const BoardSettingsNew();
+      const settings = BoardSettingsNew();
+      await _preloadPieceImages(settings);
+      return settings;
     }
   }
 

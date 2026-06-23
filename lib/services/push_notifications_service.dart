@@ -347,6 +347,11 @@ class PushNotificationsService {
               'se_classical': true,
               'se_rapid': true,
               'se_blitz': false,
+              // Legacy shared filters for older dispatchers/builds. Blitz is
+              // off by default, matching the split category defaults above.
+              'notify_classical': true,
+              'notify_rapid': true,
+              'notify_blitz': false,
               'heads_up_lead_minutes': 30,
             },
             onConflict: 'user_id',

@@ -26,12 +26,14 @@ import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/chessground_image_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/lifecycle_event_handler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:chessever2/widgets/custom_upgrade_alert.dart';
+import 'package:chessground/chessground.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -202,6 +204,7 @@ Future<void> main() async {
 
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
       _e2eStartupLog('native splash preserved');
+      await _preloadStartupChessgroundAssets();
 
       FlutterError.onError = (details) {
         // Verbose, colorful, full-stacktrace console log (copy-paste ready).
@@ -328,6 +331,18 @@ Future<void> main() async {
       }
     },
   );
+}
+
+Future<void> _preloadStartupChessgroundAssets() async {
+  try {
+    await ChessgroundPieceImageCache.ensurePieceSetLoaded(PieceSet.cburnett);
+    _e2eStartupLog('default chessground piece images preloaded');
+  } catch (e, st) {
+    debugPrint('⚠️ Chessground piece image preload failed: $e');
+    if (kDebugMode) {
+      debugPrintStack(stackTrace: st);
+    }
+  }
 }
 
 /// One-time migration: Clear all SharedPreferences except Supabase auth token

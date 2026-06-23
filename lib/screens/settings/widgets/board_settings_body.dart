@@ -1186,36 +1186,64 @@ class _PieceSetGridItem extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: EdgeInsets.all(6.sp),
-                child: Column(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: Image(
-                        image: pieceSet.assets[PieceKind.whiteKing]!,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Expanded(
-                      flex: 2,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Image(
-                              image: pieceSet.assets[PieceKind.blackQueen]!,
-                              fit: BoxFit.contain,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final dpr = MediaQuery.devicePixelRatioOf(context);
+                    final kingCacheWidth =
+                        (constraints.maxWidth * dpr)
+                            .ceil()
+                            .clamp(1, 512)
+                            .toInt();
+                    final smallPieceCacheWidth =
+                        (constraints.maxWidth * dpr / 2)
+                            .ceil()
+                            .clamp(1, 256)
+                            .toInt();
+
+                    return Column(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Image(
+                            image: ResizeImage.resizeIfNeeded(
+                              kingCacheWidth,
+                              null,
+                              pieceSet.assets[PieceKind.whiteKing]!,
                             ),
+                            fit: BoxFit.contain,
                           ),
-                          Expanded(
-                            child: Image(
-                              image: pieceSet.assets[PieceKind.whiteKnight]!,
-                              fit: BoxFit.contain,
-                            ),
+                        ),
+                        SizedBox(height: 2.h),
+                        Expanded(
+                          flex: 2,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Image(
+                                  image: ResizeImage.resizeIfNeeded(
+                                    smallPieceCacheWidth,
+                                    null,
+                                    pieceSet.assets[PieceKind.blackQueen]!,
+                                  ),
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                              Expanded(
+                                child: Image(
+                                  image: ResizeImage.resizeIfNeeded(
+                                    smallPieceCacheWidth,
+                                    null,
+                                    pieceSet.assets[PieceKind.whiteKnight]!,
+                                  ),
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

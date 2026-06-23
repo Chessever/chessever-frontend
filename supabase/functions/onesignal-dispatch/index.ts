@@ -52,8 +52,7 @@ type TourRow = {
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SERVICE_ROLE_KEY") ??
   "";
 const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
@@ -73,7 +72,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const jsonHeaders = { "Content-Type": "application/json" };
 const DEFAULT_DISPATCH_LIMIT = 50;
 const MAX_DISPATCH_LIMIT = 500;
-const PUSH_USER_QUERY_CHUNK_SIZE = 1000;
+const POSTGREST_IN_QUERY_CHUNK_SIZE = 100;
+const PUSH_USER_QUERY_CHUNK_SIZE = POSTGREST_IN_QUERY_CHUNK_SIZE;
 const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
 const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
@@ -314,7 +314,8 @@ async function processItem(item: OutboxItem) {
           let body: string;
           if (sorted.length === 1) {
             const fav = formatPlayerName(sorted[0]);
-            const oppName = context.playerOpponentMap.get(sorted[0]) ?? "Opponent";
+            const oppName = context.playerOpponentMap.get(sorted[0]) ??
+              "Opponent";
             const opp = formatPlayerName(oppName);
             body = `${fav} vs ${opp} is live.`;
           } else if (sorted.length === 2) {
@@ -436,7 +437,10 @@ async function processItem(item: OutboxItem) {
 
         for (const uid of playerRecipients) {
           const favs = context.playerFavoriteMap.get(uid) ?? [];
-          if (favs.length === 0) { ungrouped.push(uid); continue; }
+          if (favs.length === 0) {
+            ungrouped.push(uid);
+            continue;
+          }
 
           let title: string;
           let body: string;
@@ -453,7 +457,9 @@ async function processItem(item: OutboxItem) {
             body = msg.body;
           } else if (favs.length === 2) {
             title = buildEventHeader(eventName, roundName) ?? eventName;
-            body = `${extractLastName(favs[0])} & ${extractLastName(favs[1])} in ${timeStr}.`;
+            body = `${extractLastName(favs[0])} & ${
+              extractLastName(favs[1])
+            } in ${timeStr}.`;
           } else {
             title = buildEventHeader(eventName, roundName) ?? eventName;
             const [a, b] = favs.slice(0, 2).map(extractLastName);
@@ -461,7 +467,9 @@ async function processItem(item: OutboxItem) {
           }
 
           const key = `${title}|${body}`;
-          if (!msgGroups.has(key)) msgGroups.set(key, { recipients: [], title, body });
+          if (!msgGroups.has(key)) {
+            msgGroups.set(key, { recipients: [], title, body });
+          }
           msgGroups.get(key)!.recipients.push(uid);
         }
 
@@ -538,8 +546,8 @@ async function processItem(item: OutboxItem) {
 
       const folderName = (item.payload?.folder_name as string) ?? "a book";
       const gameTitle = (item.payload?.game_title as string) ?? "a game";
-      const ownerName =
-        (item.payload?.owner_display_name as string) ?? "Someone";
+      const ownerName = (item.payload?.owner_display_name as string) ??
+        "Someone";
 
       let body = "";
       switch (item.event_type) {
@@ -647,13 +655,19 @@ async function processItem(item: OutboxItem) {
       });
 
       await markSent(item.id);
-      return { id: item.id, status: "sent", recipients: eventRecipients.length };
+      return {
+        id: item.id,
+        status: "sent",
+        recipients: eventRecipients.length,
+      };
     }
 
     if (item.event_type === "game_finished") {
       const payload = item.payload ?? {};
-      const white = (payload.player_white as string) ?? context.game?.player_white ?? "White";
-      const black = (payload.player_black as string) ?? context.game?.player_black ?? "Black";
+      const white = (payload.player_white as string) ??
+        context.game?.player_white ?? "White";
+      const black = (payload.player_black as string) ??
+        context.game?.player_black ?? "Black";
       const status = (payload.status as string) ?? context.game?.status ?? "";
       const result = status || "Game over";
 
@@ -677,8 +691,11 @@ async function processItem(item: OutboxItem) {
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
-      const title = buildEventHeader(context.eventName, context.round?.name) ?? `${formatPlayerName(white)} vs ${formatPlayerName(black)}`;
-      const body = `${formatPlayerName(white)} vs ${formatPlayerName(black)}: ${result}`;
+      const title = buildEventHeader(context.eventName, context.round?.name) ??
+        `${formatPlayerName(white)} vs ${formatPlayerName(black)}`;
+      const body = `${formatPlayerName(white)} vs ${
+        formatPlayerName(black)
+      }: ${result}`;
 
       await sendOneSignal(Array.from(filteredUserIds), {
         title,
@@ -699,9 +716,16 @@ async function processItem(item: OutboxItem) {
     // Guard: skip game_started if the game already ended before the dispatcher
     // claimed this row. Happens when a game starts and finishes within the
     // 1-minute cron window — prevents "is live" pings for finished games.
-    if (item.event_type === "game_started" && isGameOverStatus(context.game?.status ?? null)) {
+    if (
+      item.event_type === "game_started" &&
+      isGameOverStatus(context.game?.status ?? null)
+    ) {
       await markSkipped(item.id, "game_already_finished");
-      return { id: item.id, status: "skipped", reason: "game_already_finished" };
+      return {
+        id: item.id,
+        status: "skipped",
+        reason: "game_already_finished",
+      };
     }
 
     const allUserIds = new Set([
@@ -1215,7 +1239,9 @@ function classifyTimeControlString(
     baseMinutes = parseInt(hourMatch[1], 10) * 60 +
       (hourMatch[2] ? parseInt(hourMatch[2], 10) : 0);
   } else {
-    const minMatch = s.match(/(\d+)\s*(?:minutos|minutes|minute|mins|min|mn|m\b|')/);
+    const minMatch = s.match(
+      /(\d+)\s*(?:minutos|minutes|minute|mins|min|mn|m\b|')/,
+    );
     if (minMatch) baseMinutes = parseFloat(minMatch[1]);
   }
 
@@ -1280,19 +1306,23 @@ async function resolveGameTimeControl(
         .eq("id", tourId)
         .maybeSingle();
 
-      if (tourError) return null;
+      if (tourError) {
+        console.warn(
+          `[onesignal-dispatch] Tour time-control lookup failed for ${tourId}: ${tourError.message}`,
+        );
+      } else {
+        const info = tourData?.info as Record<string, unknown> | null;
+        const rawTc = info && typeof info["tc"] === "string"
+          ? (info["tc"] as string)
+          : null;
+        const parsed = classifyTimeControlString(rawTc);
+        if (parsed) return parsed;
 
-      const info = tourData?.info as Record<string, unknown> | null;
-      const rawTc = info && typeof info["tc"] === "string"
-        ? (info["tc"] as string)
-        : null;
-      const parsed = classifyTimeControlString(rawTc);
-      if (parsed) return parsed;
-
-      pushUniqueId(
-        broadcastIds,
-        (tourData?.group_broadcast_id as string | null) ?? null,
-      );
+        pushUniqueId(
+          broadcastIds,
+          (tourData?.group_broadcast_id as string | null) ?? null,
+        );
+      }
     }
 
     // FALLBACK: the coarse group_broadcasts.time_control bucket.
@@ -1357,22 +1387,13 @@ async function applyPreferences(
   const ids = Array.from(allUserIds);
   if (ids.length === 0) return allUserIds;
 
-  const { data } = await supabase
-    .from("user_notification_preferences")
-    .select(
-      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
+  const prefsMap = await fetchPreferenceMap(
+    ids,
+    "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
       "live_game_updates,call_to_action_alerts," +
       "fp_classical,fp_rapid,fp_blitz," +
       "se_classical,se_rapid,se_blitz",
-    )
-    .in("user_id", ids);
-
-  const prefsMap = new Map<string, Record<string, unknown>>();
-  const preferenceRows =
-    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
-  for (const row of preferenceRows) {
-    prefsMap.set(row.user_id, row);
-  }
+  );
 
   const filtered = new Set<string>();
 
@@ -1431,6 +1452,34 @@ async function applyPreferences(
   return filtered;
 }
 
+async function fetchPreferenceMap(
+  userIds: string[],
+  columns: string,
+): Promise<Map<string, Record<string, unknown>>> {
+  const prefsMap = new Map<string, Record<string, unknown>>();
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+
+  for (const batch of chunk(uniqueUserIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("user_notification_preferences")
+      .select(columns)
+      .in("user_id", batch);
+
+    if (error) {
+      throw new Error(`Preference lookup failed: ${error.message}`);
+    }
+
+    const preferenceRows = (data ?? []) as unknown as Array<
+      Record<string, unknown> & { user_id: string }
+    >;
+    for (const row of preferenceRows) {
+      prefsMap.set(row.user_id, row);
+    }
+  }
+
+  return prefsMap;
+}
+
 async function filterRoundRecipients(
   eventUserIds: Set<string>,
   playerUserIds: Set<string>,
@@ -1442,21 +1491,12 @@ async function filterRoundRecipients(
     return { playerRecipients: [], eventRecipients: [] };
   }
 
-  const { data } = await supabase
-    .from("user_notification_preferences")
-    .select(
-      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
+  const prefsMap = await fetchPreferenceMap(
+    ids,
+    "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
       "fp_classical,fp_rapid,fp_blitz," +
       "se_classical,se_rapid,se_blitz",
-    )
-    .in("user_id", ids);
-
-  const prefsMap = new Map<string, Record<string, unknown>>();
-  const preferenceRows =
-    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
-  for (const row of preferenceRows) {
-    prefsMap.set(row.user_id, row);
-  }
+  );
 
   const playerRecipients = new Set<string>();
   const eventRecipients = new Set<string>();
@@ -1476,13 +1516,17 @@ async function filterRoundRecipients(
       if (isPlayerFav && playerAllowed && prefs[`fp_${tc}`] === false) {
         // This player-fav user has blocked this time control — demote to event
         // recipient only if they also star the event, otherwise skip entirely.
-        if (!isEventFav || !eventAllowed || prefs[`se_${tc}`] === false) continue;
+        if (!isEventFav || !eventAllowed || prefs[`se_${tc}`] === false) {
+          continue;
+        }
         // Falls through to event-recipient branch below.
         eventRecipients.add(userId);
         continue;
       }
-      if (isEventFav && !isPlayerFav && eventAllowed &&
-          prefs[`se_${tc}`] === false) {
+      if (
+        isEventFav && !isPlayerFav && eventAllowed &&
+        prefs[`se_${tc}`] === false
+      ) {
         continue;
       }
     }
@@ -1576,17 +1620,10 @@ async function filterBookUpdateRecipients(
 ): Promise<string[]> {
   if (userIds.length === 0) return [];
 
-  const { data } = await supabase
-    .from("user_notification_preferences")
-    .select("user_id,push_enabled,book_update_alerts")
-    .in("user_id", userIds);
-
-  const prefsMap = new Map<string, Record<string, unknown>>();
-  const preferenceRows =
-    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
-  for (const row of preferenceRows) {
-    prefsMap.set(row.user_id, row);
-  }
+  const prefsMap = await fetchPreferenceMap(
+    userIds,
+    "user_id,push_enabled,book_update_alerts",
+  );
 
   const filtered: string[] = [];
   for (const userId of userIds) {
@@ -1612,22 +1649,13 @@ async function filterHeadsUpRecipients(
     return { playerRecipients: [], eventRecipients: [] };
   }
 
-  const { data } = await supabase
-    .from("user_notification_preferences")
-    .select(
-      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
+  const prefsMap = await fetchPreferenceMap(
+    ids,
+    "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
       "heads_up_alerts,heads_up_lead_minutes," +
       "fp_classical,fp_rapid,fp_blitz," +
       "se_classical,se_rapid,se_blitz",
-    )
-    .in("user_id", ids);
-
-  const prefsMap = new Map<string, Record<string, unknown>>();
-  const preferenceRows =
-    (data ?? []) as unknown as Array<Record<string, unknown> & { user_id: string }>;
-  for (const row of preferenceRows) {
-    prefsMap.set(row.user_id, row);
-  }
+  );
 
   const playerRecipients = new Set<string>();
   const eventRecipients = new Set<string>();
@@ -1766,11 +1794,11 @@ function fillTemplate(
       .replace(/\{t\}/g, vars.t ?? "");
     // Clean up dangling separators when round name is empty
     result = result
-      .replace(/ — (?=\.|,|$)/g, "")  // "Event — ." → "Event."
-      .replace(/ — \s*$/g, "")          // "Event — " → "Event"
-      .replace(/:\s*\./g, ".")           // ": ." → "."
-      .replace(/:\s*$/g, "")             // trailing ":"
-      .replace(/\s{2,}/g, " ")          // collapse double spaces
+      .replace(/ — (?=\.|,|$)/g, "") // "Event — ." → "Event."
+      .replace(/ — \s*$/g, "") // "Event — " → "Event"
+      .replace(/:\s*\./g, ".") // ": ." → "."
+      .replace(/:\s*$/g, "") // trailing ":"
+      .replace(/\s{2,}/g, " ") // collapse double spaces
       .trim();
     return result;
   };
@@ -1815,7 +1843,9 @@ function formatResultSymbol(status: string): string {
   const s = (status ?? "").trim();
   if (s === "1-0" || s === "W") return "1-0";
   if (s === "0-1" || s === "B") return "0-1";
-  if (s === "1/2-1/2" || s === "½-½" || s === "D" || s.toUpperCase() === "DRAW") return "½-½";
+  if (
+    s === "1/2-1/2" || s === "½-½" || s === "D" || s.toUpperCase() === "DRAW"
+  ) return "½-½";
   return s || "*";
 }
 
@@ -1823,7 +1853,9 @@ function formatResultSymbol(status: string): string {
 // Shows up to 3 boards sorted by board number, then "+N more" for the rest.
 // Example: "Carlsen 1-0 Nepo · Caruana ½-½ Giri · Nakamura 1-0 Duda +4 more"
 function buildResultsBody(
-  results: Array<{ white: string; black: string; status: string; boardNr: number | null }>,
+  results: Array<
+    { white: string; black: string; status: string; boardNr: number | null }
+  >,
 ): string {
   const sorted = [...results].sort((a, b) => {
     if (a.boardNr !== null && b.boardNr !== null) return a.boardNr - b.boardNr;
@@ -1954,7 +1986,9 @@ function buildRoundEventDisplayName(
   if (!eventName) return tourName;
   if (!tourName || groupSectionCount <= 1) return eventName;
 
-  if (normalizeEventLabel(tourName).startsWith(normalizeEventLabel(eventName))) {
+  if (
+    normalizeEventLabel(tourName).startsWith(normalizeEventLabel(eventName))
+  ) {
     return tourName;
   }
 
@@ -1970,7 +2004,10 @@ function buildRoundEventDisplayName(
   return `${eventName} — ${sectionName}`;
 }
 
-function extractTourSection(eventName: string, tourName: string): string | null {
+function extractTourSection(
+  eventName: string,
+  tourName: string,
+): string | null {
   const pipeSection = tourName.split("|").pop()?.trim();
   if (pipeSection && pipeSection !== tourName.trim()) return pipeSection;
 
@@ -1978,10 +2015,14 @@ function extractTourSection(eventName: string, tourName: string): string | null 
   const normalizedTour = normalizeEventLabel(tourName);
   if (!normalizedTour.startsWith(normalizedEvent)) return null;
 
-  return tourName.slice(eventName.length).replace(/^\s*[-–—:|]\s*/, "").trim() || null;
+  return tourName.slice(eventName.length).replace(/^\s*[-–—:|]\s*/, "")
+    .trim() || null;
 }
 
-function isRedundantOpenSection(eventName: string, sectionName: string): boolean {
+function isRedundantOpenSection(
+  eventName: string,
+  sectionName: string,
+): boolean {
   return /\bopen\b/i.test(sectionName) && /\bopen\b/i.test(eventName);
 }
 
@@ -2021,18 +2062,26 @@ function buildNotification(
   item: OutboxItem,
 ): NotificationPayload {
   const payload = item.payload ?? {};
-  const white = (payload.player_white as string) ?? context.game?.player_white ??
+  const white = (payload.player_white as string) ??
+    context.game?.player_white ??
     "White";
-  const black = (payload.player_black as string) ?? context.game?.player_black ??
+  const black = (payload.player_black as string) ??
+    context.game?.player_black ??
     "Black";
   const status = (payload.status as string) ?? context.game?.status ?? "";
   const androidChannelId = channelForEvent(item.event_type);
 
   if (item.event_type === "game_started") {
-    const eventHeader = buildEventHeader(context.eventName, context.round?.name);
-    const playerLine = `${formatPlayerName(white)} vs ${formatPlayerName(black)} is live.`;
+    const eventHeader = buildEventHeader(
+      context.eventName,
+      context.round?.name,
+    );
+    const playerLine = `${formatPlayerName(white)} vs ${
+      formatPlayerName(black)
+    } is live.`;
     return {
-      title: eventHeader ?? `${formatPlayerName(white)} vs ${formatPlayerName(black)}`,
+      title: eventHeader ??
+        `${formatPlayerName(white)} vs ${formatPlayerName(black)}`,
       body: playerLine,
       url: null,
       data: { type: "game_started", game_id: item.game_id },
@@ -2080,10 +2129,12 @@ async function sendOneSignal(
 
   const targets = await fetchPushSubscriptionTargets(userIds);
 
-  for (const batch of chunk(
-    targets.subscriptionIds,
-    ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE,
-  )) {
+  for (
+    const batch of chunk(
+      targets.subscriptionIds,
+      ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE,
+    )
+  ) {
     const payload: Record<string, unknown> = {
       ...buildOneSignalPayload(notification),
       app_id: ONESIGNAL_APP_ID,
@@ -2097,10 +2148,12 @@ async function sendOneSignal(
   // Some older installs may have a OneSignal external_id but no mirrored row in
   // user_push_tokens yet. Keep a fallback for those users only, so users with
   // synced devices do not receive duplicates.
-  for (const batch of chunk(
-    targets.externalIdFallbackUserIds,
-    ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE,
-  )) {
+  for (
+    const batch of chunk(
+      targets.externalIdFallbackUserIds,
+      ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE,
+    )
+  ) {
     const payload: Record<string, unknown> = {
       ...buildOneSignalPayload(notification),
       app_id: ONESIGNAL_APP_ID,
@@ -2141,7 +2194,9 @@ function buildOneSignalPayload(notification: NotificationPayload) {
   return payload;
 }
 
-function notificationCollapseId(notification: NotificationPayload): string | null {
+function notificationCollapseId(
+  notification: NotificationPayload,
+): string | null {
   const type = typeof notification.data?.type === "string"
     ? notification.data.type
     : null;
@@ -2205,13 +2260,7 @@ async function fetchPushSubscriptionTargets(userIds: string[]) {
       }
     }
   } catch (error) {
-    console.warn(
-      `[onesignal-dispatch] Falling back to external_id targeting after token lookup failed: ${error}`,
-    );
-    return {
-      subscriptionIds: [],
-      externalIdFallbackUserIds: uniqueUserIds,
-    };
+    throw new Error(`Push token lookup failed: ${error}`);
   }
 
   return {

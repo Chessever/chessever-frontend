@@ -63,8 +63,22 @@ class AuthStateListener extends ConsumerWidget {
           print('📍 Current route: $currentRoute');
         }
 
-        // Splash screen orchestrates the very first navigation.
         if (currentRoute == '/') {
+          // Splash owns initial navigation, but identity side effects still need
+          // to run so OneSignal does not keep a stale external_id on cold start.
+          if (authState.status == AppAuthStatus.authenticated) {
+            final currentUserId = authState.user?.id;
+            final isAnonymous = authState.user?.isAnonymous == true;
+            unawaited(AnalyticsService.instance.syncUser(authState.user));
+            if (currentUserId != null && !isAnonymous) {
+              unawaited(
+                PushNotificationsService.instance.loginUser(currentUserId),
+              );
+            }
+          } else if (authState.status == AppAuthStatus.unauthenticated) {
+            unawaited(AnalyticsService.instance.clearUser());
+            unawaited(PushNotificationsService.instance.logoutUser());
+          }
           return;
         }
 

@@ -371,6 +371,12 @@ class NotificationPreferencesNotifier
         'se_classical': updated.seClassical,
         'se_rapid': updated.seRapid,
         'se_blitz': updated.seBlitz,
+        // Legacy shared filters are retained for older dispatchers/builds.
+        // They cannot represent the split FP/SE model, so keep them as the
+        // most restrictive union to avoid sending a blocked time control.
+        'notify_classical': updated.fpClassical && updated.seClassical,
+        'notify_rapid': updated.fpRapid && updated.seRapid,
+        'notify_blitz': updated.fpBlitz && updated.seBlitz,
         'heads_up_lead_minutes': updated.headsUpLeadMinutes,
       }, onConflict: 'user_id');
     } catch (e, st) {
