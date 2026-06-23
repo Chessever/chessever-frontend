@@ -14,7 +14,7 @@ class ChessgroundPieceImageCache {
 
   static Future<void> ensurePieceSetLoaded(
     PieceSet pieceSet, {
-    bool clearBeforeLoad = false,
+    bool evictPreviousOnSwitch = false,
   }) {
     final previousLoad =
         _pendingLoad?.catchError((Object _, StackTrace _) {}) ??
@@ -24,18 +24,19 @@ class ChessgroundPieceImageCache {
     nextLoad = previousLoad.then((_) async {
       final cache = ChessgroundImages.instance;
       final assets = pieceSet.assets;
+      final previousPieceSet = _loadedPieceSet;
       final switchingPieceSet =
-          _loadedPieceSet != null && _loadedPieceSet != pieceSet;
-
-      if (clearBeforeLoad || switchingPieceSet) {
-        cache.clear();
-      }
+          previousPieceSet != null && previousPieceSet != pieceSet;
 
       if (!cache.isAllLoaded(assets)) {
         await cache.loadAll(assets, devicePixelRatio: _devicePixelRatio);
       }
 
       _loadedPieceSet = pieceSet;
+
+      if (evictPreviousOnSwitch && switchingPieceSet) {
+        _evictAfterNextFrame(previousPieceSet.assets, keep: assets);
+      }
     });
 
     _pendingLoad = nextLoad.whenComplete(() {
@@ -49,4 +50,19 @@ class ChessgroundPieceImageCache {
 
   static double? get _devicePixelRatio =>
       WidgetsBinding.instance.platformDispatcher.implicitView?.devicePixelRatio;
+
+  static void _evictAfterNextFrame(
+    PieceAssets previousAssets, {
+    required PieceAssets keep,
+  }) {
+    final keepAssets = keep.values.toSet();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final cache = ChessgroundImages.instance;
+      for (final asset in previousAssets.values) {
+        if (!keepAssets.contains(asset)) {
+          cache.evict(asset);
+        }
+      }
+    });
+  }
 }

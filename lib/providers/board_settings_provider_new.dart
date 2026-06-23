@@ -349,7 +349,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     debugPrint(
       '♟️ BoardSettings: Piece set changed to index=$clamped (${PieceSet.values[clamped].label})',
     );
-    await _preloadPieceImages(newSettings, clearBeforeLoad: true);
+    await _preloadPieceImages(newSettings, evictPreviousOnSwitch: true);
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -441,12 +441,12 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
 
   Future<void> _preloadPieceImages(
     BoardSettingsNew settings, {
-    bool clearBeforeLoad = false,
+    bool evictPreviousOnSwitch = false,
   }) async {
     try {
       await ChessgroundPieceImageCache.ensurePieceSetLoaded(
         settings.pieceSet,
-        clearBeforeLoad: clearBeforeLoad,
+        evictPreviousOnSwitch: evictPreviousOnSwitch,
       );
     } catch (e, st) {
       debugPrint('[BoardSettings] Chessground piece image preload failed: $e');
