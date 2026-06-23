@@ -3,6 +3,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_profile_resolved_event_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -11,7 +12,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:flutter/material.dart';
@@ -896,91 +896,72 @@ class _PlayerEventCard extends ConsumerWidget {
       dataSource: dataSource,
       event: playerEventData,
     );
-    final resolvedCard =
-        ref.watch(playerEventCardProvider(request)).valueOrNull;
-    final displayCard =
-        resolvedCard ?? buildPlayerEventFallbackCard(playerEventData);
+    final fallbackCard = buildPlayerEventFallbackCard(playerEventData);
 
-    return GestureDetector(
-          onTap: () => _navigateToTournament(context, ref, displayCard),
-          child: Column(
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                child: EventCard(
-                  key: ValueKey(displayCard.id),
-                  tourEventCardModel: displayCard,
-                  heroTagSuffix: 'player-profile-$index',
-                  // Embedded inside a SliverList (unbounded height) — must use
-                  // the compact phone layout to avoid Stack-expand crash.
-                  forceCompactLayout: true,
-                ),
+    return PlayerProfileResolvedEventCard(
+          request: request,
+          fallbackCard: fallbackCard,
+          heroTagSuffix: 'player-profile-$index',
+          onTap:
+              (displayCard) => _navigateToTournament(context, ref, displayCard),
+          statsRow: Container(
+            margin: EdgeInsets.only(top: 1.h),
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(8.br),
+                bottomRight: Radius.circular(8.br),
               ),
-              // Player stats row
-              Container(
-                margin: EdgeInsets.only(top: 1.h),
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: context.colors.surface,
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(8.br),
-                    bottomRight: Radius.circular(8.br),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.sports_esports_outlined,
-                          size: 14.sp,
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.5,
-                          ),
-                        ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.5,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Icon(
+                      Icons.sports_esports_outlined,
+                      size: 14.sp,
+                      color: context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
-                    if (playerEventData.score != null)
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8.w,
-                          vertical: 3.h,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getScoreColor(
-                            context,
-                            playerEventData.score!,
-                            playerEventData.gamesPlayed,
-                          ).withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4.br),
-                        ),
-                        child: Text(
-                          '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
-                          style: AppTypography.textXsBold.copyWith(
-                            color: _getScoreColor(
-                              context,
-                              playerEventData.score!,
-                              playerEventData.gamesPlayed,
-                            ),
-                          ),
+                    SizedBox(width: 4.w),
+                    Text(
+                      '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.5,
                         ),
                       ),
+                    ),
                   ],
                 ),
-              ),
-            ],
+                if (playerEventData.score != null)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.w,
+                      vertical: 3.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getScoreColor(
+                        context,
+                        playerEventData.score!,
+                        playerEventData.gamesPlayed,
+                      ).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                    child: Text(
+                      '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
+                      style: AppTypography.textXsBold.copyWith(
+                        color: _getScoreColor(
+                          context,
+                          playerEventData.score!,
+                          playerEventData.gamesPlayed,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         )
         .animate()
@@ -1003,6 +984,7 @@ class _PlayerEventCard extends ConsumerWidget {
       tourId: playerEventData.tourId,
       eventName: playerEventData.tourName,
       site: playerEventData.site,
+      broadcastSlug: playerEventData.broadcastSlug,
       canonicalBroadcastId:
           displayCard.eventSource == EventSource.lichessBroadcast
               ? displayCard.id

@@ -1614,13 +1614,21 @@ final playerEventCardProvider = FutureProvider.autoDispose
       ref,
       request,
     ) async {
+      void keepAliveBriefly() {
+        final link = ref.keepAlive();
+        final timer = Timer(const Duration(seconds: 45), link.close);
+        ref.onDispose(timer.cancel);
+      }
+
       final repo = ref.read(groupBroadcastRepositoryProvider);
 
       if (request.dataSource != PlayerProfileDataSource.twic) {
         try {
           final broadcast = await repo.getGroupBroadcastById(request.tourId);
+          keepAliveBriefly();
           return GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
         } catch (_) {
+          keepAliveBriefly();
           return null;
         }
       }
@@ -1629,12 +1637,14 @@ final playerEventCardProvider = FutureProvider.autoDispose
         try {
           final broadcast = await repo.getGroupBroadcastBySlug(slug);
           if (broadcast != null) {
+            keepAliveBriefly();
             return GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
           }
         } catch (_) {
           // Try the next candidate.
         }
       }
+      keepAliveBriefly();
       return null;
     });
 

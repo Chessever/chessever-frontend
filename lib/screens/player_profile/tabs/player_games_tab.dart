@@ -11,6 +11,7 @@ import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_car
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_profile_resolved_event_card.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
     show PlayerProfileTab, selectedPlayerProfileTabProvider;
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
@@ -22,7 +23,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -2018,33 +2018,15 @@ class _EventSection extends ConsumerWidget {
       broadcastSlug: eventData?.broadcastSlug,
       site: eventData?.site ?? site,
     );
-    final resolvedCard =
-        ref.watch(playerEventCardProvider(request)).valueOrNull;
-    final displayCard = resolvedCard ?? _buildSyncCommunityCard();
+    final fallbackCard = _buildSyncCommunityCard();
 
-    return GestureDetector(
-      onTap: () => _navigateToEvent(context, ref, displayCard),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            child: EventCard(
-              key: ValueKey(displayCard.id),
-              tourEventCardModel: displayCard,
-              heroTagSuffix: '_player_games_$tourId',
-              // Embedded inside a SliverList (unbounded height) — must use
-              // the compact phone layout to avoid Stack-expand crash.
-              forceCompactLayout: true,
-            ),
-          ),
-
-          // Player stats row
-          _buildStatsRow(context),
-        ],
-      ),
+    return PlayerProfileResolvedEventCard(
+      request: request,
+      fallbackCard: fallbackCard,
+      heroTagSuffix: '_player_games_$tourId',
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      onTap: (displayCard) => _navigateToEvent(context, ref, displayCard),
+      statsRow: _buildStatsRow(context),
     );
   }
 
@@ -2060,6 +2042,7 @@ class _EventSection extends ConsumerWidget {
       tourId: tourId,
       eventName: eventData?.tourName ?? tourSlug ?? tourId,
       site: eventData?.site ?? site,
+      broadcastSlug: eventData?.broadcastSlug,
       canonicalBroadcastId:
           displayCard.eventSource == EventSource.lichessBroadcast
               ? displayCard.id

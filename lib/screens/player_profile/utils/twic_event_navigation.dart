@@ -25,6 +25,7 @@ Future<void> openProfileEvent({
   required String tourId,
   required String eventName,
   String? site,
+  String? broadcastSlug,
   String? canonicalBroadcastId,
 }) async {
   HapticFeedbackService.buttonPress();
@@ -70,6 +71,8 @@ Future<void> openProfileEvent({
   final siteSlug = broadcastSlugFromSite(site);
   final nameSlug = eventNameToBroadcastSlug(eventName);
   final candidates = <String>{
+    if (broadcastSlug != null && broadcastSlug.trim().isNotEmpty)
+      broadcastSlug.trim(),
     if (siteSlug != null && siteSlug.isNotEmpty) siteSlug,
     if (nameSlug.isNotEmpty) nameSlug,
   };
@@ -98,7 +101,10 @@ Future<void> openProfileEvent({
       .state = virtualGroupBroadcastForEvent(
     eventName.trim(),
     site: site,
-    slug: siteSlug ?? (nameSlug.isNotEmpty ? nameSlug : null),
+    slug:
+        (broadcastSlug != null && broadcastSlug.trim().isNotEmpty)
+            ? broadcastSlug.trim()
+            : siteSlug ?? (nameSlug.isNotEmpty ? nameSlug : null),
   );
   ref.read(selectedTourModeProvider.notifier).state =
       TournamentDetailScreenMode.games;
