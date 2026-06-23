@@ -307,6 +307,8 @@ const _variantSlugPatterns = [
   'bughouse',
 ];
 
+const int _twicGlobalSearchFallbackMaxPages = 5;
+
 /// Check if a tour slug belongs to a non-standard chess variant
 bool _isVariantEvent(String? tourSlug) {
   if (tourSlug == null || tourSlug.isEmpty) return false;
@@ -322,7 +324,7 @@ final playerGamesDataKeyProvider = FutureProvider.family
     ) async {
       try {
         if (playerKey.source == PlayerProfileDataSource.twic) {
-          final pid = playerKey.gamebasePlayerId?.trim();
+          final pid = await ref.watch(twicPlayerIdProvider(playerKey).future);
           if (pid != null && pid.isNotEmpty) {
             try {
               return _getTwicGamesViaPlayerEndpoint(ref, pid);
@@ -812,7 +814,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
     if (!response.metadata.hasMore) break;
     if (response.results.isEmpty) break;
     page += 1;
-    if (page > 200) break;
+    if (page > _twicGlobalSearchFallbackMaxPages) break;
   }
 
   DateTime? parseDate(Object? raw) {
@@ -3264,7 +3266,7 @@ class PlayerProfileGamesNotifier
       if (!response.metadata.hasMore) break;
       if (response.results.isEmpty) break;
       page += 1;
-      if (page > 200) break;
+      if (page > _twicGlobalSearchFallbackMaxPages) break;
     }
 
     final gamebasePlayersById = await _fetchGamebasePlayersByIds(rows, repo);
