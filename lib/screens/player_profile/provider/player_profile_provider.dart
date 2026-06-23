@@ -1396,6 +1396,33 @@ int? _largerInt(int? a, int? b) {
   return a > b ? a : b;
 }
 
+class _PlayerEventBroadcastMeta {
+  const _PlayerEventBroadcastMeta({
+    this.startDate,
+    this.endDate,
+    this.timeControl,
+    this.maxAvgElo,
+  });
+
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String? timeControl;
+  final int? maxAvgElo;
+}
+
+DateTime? _parsePlayerEventDateTime(Object? value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  return DateTime.tryParse(value.toString());
+}
+
+int? _parsePlayerEventInt(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
+}
+
 List<PlayerEventData> _buildTwicPlayerEventsFromGames(
   List<GamesTourModel> games,
 ) {
@@ -1487,9 +1514,9 @@ List<String> twicBroadcastSlugCandidatesForEvent(PlayerEventData event) {
   return candidates.toList(growable: false);
 }
 
-GroupEventCardModel buildTwicPlayerEventFallbackCard(PlayerEventData event) {
+GroupEventCardModel buildPlayerEventFallbackCard(PlayerEventData event) {
   final title = event.tourName.trim();
-  final id = 'twic_event_${event.tourId}';
+  final id = 'player_event_${event.tourId}';
   return GroupEventCardModel(
     id: id,
     title: title.isEmpty ? 'Event' : title,
@@ -1512,57 +1539,91 @@ GroupEventCardModel buildTwicPlayerEventFallbackCard(PlayerEventData event) {
   );
 }
 
-Future<Map<String, GroupEventCardModel>> resolveTwicPlayerEventCards({
-  required Iterable<PlayerEventData> events,
-  required GroupBroadcastRepository groupBroadcastRepo,
-}) async {
-  final eventList = events.toList(growable: false);
-  if (eventList.isEmpty) return const {};
+class PlayerProfileEventCardRequest {
+  const PlayerProfileEventCardRequest({
+    required this.dataSource,
+    required this.tourId,
+    required this.tourName,
+    this.tourSlug,
+    this.broadcastSlug,
+    this.site,
+  });
 
-  final slugs = <String>{
-    for (final event in eventList)
-      ...twicBroadcastSlugCandidatesForEvent(event),
-  };
-  final cloudCardsBySlug = <String, GroupEventCardModel?>{};
-
-  await Future.wait(
-    slugs.map((slug) async {
-      try {
-        final broadcast = await groupBroadcastRepo.getGroupBroadcastBySlug(
-          slug,
-        );
-        cloudCardsBySlug[slug] =
-            broadcast == null
-                ? null
-                : GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
-      } catch (_) {
-        cloudCardsBySlug[slug] = null;
-      }
-    }),
-  );
-
-  final cards = <String, GroupEventCardModel>{};
-  for (final event in eventList) {
-    GroupEventCardModel? cloudCard;
-    for (final slug in twicBroadcastSlugCandidatesForEvent(event)) {
-      cloudCard = cloudCardsBySlug[slug];
-      if (cloudCard != null) break;
-    }
-    cards[event.tourId] = cloudCard ?? buildTwicPlayerEventFallbackCard(event);
+  factory PlayerProfileEventCardRequest.fromEvent({
+    required PlayerProfileDataSource dataSource,
+    required PlayerEventData event,
+  }) {
+    return PlayerProfileEventCardRequest(
+      dataSource: dataSource,
+      tourId: event.tourId,
+      tourName: event.tourName,
+      tourSlug: event.tourSlug,
+      broadcastSlug: event.broadcastSlug,
+      site: event.site,
+    );
   }
-  return cards;
+
+  final PlayerProfileDataSource dataSource;
+  final String tourId;
+  final String tourName;
+  final String? tourSlug;
+  final String? broadcastSlug;
+  final String? site;
+
+  List<String> get slugCandidates {
+    final candidates = <String>{
+      if ((broadcastSlug ?? '').trim().isNotEmpty) broadcastSlug!.trim(),
+      if (broadcastSlugFromSite(site) != null) broadcastSlugFromSite(site)!,
+      if ((tourSlug ?? '').trim().isNotEmpty) tourSlug!.trim(),
+      if (tourName.trim().isNotEmpty) eventNameToBroadcastSlug(tourName),
+    };
+    candidates.removeWhere((slug) => slug.trim().isEmpty);
+    return candidates.toList(growable: false);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlayerProfileEventCardRequest &&
+          dataSource == other.dataSource &&
+          tourId == other.tourId &&
+          tourName == other.tourName &&
+          tourSlug == other.tourSlug &&
+          broadcastSlug == other.broadcastSlug &&
+          site == other.site;
+
+  @override
+  int get hashCode =>
+      Object.hash(dataSource, tourId, tourName, tourSlug, broadcastSlug, site);
 }
 
-final playerTwicEventCardsProvider = FutureProvider.family
-    .autoDispose<Map<String, GroupEventCardModel>, PlayerProfileKey>((
+final playerEventCardProvider = FutureProvider.autoDispose
+    .family<GroupEventCardModel?, PlayerProfileEventCardRequest>((
       ref,
-      playerKey,
+      request,
     ) async {
-      final events = await ref.watch(playerEventsKeyProvider(playerKey).future);
-      return resolveTwicPlayerEventCards(
-        events: events,
-        groupBroadcastRepo: ref.read(groupBroadcastRepositoryProvider),
-      );
+      final repo = ref.read(groupBroadcastRepositoryProvider);
+
+      if (request.dataSource != PlayerProfileDataSource.twic) {
+        try {
+          final broadcast = await repo.getGroupBroadcastById(request.tourId);
+          return GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      for (final slug in request.slugCandidates) {
+        try {
+          final broadcast = await repo.getGroupBroadcastBySlug(slug);
+          if (broadcast != null) {
+            return GroupEventCardModel.fromGroupBroadcast(broadcast, const []);
+          }
+        } catch (_) {
+          // Try the next candidate.
+        }
+      }
+      return null;
     });
 
 final playerProfileDataKeyProvider = FutureProvider.family
@@ -1744,26 +1805,22 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
       }
     }
 
-    // Fetch group_broadcast dates
-    final groupBroadcastDates = <String, Map<String, DateTime?>>{};
+    // Fetch group_broadcast metadata for fallback cards and filters.
+    final groupBroadcastMetadata = <String, _PlayerEventBroadcastMeta>{};
     if (groupBroadcastIds.isNotEmpty) {
       final gbResponse = await supabase
           .from('group_broadcasts')
-          .select('id, date_start, date_end')
+          .select('id, date_start, date_end, time_control, max_avg_elo')
           .inFilter('id', groupBroadcastIds.toList());
 
       for (final gb in gbResponse as List) {
         final gbId = gb['id'] as String;
-        groupBroadcastDates[gbId] = {
-          'start':
-              gb['date_start'] != null
-                  ? DateTime.tryParse(gb['date_start'] as String)
-                  : null,
-          'end':
-              gb['date_end'] != null
-                  ? DateTime.tryParse(gb['date_end'] as String)
-                  : null,
-        };
+        groupBroadcastMetadata[gbId] = _PlayerEventBroadcastMeta(
+          startDate: _parsePlayerEventDateTime(gb['date_start']),
+          endDate: _parsePlayerEventDateTime(gb['date_end']),
+          timeControl: gb['time_control'] as String?,
+          maxAvgElo: _parsePlayerEventInt(gb['max_avg_elo']),
+        );
       }
     }
 
@@ -1774,7 +1831,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
       final data = entry.value;
       final tour = tourDetails[tourId];
       final gbId = tour?['group_broadcast_id'] as String?;
-      final gbDates = gbId != null ? groupBroadcastDates[gbId] : null;
+      final gbMeta = gbId != null ? groupBroadcastMetadata[gbId] : null;
 
       // Calculate score (wins + 0.5 * draws)
       final wins = data['wins'] as int;
@@ -1785,9 +1842,9 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
       DateTime? startDate;
       DateTime? endDate;
 
-      if (gbDates != null) {
-        startDate = gbDates['start'];
-        endDate = gbDates['end'];
+      if (gbMeta != null) {
+        startDate = gbMeta.startDate;
+        endDate = gbMeta.endDate;
       } else if (tour != null) {
         final dates = tour['dates'] as List<dynamic>?;
         if (dates != null && dates.isNotEmpty) {
@@ -1815,6 +1872,9 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
           score: score,
           startDate: startDate,
           endDate: endDate,
+          dominantTimeControl: gbMeta?.timeControl,
+          avgElo: gbMeta?.maxAvgElo,
+          maxElo: gbMeta?.maxAvgElo,
         ),
       );
     }
@@ -1927,26 +1987,22 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
       }
     }
 
-    // Fetch group_broadcast dates
-    final groupBroadcastDates = <String, Map<String, DateTime?>>{};
+    // Fetch group_broadcast metadata for fallback cards and filters.
+    final groupBroadcastMetadata = <String, _PlayerEventBroadcastMeta>{};
     if (groupBroadcastIds.isNotEmpty) {
       final gbResponse = await supabase
           .from('group_broadcasts')
-          .select('id, date_start, date_end')
+          .select('id, date_start, date_end, time_control, max_avg_elo')
           .inFilter('id', groupBroadcastIds.toList());
 
       for (final gb in gbResponse as List) {
         final gbId = gb['id'] as String;
-        groupBroadcastDates[gbId] = {
-          'start':
-              gb['date_start'] != null
-                  ? DateTime.tryParse(gb['date_start'] as String)
-                  : null,
-          'end':
-              gb['date_end'] != null
-                  ? DateTime.tryParse(gb['date_end'] as String)
-                  : null,
-        };
+        groupBroadcastMetadata[gbId] = _PlayerEventBroadcastMeta(
+          startDate: _parsePlayerEventDateTime(gb['date_start']),
+          endDate: _parsePlayerEventDateTime(gb['date_end']),
+          timeControl: gb['time_control'] as String?,
+          maxAvgElo: _parsePlayerEventInt(gb['max_avg_elo']),
+        );
       }
     }
 
@@ -1957,7 +2013,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
       final data = entry.value;
       final tour = tourDetails[tourId];
       final gbId = tour?['group_broadcast_id'] as String?;
-      final gbDates = gbId != null ? groupBroadcastDates[gbId] : null;
+      final gbMeta = gbId != null ? groupBroadcastMetadata[gbId] : null;
 
       // Calculate score (wins + 0.5 * draws)
       final wins = data['wins'] as int;
@@ -1968,9 +2024,9 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
       DateTime? startDate;
       DateTime? endDate;
 
-      if (gbDates != null) {
-        startDate = gbDates['start'];
-        endDate = gbDates['end'];
+      if (gbMeta != null) {
+        startDate = gbMeta.startDate;
+        endDate = gbMeta.endDate;
       } else if (tour != null) {
         final dates = tour['dates'] as List<dynamic>?;
         if (dates != null && dates.isNotEmpty) {
@@ -1998,6 +2054,9 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
           score: score,
           startDate: startDate,
           endDate: endDate,
+          dominantTimeControl: gbMeta?.timeControl,
+          avgElo: gbMeta?.maxAvgElo,
+          maxElo: gbMeta?.maxAvgElo,
         ),
       );
     }

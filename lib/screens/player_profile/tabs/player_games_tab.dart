@@ -14,7 +14,6 @@ import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.da
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
     show PlayerProfileTab, selectedPlayerProfileTabProvider;
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
-import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -557,23 +556,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return score;
   }
 
-  Future<void> _navigateToEvent({
-    required String tourId,
-    required String eventName,
-    String? site,
-    String? canonicalBroadcastId,
-  }) {
-    return openProfileEvent(
-      context: context,
-      ref: ref,
-      dataSource: widget.dataSource,
-      tourId: tourId,
-      eventName: eventName,
-      site: site,
-      canonicalBroadcastId: canonicalBroadcastId,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -635,13 +617,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         (state.hasActiveFilters ? 42.h : 0) +
         (isSelectionMode ? 136.h : 0);
 
-    // Watch event data for event-grouped display
-    final eventCardsAsync =
-        widget.dataSource == PlayerProfileDataSource.twic
-            ? ref.watch(playerTwicEventCardsProvider(_playerKey))
-            : widget.fideId != null
-            ? ref.watch(playerEventCardsProvider(widget.fideId!))
-            : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
     Widget content = RefreshIndicator(
@@ -682,13 +657,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
 
           // Content
-          _buildContentSliver(
-            state,
-            viewMode,
-            eventCardsAsync,
-            eventsAsync,
-            isSelectionMode,
-          ),
+          _buildContentSliver(state, viewMode, eventsAsync, isSelectionMode),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -1167,7 +1136,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget _buildContentSliver(
     PlayerProfileGamesState state,
     GamesListViewMode viewMode,
-    AsyncValue<Map<String, GroupEventCardModel>> eventCardsAsync,
     AsyncValue<List<PlayerEventData>> eventsAsync,
     bool isSelectionMode,
   ) {
@@ -1229,7 +1197,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
     // Group games by event (tourId)
     final gamesByEvent = _groupGamesByEvent(games);
-    final eventCards = eventCardsAsync.valueOrNull ?? {};
     final eventDataList = eventsAsync.valueOrNull ?? [];
     final eventDataMap = {for (final e in eventDataList) e.tourId: e};
 
@@ -1242,14 +1209,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     for (final entry in gamesByEvent.entries) {
       final tourId = entry.key;
       final eventGames = entry.value;
-      final eventCard = eventCards[tourId];
       final eventData = eventDataMap[tourId];
       final playerScore = _computePlayerScore(eventGames);
 
       // Event header (card + stats row)
       listEntries.add(
         _PlayerEventHeaderEntry(
-          eventCard: eventCard,
           eventData: eventData,
           tourId: tourId,
           tourSlug:
@@ -1359,23 +1324,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           bottom: 12.h,
         ),
         child: _EventSection(
-          eventCard: entry.eventCard,
           eventData: entry.eventData,
+          dataSource: widget.dataSource,
           tourId: entry.tourId,
           tourSlug: entry.tourSlug,
           site: entry.site,
           gameCount: entry.gameCount,
           playerScore: entry.playerScore,
-          onTap:
-              () => _navigateToEvent(
-                tourId: entry.tourId,
-                eventName: entry.eventData?.tourName ?? entry.tourId,
-                site: entry.site,
-                canonicalBroadcastId:
-                    entry.eventCard?.eventSource == EventSource.lichessBroadcast
-                        ? entry.eventCard?.id
-                        : null,
-              ),
         ),
       );
     }
@@ -1901,7 +1856,6 @@ abstract class _PlayerGamesListEntry {
 
 class _PlayerEventHeaderEntry extends _PlayerGamesListEntry {
   const _PlayerEventHeaderEntry({
-    required this.eventCard,
     required this.eventData,
     required this.tourId,
     required this.tourSlug,
@@ -1911,7 +1865,6 @@ class _PlayerEventHeaderEntry extends _PlayerGamesListEntry {
     required this.isFirstEvent,
   });
 
-  final GroupEventCardModel? eventCard;
   final PlayerEventData? eventData;
   final String tourId;
   final String? tourSlug;
@@ -2038,50 +1991,79 @@ class _SelectionActionButton extends StatelessWidget {
 /// Event section header: EventCard (or fallback) + player stats row
 class _EventSection extends ConsumerWidget {
   const _EventSection({
-    this.eventCard,
     this.eventData,
+    required this.dataSource,
     required this.tourId,
     this.tourSlug,
     this.site,
     required this.gameCount,
     required this.playerScore,
-    this.onTap,
   });
 
-  final GroupEventCardModel? eventCard;
   final PlayerEventData? eventData;
+  final PlayerProfileDataSource dataSource;
   final String tourId;
   final String? tourSlug;
   final String? site;
   final int gameCount;
   final double playerScore;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Always render the full EventCard from a card we build synchronously from
-    // data already in hand (no async provider, no network). This keeps the
-    // fixed-size image box reserved from the first frame, so the layout never
-    // jumps from a short text fallback to the taller image card.
-    final displayCard = eventCard ?? _buildSyncCommunityCard();
+    final request = PlayerProfileEventCardRequest(
+      dataSource: dataSource,
+      tourId: tourId,
+      tourName: eventData?.tourName ?? tourSlug ?? tourId,
+      tourSlug: eventData?.tourSlug ?? tourSlug,
+      broadcastSlug: eventData?.broadcastSlug,
+      site: eventData?.site ?? site,
+    );
+    final resolvedCard =
+        ref.watch(playerEventCardProvider(request)).valueOrNull;
+    final displayCard = resolvedCard ?? _buildSyncCommunityCard();
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: () => _navigateToEvent(context, ref, displayCard),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          EventCard(
-            tourEventCardModel: displayCard,
-            heroTagSuffix: '_player_games_$tourId',
-            // Embedded inside a SliverList (unbounded height) — must use
-            // the compact phone layout to avoid Stack-expand crash.
-            forceCompactLayout: true,
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: EventCard(
+              key: ValueKey(displayCard.id),
+              tourEventCardModel: displayCard,
+              heroTagSuffix: '_player_games_$tourId',
+              // Embedded inside a SliverList (unbounded height) — must use
+              // the compact phone layout to avoid Stack-expand crash.
+              forceCompactLayout: true,
+            ),
           ),
 
           // Player stats row
           _buildStatsRow(context),
         ],
       ),
+    );
+  }
+
+  Future<void> _navigateToEvent(
+    BuildContext context,
+    WidgetRef ref,
+    GroupEventCardModel displayCard,
+  ) {
+    return openProfileEvent(
+      context: context,
+      ref: ref,
+      dataSource: dataSource,
+      tourId: tourId,
+      eventName: eventData?.tourName ?? tourSlug ?? tourId,
+      site: eventData?.site ?? site,
+      canonicalBroadcastId:
+          displayCard.eventSource == EventSource.lichessBroadcast
+              ? displayCard.id
+              : null,
     );
   }
 
