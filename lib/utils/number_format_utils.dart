@@ -28,3 +28,31 @@ String formatCompactCount(int count) {
 
   return _decimalCountFormatter.format(count);
 }
+
+/// Formats tight player stat counts for narrow mobile dashboard columns.
+///
+/// W/D/L counts stay exact while they fit comfortably, then switch to compact
+/// K notation at 10,000+ where exact comma values become cramped.
+///
+/// Examples:
+///   2323   → "2,323"
+///   8250   → "8,250"
+///   10000  → "10.0K"
+///   10149  → "10.1K"
+///   12953  → "13.0K"
+///   100000 → "100K"
+String formatTightStatCount(int count) {
+  if (count < 10000) {
+    return _decimalCountFormatter.format(count);
+  }
+
+  if (count < 100000) {
+    return '${(count / 1000).toStringAsFixed(1)}K';
+  }
+
+  if (count < 1000000) {
+    return '${(count / 1000).round()}K';
+  }
+
+  return formatCompactCount(count);
+}

@@ -13,6 +13,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -1476,23 +1477,7 @@ class _OverallStatsSection extends StatelessWidget {
                     ),
                   ),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          '${resultStats.wins}W / ${resultStats.draws}D / ${resultStats.losses}L',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: context.colors.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          'W / D / L',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _ResultCountTriplet(resultStats: resultStats),
                   ),
                   if (avgOpponentRating > 0)
                     Expanded(
@@ -1521,6 +1506,66 @@ class _OverallStatsSection extends StatelessWidget {
         ),
       ],
     ).animate().fadeIn(duration: 300.ms, delay: 100.ms);
+  }
+}
+
+class _ResultCountTriplet extends StatelessWidget {
+  const _ResultCountTriplet({required this.resultStats});
+
+  final ResultStatistics resultStats;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _ResultCountColumn(
+          value: formatTightStatCount(resultStats.wins),
+          label: 'W',
+        ),
+        _ResultCountColumn(
+          value: formatTightStatCount(resultStats.draws),
+          label: 'D',
+        ),
+        _ResultCountColumn(
+          value: formatTightStatCount(resultStats.losses),
+          label: 'L',
+        ),
+      ],
+    );
+  }
+}
+
+class _ResultCountColumn extends StatelessWidget {
+  const _ResultCountColumn({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
+          ),
+          Text(
+            label,
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.5),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
