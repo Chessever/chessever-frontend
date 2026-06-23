@@ -9,6 +9,7 @@ class GamebaseEventView {
   const GamebaseEventView({
     required this.event,
     required this.site,
+    required this.image,
     required this.format,
     required this.truncated,
     required this.about,
@@ -19,6 +20,7 @@ class GamebaseEventView {
 
   final String event;
   final String? site;
+  final String? image;
 
   /// 'regular' | 'team' | 'knockout'
   final String format;
@@ -37,6 +39,7 @@ class GamebaseEventView {
     return GamebaseEventView(
       event: (data['event'] ?? '').toString(),
       site: _stringOrNull(data['site']),
+      image: _stringOrNull(data['image']),
       format: (data['format'] ?? 'regular').toString(),
       truncated: data['truncated'] == true,
       about: GamebaseEventAbout.fromJson(
@@ -69,6 +72,7 @@ class GamebaseEventAbout {
     required this.avgElo,
     required this.maxElo,
     required this.site,
+    required this.image,
   });
 
   final int gameCount;
@@ -81,6 +85,7 @@ class GamebaseEventAbout {
   final int? avgElo;
   final int? maxElo;
   final String? site;
+  final String? image;
 
   factory GamebaseEventAbout.fromJson(Map<String, dynamic> json) {
     return GamebaseEventAbout(
@@ -94,6 +99,7 @@ class GamebaseEventAbout {
       avgElo: _intOrNull(json['avgElo']),
       maxElo: _intOrNull(json['maxElo']),
       site: _stringOrNull(json['site']),
+      image: _stringOrNull(json['image']),
     );
   }
 }

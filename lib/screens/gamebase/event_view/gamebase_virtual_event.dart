@@ -87,6 +87,7 @@ List<Tour> virtualToursFromView(GamebaseEventView view, {String? virtualId}) {
       format: about.roundCount > 0 ? '${about.roundCount}-round event' : null,
       timeControl: about.timeControl,
       location: about.site,
+      image: view.image ?? about.image,
       dates: [
         if (about.startDate != null) about.startDate!,
         if (about.endDate != null) about.endDate!,

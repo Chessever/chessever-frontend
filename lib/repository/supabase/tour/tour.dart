@@ -334,7 +334,7 @@ List<TournamentPlayer> sortByPerformance(List<TournamentPlayer> players) {
   return sorted;
 }
 
-class _TourInfo {
+class TourInfo {
   final String? tc; // Time control (e.g., "90 min + 30 sec / move")
   final String? fideTc; // FIDE time control category (standard, rapid, blitz)
   final String? format; // Tournament format (e.g., "9-round Swiss")
@@ -349,7 +349,7 @@ class _TourInfo {
   final String? standingsSource;
   final DateTime? standingsUpdatedAt;
 
-  const _TourInfo({
+  const TourInfo({
     this.tc,
     this.fideTc,
     this.format,
@@ -362,8 +362,8 @@ class _TourInfo {
     this.standingsUpdatedAt,
   });
 
-  factory _TourInfo.fromJson(Map<String, dynamic> json) {
-    return _TourInfo(
+  factory TourInfo.fromJson(Map<String, dynamic> json) {
+    return TourInfo(
       tc: json['tc'] as String?,
       fideTc: json['fideTc'] as String?,
       format: json['format'] as String?,
@@ -421,7 +421,7 @@ class Tour {
   final String id;
   final String name;
   final String slug;
-  final _TourInfo info;
+  final TourInfo info;
   final DateTime createdAt;
   final String url;
   final int tier;
@@ -449,8 +449,8 @@ class Tour {
   });
 
   /// Build a synthetic Tour for a gamebase-only event so it can render in the
-  /// real tournament detail screen. [_TourInfo] is private, so this factory is
-  /// the only way to construct one outside this file.
+  /// real tournament detail screen. [TourInfo] is the only way to construct
+  /// one outside this file.
   factory Tour.virtual({
     required String id,
     required String name,
@@ -460,13 +460,14 @@ class Tour {
     String? format,
     String? timeControl,
     String? location,
+    String? image,
     int? avgElo,
   }) {
     return Tour(
       id: id,
       name: name,
       slug: slug,
-      info: _TourInfo(
+      info: TourInfo(
         format: format,
         fideTc: timeControl,
         location: location,
@@ -475,6 +476,7 @@ class Tour {
       url: '',
       tier: 0,
       dates: dates,
+      image: image,
       players: players,
       groupBroadcastId: id,
       avgElo: avgElo,
@@ -489,7 +491,7 @@ class Tour {
       id: json['id'] as String,
       name: json['name'] as String,
       slug: json['slug'] as String,
-      info: _TourInfo.fromJson(json['info'] as Map<String, dynamic>),
+      info: TourInfo.fromJson(json['info'] as Map<String, dynamic>),
       createdAt: DateTime.parse(json['created_at'] as String),
       url: json['url'] as String,
       tier: _parseInt(json['tier']) ?? 0,
