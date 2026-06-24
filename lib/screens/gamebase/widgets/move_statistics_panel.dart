@@ -672,73 +672,140 @@ class _StatisticsBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(16.br),
       child: SizedBox(
         height: 16.h,
-        child: Row(
-          children: [
-            // White wins
-            if (whiteRate > 0)
-              Expanded(
-                flex: (whiteRate * 100).round().clamp(1, 100),
-                child: Container(
-                  color: kMoveStatWhiteColor,
-                  alignment: Alignment.center,
-                  child:
-                      whiteRate >= 0.08
-                          ? Text(
-                            '${(whiteRate * 100).toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              color: kMoveStatBlackColor,
-                              fontSize: 10.f,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                          : null,
-                ),
-              ),
-            // Draws
-            if (drawRate > 0)
-              Expanded(
-                flex: (drawRate * 100).round().clamp(1, 100),
-                child: Container(
-                  color: kMoveStatDrawColor,
-                  alignment: Alignment.center,
-                  child:
-                      drawRate >= 0.08
-                          ? Text(
-                            '${(drawRate * 100).toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              color: kMoveStatWhiteColor,
-                              fontSize: 10.f,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                          : null,
-                ),
-              ),
-            // Black wins
-            if (blackRate > 0)
-              Expanded(
-                flex: (blackRate * 100).round().clamp(1, 100),
-                child: Container(
-                  color: kMoveStatBlackColor,
-                  alignment: Alignment.center,
-                  child:
-                      blackRate >= 0.08
-                          ? Text(
-                            '${(blackRate * 100).toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              color: kMoveStatWhiteColor,
-                              fontSize: 10.f,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                          : null,
-                ),
-              ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final segments = _scoreSegments();
+            if (segments.isEmpty || constraints.maxWidth <= 0) {
+              return const SizedBox.shrink();
+            }
+
+            final widths = _scoreSegmentWidths(
+              segments,
+              constraints.maxWidth,
+              minimumLabelWidth: 28.w,
+            );
+
+            return Row(
+              children: [
+                for (var i = 0; i < segments.length; i++)
+                  SizedBox(
+                    width: widths[i],
+                    child: _ScoreSegment(segment: segments[i]),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
+
+  List<_ScoreSegmentData> _scoreSegments() {
+    return [
+      if (whiteRate > 0)
+        _ScoreSegmentData(
+          rate: whiteRate,
+          label: _formatScorePercent(whiteRate),
+          backgroundColor: kMoveStatWhiteColor,
+          textColor: kMoveStatBlackColor,
+        ),
+      if (drawRate > 0)
+        _ScoreSegmentData(
+          rate: drawRate,
+          label: _formatScorePercent(drawRate),
+          backgroundColor: kMoveStatDrawColor,
+          textColor: kMoveStatWhiteColor,
+        ),
+      if (blackRate > 0)
+        _ScoreSegmentData(
+          rate: blackRate,
+          label: _formatScorePercent(blackRate),
+          backgroundColor: kMoveStatBlackColor,
+          textColor: kMoveStatWhiteColor,
+        ),
+    ];
+  }
+}
+
+class _ScoreSegment extends StatelessWidget {
+  const _ScoreSegment({required this.segment});
+
+  final _ScoreSegmentData segment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: segment.backgroundColor,
+      alignment: Alignment.center,
+      padding: EdgeInsets.symmetric(horizontal: 1.w),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          segment.label,
+          maxLines: 1,
+          softWrap: false,
+          style: TextStyle(
+            color: segment.textColor,
+            fontSize: 10.f,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScoreSegmentData {
+  const _ScoreSegmentData({
+    required this.rate,
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  final double rate;
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+}
+
+String _formatScorePercent(double rate) =>
+    '${(rate * 100).toStringAsFixed(0)}%';
+
+List<double> _scoreSegmentWidths(
+  List<_ScoreSegmentData> segments,
+  double availableWidth, {
+  required double minimumLabelWidth,
+}) {
+  if (segments.isEmpty || availableWidth <= 0) return const [];
+
+  final safeMinimum = minimumLabelWidth.clamp(
+    0.0,
+    availableWidth / segments.length,
+  );
+  final totalRate = segments.fold<double>(
+    0,
+    (sum, segment) => sum + segment.rate,
+  );
+  final remainingWidth = availableWidth - (safeMinimum * segments.length);
+
+  if (remainingWidth <= 0 || totalRate <= 0) {
+    return List<double>.filled(
+      segments.length,
+      availableWidth / segments.length,
+    );
+  }
+
+  final widths = <double>[
+    for (final segment in segments)
+      safeMinimum + (remainingWidth * (segment.rate / totalRate)),
+  ];
+
+  // Remove any sub-pixel drift so the row fills the clipped bar exactly.
+  final drift =
+      availableWidth - widths.fold<double>(0, (sum, width) => sum + width);
+  widths[widths.length - 1] += drift;
+  return widths;
 }
 
 /// CTA shown in place of the move-aggregate table when the current position
