@@ -33,6 +33,10 @@ class EventCard extends ConsumerWidget {
   final bool showHeartIndicator;
   final EventFavoritePlayersSource favoritePlayersSource;
 
+  /// Overrides the right-side star affordance for surfaces that use EventCard
+  /// as a section header rather than an event-favorite entry point.
+  final Widget? trailingWidget;
+
   /// Optional suffix to make hero tag unique when same event appears in multiple lists
   final String? heroTagSuffix;
 
@@ -48,6 +52,7 @@ class EventCard extends ConsumerWidget {
     this.onTap,
     this.showHeartIndicator = false,
     this.favoritePlayersSource = EventFavoritePlayersSource.automatic,
+    this.trailingWidget,
     this.heroTagSuffix,
     this.forceCompactLayout = false,
     super.key,
@@ -185,12 +190,13 @@ class EventCard extends ConsumerWidget {
                         onLight: true,
                       ),
                     ),
-                    // Star icon
-                    _StarWidget(
-                      tourEventCardModel: tourEventCardModel,
-                      showHeartIndicator: showHeartIndicator,
-                      favoritePlayersSource: favoritePlayersSource,
-                    ),
+                    // Right-side action (favorite star by default).
+                    trailingWidget ??
+                        _StarWidget(
+                          tourEventCardModel: tourEventCardModel,
+                          showHeartIndicator: showHeartIndicator,
+                          favoritePlayersSource: favoritePlayersSource,
+                        ),
                   ],
                 ),
                 _NextRoundLine(
@@ -294,13 +300,15 @@ class EventCard extends ConsumerWidget {
               ),
             ),
 
-            // Star icon on the right — relies on its own horizontal padding
-            // for spacing, which keeps more room for title/meta to breathe.
-            _StarWidget(
-              tourEventCardModel: tourEventCardModel,
-              showHeartIndicator: showHeartIndicator,
-              favoritePlayersSource: favoritePlayersSource,
-            ),
+            // Right-side action (favorite star by default). The player Games
+            // tab overrides this with a smaller collapse affordance so the
+            // title/meta line keeps more breathing room.
+            trailingWidget ??
+                _StarWidget(
+                  tourEventCardModel: tourEventCardModel,
+                  showHeartIndicator: showHeartIndicator,
+                  favoritePlayersSource: favoritePlayersSource,
+                ),
           ],
         ),
       ),
