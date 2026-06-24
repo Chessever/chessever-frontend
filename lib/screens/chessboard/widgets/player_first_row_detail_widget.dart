@@ -754,9 +754,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                           ? nameParts[1]
                           : ''; // Part after comma
 
-                  // Build static parts
+                  // In compact grid cards the rating gets its own fixed slot
+                  // immediately before the clock, so long names cannot push it
+                  // out of view. List/board rows keep the historical inline
+                  // `Name Rating` rendering.
                   final rating =
-                      effectivePlayerCard.rating > 0
+                      playerView != PlayerView.gridView &&
+                              effectivePlayerCard.rating > 0
                           ? ' ${effectivePlayerCard.rating}'
                           : '';
 
@@ -892,6 +896,21 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 width: playerView == PlayerView.gridView ? 12.w : 12.w,
               ),
               SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
+            ],
+            if (playerView == PlayerView.gridView &&
+                effectivePlayerCard.rating > 0) ...[
+              SizedBox(width: 3.w),
+              SizedBox(
+                width: 25.w,
+                child: Text(
+                  effectivePlayerCard.rating.toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.visible,
+                  softWrap: false,
+                  textAlign: TextAlign.right,
+                  style: ratingStyle,
+                ),
+              ),
             ],
             // Always show clock/time on the right - simplified structure to prevent overflow
             if (showClock && hasClockData)
