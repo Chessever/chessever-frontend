@@ -190,7 +190,9 @@ class HamburgerMenu extends HookConsumerWidget {
                           height: 20.h / 14.h,
                         ),
                         onPressed: () async {
-                          final uri = Uri.parse('https://chessever.com');
+                          final uri = Uri.parse(
+                            'https://chessever.com/desktop',
+                          );
                           if (await canLaunchUrl(uri)) {
                             await launchUrl(
                               uri,
