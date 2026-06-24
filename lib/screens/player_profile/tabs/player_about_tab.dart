@@ -1516,21 +1516,33 @@ class _ResultCountTriplet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _ResultCountColumn(
-          value: formatTightStatCount(resultStats.wins),
-          label: 'W',
-        ),
-        _ResultCountColumn(
-          value: formatTightStatCount(resultStats.draws),
-          label: 'D',
-        ),
-        _ResultCountColumn(
-          value: formatTightStatCount(resultStats.losses),
-          label: 'L',
-        ),
-      ],
+    // Scale the whole W/D/L unit as ONE so all three counts share a single
+    // font size. Per-column Expanded + independent FittedBox previously gave
+    // each number its own scale, so 2323 / 828 / 1078 rendered at three
+    // different sizes inside this 1/3-width slot. A single FittedBox shrinks
+    // the intrinsic row uniformly to fit.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ResultCountColumn(
+            value: formatTightStatCount(resultStats.wins),
+            label: 'W',
+          ),
+          SizedBox(width: 12.w),
+          _ResultCountColumn(
+            value: formatTightStatCount(resultStats.draws),
+            label: 'D',
+          ),
+          SizedBox(width: 12.w),
+          _ResultCountColumn(
+            value: formatTightStatCount(resultStats.losses),
+            label: 'L',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1543,28 +1555,23 @@ class _ResultCountColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          maxLines: 1,
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textPrimary,
           ),
-          Text(
-            label,
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
-            ),
+        ),
+        Text(
+          label,
+          style: AppTypography.textXsRegular.copyWith(
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
