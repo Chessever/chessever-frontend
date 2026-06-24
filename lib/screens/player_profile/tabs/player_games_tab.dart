@@ -101,6 +101,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     });
   }
+
   // Keep rendering while backgrounded so the OS app-switcher snapshot is not
   // blank. Route coverage still removes the tab from active provider work.
   bool get _isActiveOnScreen => _routeIsCurrent;
