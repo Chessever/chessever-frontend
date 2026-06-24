@@ -10932,7 +10932,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                     ),
                                   ),
                                   SizedBox(height: 12.sp),
-                                  // Promote main variant button
+                                  // Promote button
                                   Material(
                                     color: Colors.transparent,
                                     child: InkWell(
@@ -10996,7 +10996,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                             ),
                                             SizedBox(width: 8.sp),
                                             Text(
-                                              'Promote main variant',
+                                              'Promote',
                                               style: AppTypography.textSmMedium
                                                   .copyWith(
                                                     color:
@@ -11238,7 +11238,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           token.text,
           token.node?.move.san == '--',
           token.node?.isMainline ?? false,
-          _variantHeadPointerForToken(token),
         );
       },
       child: Stack(
@@ -12253,13 +12252,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     String moveText,
     bool isNullMove,
     bool isMainlineMove,
-    ChessMovePointer? variantHeadOverride,
   ) async {
     final hostContext = context;
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final variantHeadPointer =
-        variantHeadOverride ?? _variantHeadPointerForMove(pointer);
-    final canModifyVariant = variantHeadPointer != null && !isMainlineMove;
     final pointerId = NotationPointer.encode(pointer);
     final currentComment = widget.state.variationComments[pointerId] ?? '';
     final timeSpentLabel = _buildTimeSpentLabel(pointer, isMainlineMove);
@@ -12291,27 +12286,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
 
     final actions = <_NotationActionItem>[
+      if (!isMainlineMove)
+        _NotationActionItem(
+          icon: Icons.upgrade_rounded,
+          label: 'Promote',
+          color: kPrimaryColor,
+          onSelected: (_) async {
+            await notifier.promoteBranchToMainVariant(List<Number>.of(pointer));
+          },
+        ),
       _NotationActionItem(
-        icon: Icons.delete_outline,
-        label: 'Delete from here',
-        color: kRedColor,
-        onSelected: (_) async {
-          await notifier.deleteContinuationFromPointer(
-            List<Number>.of(pointer),
-          );
-        },
-      ),
-      _NotationActionItem(
-        icon: Icons.block,
-        label: 'Add null move after',
-        color: kPrimaryColor,
-        onSelected: (_) async {
-          await notifier.insertNullMoveAfterPointer(List<Number>.of(pointer));
-        },
+        icon: Icons.add_comment_outlined,
+        label: 'Comment',
+        color: context.colors.textPrimary,
+        triggersCommentEditor: true,
+        onSelected: (_) async {},
       ),
       _NotationActionItem(
         icon: Icons.label_important_outline_rounded,
-        label: 'Annotate (!?, ±, …)',
+        label: 'Annotate (!? ± ∞ =)',
         color: const Color(0xFF22AC38),
         onSelected: (_) async {
           if (!mounted) return;
@@ -12324,36 +12317,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         },
       ),
       _NotationActionItem(
-        icon: Icons.add_comment_outlined,
-        label: 'Add comment',
-        color: context.colors.textPrimary,
-        triggersCommentEditor: true,
-        onSelected: (_) async {},
+        icon: Icons.delete_outline,
+        label: 'Delete',
+        color: kRedColor,
+        onSelected: (_) async {
+          await notifier.deleteContinuationFromPointer(
+            List<Number>.of(pointer),
+          );
+        },
       ),
-      if (canModifyVariant)
-        _NotationActionItem(
-          icon: Icons.delete_forever,
-          label: 'Delete variant',
-          color: kRedColor,
-          onSelected: (_) async {
-            final snapshot = notifier.navigatorStateSnapshot();
-            await notifier.deleteVariationAtPointer(
-              List<Number>.of(variantHeadPointer),
-            );
-            if (!context.mounted) return;
-            final currentContext = context;
-            if (snapshot != null) {
-              _showUndoSnackBar(
-                currentContext,
-                params,
-                snapshot,
-                'Variant removed',
-              );
-            } else {
-              _showInfoSnack(currentContext, 'Variant removed');
-            }
-          },
-        ),
       // if (canModifyVariant)
       //   _NotationActionItem(
       //     icon: Icons.trending_up_rounded,
@@ -12365,15 +12337,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       //       );
       //     },
       //   ),
-      if (!isMainlineMove)
-        _NotationActionItem(
-          icon: Icons.upgrade_rounded,
-          label: 'Promote main variant',
-          color: kPrimaryColor,
-          onSelected: (_) async {
-            await notifier.promoteBranchToMainVariant(List<Number>.of(pointer));
-          },
-        ),
     ];
 
     final hasExpandedOptions = actions.length > 3;
@@ -12440,15 +12403,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
     final actions = <_NotationActionItem>[
       _NotationActionItem(
+        icon: Icons.upgrade_rounded,
+        label: 'Promote',
+        color: kPrimaryColor,
+        onSelected: (_) async {
+          await notifier.promoteBranchToMainVariant(
+            List<Number>.of(headPointer),
+          );
+        },
+      ),
+      _NotationActionItem(
         icon: Icons.add_comment_outlined,
-        label: 'Add comment',
+        label: 'Comment',
         color: context.colors.textPrimary,
         onSelected: (_) async {},
         triggersCommentEditor: true,
       ),
       _NotationActionItem(
         icon: Icons.delete_forever,
-        label: 'Delete variant',
+        label: 'Delete',
         color: kRedColor,
         onSelected: (_) async {
           final snapshot = notifier.navigatorStateSnapshot();
@@ -12465,16 +12438,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           } else {
             _showInfoSnack(currentContext, 'Variation removed');
           }
-        },
-      ),
-      _NotationActionItem(
-        icon: Icons.upgrade_rounded,
-        label: 'Promote main variant',
-        color: kPrimaryColor,
-        onSelected: (_) async {
-          await notifier.promoteBranchToMainVariant(
-            List<Number>.of(headPointer),
-          );
         },
       ),
     ];
@@ -13380,10 +13343,8 @@ class _PrincipalVariationListState
             context,
             focusToken.text,
             line,
-            variantIndex,
             focusToken.moveIndex!,
             notifier,
-            activeVariantColor,
           );
         },
         child: AnimatedScale(
@@ -13883,10 +13844,8 @@ class _PrincipalVariationListState
                 context,
                 token.text,
                 line,
-                variantIndex,
                 token.moveIndex!,
                 notifier,
-                variantColor,
               );
             },
             child: Material(color: Colors.transparent, child: moveContent),
@@ -13933,26 +13892,12 @@ class _PrincipalVariationListState
     BuildContext context,
     String moveLabel,
     AnalysisLine line,
-    int variantIndex,
     int moveIndex,
     ChessBoardScreenNotifierNew notifier,
-    Color accentColor,
   ) async {
     final hostContext = context;
     final isThreatsMode = widget.state.isThreatsMode;
     final actions = <_NotationActionItem>[
-      _NotationActionItem(
-        icon: Icons.visibility_rounded,
-        label: 'Preview from here',
-        color: accentColor,
-        onSelected: (_) async {
-          notifier.previewPrincipalVariationMoveAt(
-            line,
-            variantIndex,
-            moveIndex,
-          );
-        },
-      ),
       _NotationActionItem(
         icon: Icons.playlist_add_check_circle_rounded,
         label: 'Insert entire line',
@@ -13968,6 +13913,14 @@ class _PrincipalVariationListState
         color: Colors.red,
         onSelected: (_) async {
           notifier.toggleThreatsMode();
+        },
+      ),
+      _NotationActionItem(
+        icon: Icons.block,
+        label: 'Add null move after',
+        color: kPrimaryColor,
+        onSelected: (_) async {
+          await notifier.insertNullMoveAfterPvMove(line, moveIndex);
         },
       ),
     ];

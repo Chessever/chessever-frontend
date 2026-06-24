@@ -1947,6 +1947,46 @@ class ChessBoardScreenNotifierNew
     });
   }
 
+  Future<void> insertNullMoveAfterPvMove(
+    AnalysisLine line,
+    int moveIndex,
+  ) async {
+    if (_isEditingBlockedByPreview(reason: 'insert null move after PV move')) {
+      return;
+    }
+    _exitPvPreviewIfActive();
+    final currentState = state.value;
+    if (currentState == null || line.moves.isEmpty) return;
+
+    final navigator = _analysisNavigator;
+    if (navigator == null) {
+      _releaseLog('🎯 INSERT PV NULL MOVE: No navigator available');
+      return;
+    }
+
+    final lastMoveIndex = moveIndex.clamp(0, line.moves.length - 1);
+    final pvPrefix = line.copyWith(
+      moves: line.moves.take(lastMoveIndex + 1).toList(growable: false),
+      sanMoves: line.sanMoves.take(lastMoveIndex + 1).toList(growable: false),
+    );
+
+    if (pvPrefix.moves.isEmpty || pvPrefix.sanMoves.isEmpty) return;
+
+    _releaseLog(
+      '🎯 INSERT PV NULL MOVE: Inserting ${pvPrefix.moves.length} PV moves, then null move',
+    );
+
+    navigator.appendMovesFromPv(
+      moves: pvPrefix.moves,
+      sanMoves: pvPrefix.sanMoves,
+    );
+    navigator.insertNullMoveAtPointer();
+    HapticFeedback.mediumImpact();
+    _syncAnalysisFromNavigator(navigator.state);
+    _updateEvaluation(force: true);
+    await _persistAnalysisState();
+  }
+
   void updateVariationComment({
     required String variationId,
     required String comment,
