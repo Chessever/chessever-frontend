@@ -8685,8 +8685,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         // (mirroring the win red tint), redrawing each king above the tint so it
         // stays visible. 0xCCADE1CD is the same mint the old squareHighlight used.
         Widget drawKingTint(Square square, PieceKind kind) {
-          final effectiveFile = widget.isFlipped ? 7 - square.file : square.file;
-          final effectiveRank = widget.isFlipped ? square.rank : 7 - square.rank;
+          final effectiveFile =
+              widget.isFlipped ? 7 - square.file : square.file;
+          final effectiveRank =
+              widget.isFlipped ? square.rank : 7 - square.rank;
           final isLightSquare = (effectiveFile + effectiveRank) % 2 == 0;
           final baseSquareColor =
               isLightSquare ? colorScheme.lightSquare : colorScheme.darkSquare;

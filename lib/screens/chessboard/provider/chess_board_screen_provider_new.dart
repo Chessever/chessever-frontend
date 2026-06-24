@@ -4084,9 +4084,7 @@ class ChessBoardScreenNotifierNew
     // the navigator sync below preserves it via copyWith otherwise.
     if (currentState.analysisState.promotionMove != null) {
       currentState = currentState.copyWith(
-        analysisState: currentState.analysisState.copyWith(
-          promotionMove: null,
-        ),
+        analysisState: currentState.analysisState.copyWith(promotionMove: null),
       );
       state = AsyncValue.data(currentState);
     }
@@ -4226,9 +4224,7 @@ class ChessBoardScreenNotifierNew
     if (currentState.analysisState.promotionMove == null) return;
     state = AsyncValue.data(
       currentState.copyWith(
-        analysisState: currentState.analysisState.copyWith(
-          promotionMove: null,
-        ),
+        analysisState: currentState.analysisState.copyWith(promotionMove: null),
       ),
     );
   }
@@ -4646,7 +4642,6 @@ class ChessBoardScreenNotifierNew
     _clearActiveEvalState();
     _updateEvaluation(force: force);
   }
-
 
   String _getSamplePgnData() {
     return '''
@@ -6894,9 +6889,7 @@ class ChessBoardScreenNotifierNew
           // through progressive opacity and arrow/head scale.
           final isThreatsMode = state.value?.isThreatsMode ?? false;
           final baseArrowColor =
-              isThreatsMode
-                  ? const Color(0xFFFF0000)
-                  : const Color(0xFF98B39A);
+              isThreatsMode ? const Color(0xFFFF0000) : const Color(0xFF98B39A);
           final arrowColor = _engineArrowColorForRank(baseArrowColor, i);
           final arrowScale = _engineArrowScaleForRank(i);
 
@@ -6958,12 +6951,7 @@ class ChessBoardScreenNotifierNew
             }
 
             arrowShapes.add(
-              Arrow(
-                color: arrowColor,
-                orig: from,
-                dest: to,
-                scale: arrowScale,
-              ),
+              Arrow(color: arrowColor, orig: from, dest: to, scale: arrowScale),
             );
           }
         } catch (e) {
@@ -7040,7 +7028,10 @@ class ChessBoardScreenNotifierNew
   /// priority on the board.
   Color getVariantArrowColor(int variantIndex) {
     if (variantIndex >= 0 && variantIndex < _variantColors.length) {
-      return _engineArrowColorForRank(_variantColors[variantIndex], variantIndex);
+      return _engineArrowColorForRank(
+        _variantColors[variantIndex],
+        variantIndex,
+      );
     }
     final colorIndex = variantIndex % _variantColors.length;
     return _engineArrowColorForRank(_variantColors[colorIndex], variantIndex);
