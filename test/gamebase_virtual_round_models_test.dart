@@ -58,6 +58,8 @@ void main() {
       expect(rounds[0].startsAt, DateTime.utc(2026, 6, 21));
       expect(rounds[0].roundStatus, RoundStatus.completed);
       expect(rounds[1].roundStatus, RoundStatus.ongoing);
+
+      expect(() => rounds.clear(), returnsNormally);
     },
   );
 }

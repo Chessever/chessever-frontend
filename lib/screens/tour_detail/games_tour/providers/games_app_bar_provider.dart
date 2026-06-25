@@ -1686,27 +1686,24 @@ List<GamesAppBarModel> buildVirtualGamebaseRoundModels(List<Games> games) {
   }
 
   var fallbackRoundNumber = 0;
-  return roundsById.entries
-      .map((entry) {
-        fallbackRoundNumber++;
-        final roundGames = entry.value;
-        final firstGame = roundGames.first;
-        final startsAt = _earliestGameDate(roundGames);
-        final hasOngoingGame = roundGames.any(
-          (game) => (game.status ?? '').trim() == '*',
-        );
-        return GamesAppBarModel(
-          id: entry.key,
-          name:
-              firstGame.roundSlug.trim().isNotEmpty
-                  ? firstGame.roundSlug.trim()
-                  : 'Round $fallbackRoundNumber',
-          startsAt: startsAt,
-          roundStatus:
-              hasOngoingGame ? RoundStatus.ongoing : RoundStatus.completed,
-        );
-      })
-      .toList(growable: false);
+  return roundsById.entries.map((entry) {
+    fallbackRoundNumber++;
+    final roundGames = entry.value;
+    final firstGame = roundGames.first;
+    final startsAt = _earliestGameDate(roundGames);
+    final hasOngoingGame = roundGames.any(
+      (game) => (game.status ?? '').trim() == '*',
+    );
+    return GamesAppBarModel(
+      id: entry.key,
+      name:
+          firstGame.roundSlug.trim().isNotEmpty
+              ? firstGame.roundSlug.trim()
+              : 'Round $fallbackRoundNumber',
+      startsAt: startsAt,
+      roundStatus: hasOngoingGame ? RoundStatus.ongoing : RoundStatus.completed,
+    );
+  }).toList();
 }
 
 DateTime? _earliestGameDate(List<Games> games) {
