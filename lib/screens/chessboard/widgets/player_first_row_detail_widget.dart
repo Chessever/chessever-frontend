@@ -754,13 +754,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                           ? nameParts[1]
                           : ''; // Part after comma
 
-                  // In compact grid cards the rating gets its own fixed slot
-                  // immediately before the clock, so long names cannot push it
-                  // out of view. List/board rows keep the historical inline
-                  // `Name Rating` rendering.
+                  // Build static parts
                   final rating =
-                      playerView != PlayerView.gridView &&
-                              effectivePlayerCard.rating > 0
+                      effectivePlayerCard.rating > 0
                           ? ' ${effectivePlayerCard.rating}'
                           : '';
 
@@ -840,14 +836,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   }
 
                   final nameWidget = RichText(
-                    // Grid cards never show an ellipsis: the rating has its own
-                    // fixed slot, so an over-long name fades out at the edge
-                    // instead of printing "…". List/board rows keep ellipsis
-                    // because their rating is rendered inline with the name.
-                    overflow:
-                        playerView == PlayerView.gridView
-                            ? TextOverflow.fade
-                            : TextOverflow.ellipsis,
+                    overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                     softWrap: false,
                     textAlign: TextAlign.left,
@@ -903,23 +892,6 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 width: playerView == PlayerView.gridView ? 12.w : 12.w,
               ),
               SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
-            ],
-            if (playerView == PlayerView.gridView &&
-                effectivePlayerCard.rating > 0) ...[
-              SizedBox(width: 4.w),
-              SizedBox(
-                width: 25.w,
-                child: Text(
-                  effectivePlayerCard.rating.toString(),
-                  maxLines: 1,
-                  overflow: TextOverflow.visible,
-                  softWrap: false,
-                  textAlign: TextAlign.right,
-                  style: ratingStyle,
-                ),
-              ),
-              // Breathing room so the rating doesn't sit flush against the clock.
-              SizedBox(width: 8.w),
             ],
             // Always show clock/time on the right - simplified structure to prevent overflow
             if (showClock && hasClockData)
