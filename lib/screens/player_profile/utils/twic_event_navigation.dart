@@ -70,14 +70,14 @@ Future<void> openProfileEvent({
   // event name (games whose Site is a venue string, e.g. "Pasching AUT") —
   // the name slugifies to the same `tours.slug` ChessEver stores.
   final siteSlug = broadcastSlugFromSite(site);
-  final nameSlug = eventNameToBroadcastSlug(eventName);
+  final nameSlugs = eventNameToBroadcastSlugCandidates(eventName);
   final rawBroadcastSlug = broadcastSlug?.trim();
   final rawGamebaseKey = gamebaseKey?.trim();
   final candidates = <String>{
     if (rawBroadcastSlug != null && rawBroadcastSlug.isNotEmpty)
       rawBroadcastSlug,
     if (siteSlug != null && siteSlug.isNotEmpty) siteSlug,
-    if (nameSlug.isNotEmpty) nameSlug,
+    ...nameSlugs,
   };
   for (final candidate in candidates) {
     try {

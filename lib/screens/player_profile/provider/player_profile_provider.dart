@@ -1522,7 +1522,7 @@ List<String> twicBroadcastSlugCandidatesForEvent(PlayerEventData event) {
     if (broadcastSlugFromSite(event.site) != null)
       broadcastSlugFromSite(event.site)!,
     if (event.tourName.trim().isNotEmpty)
-      eventNameToBroadcastSlug(event.tourName),
+      ...eventNameToBroadcastSlugCandidates(event.tourName),
   };
   candidates.removeWhere((slug) => slug.trim().isEmpty);
   return candidates.toList(growable: false);
@@ -1585,12 +1585,27 @@ class PlayerProfileEventCardRequest {
   final String? site;
 
   List<String> get slugCandidates {
-    final candidates = <String>{
-      if ((broadcastSlug ?? '').trim().isNotEmpty) broadcastSlug!.trim(),
-      if (broadcastSlugFromSite(site) != null) broadcastSlugFromSite(site)!,
-      if ((tourSlug ?? '').trim().isNotEmpty) tourSlug!.trim(),
-      if (tourName.trim().isNotEmpty) eventNameToBroadcastSlug(tourName),
-    };
+    final candidates = <String>{};
+
+    void addSlugOrEventName(String? value) {
+      final trimmed = value?.trim();
+      if (trimmed == null || trimmed.isEmpty) return;
+      if (RegExp(r'^[a-z0-9][a-z0-9_-]*$').hasMatch(trimmed)) {
+        candidates.add(trimmed);
+      } else {
+        candidates.addAll(eventNameToBroadcastSlugCandidates(trimmed));
+      }
+    }
+
+    if ((broadcastSlug ?? '').trim().isNotEmpty) {
+      candidates.add(broadcastSlug!.trim());
+    }
+    if (broadcastSlugFromSite(site) != null) {
+      candidates.add(broadcastSlugFromSite(site)!);
+    }
+    addSlugOrEventName(tourSlug);
+    addSlugOrEventName(tourName);
+
     candidates.removeWhere((slug) => slug.trim().isEmpty);
     return candidates.toList(growable: false);
   }

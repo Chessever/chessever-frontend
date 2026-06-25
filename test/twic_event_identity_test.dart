@@ -45,6 +45,37 @@ void main() {
         'Chicago Open 2026',
       );
     });
+
+    test('adds cloud parent slug candidates for Chess.com Titled Tuesday', () {
+      final candidates = eventNameToBroadcastSlugCandidates(
+        '2026 Titled Tuesday Blitz June 23',
+      );
+      expect(candidates.first, 'titled-tuesday-june-23-2026');
+      expect(
+        candidates,
+        containsAll(<String>[
+          '2026-titled-tuesday-blitz-june-23',
+          'titled-tuesday-june-23-2026',
+        ]),
+      );
+    });
+
+    test('normalizes abbreviated Titled Tue ordinal dates', () {
+      expect(
+        eventNameToBroadcastSlugCandidates('Titled Tue 31st Mar 2026'),
+        contains('titled-tuesday-march-31-2026'),
+      );
+    });
+
+    test('keeps zero-padded Titled Tuesday date variant', () {
+      expect(
+        eventNameToBroadcastSlugCandidates('Titled Tuesday June 09 2026'),
+        containsAll(<String>[
+          'titled-tuesday-june-9-2026',
+          'titled-tuesday-june-09-2026',
+        ]),
+      );
+    });
   });
 
   group('broadcast site URL -> parent event', () {

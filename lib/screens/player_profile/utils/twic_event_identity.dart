@@ -21,6 +21,33 @@ final RegExp _lichessBroadcastSitePattern = RegExp(
   caseSensitive: false,
 );
 
+const Map<String, String> _monthTokenToSlug = {
+  'jan': 'january',
+  'january': 'january',
+  'feb': 'february',
+  'february': 'february',
+  'mar': 'march',
+  'march': 'march',
+  'apr': 'april',
+  'april': 'april',
+  'may': 'may',
+  'jun': 'june',
+  'june': 'june',
+  'jul': 'july',
+  'july': 'july',
+  'aug': 'august',
+  'august': 'august',
+  'sep': 'september',
+  'sept': 'september',
+  'september': 'september',
+  'oct': 'october',
+  'october': 'october',
+  'nov': 'november',
+  'november': 'november',
+  'dec': 'december',
+  'december': 'december',
+};
+
 /// Derives a canonical event title from a Lichess broadcast `Site` URL by
 /// title-casing the parent broadcast slug. Returns null when [site] is not a
 /// recognizable Lichess broadcast URL (e.g. `Chess.com`, `Oslo, NO`).
@@ -61,6 +88,62 @@ String eventNameToBroadcastSlug(String name) {
     '-',
   );
   return dashed.replaceAll(RegExp(r'^-+|-+$'), '');
+}
+
+/// Slug candidates for cloud-broadcast takeover from Gamebase/TWIC event text.
+///
+/// Most event names slugify directly to `tours.slug`. Chess.com Titled Tuesday
+/// rows arrive as names like `2026 Titled Tuesday Blitz June 23`, while the
+/// cloud broadcast is stored as `Titled Tuesday June 23 2026`; include that
+/// parent-event identity so the cloud source can silently win when present.
+List<String> eventNameToBroadcastSlugCandidates(String name) {
+  final titledTuesdaySlugs = _titledTuesdayBroadcastSlugs(name);
+  final candidates = <String>{
+    ...?titledTuesdaySlugs,
+    eventNameToBroadcastSlug(name),
+  };
+  candidates.removeWhere((slug) => slug.trim().isEmpty);
+  return candidates.toList(growable: false);
+}
+
+List<String>? _titledTuesdayBroadcastSlugs(String name) {
+  final normalized =
+      name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+  if (normalized.isEmpty) return null;
+
+  final tokens = normalized.split(RegExp(r'\s+'));
+  final hasTitled = tokens.contains('titled');
+  final hasTuesday = tokens.contains('tuesday') || tokens.contains('tue');
+  if (!hasTitled || !hasTuesday) return null;
+
+  final year = tokens.firstWhere(
+    (token) => RegExp(r'^(?:19|20)\d{2}$').hasMatch(token),
+    orElse: () => '',
+  );
+  if (year.isEmpty) return null;
+
+  for (var i = 0; i < tokens.length; i++) {
+    final month = _monthTokenToSlug[tokens[i]];
+    if (month == null) continue;
+
+    final nextDay = i + 1 < tokens.length ? _parseOrdinalDay(tokens[i + 1]) : 0;
+    final previousDay = i > 0 ? _parseOrdinalDay(tokens[i - 1]) : 0;
+    final day = nextDay > 0 ? nextDay : previousDay;
+    if (day <= 0 || day > 31) return null;
+
+    final unpadded = 'titled-tuesday-$month-$day-$year';
+    final padded =
+        'titled-tuesday-$month-${day.toString().padLeft(2, '0')}-$year';
+    return [unpadded, if (padded != unpadded) padded];
+  }
+
+  return null;
+}
+
+int _parseOrdinalDay(String token) {
+  final match = RegExp(r'^(\d{1,2})(?:st|nd|rd|th)?$').firstMatch(token);
+  if (match == null) return 0;
+  return int.tryParse(match.group(1) ?? '') ?? 0;
 }
 
 /// Extracts the `Site` header value from a PGN string, or null when the header

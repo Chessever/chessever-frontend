@@ -373,18 +373,20 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
-  /// Resolve a ChessEver event from a Lichess broadcast parent [slug] — the
-  /// `<slug>` in `lichess.org/broadcast/<slug>/<id>`, stored verbatim in
-  /// `tours.slug`. Used to route TWIC/database events to their canonical
-  /// ChessEver event page when one exists. Returns null when no tour carries
-  /// that slug (e.g. chess.com / OTB-only events that live only in the
-  /// gamebase).
+  /// Resolve a ChessEver event from a broadcast/event [slug].
+  ///
+  /// Lichess-backed rows usually match `tours.slug` exactly. Chess.com/TWIC
+  /// rows can only carry a parent event identity (for example Titled Tuesday),
+  /// so after the exact tour lookup we also resolve against `group_broadcasts`
+  /// ids and normalized names.
   Future<GroupBroadcast?> getGroupBroadcastBySlug(String slug) async {
     final trimmed = slug.trim();
     if (trimmed.isEmpty) return null;
     return handleApiCall<GroupBroadcast?>(() async {
       final tourRow = await _getTourRowBySlug(trimmed);
-      if (tourRow == null) return null;
+      if (tourRow == null) {
+        return _getGroupBroadcastByNormalizedIdentity(trimmed);
+      }
 
       // Prefer the canonical group_broadcasts record when the tour links one.
       final groupBroadcastId = tourRow['group_broadcast_id'] as String?;
@@ -554,6 +556,92 @@ class GroupBroadcastRepository extends BaseRepository {
         .limit(1);
     if (response.isEmpty) return null;
     return response.first;
+  }
+
+  Future<GroupBroadcast?> _getGroupBroadcastByNormalizedIdentity(
+    String value,
+  ) async {
+    final targets = _broadcastIdentityVariants(value);
+    if (targets.isEmpty) return null;
+
+    final idCandidates = <String>{
+      value.trim(),
+      for (final target in targets) target.replaceAll('-', '_'),
+    }..removeWhere((id) => id.isEmpty);
+
+    for (final id in idCandidates) {
+      final direct = await _getGroupBroadcastByIdOrNull(id);
+      if (direct != null) return direct;
+    }
+
+    final queryTokens = targets.first
+        .split('-')
+        .where((token) => token.length > 2 && int.tryParse(token) == null)
+        .take(3)
+        .toList(growable: false);
+    if (queryTokens.length < 2) return null;
+
+    final response = await supabase
+        .from('group_broadcasts')
+        .select()
+        .ilike('name', '%${queryTokens.join('%')}%')
+        .limit(80);
+
+    for (final row in response as List) {
+      final json = Map<String, dynamic>.from(row as Map);
+      if (_rowMatchesBroadcastIdentity(json, targets)) {
+        return GroupBroadcast.fromJson(json);
+      }
+    }
+
+    return null;
+  }
+
+  bool _rowMatchesBroadcastIdentity(
+    Map<String, dynamic> row,
+    Set<String> targets,
+  ) {
+    final values = <String>[
+      if (row['id'] != null) row['id'].toString(),
+      if (row['name'] != null) row['name'].toString(),
+    ];
+
+    for (final value in values) {
+      final variants = _broadcastIdentityVariants(value);
+      if (variants.any(targets.contains)) return true;
+    }
+    return false;
+  }
+
+  Set<String> _broadcastIdentityVariants(String value) {
+    final normalized = _normalizeBroadcastIdentity(value);
+    if (normalized.isEmpty) return const <String>{};
+
+    final tokens = normalized.split('-');
+    final unpadded = tokens
+        .map((token) {
+          final number = int.tryParse(token);
+          if (number == null || number >= 100) return token;
+          return number.toString();
+        })
+        .join('-');
+    final padded = tokens
+        .map((token) {
+          final number = int.tryParse(token);
+          if (number == null || number >= 10 || number <= 0) return token;
+          return number.toString().padLeft(2, '0');
+        })
+        .join('-');
+
+    return <String>{normalized, unpadded, padded};
+  }
+
+  String _normalizeBroadcastIdentity(String value) {
+    final dashed = value.trim().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]+'),
+      '-',
+    );
+    return dashed.replaceAll(RegExp(r'^-+|-+$'), '');
   }
 
   static const Set<String> _searchStopWords = {
