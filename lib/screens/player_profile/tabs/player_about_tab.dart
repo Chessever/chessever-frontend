@@ -1530,16 +1530,19 @@ class _ResultCountTriplet extends StatelessWidget {
           _ResultCountColumn(
             value: formatTightStatCount(resultStats.wins),
             label: 'W',
+            color: kGreenColor,
           ),
           SizedBox(width: 12.w),
           _ResultCountColumn(
             value: formatTightStatCount(resultStats.draws),
             label: 'D',
+            color: context.colors.textPrimary.withValues(alpha: 0.5),
           ),
           SizedBox(width: 12.w),
           _ResultCountColumn(
             value: formatTightStatCount(resultStats.losses),
             label: 'L',
+            color: Colors.redAccent,
           ),
         ],
       ),
@@ -1548,10 +1551,18 @@ class _ResultCountTriplet extends StatelessWidget {
 }
 
 class _ResultCountColumn extends StatelessWidget {
-  const _ResultCountColumn({required this.value, required this.label});
+  const _ResultCountColumn({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
 
   final String value;
   final String label;
+
+  /// Result color (win/draw/loss) matching the ratio bar above; applied to
+  /// both the count and the W/D/L letter.
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -1561,15 +1572,11 @@ class _ResultCountColumn extends StatelessWidget {
         Text(
           value,
           maxLines: 1,
-          style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.textPrimary,
-          ),
+          style: AppTypography.textSmMedium.copyWith(color: color),
         ),
         Text(
           label,
-          style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
-          ),
+          style: AppTypography.textXsRegular.copyWith(color: color),
         ),
       ],
     );
