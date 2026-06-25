@@ -1953,16 +1953,21 @@ class _PlayerEventCollapseToggle extends StatelessWidget {
       button: true,
       label: isCollapsed ? 'Expand event games' : 'Collapse event games',
       child: InkWell(
-        borderRadius: BorderRadius.circular(8.br),
+        // Generous, square hit target so taps near the chevron toggle the
+        // event instead of falling through to the card's open-event tap.
+        customBorder: const CircleBorder(),
         onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(4.w, 4.h, 0, 4.h),
-          child: Icon(
-            isCollapsed
-                ? Icons.keyboard_arrow_down_rounded
-                : Icons.keyboard_arrow_up_rounded,
-            size: 18.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.65),
+        child: SizedBox(
+          width: 44.w,
+          height: 44.h,
+          child: Center(
+            child: Icon(
+              isCollapsed
+                  ? Icons.keyboard_arrow_down_rounded
+                  : Icons.keyboard_arrow_up_rounded,
+              size: 20.sp,
+              color: context.colors.textPrimary.withValues(alpha: 0.65),
+            ),
           ),
         ),
       ),
