@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -9,8 +10,10 @@ enum SfxType { move, castling, check, checkmate, draw, promotion, takeover }
 
 class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
+  static const String _foregroundPrepareTaskKey = 'audio_foreground_prepare';
   static const Duration _minimumAnyPlaySpacing = Duration(milliseconds: 60);
   static const Duration _minimumSameSoundSpacing = Duration(milliseconds: 120);
+  static const Duration _backgroundTeardownGrace = Duration(milliseconds: 300);
 
   // Note: These MUST NOT be `final` - recovery reloads them after
   // the native SoLoud engine is torn down and reinitialized.
@@ -32,8 +35,12 @@ class AudioPlayerService with WidgetsBindingObserver {
 
   bool _initialized = false;
   bool _assetsLoaded = false;
+  bool _isBackgrounded = false;
+  bool _needsForegroundReload = false;
+  Timer? _backgroundTeardownTimer;
   Future<void>? _initializing;
   Future<void>? _androidRecovering;
+  Future<void>? _backgroundTeardown;
   final Stopwatch _playSpacingClock = Stopwatch()..start();
   int? _lastPlayAtMicros;
   SfxType? _lastPlayedType;
@@ -66,6 +73,10 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> initializeAndLoadAllAssets({bool force = false}) {
+    if (_isBackgrounded) {
+      return Future.value();
+    }
+
     // Always reuse the in-flight initialization to avoid racing init/deinit.
     if (_initializing != null) return _initializing!;
 
@@ -114,18 +125,29 @@ class AudioPlayerService with WidgetsBindingObserver {
 
   /// Play a sound effect by type through flutter_soloud.
   void playSound(SfxType type) {
+    if (_isBackgrounded) return;
     if (_shouldSkipForSpacing(type)) return;
     unawaited(_playWithRecovery(type));
   }
 
   Future<void> prepareForForegroundPlayback() async {
     try {
+      await _backgroundTeardown;
+      if (_isBackgrounded) return;
+
       if (Platform.isAndroid) {
-        await _recoverAndroidSfxAssets();
+        if (!player.isInitialized || !_assetsLoaded) {
+          await _recoverAndroidSfxAssets();
+        } else {
+          _needsForegroundReload = false;
+        }
         return;
       }
 
       await initializeAndLoadAllAssets();
+      if (player.isInitialized) {
+        _needsForegroundReload = false;
+      }
     } catch (err, st) {
       debugPrint('⚠️ Audio foreground preparation failed: $err\n$st');
     }
@@ -151,10 +173,15 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _playWithRecovery(SfxType type) async {
+    if (_isBackgrounded) return;
+
     try {
       await _waitForAndroidRecoveryIfNeeded();
+      if (_isBackgrounded) return;
       await initializeAndLoadAllAssets();
+      if (_isBackgrounded) return;
       await _waitForAndroidRecoveryIfNeeded();
+      if (_isBackgrounded) return;
       // The engine can die during the await gap above (for example iOS route
       // changes). Re-check and funnel into recovery instead of letting play()
       // throw SoLoudNotInitializedException.
@@ -175,7 +202,9 @@ class AudioPlayerService with WidgetsBindingObserver {
       _teardownPlayer();
       try {
         await Future<void>.delayed(const Duration(milliseconds: 50));
+        if (_isBackgrounded) return;
         await initializeAndLoadAllAssets(force: true);
+        if (_isBackgrounded) return;
         // Only play if recovery actually brought the engine back, so a failed
         // recovery can't throw a second SoLoudNotInitializedException.
         if (player.isInitialized) {
@@ -197,10 +226,12 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _recoverAndroidPlayback(SfxType type) async {
+    if (_isBackgrounded) return;
+
     try {
       await _recoverAndroidSfxAssets();
 
-      if (player.isInitialized && _assetsLoaded) {
+      if (!_isBackgrounded && player.isInitialized && _assetsLoaded) {
         _playResolved(type);
       }
     } catch (err, st) {
@@ -209,6 +240,8 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _recoverAndroidSfxAssets() {
+    if (_isBackgrounded) return Future.value();
+
     return _androidRecovering ??= _reloadAndroidSfxAssets().whenComplete(() {
       _androidRecovering = null;
     });
@@ -228,6 +261,7 @@ class AudioPlayerService with WidgetsBindingObserver {
     _assetsLoaded = false;
     await _disposeLoadedSourcesForRecovery();
     await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (_isBackgrounded) return;
     await initializeAndLoadAllAssets();
   }
 
@@ -242,6 +276,8 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   void _playResolved(SfxType type) {
+    if (_isBackgrounded) return;
+
     final handle = player.play(_resolve(type));
     if (handle.isError || handle.id <= 0) {
       throw StateError('SoLoud returned an invalid handle for $type');
@@ -252,6 +288,8 @@ class AudioPlayerService with WidgetsBindingObserver {
   }
 
   Future<void> _initializeInternal({required bool force}) async {
+    if (_isBackgrounded) return;
+
     if (force) {
       // A forced init means the previous Dart AudioSource handles may no longer
       // match the native audio device/session even when SoLoud still reports
@@ -279,12 +317,21 @@ class AudioPlayerService with WidgetsBindingObserver {
     // This ensures our app doesn't steal audio focus from other apps
     // and correctly applies ambient mode even if SoLoud resets it during init.
     await _configureAudioSession();
+    if (_isBackgrounded) return;
 
     if (!player.isInitialized) {
       await SoLoud.instance.init();
+      if (_isBackgrounded) {
+        _teardownPlayer();
+        return;
+      }
       // Re-apply after init just in case SoLoud native layer reset the category
       _audioSessionConfigured = false;
       await _configureAudioSession();
+      if (_isBackgrounded) {
+        _teardownPlayer();
+        return;
+      }
     }
 
     if (!_assetsLoaded) {
@@ -309,6 +356,10 @@ class AudioPlayerService with WidgetsBindingObserver {
           (path) => SoLoud.instance.loadAsset(path, mode: LoadMode.memory),
         ),
       );
+      if (_isBackgrounded) {
+        _teardownPlayer();
+        return;
+      }
 
       // Assign in declared order
       pieceMoveSfx = results[0];
@@ -323,6 +374,7 @@ class AudioPlayerService with WidgetsBindingObserver {
     }
 
     _initialized = true;
+    _needsForegroundReload = false;
     debugPrint('🎧 AudioPlayerService initialized successfully');
   }
 
@@ -346,26 +398,81 @@ class AudioPlayerService with WidgetsBindingObserver {
     } finally {
       _initialized = false;
       _assetsLoaded = false;
+      _audioSessionConfigured = false;
     }
+  }
+
+  Future<void> _hibernateForBackground() {
+    return _backgroundTeardown ??= _hibernateForBackgroundInternal()
+        .whenComplete(() {
+          _backgroundTeardown = null;
+        });
+  }
+
+  Future<void> _hibernateForBackgroundInternal() async {
+    final inFlightInitialization = _initializing;
+    if (inFlightInitialization != null) {
+      try {
+        await inFlightInitialization;
+      } catch (_) {
+        // Teardown below still needs to clear native callbacks/resources.
+      }
+    }
+
+    if (!_isBackgrounded) return;
+
+    debugPrint('🎧 AudioPlayerService: hibernating SoLoud for background');
+    _teardownPlayer();
+  }
+
+  void _scheduleBackgroundHibernate() {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
+    _needsForegroundReload =
+        _needsForegroundReload ||
+        _initialized ||
+        _assetsLoaded ||
+        player.isInitialized ||
+        _initializing != null;
+
+    _backgroundTeardownTimer?.cancel();
+    _backgroundTeardownTimer = Timer(_backgroundTeardownGrace, () {
+      _backgroundTeardownTimer = null;
+      if (!_isBackgrounded) return;
+      unawaited(_hibernateForBackground());
+    });
+  }
+
+  void _scheduleForegroundPrepare() {
+    _backgroundTeardownTimer?.cancel();
+    _backgroundTeardownTimer = null;
+
+    if (_backgroundTeardown == null &&
+        _needsForegroundReload &&
+        _initialized &&
+        _assetsLoaded &&
+        player.isInitialized) {
+      _needsForegroundReload = false;
+      return;
+    }
+
+    if (!_needsForegroundReload && !_initialized && !player.isInitialized) {
+      return;
+    }
+
+    ForegroundTaskScheduler.schedule(
+      key: _foregroundPrepareTaskKey,
+      delay: kForegroundRefreshDelay,
+      task: prepareForForegroundPlayback,
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
     if (state == AppLifecycleState.resumed) {
-      // Otherwise only reinitialize if the native engine is actually gone.
-      // Avoids unnecessary teardown→reinit cycles (esp. iOS) that create
-      // windows of broken audio.
-      if (!player.isInitialized) {
-        debugPrint(
-          '🎧 AudioPlayerService: engine dead after resume, reinitializing',
-        );
-        unawaited(initializeAndLoadAllAssets());
-      } else {
-        debugPrint(
-          '🎧 AudioPlayerService: engine still alive after resume, no action',
-        );
-      }
+      _isBackgrounded = false;
+      _scheduleForegroundPrepare();
       return;
     }
 
@@ -374,9 +481,9 @@ class AudioPlayerService with WidgetsBindingObserver {
     // and tearing down there causes sound to disappear on Android.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      // Do not deinit during normal lifecycle transitions. SoLoud's native
-      // audio callback can still be mixing a short SFX while Dart receives
-      // paused/detached, and tearing down then can corrupt the active voice.
+      _isBackgrounded = true;
+      ForegroundTaskScheduler.cancel(_foregroundPrepareTaskKey);
+      _scheduleBackgroundHibernate();
       return;
     }
 

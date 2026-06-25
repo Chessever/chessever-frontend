@@ -56,6 +56,21 @@ void main() {
       expect(source, contains('final inFlightInitialization = _initializing;'));
       expect(source, contains('await inFlightInitialization;'));
       expect(source, contains('await player.disposeAllSources();'));
+      expect(source, contains('bool _isBackgrounded = false;'));
+      expect(source, contains('Future<void> _hibernateForBackground()'));
+      expect(source, contains('_scheduleBackgroundHibernate();'));
+      expect(source, contains('ForegroundTaskScheduler.cancel('));
+      expect(source, contains('ForegroundTaskScheduler.schedule('));
+      expect(source, contains('if (_isBackgrounded) return;'));
+      _expectBefore(
+        source,
+        anchor: 'void didChangeAppLifecycleState',
+        first: '_isBackgrounded = true;',
+        second: '_scheduleBackgroundHibernate();',
+        reason:
+            'Mobile backgrounding must stop new audio work before native '
+            'SoLoud callbacks can survive a long sleep.',
+      );
       _expectBefore(
         source,
         anchor: 'Future<void> _playWithRecovery',
