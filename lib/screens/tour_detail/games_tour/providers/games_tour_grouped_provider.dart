@@ -1,4 +1,5 @@
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -36,8 +37,25 @@ class GroupedGamesData {
 // Optimization: Move heavy grouping, filtering, and sorting off the main UI build path.
 // The UI can just watch this provider and paint.
 final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
+  final tourId = ref.watch(
+    tourDetailScreenProvider.select(
+      (tourAsync) => tourAsync.valueOrNull?.aboutTourModel.id,
+    ),
+  );
+  final isVirtualGamebaseEvent = isVirtualGamebaseId(tourId);
+  final rawGamesAsync =
+      tourId == null
+          ? const AsyncValue<List<Games>>.data(<Games>[])
+          : ref.watch(gamesTourProvider(tourId));
+  final rawGames = rawGamesAsync.valueOrNull ?? const <Games>[];
+  final virtualFallbackRounds =
+      isVirtualGamebaseEvent
+          ? buildVirtualGamebaseRoundModels(rawGames)
+          : const <GamesAppBarModel>[];
+
   final gamesAppBar = ref.watch(gamesAppBarProvider);
-  if (gamesAppBar.isLoading || !gamesAppBar.hasValue) {
+  if ((gamesAppBar.isLoading || !gamesAppBar.hasValue) &&
+      virtualFallbackRounds.isEmpty) {
     return GroupedGamesData(
       filteredRounds: [],
       gamesByRound: {},
@@ -50,8 +68,11 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     );
   }
 
-  final rounds = gamesAppBar.value?.gamesAppBarModels ?? [];
-  final tourId = ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+  final appBarRounds = gamesAppBar.valueOrNull?.gamesAppBarModels ?? [];
+  final rounds =
+      virtualFallbackRounds.isNotEmpty && appBarRounds.isEmpty
+          ? virtualFallbackRounds
+          : appBarRounds;
   final knockoutState = ref.watch(knockoutTournamentStateProvider(tourId));
   final isKnockoutTournament = knockoutState.isKnockout;
 
@@ -62,11 +83,10 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final displayMode =
       screenModelAsync.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all;
 
-  final gamesAsync = ref.watch(gamesTourProvider(tourId ?? ''));
-  final providerGameCount = gamesAsync.valueOrNull?.length ?? 0;
+  final providerGameCount = rawGames.length;
   final modelGameCount = allGamesScreenModel.length;
 
-  if (gamesAsync.isLoading && allGamesScreenModel.isEmpty) {
+  if (rawGamesAsync.isLoading && allGamesScreenModel.isEmpty) {
     return GroupedGamesData(
       filteredRounds: [],
       gamesByRound: {},
@@ -196,8 +216,9 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   } else {
     for (final game in allGamesScreenModel) {
-      if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game))
+      if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game)) {
         continue;
+      }
       final isGameInAnyRound = rounds.any((r) => r.id == game.roundId);
       if (isGameInAnyRound) {
         addGameToRound(game.roundId, game);

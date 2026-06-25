@@ -80,11 +80,7 @@ List<Tour> virtualToursFromView(GamebaseEventView view, {String? virtualId}) {
       id: virtualId ?? virtualBroadcastId(view.event),
       name: view.event,
       slug: view.event,
-      // Render as a standard tournament (player standings + game list). We do
-      // NOT emit team/knockout format tokens here: team events route to a
-      // different screen and knockout brackets need broadcast-shaped round
-      // structure — both are out of scope for the synthesized view.
-      format: about.roundCount > 0 ? '${about.roundCount}-round event' : null,
+      format: _virtualTourFormat(view),
       timeControl: about.timeControl,
       location: about.site,
       image: view.image ?? about.image,
@@ -96,6 +92,23 @@ List<Tour> virtualToursFromView(GamebaseEventView view, {String? virtualId}) {
       avgElo: about.avgElo,
     ),
   ];
+}
+
+String? _virtualTourFormat(GamebaseEventView view) {
+  final endpointLabel = view.formatLabel?.trim();
+  if (endpointLabel != null && endpointLabel.isNotEmpty) {
+    return endpointLabel;
+  }
+
+  switch (view.format) {
+    case 'team':
+      return 'Team event';
+    case 'knockout':
+      return 'Knockout event';
+    default:
+      final roundCount = view.about.roundCount;
+      return roundCount > 0 ? '$roundCount-round event' : null;
+  }
 }
 
 /// Pre-ranked standings → [TournamentPlayer]s. Because every entry carries a

@@ -11,6 +11,7 @@ class GamebaseEventView {
     required this.site,
     required this.image,
     required this.format,
+    required this.formatLabel,
     required this.truncated,
     required this.about,
     required this.rounds,
@@ -24,6 +25,7 @@ class GamebaseEventView {
 
   /// 'regular' | 'team' | 'knockout'
   final String format;
+  final String? formatLabel;
   final bool truncated;
   final GamebaseEventAbout about;
   final List<GamebaseEventRound> rounds;
@@ -41,6 +43,7 @@ class GamebaseEventView {
       site: _stringOrNull(data['site']),
       image: _stringOrNull(data['image']),
       format: (data['format'] ?? 'regular').toString(),
+      formatLabel: _stringOrNull(data['formatLabel']),
       truncated: data['truncated'] == true,
       about: GamebaseEventAbout.fromJson(
         (data['about'] as Map?)?.cast<String, dynamic>() ?? const {},
@@ -281,13 +284,17 @@ class GamebaseEventStandings {
       kind: (json['kind'] ?? 'player').toString(),
       players: playersRaw
           .whereType<Map>()
-          .map((p) =>
-              GamebaseEventPlayerStanding.fromJson(p.cast<String, dynamic>()))
+          .map(
+            (p) =>
+                GamebaseEventPlayerStanding.fromJson(p.cast<String, dynamic>()),
+          )
           .toList(growable: false),
       teams: teamsRaw
           .whereType<Map>()
           .map(
-              (t) => GamebaseEventTeamStanding.fromJson(t.cast<String, dynamic>()))
+            (t) =>
+                GamebaseEventTeamStanding.fromJson(t.cast<String, dynamic>()),
+          )
           .toList(growable: false),
     );
   }

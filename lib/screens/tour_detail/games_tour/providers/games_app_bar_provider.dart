@@ -1677,7 +1677,6 @@ String _roundCountSignature(List<Games> games) {
   return entries.map((entry) => '${entry.key}:${entry.value}').join('|');
 }
 
-@visibleForTesting
 List<GamesAppBarModel> buildVirtualGamebaseRoundModels(List<Games> games) {
   if (games.isEmpty) return const <GamesAppBarModel>[];
 

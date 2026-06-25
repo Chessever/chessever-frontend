@@ -2,6 +2,7 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -79,8 +80,19 @@ class _GamesTourScreenModeNotifier
     }
 
     // PRIORITY 2: Check for team-based group events
-    // Must have at least one player AND all players must have teams
+    // Prefer explicit backend/tour metadata when present; fall back to player
+    // team metadata for older broadcast payloads.
     final players = tourDetail.aboutTourModel.players;
+    final formatString =
+        tourDetail.tours
+            .where(
+              (tourModel) => tourModel.tour.id == tourDetail.aboutTourModel.id,
+            )
+            .firstOrNull
+            ?.tour
+            .info
+            .format;
+    final formatSaysTeam = (formatString ?? '').toLowerCase().contains('team');
     final hasAllTeams =
         players.isNotEmpty &&
         players.where((e) => e.team != null).length == players.length;
@@ -89,7 +101,7 @@ class _GamesTourScreenModeNotifier
       '👥 Players count: ${players.length}, All have teams: $hasAllTeams',
     );
 
-    if (hasAllTeams) {
+    if (formatSaysTeam || hasAllTeams) {
       debugPrint('📋 Setting mode to: groupEvent');
       state = AsyncValue.data(GamesTourScreenMode.groupEvent);
     } else {
