@@ -840,7 +840,14 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   }
 
                   final nameWidget = RichText(
-                    overflow: TextOverflow.ellipsis,
+                    // Grid cards never show an ellipsis: the rating has its own
+                    // fixed slot, so an over-long name fades out at the edge
+                    // instead of printing "…". List/board rows keep ellipsis
+                    // because their rating is rendered inline with the name.
+                    overflow:
+                        playerView == PlayerView.gridView
+                            ? TextOverflow.fade
+                            : TextOverflow.ellipsis,
                     maxLines: 1,
                     softWrap: false,
                     textAlign: TextAlign.left,
@@ -899,7 +906,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ],
             if (playerView == PlayerView.gridView &&
                 effectivePlayerCard.rating > 0) ...[
-              SizedBox(width: 3.w),
+              SizedBox(width: 4.w),
               SizedBox(
                 width: 25.w,
                 child: Text(
@@ -911,6 +918,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   style: ratingStyle,
                 ),
               ),
+              // Breathing room so the rating doesn't sit flush against the clock.
+              SizedBox(width: 8.w),
             ],
             // Always show clock/time on the right - simplified structure to prevent overflow
             if (showClock && hasClockData)
