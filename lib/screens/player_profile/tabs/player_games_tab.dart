@@ -82,7 +82,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Timer? _debounceTimer;
   Timer? _scrollIdleTimer;
   bool _routeSubscribed = false;
-  bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _isLoadingAllPagesForSelection = false;
   bool _liveCardsPausedForScroll = false;
@@ -101,10 +100,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     });
   }
-
-  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
-  // blank. Route coverage still removes the tab from active provider work.
-  bool get _isActiveOnScreen => _routeIsCurrent;
 
   // Rotating "Search <word>" hint — mirrors the home and TWIC search bars so
   // the animated second word is consistent across the app.
@@ -126,6 +121,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   // spring-fades the last word out before the overlay disappears — fixes
   // the abrupt "snap" at cycle end.
   bool _hintCycleFadingOut = false;
+
+  String get _scrollStorageKey =>
+      'player_games:${widget.dataSource.name}:${widget.fideId ?? ''}:'
+      '${widget.gamebasePlayerId ?? ''}:${widget.playerName}';
 
   @override
   bool get wantKeepAlive => true;
@@ -203,7 +202,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     if (route == null) return;
     routeObserver.subscribe(this, route);
     _routeSubscribed = true;
-    _routeIsCurrent = route.isCurrent;
   }
 
   @override
@@ -283,9 +281,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   void _setRouteActive(bool isActive) {
     if (!mounted) return;
-    if (_routeIsCurrent != isActive) {
-      setState(() => _routeIsCurrent = isActive);
-    }
     if (!isActive) {
       ForegroundTaskScheduler.cancel('player_games_resume_$hashCode');
       _stopLiveCardsForHiddenTab();
@@ -578,7 +573,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     });
 
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
-    if (selectedTab != PlayerProfileTab.games || !_isActiveOnScreen) {
+    if (selectedTab != PlayerProfileTab.games) {
       return const SizedBox.shrink();
     }
 
@@ -640,6 +635,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
       child: CustomScrollView(
+        key: PageStorageKey<String>(_scrollStorageKey),
         controller: _scrollController,
         scrollCacheExtent: kListScrollCacheExtent,
         physics: const AlwaysScrollableScrollPhysics(

@@ -56,6 +56,10 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
   String? _twicError;
   int _loadToken = 0;
 
+  String get _scrollStorageKey =>
+      'player_events:${widget.dataSource.name}:${widget.fideId ?? ''}:'
+      '${widget.gamebasePlayerId ?? ''}:${widget.playerName}';
+
   @override
   bool get wantKeepAlive => true;
 
@@ -232,6 +236,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                   hasMorePages: _twicHasMore,
                   isLoadingMore: _twicIsLoadingMore,
                   totalEventsOverride: _twicTotalEvents,
+                  scrollStorageKey: _scrollStorageKey,
                   onLoadMore: () => _loadTwicEvents(),
                 ),
       );
@@ -264,6 +269,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               dataSource: widget.dataSource,
               timeControlFilter: currentTimeControl,
               hasActiveFilter: hasActiveFilter,
+              scrollStorageKey: _scrollStorageKey,
             );
           },
           loading: () => _buildLoadingState(),
@@ -457,6 +463,7 @@ class _EventsListContent extends ConsumerWidget {
     this.hasMorePages = false,
     this.isLoadingMore = false,
     this.totalEventsOverride,
+    this.scrollStorageKey,
     this.onLoadMore,
   });
 
@@ -469,6 +476,7 @@ class _EventsListContent extends ConsumerWidget {
   final bool hasMorePages;
   final bool isLoadingMore;
   final int? totalEventsOverride;
+  final String? scrollStorageKey;
   final Future<void> Function()? onLoadMore;
 
   /// Check if an event matches the time control filter
@@ -543,6 +551,10 @@ class _EventsListContent extends ConsumerWidget {
       final totalItems = baseItemCount + (showFooter ? 1 : 0);
 
       return ListView.builder(
+        key:
+            scrollStorageKey == null
+                ? null
+                : PageStorageKey<String>(scrollStorageKey!),
         controller: scrollController,
         scrollCacheExtent: kListScrollCacheExtent,
         physics: const AlwaysScrollableScrollPhysics(
