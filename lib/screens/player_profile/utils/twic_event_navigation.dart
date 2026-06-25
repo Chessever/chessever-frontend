@@ -26,6 +26,7 @@ Future<void> openProfileEvent({
   required String eventName,
   String? site,
   String? broadcastSlug,
+  String? gamebaseKey,
   String? canonicalBroadcastId,
 }) async {
   HapticFeedbackService.buttonPress();
@@ -70,9 +71,11 @@ Future<void> openProfileEvent({
   // the name slugifies to the same `tours.slug` ChessEver stores.
   final siteSlug = broadcastSlugFromSite(site);
   final nameSlug = eventNameToBroadcastSlug(eventName);
+  final rawBroadcastSlug = broadcastSlug?.trim();
+  final rawGamebaseKey = gamebaseKey?.trim();
   final candidates = <String>{
-    if (broadcastSlug != null && broadcastSlug.trim().isNotEmpty)
-      broadcastSlug.trim(),
+    if (rawBroadcastSlug != null && rawBroadcastSlug.isNotEmpty)
+      rawBroadcastSlug,
     if (siteSlug != null && siteSlug.isNotEmpty) siteSlug,
     if (nameSlug.isNotEmpty) nameSlug,
   };
@@ -102,9 +105,11 @@ Future<void> openProfileEvent({
     eventName.trim(),
     site: site,
     slug:
-        (broadcastSlug != null && broadcastSlug.trim().isNotEmpty)
-            ? broadcastSlug.trim()
-            : siteSlug ?? (nameSlug.isNotEmpty ? nameSlug : null),
+        (rawGamebaseKey != null && rawGamebaseKey.isNotEmpty)
+            ? rawGamebaseKey
+            : (rawBroadcastSlug != null && rawBroadcastSlug.isNotEmpty)
+            ? rawBroadcastSlug
+            : siteSlug,
   );
   ref.read(selectedTourModeProvider.notifier).state =
       TournamentDetailScreenMode.games;

@@ -2108,6 +2108,7 @@ class _EventSection extends ConsumerWidget {
       eventName: eventData?.tourName ?? tourSlug ?? tourId,
       site: eventData?.site ?? site,
       broadcastSlug: eventData?.broadcastSlug,
+      gamebaseKey: eventData?.canonicalKey ?? tourSlug ?? tourId,
       canonicalBroadcastId:
           displayCard.eventSource == EventSource.lichessBroadcast
               ? displayCard.id
