@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
@@ -77,6 +78,10 @@ class _GamesAppBarNotifier
         if (signature == _lastRoundCountSignature) return;
 
         _lastRoundCountSignature = signature;
+        if (isVirtualGamebaseId(tourId!)) {
+          _load(showLoading: false, scrollSelection: false);
+          return;
+        }
         _refreshSelectionAfterGamesChange(games);
       });
 
@@ -664,6 +669,36 @@ class _GamesAppBarNotifier
       state = const AsyncValue.loading();
     }
     try {
+      if (isVirtualGamebaseId(tourId!)) {
+        final gamesAsync = ref.read(gamesTourProvider(tourId!));
+        final games = gamesAsync.valueOrNull;
+        if (gamesAsync.isLoading || games == null) {
+          if (showLoading) state = const AsyncValue.loading();
+          return;
+        }
+
+        _roundSortMeta.clear();
+        final models = buildVirtualGamebaseRoundModels(games);
+        if (models.isEmpty) {
+          state = const AsyncValue.data(
+            GamesAppBarViewModel(
+              gamesAppBarModels: [],
+              selectedId: '',
+              userSelectedId: false,
+            ),
+          );
+          return;
+        }
+
+        _sortRounds(models);
+        await _applySelectionFrom(
+          models,
+          tourId!,
+          scrollSelection: scrollSelection,
+        );
+        return;
+      }
+
       final repo = ref.read(roundRepositoryProvider);
       final rounds = await repo.getRoundsByTourId(tourId!);
 
@@ -1640,4 +1675,49 @@ String _roundCountSignature(List<Games> games) {
   final entries =
       counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
   return entries.map((entry) => '${entry.key}:${entry.value}').join('|');
+}
+
+@visibleForTesting
+List<GamesAppBarModel> buildVirtualGamebaseRoundModels(List<Games> games) {
+  if (games.isEmpty) return const <GamesAppBarModel>[];
+
+  final roundsById = <String, List<Games>>{};
+  for (final game in games) {
+    roundsById.putIfAbsent(game.roundId, () => <Games>[]).add(game);
+  }
+
+  var fallbackRoundNumber = 0;
+  return roundsById.entries
+      .map((entry) {
+        fallbackRoundNumber++;
+        final roundGames = entry.value;
+        final firstGame = roundGames.first;
+        final startsAt = _earliestGameDate(roundGames);
+        final hasOngoingGame = roundGames.any(
+          (game) => (game.status ?? '').trim() == '*',
+        );
+        return GamesAppBarModel(
+          id: entry.key,
+          name:
+              firstGame.roundSlug.trim().isNotEmpty
+                  ? firstGame.roundSlug.trim()
+                  : 'Round $fallbackRoundNumber',
+          startsAt: startsAt,
+          roundStatus:
+              hasOngoingGame ? RoundStatus.ongoing : RoundStatus.completed,
+        );
+      })
+      .toList(growable: false);
+}
+
+DateTime? _earliestGameDate(List<Games> games) {
+  DateTime? earliest;
+  for (final game in games) {
+    final date = game.gameDay ?? game.dateStart ?? game.lastMoveTime;
+    if (date == null) continue;
+    if (earliest == null || date.isBefore(earliest)) {
+      earliest = date;
+    }
+  }
+  return earliest;
 }
