@@ -64,8 +64,9 @@ LiveGamesBatchKey _forYouLiveBatchKey({
 ///
 /// KEY DESIGN:
 /// - Events are selected by the backend feed RPC
-/// - Games come from one batched top-Elo RPC
-/// - Always up to 4 highest-Elo boards per event
+/// - Games come from one batched highest-category latest-round top-board RPC
+/// - Heart counts come from one batched event-level favorite-player RPC
+/// - Always up to 4 games per event
 class ForYouGamesWidget extends ConsumerStatefulWidget {
   const ForYouGamesWidget({super.key, required this.scrollController});
 
@@ -768,7 +769,8 @@ class _ForYouEventSection extends ConsumerWidget {
   Widget _buildEventCard(BuildContext context, WidgetRef ref) {
     final eventCard = EventCard(
       tourEventCardModel: event,
-      showHeartIndicator: false,
+      showHeartIndicator: true,
+      favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
       heroTagSuffix: '_foryou',
       onTap: () {
         ref
@@ -877,7 +879,8 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
           aspectRatio: eventCardAspectRatio,
           child: EventCard(
             tourEventCardModel: event,
-            showHeartIndicator: false,
+            showHeartIndicator: true,
+            favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
             heroTagSuffix: '_foryou_tablet_col',
             onTap: () {
               ref

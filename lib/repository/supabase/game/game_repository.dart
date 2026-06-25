@@ -37,6 +37,13 @@ String _stripTitlePrefix(String playerName) {
   return trimmed;
 }
 
+int? _parseRpcInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
 const String _gameListSelectColumns = '''
           id,
           round_id,
@@ -1415,7 +1422,7 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  /// Returns the highest-Elo game cards for each For You event in one RPC.
+  /// Returns highest-category latest-round top-board game cards for each For You event in one RPC.
   Future<Map<String, List<Games>>> getForYouTopGamesByEventIds({
     required List<String> eventIds,
     int boardsPerEvent = 4,
@@ -1443,6 +1450,41 @@ class GameRepository extends BaseRepository {
         for (final entry in gamesByEventId.entries)
           entry.key: _deduplicateGames(entry.value),
       };
+    });
+  }
+
+  /// Returns matching favorite-player FIDE IDs for each For You event in one batched RPC.
+  Future<Map<String, List<int>>> getForYouFavoritePlayerFideIdsByEventIds({
+    required List<String> eventIds,
+    required List<int> favoriteFideIds,
+  }) async {
+    if (eventIds.isEmpty || favoriteFideIds.isEmpty) {
+      return <String, List<int>>{};
+    }
+
+    return handleApiCall(() async {
+      final response = await supabase.rpc(
+        'get_for_you_favorite_player_counts',
+        params: {'p_event_ids': eventIds, 'p_fide_ids': favoriteFideIds},
+      );
+
+      final matchesByEventId = <String, List<int>>{};
+      for (final item in response as List) {
+        final json = Map<String, dynamic>.from(item as Map);
+        final eventId = json['event_id'] as String?;
+        if (eventId == null || eventId.isEmpty) continue;
+
+        final fideIds =
+            (json['fide_ids'] as List? ?? const [])
+                .map(_parseRpcInt)
+                .whereType<int>()
+                .toSet()
+                .toList()
+              ..sort();
+        matchesByEventId[eventId] = fideIds;
+      }
+
+      return matchesByEventId;
     });
   }
 

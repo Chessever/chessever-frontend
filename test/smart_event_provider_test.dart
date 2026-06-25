@@ -75,6 +75,24 @@ Map<String, dynamic> _favoriteEventMetadataRow(GroupEventCardModel event) {
 }
 
 void main() {
+  group('smart event hidden tournament metadata', () {
+    test('reads eye-hidden event ids from the saved favorite metadata key', () {
+      final hiddenIds = readSmartEventHiddenIds({
+        smartEventHiddenMetadataKey: ['event-a', 42, 'event-c'],
+      });
+
+      expect(hiddenIds, {'event-a', '42', 'event-c'});
+    });
+
+    test('falls back to an empty set when the metadata shape is missing', () {
+      expect(readSmartEventHiddenIds(const {}), isEmpty);
+      expect(
+        readSmartEventHiddenIds({smartEventHiddenMetadataKey: 'event-a'}),
+        isEmpty,
+      );
+    });
+  });
+
   group('smartGameAverageElo', () {
     test('uses individual game average instead of event average', () {
       expect(
@@ -187,10 +205,10 @@ void main() {
         ),
       ];
 
-      expect(
-        trimTrailingPartialDayForTest(games).map((game) => game.gameId),
-        ['a', 'b'],
-      );
+      expect(trimTrailingPartialDayForTest(games).map((game) => game.gameId), [
+        'a',
+        'b',
+      ]);
     });
 
     test('returns empty list unchanged', () {
