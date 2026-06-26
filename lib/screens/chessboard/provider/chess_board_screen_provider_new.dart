@@ -1189,12 +1189,16 @@ class ChessBoardScreenNotifierNew
         final blackElo =
             int.tryParse(gameData.headers['BlackElo']?.toString() ?? '') ??
             game.blackPlayer.rating;
-        final whiteFed =
-            (gameData.headers['WhiteFed'] ?? game.whitePlayer.federation)
-                .trim();
-        final blackFed =
-            (gameData.headers['BlackFed'] ?? game.blackPlayer.federation)
-                .trim();
+        final whiteFed = _resolvePlayerFederation(
+          gameData.headers['WhiteFed'],
+          game.whitePlayer.countryCode,
+          game.whitePlayer.federation,
+        );
+        final blackFed = _resolvePlayerFederation(
+          gameData.headers['BlackFed'],
+          game.blackPlayer.countryCode,
+          game.blackPlayer.federation,
+        );
         final whiteTitle =
             (gameData.headers['WhiteTitle'] ?? game.whitePlayer.title).trim();
         final blackTitle =
@@ -7523,6 +7527,29 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
   } catch (_) {
     return const [];
   }
+}
+
+String _resolvePlayerFederation(
+  Object? eventFederation,
+  String profileCountryCode,
+  String profileFederation,
+) {
+  final event = eventFederation?.toString().trim() ?? '';
+  if (!_needsFederationFallback(event)) return event;
+
+  final profileCountry = profileCountryCode.trim();
+  if (!_needsFederationFallback(profileCountry)) return profileCountry;
+
+  final profileFed = profileFederation.trim();
+  if (!_needsFederationFallback(profileFed)) return profileFed;
+
+  return event;
+}
+
+bool _needsFederationFallback(String value) {
+  if (value.isEmpty) return true;
+  final upper = value.toUpperCase();
+  return upper == 'FID' || upper == 'FIDE' || upper == '?';
 }
 
 const int kVariationCommentMaxChars = 280;

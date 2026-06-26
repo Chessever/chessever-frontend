@@ -12,6 +12,29 @@ final chessPlayerByFideIdProvider = FutureProvider.family
       return ref.read(chessPlayerRepositoryProvider).getPlayerByFideId(fideId);
     });
 
+/// Best-effort profile lookup by player name for broadcasts that omit a stable
+/// FIDE ID/federation on a game row. Only exact normalized-name matches are
+/// returned so a missing event flag never gets replaced by a speculative match.
+final chessPlayerByNameProvider = FutureProvider.family
+    .autoDispose<ChessPlayer?, String>((ref, rawName) async {
+      final query = rawName.trim();
+      if (query.isEmpty) return null;
+
+      final repository = ref.read(chessPlayerRepositoryProvider);
+      final target = _normalizePlayerName(query);
+      final candidates = await repository.searchAllPlayers(
+        query: query,
+        limit: 10,
+      );
+
+      for (final candidate in candidates) {
+        if (_normalizePlayerName(candidate.name) == target) {
+          return candidate;
+        }
+      }
+      return null;
+    });
+
 /// Backfills missing scorecard player fields (title/federation/rating)
 /// using the canonical `chess_players` row for the player's FIDE ID.
 final backfilledStandingPlayerProvider = FutureProvider.family
