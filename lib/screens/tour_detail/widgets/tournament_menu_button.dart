@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
+
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/event_mute_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
@@ -10,7 +13,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/standings_share_image_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -19,6 +24,8 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
 enum TournamentMenuAction {
@@ -31,6 +38,7 @@ enum TournamentMenuAction {
   expandAllRounds,
   disableNotifications,
   enableNotifications,
+  shareStandings,
   shareEvent,
 }
 
@@ -376,16 +384,38 @@ class TournamentMenuButton extends ConsumerWidget {
       );
     }
 
-    // 5. Share event
-    // We have the active tour (id + slug) in hand here, so we can build the
-    // Lichess-mirror URL `<tour.slug>/<tour.id>` directly without an extra
-    // database round-trip. `groupBroadcastId` is passed only as the fallback
-    // path id used when slug/tourId are missing (legacy events).
+    // 5. Share standings
     final aboutModel = tourData.aboutTourModel;
     final fallbackId =
         aboutModel.groupBroadcastId?.isNotEmpty == true
             ? aboutModel.groupBroadcastId!
             : aboutModel.id;
+    if (fallbackId.isNotEmpty && aboutModel.name.isNotEmpty) {
+      items.add(
+        PopupMenuItem<TournamentMenuAction>(
+          value: TournamentMenuAction.shareStandings,
+          padding: EdgeInsets.zero,
+          height: 36.h,
+          onTap: () {
+            unawaited(_shareStandings(ref, context, tourData));
+          },
+          child: _MenuDropDownItem(
+            text: "Share standings",
+            icon: Icon(
+              Icons.leaderboard_outlined,
+              color: context.colors.textPrimary,
+              size: 16,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 6. Share event
+    // We have the active tour (id + slug) in hand here, so we can build the
+    // Lichess-mirror URL `<tour.slug>/<tour.id>` directly without an extra
+    // database round-trip. `groupBroadcastId` is passed only as the fallback
+    // path id used when slug/tourId are missing (legacy events).
     if (fallbackId.isNotEmpty && aboutModel.name.isNotEmpty) {
       items.add(
         PopupMenuItem<TournamentMenuAction>(
@@ -414,6 +444,101 @@ class TournamentMenuButton extends ConsumerWidget {
               size: 16,
             ),
           ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareStandings(
+    WidgetRef ref,
+    BuildContext context,
+    TourDetailViewModel tourData,
+  ) async {
+    late final List<PlayerStandingModel> standings;
+    try {
+      standings = await ref.read(playerTourScreenProvider.future);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not load standings. Please try again.'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    if (standings.isEmpty) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Standings are still loading. Try again in a moment.'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final aboutModel = tourData.aboutTourModel;
+    final fallbackId =
+        aboutModel.groupBroadcastId?.isNotEmpty == true
+            ? aboutModel.groupBroadcastId!
+            : aboutModel.id;
+    final url = buildEventShareUrl(
+      id: fallbackId,
+      title: aboutModel.name,
+      tourId: aboutModel.id,
+      tourSlug: aboutModel.slug,
+    );
+
+    final box = context.findRenderObject() as RenderBox?;
+    final origin =
+        box != null
+            ? box.localToGlobal(Offset.zero) & box.size
+            : const Rect.fromLTWH(0, 0, 1, 1);
+
+    try {
+      final bytes = await ScreenshotController().captureFromWidget(
+        UncontrolledProviderScope(
+          container: ProviderScope.containerOf(context, listen: false),
+          child: StandingsShareImageCard(
+            eventName: aboutModel.name,
+            standings: standings,
+          ),
+        ),
+        context: context,
+        targetSize: standingsShareImageSize,
+        pixelRatio: 1,
+      );
+      final tempDir = await getTemporaryDirectory();
+      final safeName =
+          aboutModel.name
+              .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+              .replaceAll(RegExp(r'^-+|-+$'), '')
+              .toLowerCase();
+      final file = File(
+        '${tempDir.path}/${safeName.isEmpty ? 'chessever-event' : safeName}-standings.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      if (!context.mounted) return;
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        text: url,
+        subject: '${aboutModel.name} standings',
+        sharePositionOrigin: origin,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not share standings. Please try again.'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
