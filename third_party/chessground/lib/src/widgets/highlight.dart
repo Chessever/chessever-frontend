@@ -82,14 +82,14 @@ class ValidMoveHighlight extends StatelessWidget {
     return occupied
         ? OccupiedValidMoveHighlight(color: color, size: size)
         : SizedBox.square(
-          dimension: size,
-          child: Padding(
-            padding: EdgeInsets.all(size / 3),
-            child: Container(
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            dimension: size,
+            child: Padding(
+              padding: EdgeInsets.all(size / 3),
+              child: Container(
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
             ),
-          ),
-        );
+          );
   }
 }
 
@@ -123,11 +123,10 @@ class _OccupiedMoveDestPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint =
-        Paint()
-          ..color = color
-          ..strokeWidth = size.width / 5
-          ..style = PaintingStyle.stroke;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = size.width / 5
+      ..style = PaintingStyle.stroke;
 
     canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
 

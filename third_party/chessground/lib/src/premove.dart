@@ -8,27 +8,22 @@ Set<Square> premovesOf(Square square, Pieces pieces, {bool canCastle = false}) {
   if (piece == null) return {};
   final r = piece.role;
 
-  final mobility =
-      (() {
-        switch (r) {
-          case Role.pawn:
-            return _pawn(piece.color);
-          case Role.knight:
-            return _knight;
-          case Role.bishop:
-            return _bishop;
-          case Role.rook:
-            return _rook;
-          case Role.queen:
-            return _queen;
-          case Role.king:
-            return _king(
-              piece.color,
-              _rookFilesOf(pieces, piece.color),
-              canCastle,
-            );
-        }
-      })();
+  final mobility = (() {
+    switch (r) {
+      case Role.pawn:
+        return _pawn(piece.color);
+      case Role.knight:
+        return _knight;
+      case Role.bishop:
+        return _bishop;
+      case Role.rook:
+        return _rook;
+      case Role.queen:
+        return _queen;
+      case Role.king:
+        return _king(piece.color, _rookFilesOf(pieces, piece.color), canCastle);
+    }
+  })();
 
   return {
     for (final s in Square.values)

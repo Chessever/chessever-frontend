@@ -128,98 +128,95 @@ class _BoardEditorState extends State<ChessboardEditor> {
   }
 
   Future<void> _loadImages(PieceAssets assets) async {
-    final dpr =
-        WidgetsBinding
-            .instance
-            .platformDispatcher
-            .implicitView
-            ?.devicePixelRatio;
+    final dpr = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .implicitView
+        ?.devicePixelRatio;
     await ChessgroundImages.instance.loadAll(assets, devicePixelRatio: dpr);
     if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> squareWidgets =
-        Square.values.map((square) {
-          final piece = widget.pieces[square];
+    final List<Widget> squareWidgets = Square.values.map((square) {
+      final piece = widget.pieces[square];
 
-          return PositionedSquare(
-            key: ValueKey('${square.name}-${piece ?? 'empty'}'),
-            size: widget.size,
-            orientation: widget.orientation,
-            square: square,
-            child: DragTarget<Piece>(
-              hitTestBehavior: HitTestBehavior.opaque,
-              builder: (context, candidateData, rejectedData) {
-                return Stack(
-                  alignment: Alignment.topLeft,
-                  children: [
-                    // Show a drop target if a piece is dragged over the square
-                    if (candidateData.isNotEmpty)
-                      Transform.scale(
-                        scale: 2,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Color(0x33000000),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
+      return PositionedSquare(
+        key: ValueKey('${square.name}-${piece ?? 'empty'}'),
+        size: widget.size,
+        orientation: widget.orientation,
+        square: square,
+        child: DragTarget<Piece>(
+          hitTestBehavior: HitTestBehavior.opaque,
+          builder: (context, candidateData, rejectedData) {
+            return Stack(
+              alignment: Alignment.topLeft,
+              children: [
+                // Show a drop target if a piece is dragged over the square
+                if (candidateData.isNotEmpty)
+                  Transform.scale(
+                    scale: 2,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Color(0x33000000),
+                        shape: BoxShape.circle,
                       ),
-                    if (widget.pointerMode == EditorPointerMode.drag &&
-                        piece != null)
-                      Draggable(
-                        hitTestBehavior: HitTestBehavior.translucent,
-                        dragAnchorStrategy: pointerDragAnchorStrategy,
-                        data: piece,
-                        feedback: PieceDragFeedback(
-                          squareSize: widget.squareSize,
-                          scale: widget.settings.dragFeedbackScale,
-                          offset: widget.settings.dragFeedbackOffset,
-                          piece: piece,
-                          pieceAssets: widget.settings.pieceAssets,
-                        ),
-                        childWhenDragging: const SizedBox.shrink(),
-                        onDragStarted: () => draggedPieceOrigin = square,
-                        onDraggableCanceled: (_, _) {
-                          widget.onDiscardedPiece?.call(square);
-                          draggedPieceOrigin = null;
-                        },
-                        child: PieceWidget(
-                          piece: piece,
-                          size: widget.squareSize,
-                          pieceAssets: widget.settings.pieceAssets,
-                        ),
-                      )
-                    else if (piece != null)
-                      PieceWidget(
-                        piece: piece,
-                        size: widget.squareSize,
-                        pieceAssets: widget.settings.pieceAssets,
-                      ),
-                  ],
-                );
-              },
-              onAcceptWithDetails: (details) {
-                widget.onDroppedPiece?.call(
-                  draggedPieceOrigin,
-                  square,
-                  details.data,
-                );
-                draggedPieceOrigin = null;
-              },
-            ),
-          );
-        }).toList();
+                    ),
+                  ),
+                if (widget.pointerMode == EditorPointerMode.drag &&
+                    piece != null)
+                  Draggable(
+                    hitTestBehavior: HitTestBehavior.translucent,
+                    dragAnchorStrategy: pointerDragAnchorStrategy,
+                    data: piece,
+                    feedback: PieceDragFeedback(
+                      squareSize: widget.squareSize,
+                      scale: widget.settings.dragFeedbackScale,
+                      offset: widget.settings.dragFeedbackOffset,
+                      piece: piece,
+                      pieceAssets: widget.settings.pieceAssets,
+                    ),
+                    childWhenDragging: const SizedBox.shrink(),
+                    onDragStarted: () => draggedPieceOrigin = square,
+                    onDraggableCanceled: (_, _) {
+                      widget.onDiscardedPiece?.call(square);
+                      draggedPieceOrigin = null;
+                    },
+                    child: PieceWidget(
+                      piece: piece,
+                      size: widget.squareSize,
+                      pieceAssets: widget.settings.pieceAssets,
+                    ),
+                  )
+                else if (piece != null)
+                  PieceWidget(
+                    piece: piece,
+                    size: widget.squareSize,
+                    pieceAssets: widget.settings.pieceAssets,
+                  ),
+              ],
+            );
+          },
+          onAcceptWithDetails: (details) {
+            widget.onDroppedPiece?.call(
+              draggedPieceOrigin,
+              square,
+              details.data,
+            );
+            draggedPieceOrigin = null;
+          },
+        ),
+      );
+    }).toList();
 
     final background = BrightnessHueFilter(
       hue: widget.settings.hue,
-      child:
-          widget.settings.border == null && widget.settings.enableCoordinates
-              ? widget.orientation == Side.white
-                  ? widget.settings.colorScheme.whiteCoordBackground
-                  : widget.settings.colorScheme.blackCoordBackground
-              : widget.settings.colorScheme.background,
+      child: widget.settings.border == null && widget.settings.enableCoordinates
+          ? widget.orientation == Side.white
+                ? widget.settings.colorScheme.whiteCoordBackground
+                : widget.settings.colorScheme.blackCoordBackground
+          : widget.settings.colorScheme.background,
     );
 
     final List<Widget> highlightedBackground = [
@@ -269,16 +266,15 @@ class _BoardEditorState extends State<ChessboardEditor> {
       ),
     );
 
-    final borderedChessboard =
-        widget.settings.border != null
-            ? BorderedChessboard(
-              size: widget.size,
-              orientation: widget.orientation,
-              border: widget.settings.border!,
-              showCoordinates: widget.settings.enableCoordinates,
-              child: board,
-            )
-            : board;
+    final borderedChessboard = widget.settings.border != null
+        ? BorderedChessboard(
+            size: widget.size,
+            orientation: widget.orientation,
+            border: widget.settings.border!,
+            showCoordinates: widget.settings.enableCoordinates,
+            child: board,
+          )
+        : board;
 
     return BrightnessHueFilter(
       brightness: widget.settings.brightness,

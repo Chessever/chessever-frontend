@@ -238,15 +238,14 @@ void main() {
       Square? checkSquare,
       bool showLastMove = true,
     }) {
-      final notifier =
-          BoardHighlightNotifier()
-            ..selected = selected
-            ..moveDests = moveDests
-            ..premoveDests = premoveDests
-            ..occupiedSquares = occupiedSquares
-            ..lastMove = lastMove
-            ..premove = premove
-            ..checkSquare = checkSquare;
+      final notifier = BoardHighlightNotifier()
+        ..selected = selected
+        ..moveDests = moveDests
+        ..premoveDests = premoveDests
+        ..occupiedSquares = occupiedSquares
+        ..lastMove = lastMove
+        ..premove = premove
+        ..checkSquare = checkSquare;
       return HighlightsPainter(
         interactionNotifier: notifier,
         squareSize: squareSize,

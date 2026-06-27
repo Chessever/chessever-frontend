@@ -226,10 +226,9 @@ class ChessboardController extends ChangeNotifier {
   @internal
   void toggleDrawnShape(Shape shape) {
     final current = _drawnShapesNotifier.value;
-    _drawnShapesNotifier.value =
-        current.contains(shape)
-            ? current.difference({shape})
-            : {...current, shape};
+    _drawnShapesNotifier.value = current.contains(shape)
+        ? current.difference({shape})
+        : {...current, shape};
   }
 
   /// Removes all user-drawn shapes from the board.

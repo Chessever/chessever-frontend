@@ -67,8 +67,8 @@ class _SolidColorChessboardPainter extends CustomPainter {
           squareSize,
           squareSize,
         );
-        final paint =
-            Paint()..color = (rank + file).isEven ? lightSquare : darkSquare;
+        final paint = Paint()
+          ..color = (rank + file).isEven ? lightSquare : darkSquare;
         canvas.drawRect(square, paint);
         if (coordinates && (file == 7 || rank == 7)) {
           final coordStyle = TextStyle(
@@ -98,10 +98,9 @@ class _SolidColorChessboardPainter extends CustomPainter {
           if (rank == 7) {
             final coord = TextPainter(
               text: TextSpan(
-                text:
-                    orientation == Side.white
-                        ? String.fromCharCode(97 + file)
-                        : String.fromCharCode(97 + 7 - file),
+                text: orientation == Side.white
+                    ? String.fromCharCode(97 + file)
+                    : String.fromCharCode(97 + 7 - file),
                 style: coordStyle,
               ),
               textDirection: TextDirection.ltr,
@@ -215,10 +214,9 @@ class _ImageBackgroundCoordinatePainter extends CustomPainter {
           if (rank == 7) {
             final coord = TextPainter(
               text: TextSpan(
-                text:
-                    orientation == Side.white
-                        ? String.fromCharCode(97 + file)
-                        : String.fromCharCode(97 + 7 - file),
+                text: orientation == Side.white
+                    ? String.fromCharCode(97 + file)
+                    : String.fromCharCode(97 + 7 - file),
                 style: coordStyle,
               ),
               textDirection: TextDirection.ltr,

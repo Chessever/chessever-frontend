@@ -110,11 +110,10 @@ class _ArrowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final squareSize = size.width / 8;
     final lineWidth = scale * squareSize / 4;
-    final paint =
-        Paint()
-          ..strokeWidth = lineWidth
-          ..color = color
-          ..style = PaintingStyle.stroke;
+    final paint = Paint()
+      ..strokeWidth = lineWidth
+      ..color = color
+      ..style = PaintingStyle.stroke;
 
     final shift = Offset(squareSize / 2, squareSize / 2);
     final margin = squareSize / 3;
@@ -153,10 +152,9 @@ class _ArrowPainter extends CustomPainter {
 
     canvas.drawLine(from, to - arrowOffset, paint);
 
-    final pathPaint =
-        paint
-          ..strokeWidth = 0
-          ..style = PaintingStyle.fill;
+    final pathPaint = paint
+      ..strokeWidth = 0
+      ..style = PaintingStyle.fill;
     canvas.drawPath(path, pathPaint);
   }
 
@@ -181,19 +179,18 @@ class _CirclePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final squareSize = size.width / 8;
     final lineWidth = scale * squareSize / 16;
-    final paint =
-        Paint()
-          ..strokeWidth = lineWidth
-          ..color = color
-          ..style = PaintingStyle.stroke;
+    final paint = Paint()
+      ..strokeWidth = lineWidth
+      ..color = color
+      ..style = PaintingStyle.stroke;
 
-    final circle =
-        Path()..addOval(
-          Rect.fromCircle(
-            center: circleOffset + Offset(squareSize / 2, squareSize / 2),
-            radius: squareSize / 2 - lineWidth / 2,
-          ),
-        );
+    final circle = Path()
+      ..addOval(
+        Rect.fromCircle(
+          center: circleOffset + Offset(squareSize / 2, squareSize / 2),
+          radius: squareSize / 2 - lineWidth / 2,
+        ),
+      );
     canvas.drawPath(circle, paint);
   }
 

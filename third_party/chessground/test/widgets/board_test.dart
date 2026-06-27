@@ -1125,23 +1125,26 @@ void main() {
           squareOffset(tester, Square.e3),
         );
         await tester.pump();
-        final posOnE3 =
-            _dragSquareTargetPainter(tester)?.positionNotifier.value;
+        final posOnE3 = _dragSquareTargetPainter(
+          tester,
+        )?.positionNotifier.value;
         expect(posOnE3, isNotNull);
 
         // Slide up one rank to e4: the target tracks the finger by one square.
         await gesture.moveTo(squareOffset(tester, Square.e4));
         await tester.pump();
-        final posOnE4 =
-            _dragSquareTargetPainter(tester)?.positionNotifier.value;
+        final posOnE4 = _dragSquareTargetPainter(
+          tester,
+        )?.positionNotifier.value;
         expect(posOnE4, isNotNull);
         expect(posOnE4! - posOnE3!, const Offset(0, -squareSize));
 
         // Slide right one file to f4: the target tracks the finger horizontally.
         await gesture.moveTo(squareOffset(tester, Square.f4));
         await tester.pump();
-        final posOnF4 =
-            _dragSquareTargetPainter(tester)?.positionNotifier.value;
+        final posOnF4 = _dragSquareTargetPainter(
+          tester,
+        )?.positionNotifier.value;
         expect(posOnF4, isNotNull);
         expect(posOnF4! - posOnE4, const Offset(squareSize, 0));
 
@@ -1950,9 +1953,8 @@ void main() {
                 controller: controller,
                 size: boardSize,
                 orientation: Side.white,
-                onMove:
-                    (move, {viaDragAndDrop}) =>
-                        recorded.add((move, viaDragAndDrop)),
+                onMove: (move, {viaDragAndDrop}) =>
+                    recorded.add((move, viaDragAndDrop)),
               ),
             ),
           ),
@@ -2060,9 +2062,8 @@ void main() {
               controller: controller,
               size: boardSize,
               orientation: Side.white,
-              onMove:
-                  (move, {viaDragAndDrop}) =>
-                      recorded.add((move, viaDragAndDrop)),
+              onMove: (move, {viaDragAndDrop}) =>
+                  recorded.add((move, viaDragAndDrop)),
             ),
           ),
         ),
@@ -4474,8 +4475,9 @@ void main() {
 }
 
 Future<void> makeMove(WidgetTester tester, Square from, Square to) async {
-  final orientation =
-      tester.widget<Chessboard>(find.byType(Chessboard)).orientation;
+  final orientation = tester
+      .widget<Chessboard>(find.byType(Chessboard))
+      .orientation;
   await tester.tapAt(squareOffset(tester, from, orientation: orientation));
   await tester.pump();
   await tester.tapAt(squareOffset(tester, to, orientation: orientation));
@@ -4578,8 +4580,9 @@ class _TestAppState extends State<_TestApp> {
       fen: position.fen,
       lastMove: lastMove,
       playerSide: interactiveSide,
-      kingSquareInCheck:
-          position.isCheck ? position.board.kingOf(position.turn) : null,
+      kingSquareInCheck: position.isCheck
+          ? position.board.kingOf(position.turn)
+          : null,
       sideToMove: position.turn == Side.white ? Side.white : Side.black,
       validMoves: makeLegalMoves(position),
       validDropSquares: widget.validDropSquares,
@@ -4702,12 +4705,11 @@ Offset squareOffset(
   // that provides loose constraints (e.g. direct pumpWidget without MaterialApp
   // causes RenderView tight constraints to expand board-container to fill screen).
   final chessboardFinder = find.byType(Chessboard);
-  final double sq =
-      chessboardFinder.evaluate().isNotEmpty
-          ? tester.widget<Chessboard>(chessboardFinder).squareSize
-          : tester
-              .widget<StaticChessboard>(find.byType(StaticChessboard))
-              .squareSize;
+  final double sq = chessboardFinder.evaluate().isNotEmpty
+      ? tester.widget<Chessboard>(chessboardFinder).squareSize
+      : tester
+            .widget<StaticChessboard>(find.byType(StaticChessboard))
+            .squareSize;
   final topLeft = tester.getTopLeft(
     find.byKey(const ValueKey('board-container')),
   );

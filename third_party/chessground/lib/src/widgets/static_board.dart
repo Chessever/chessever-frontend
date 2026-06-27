@@ -116,16 +116,16 @@ class _StaticChessboardState extends State<StaticChessboard>
       parent: _pieceAnimationController,
       curve: Curves.easeInQuad,
     );
-    _highlightNotifier =
-        BoardHighlightNotifier()..update(
-          selected: null,
-          moveDests: const {},
-          premoveDests: const {},
-          occupiedSquares: const {},
-          lastMove: settings.showLastMove ? widget.lastMove : null,
-          premove: null,
-          checkSquare: null,
-        );
+    _highlightNotifier = BoardHighlightNotifier()
+      ..update(
+        selected: null,
+        moveDests: const {},
+        premoveDests: const {},
+        occupiedSquares: const {},
+        lastMove: settings.showLastMove ? widget.lastMove : null,
+        premove: null,
+        checkSquare: null,
+      );
     _imagesLoaded = ChessgroundImages.instance.isAllLoaded(
       settings.pieceAssets,
     );
@@ -135,12 +135,11 @@ class _StaticChessboardState extends State<StaticChessboard>
   }
 
   Future<void> _loadImages(PieceAssets assets) async {
-    final dpr =
-        WidgetsBinding
-            .instance
-            .platformDispatcher
-            .implicitView
-            ?.devicePixelRatio;
+    final dpr = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .implicitView
+        ?.devicePixelRatio;
     await ChessgroundImages.instance.loadAll(assets, devicePixelRatio: dpr);
     if (mounted) setState(() => _imagesLoaded = true);
   }
@@ -161,12 +160,11 @@ class _StaticChessboardState extends State<StaticChessboard>
   }
 
   Future<void> _loadHighlightImages() async {
-    final dpr =
-        WidgetsBinding
-            .instance
-            .platformDispatcher
-            .implicitView
-            ?.devicePixelRatio;
+    final dpr = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .implicitView
+        ?.devicePixelRatio;
     final images = <AssetImage>[];
     final lastMoveImage = settings.colorScheme.lastMove.image;
     if (lastMoveImage != null) images.add(lastMoveImage);
@@ -278,12 +276,11 @@ class _StaticChessboardState extends State<StaticChessboard>
     final imagesLoaded = _imagesLoaded && !_deferImagesLoading;
     final hasBorder = settings.border != null;
 
-    final background =
-        !hasBorder && settings.enableCoordinates
-            ? widget.orientation == Side.white
-                ? settings.colorScheme.whiteCoordBackground
-                : settings.colorScheme.blackCoordBackground
-            : settings.colorScheme.background;
+    final background = !hasBorder && settings.enableCoordinates
+        ? widget.orientation == Side.white
+              ? settings.colorScheme.whiteCoordBackground
+              : settings.colorScheme.blackCoordBackground
+        : settings.colorScheme.background;
 
     final piecesPainter = PiecesPainter(
       piecesNotifier: _piecesNotifier,

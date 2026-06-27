@@ -90,15 +90,15 @@ class ChessgroundImages {
       ImageConfiguration(devicePixelRatio: devicePixelRatio),
     );
     return (_assets[asset] ??= _ImageEntry.future(
-          _fetchToMemory(asset.bundle ?? rootBundle, key.name),
-        ))
-        .retrieveAsync();
+      _fetchToMemory(asset.bundle ?? rootBundle, key.name),
+    )).retrieveAsync();
   }
 
   /// Loads the specified [base64] image into the cache.
   Future<ui.Image> loadBase64(AssetImage asset, String base64) {
-    return (_assets[asset] ??= _ImageEntry.future(_fetchFromBase64(base64)))
-        .retrieveAsync();
+    return (_assets[asset] ??= _ImageEntry.future(
+      _fetchFromBase64(base64),
+    )).retrieveAsync();
   }
 
   /// Whether the cache contains the specified [key] or not.

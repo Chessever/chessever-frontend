@@ -187,12 +187,11 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
     final background = BrightnessHueFilter(
       hue: widget.settings.hue,
-      child:
-          settings.border == null && settings.enableCoordinates
-              ? widget.orientation == Side.white
-                  ? colorScheme.whiteCoordBackground
-                  : colorScheme.blackCoordBackground
-              : colorScheme.background,
+      child: settings.border == null && settings.enableCoordinates
+          ? widget.orientation == Side.white
+                ? colorScheme.whiteCoordBackground
+                : colorScheme.blackCoordBackground
+          : colorScheme.background,
     );
 
     final highlightsPainter = HighlightsPainter(
@@ -336,19 +335,18 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
                   square: square,
                   child: DragTarget<Piece>(
                     hitTestBehavior: HitTestBehavior.opaque,
-                    builder:
-                        (context, candidateData, _) =>
-                            candidateData.isNotEmpty
-                                ? Transform.scale(
-                                  scale: 2,
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      color: Color(0x33000000),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                )
-                                : const SizedBox.shrink(),
+                    builder: (context, candidateData, _) =>
+                        candidateData.isNotEmpty
+                        ? Transform.scale(
+                            scale: 2,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Color(0x33000000),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                     onAcceptWithDetails: (details) {
                       final currentGame = _controller.game;
                       final piece = details.data;
@@ -410,16 +408,15 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       ),
     );
 
-    final borderedChessboard =
-        settings.border != null
-            ? BorderedChessboard(
-              size: widget.size,
-              orientation: widget.orientation,
-              border: settings.border!,
-              showCoordinates: settings.enableCoordinates,
-              child: board,
-            )
-            : board;
+    final borderedChessboard = settings.border != null
+        ? BorderedChessboard(
+            size: widget.size,
+            orientation: widget.orientation,
+            border: settings.border!,
+            showCoordinates: settings.enableCoordinates,
+            child: board,
+          )
+        : board;
 
     // RepaintBoundary stops board repaints from propagating to the app's widget
     // tree. Without it, every animation tick or piece selection would dirty the
@@ -451,12 +448,11 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   }
 
   Future<void> _loadImages(PieceAssets assets) async {
-    final dpr =
-        WidgetsBinding
-            .instance
-            .platformDispatcher
-            .implicitView
-            ?.devicePixelRatio;
+    final dpr = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .implicitView
+        ?.devicePixelRatio;
     await ChessgroundImages.instance.loadAll(assets, devicePixelRatio: dpr);
     if (mounted) setState(() => _imagesLoaded = true);
   }
@@ -475,12 +471,11 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   }
 
   Future<void> _loadHighlightImages() async {
-    final dpr =
-        WidgetsBinding
-            .instance
-            .platformDispatcher
-            .implicitView
-            ?.devicePixelRatio;
+    final dpr = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .implicitView
+        ?.devicePixelRatio;
     final colorScheme = widget.settings.colorScheme;
     final images = <AssetImage>[];
     if (colorScheme.lastMove.image != null)
@@ -610,19 +605,17 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   /// [HighlightsPainter] repaints without a full widget rebuild.
   void _syncHighlightNotifier() {
     final game = _controller.game;
-    final moveDests =
-        widget.settings.showValidMoves && selected != null
-            ? game.validMoves[selected] ?? const <Square>{}
-            : const <Square>{};
-    final premoveDests =
-        widget.settings.showValidMoves
-            ? _premoveDests ?? const <Square>{}
-            : const <Square>{};
+    final moveDests = widget.settings.showValidMoves && selected != null
+        ? game.validMoves[selected] ?? const <Square>{}
+        : const <Square>{};
+    final premoveDests = widget.settings.showValidMoves
+        ? _premoveDests ?? const <Square>{}
+        : const <Square>{};
     final premove = _controller.premove;
     final premoveHighlight =
         premove != null && game.playerSide.name == game.sideToMove.opposite.name
-            ? premove
-            : null;
+        ? premove
+        : null;
     _controller.highlightNotifier.update(
       selected: selected,
       moveDests: moveDests,
@@ -980,20 +973,18 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
           (_isUpsideDown(piece.color) ? -1 : 1) *
           widget.settings.dragFeedbackOffset.dy;
 
-      final Offset feedbackOffset =
-          feedbackSize == widget.squareSize
-              ? Offset((-1 * feedbackSize) / 2, (-1 * feedbackSize) / 2)
-              : Offset(
-                ((widget.settings.dragFeedbackOffset.dx - 1) * feedbackSize) /
-                    2,
-                ((dragFeedbackOffsetY - 1) * feedbackSize) / 2,
-              );
+      final Offset feedbackOffset = feedbackSize == widget.squareSize
+          ? Offset((-1 * feedbackSize) / 2, (-1 * feedbackSize) / 2)
+          : Offset(
+              ((widget.settings.dragFeedbackOffset.dx - 1) * feedbackSize) / 2,
+              ((dragFeedbackOffsetY - 1) * feedbackSize) / 2,
+            );
 
       final targetKind =
           isMousePointer &&
-                  widget.settings.dragTargetKind != DragTargetKind.none
-              ? DragTargetKind.square
-              : widget.settings.dragTargetKind;
+              widget.settings.dragTargetKind != DragTargetKind.none
+          ? DragTargetKind.square
+          : widget.settings.dragTargetKind;
 
       final asset = widget.settings.pieceAssets[piece.kind]!;
       final image = ChessgroundImages.instance.get(asset);
@@ -1042,8 +1033,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     final bool isMousePointer = origin.kind == PointerDeviceKind.mouse;
     final targetKind =
         isMousePointer && widget.settings.dragTargetKind != DragTargetKind.none
-            ? DragTargetKind.square
-            : widget.settings.dragTargetKind;
+        ? DragTargetKind.square
+        : widget.settings.dragTargetKind;
     _releaseMoveTarget = _DragAvatar(
       overlayState: Overlay.of(context, debugRequiredFor: widget),
       initialPosition: origin.position,
@@ -1083,15 +1074,14 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
   /// Whether the piece with this color should be displayed upside down, according to the
   /// widget settings.
-  bool _isUpsideDown(Side pieceColor) => switch (widget
-      .settings
-      .pieceOrientationBehavior) {
-    PieceOrientationBehavior.facingUser => false,
-    PieceOrientationBehavior.opponentUpsideDown =>
-      pieceColor == widget.orientation.opposite,
-    PieceOrientationBehavior.sideToPlay =>
-      _controller.game.sideToMove == widget.orientation.opposite,
-  };
+  bool _isUpsideDown(Side pieceColor) =>
+      switch (widget.settings.pieceOrientationBehavior) {
+        PieceOrientationBehavior.facingUser => false,
+        PieceOrientationBehavior.opponentUpsideDown =>
+          pieceColor == widget.orientation.opposite,
+        PieceOrientationBehavior.sideToPlay =>
+          _controller.game.sideToMove == widget.orientation.opposite,
+      };
 
   /// Whether the piece is movable by the current side to move.
   bool _isMovable(Piece? piece) {
@@ -1160,8 +1150,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       final isPromoPremove = _isPromoMove(selectedPiece!, square);
       final premove =
           widget.settings.autoQueenPromotionOnPremove && isPromoPremove
-              ? NormalMove(from: selected!, to: square, promotion: Role.queen)
-              : NormalMove(from: selected!, to: square);
+          ? NormalMove(from: selected!, to: square, promotion: Role.queen)
+          : NormalMove(from: selected!, to: square);
       _controller.premove = premove;
       return true;
     }
@@ -1194,34 +1184,32 @@ class _DragAvatar {
        _squareTargetNotifier = ValueNotifier<Offset?>(initialTargetPosition) {
     // Only the paint phase runs on each pointer move.
     _pieceEntry = OverlayEntry(
-      builder:
-          (_) => Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: DragPiecePainter(
-                  image: image,
-                  feedbackSize: feedbackSize,
-                  feedbackOffset: feedbackOffset,
-                  upsideDown: upsideDown,
-                  positionNotifier: _positionNotifier,
-                ),
-              ),
+      builder: (_) => Positioned.fill(
+        child: IgnorePointer(
+          child: CustomPaint(
+            painter: DragPiecePainter(
+              image: image,
+              feedbackSize: feedbackSize,
+              feedbackOffset: feedbackOffset,
+              upsideDown: upsideDown,
+              positionNotifier: _positionNotifier,
             ),
           ),
+        ),
+      ),
     );
     _squareTargetEntry = OverlayEntry(
-      builder:
-          (_) => Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: DragSquareTargetPainter(
-                  squareSize: squareSize,
-                  targetKind: targetKind,
-                  positionNotifier: _squareTargetNotifier,
-                ),
-              ),
+      builder: (_) => Positioned.fill(
+        child: IgnorePointer(
+          child: CustomPaint(
+            painter: DragSquareTargetPainter(
+              squareSize: squareSize,
+              targetKind: targetKind,
+              positionNotifier: _squareTargetNotifier,
             ),
           ),
+        ),
+      ),
     );
     overlayState.insert(_squareTargetEntry);
     overlayState.insert(_pieceEntry);

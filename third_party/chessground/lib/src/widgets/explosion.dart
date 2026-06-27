@@ -84,14 +84,12 @@ class ExplosionsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final explosion in notifier._active) {
-      final file =
-          orientation == Side.white
-              ? explosion.square.file.value
-              : 7 - explosion.square.file.value;
-      final rank =
-          orientation == Side.white
-              ? 7 - explosion.square.rank.value
-              : explosion.square.rank.value;
+      final file = orientation == Side.white
+          ? explosion.square.file.value
+          : 7 - explosion.square.file.value;
+      final rank = orientation == Side.white
+          ? 7 - explosion.square.rank.value
+          : explosion.square.rank.value;
       final center = Offset(
         (file + 0.5) * squareSize,
         (rank + 0.5) * squareSize,

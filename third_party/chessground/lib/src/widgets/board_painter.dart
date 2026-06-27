@@ -192,11 +192,10 @@ class HighlightsPainter extends CustomPainter {
 
   void _drawDests(Canvas canvas, Iterable<Square> dests, Color color) {
     final fillPaint = Paint()..color = color;
-    final strokePaint =
-        Paint()
-          ..color = color
-          ..strokeWidth = squareSize / 5
-          ..style = PaintingStyle.stroke;
+    final strokePaint = Paint()
+      ..color = color
+      ..strokeWidth = squareSize / 5
+      ..style = PaintingStyle.stroke;
     for (final dest in dests) {
       final rect = _squareRect(dest, squareSize, orientation);
       final center = rect.center;
@@ -213,8 +212,8 @@ class HighlightsPainter extends CustomPainter {
 
   void _drawCheck(Canvas canvas, Square square) {
     final rect = _squareRect(square, squareSize, orientation);
-    final layerPaint =
-        Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0);
+    final layerPaint = Paint()
+      ..imageFilter = ui.ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0);
     canvas.saveLayer(rect, layerPaint);
     const gradient = RadialGradient(
       radius: 0.6,
@@ -433,10 +432,9 @@ class FadingPiecesPainter extends CustomPainter {
 
     final sideToMove = gameNotifier.value?.sideToMove;
     final alpha = (255 * (1.0 - _animation.value)).round().clamp(0, 255);
-    final paint =
-        Paint()
-          ..filterQuality = FilterQuality.medium
-          ..color = Color.fromARGB(alpha, 255, 255, 255);
+    final paint = Paint()
+      ..filterQuality = FilterQuality.medium
+      ..color = Color.fromARGB(alpha, 255, 255, 255);
 
     for (final entry in fadingPieces.entries) {
       final square = entry.key;
@@ -687,10 +685,9 @@ class DragSquareTargetPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final pos = positionNotifier.value;
     if (pos == null || targetKind == DragTargetKind.none) return;
-    final paint =
-        Paint()
-          ..color = const Color(0x33000000)
-          ..style = PaintingStyle.fill;
+    final paint = Paint()
+      ..color = const Color(0x33000000)
+      ..style = PaintingStyle.fill;
     if (targetKind == DragTargetKind.circle) {
       // pos is already offset by -squareSize/2 so the circle is centered on the square
       canvas.drawCircle(
