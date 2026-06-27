@@ -68,7 +68,10 @@ class PromotionSelector extends StatelessWidget with ChessboardGeometry {
       if (canPromoteToKing) Role.king,
     ];
 
-    final roles = isPromotionSquareAtTop ? topRoles : topRoles.reversed.toList(growable: false);
+    final roles =
+        isPromotionSquareAtTop
+            ? topRoles
+            : topRoles.reversed.toList(growable: false);
     final pieces = roles
         .map((role) => Piece(color: color, role: role, promoted: true))
         .toList(growable: false);

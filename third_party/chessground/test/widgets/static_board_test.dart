@@ -26,7 +26,11 @@ TranslatingPiecesPainter? _translatingPiecesPainter(WidgetTester tester) {
 }
 
 void main() {
-  const board = StaticChessboard(size: boardSize, orientation: Side.white, fen: kInitialFEN);
+  const board = StaticChessboard(
+    size: boardSize,
+    orientation: Side.white,
+    fen: kInitialFEN,
+  );
 
   testWidgets('initial position display', (WidgetTester tester) async {
     await tester.pumpWidget(board);
@@ -35,7 +39,9 @@ void main() {
     expect(_piecesPainter(tester).pieces.length, 32);
   });
 
-  testWidgets('background is constrained to the size of the board', (WidgetTester tester) async {
+  testWidgets('background is constrained to the size of the board', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(board);
 
     final size = tester.getSize(find.byType(SolidColorChessboardBackground));
@@ -43,7 +49,9 @@ void main() {
     expect(size.height, boardSize);
   });
 
-  testWidgets('change in hue will use a color filter', (WidgetTester tester) async {
+  testWidgets('change in hue will use a color filter', (
+    WidgetTester tester,
+  ) async {
     const board = StaticChessboard(
       size: boardSize,
       orientation: Side.white,
@@ -56,7 +64,9 @@ void main() {
     expect(find.byType(ColorFiltered), findsOneWidget);
   });
 
-  testWidgets('change in brightness will use a color filter', (WidgetTester tester) async {
+  testWidgets('change in brightness will use a color filter', (
+    WidgetTester tester,
+  ) async {
     const board = StaticChessboard(
       size: boardSize,
       orientation: Side.white,
@@ -69,8 +79,14 @@ void main() {
     expect(find.byType(ColorFiltered), findsOneWidget);
   });
 
-  testWidgets('moved piece is animated when the position change', (WidgetTester tester) async {
-    const board = StaticChessboard(size: boardSize, orientation: Side.white, fen: kInitialFEN);
+  testWidgets('moved piece is animated when the position change', (
+    WidgetTester tester,
+  ) async {
+    const board = StaticChessboard(
+      size: boardSize,
+      orientation: Side.white,
+      fen: kInitialFEN,
+    );
 
     await tester.pumpWidget(board);
 

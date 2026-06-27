@@ -40,7 +40,10 @@ class BrightnessHueFilter extends StatelessWidget {
     if (hue != 0.0) {
       matrix = _hueFilter(matrix, value: hue);
     }
-    return ColorFiltered(colorFilter: ColorFilter.matrix(matrix.sublist(0, 20)), child: child);
+    return ColorFiltered(
+      colorFilter: ColorFilter.matrix(matrix.sublist(0, 20)),
+      child: child,
+    );
   }
 }
 

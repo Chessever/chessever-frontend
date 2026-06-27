@@ -6,17 +6,28 @@ void main() {
   group('ChessboardColorScheme', () {
     test('implements hashCode/==', () {
       expect(ChessboardColorScheme.brown, ChessboardColorScheme.brown);
-      expect(ChessboardColorScheme.brown.hashCode, ChessboardColorScheme.brown.hashCode);
+      expect(
+        ChessboardColorScheme.brown.hashCode,
+        ChessboardColorScheme.brown.hashCode,
+      );
 
       expect(ChessboardColorScheme.brown, isNot(ChessboardColorScheme.blue));
-      expect(ChessboardColorScheme.brown.hashCode, isNot(ChessboardColorScheme.blue.hashCode));
+      expect(
+        ChessboardColorScheme.brown.hashCode,
+        isNot(ChessboardColorScheme.blue.hashCode),
+      );
     });
 
     test('copyWith', () {
-      expect(ChessboardColorScheme.brown.copyWith(), ChessboardColorScheme.brown);
+      expect(
+        ChessboardColorScheme.brown.copyWith(),
+        ChessboardColorScheme.brown,
+      );
 
       expect(
-        ChessboardColorScheme.brown.copyWith(validMoves: const Color(0xFFFFFFFF)).validMoves,
+        ChessboardColorScheme.brown
+            .copyWith(validMoves: const Color(0xFFFFFFFF))
+            .validMoves,
         const Color(0xFFFFFFFF),
       );
 

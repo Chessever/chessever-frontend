@@ -316,18 +316,27 @@ class ChessboardColorScheme {
     background: ImageChessboardBackground(
       lightSquare: Color(0xfff2f9bb),
       darkSquare: Color(0xff59935d),
-      image: AssetImage('$_boardsPath/green-plastic.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/green-plastic.webp',
+        package: 'chessground',
+      ),
     ),
     whiteCoordBackground: ImageChessboardBackground(
       lightSquare: Color(0xfff2f9bb),
       darkSquare: Color(0xff59935d),
-      image: AssetImage('$_boardsPath/green-plastic.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/green-plastic.webp',
+        package: 'chessground',
+      ),
       coordinates: true,
     ),
     blackCoordBackground: ImageChessboardBackground(
       lightSquare: Color(0xfff2f9bb),
       darkSquare: Color(0xff59935d),
-      image: AssetImage('$_boardsPath/green-plastic.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/green-plastic.webp',
+        package: 'chessground',
+      ),
       coordinates: true,
       orientation: Side.black,
     ),
@@ -386,10 +395,16 @@ class ChessboardColorScheme {
       orientation: Side.black,
     ),
     lastMove: HighlightDetails(
-      image: AssetImage('$_boardsPath/horsey.last-move.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/horsey.last-move.webp',
+        package: 'chessground',
+      ),
     ),
     selected: HighlightDetails(
-      image: AssetImage('$_boardsPath/horsey.selected.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/horsey.selected.webp',
+        package: 'chessground',
+      ),
     ),
     validMoves: Color(0x4014551e),
     validPremoves: Color(0x40203085),
@@ -590,18 +605,27 @@ class ChessboardColorScheme {
     background: ImageChessboardBackground(
       lightSquare: Color(0xffe8e9b7),
       darkSquare: Color(0xffed7272),
-      image: AssetImage('$_boardsPath/pink-pyramid.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/pink-pyramid.webp',
+        package: 'chessground',
+      ),
     ),
     whiteCoordBackground: ImageChessboardBackground(
       lightSquare: Color(0xffe8e9b7),
       darkSquare: Color(0xffed7272),
-      image: AssetImage('$_boardsPath/pink-pyramid.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/pink-pyramid.webp',
+        package: 'chessground',
+      ),
       coordinates: true,
     ),
     blackCoordBackground: ImageChessboardBackground(
       lightSquare: Color(0xffe8e9b7),
       darkSquare: Color(0xffed7272),
-      image: AssetImage('$_boardsPath/pink-pyramid.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/pink-pyramid.webp',
+        package: 'chessground',
+      ),
       coordinates: true,
       orientation: Side.black,
     ),
@@ -644,18 +668,27 @@ class ChessboardColorScheme {
     background: ImageChessboardBackground(
       lightSquare: Color(0xffe5daf0),
       darkSquare: Color(0xff957ab0),
-      image: AssetImage('$_boardsPath/purple-diag.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/purple-diag.webp',
+        package: 'chessground',
+      ),
     ),
     whiteCoordBackground: ImageChessboardBackground(
       lightSquare: Color(0xffe5daf0),
       darkSquare: Color(0xff957ab0),
-      image: AssetImage('$_boardsPath/purple-diag.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/purple-diag.webp',
+        package: 'chessground',
+      ),
       coordinates: true,
     ),
     blackCoordBackground: ImageChessboardBackground(
       lightSquare: Color(0xffe5daf0),
       darkSquare: Color(0xff957ab0),
-      image: AssetImage('$_boardsPath/purple-diag.webp', package: 'chessground'),
+      image: AssetImage(
+        '$_boardsPath/purple-diag.webp',
+        package: 'chessground',
+      ),
       coordinates: true,
       orientation: Side.black,
     ),

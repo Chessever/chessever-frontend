@@ -36,13 +36,24 @@ void main() {
   });
 
   test('knight premoves', () {
-    expect(premovesOf(Square.b1, readFen(fen)), equals({Square.a3, Square.c3, Square.d2}));
+    expect(
+      premovesOf(Square.b1, readFen(fen)),
+      equals({Square.a3, Square.c3, Square.d2}),
+    );
   });
 
   test('bishop premoves', () {
     expect(
       premovesOf(Square.c1, readFen(fen)),
-      equals({Square.a3, Square.b2, Square.d2, Square.e3, Square.f4, Square.g5, Square.h6}),
+      equals({
+        Square.a3,
+        Square.b2,
+        Square.d2,
+        Square.e3,
+        Square.f4,
+        Square.g5,
+        Square.h6,
+      }),
     );
   });
 
@@ -145,7 +156,14 @@ void main() {
     // king at d1 can premove to rook on a1 (Chess960 castling)
     expect(
       premovesOf(Square.d1, readFen('8/8/8/8/8/8/8/R2K4'), canCastle: true),
-      equals({Square.a1, Square.c1, Square.c2, Square.d2, Square.e1, Square.e2}),
+      equals({
+        Square.a1,
+        Square.c1,
+        Square.c2,
+        Square.d2,
+        Square.e1,
+        Square.e2,
+      }),
     );
   });
 }

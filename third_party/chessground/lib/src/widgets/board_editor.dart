@@ -92,7 +92,8 @@ class ChessboardEditor extends StatefulWidget with ChessboardGeometry {
   /// Each square of the board is a [DragTarget<Piece>], so to drop your own
   /// piece widgets onto the board, put them in a [Draggable<Piece>] and set the
   /// data to the piece you want to drop.
-  final void Function(Square? origin, Square destination, Piece piece)? onDroppedPiece;
+  final void Function(Square? origin, Square destination, Piece piece)?
+  onDroppedPiece;
 
   /// Called when a piece that was originally at the given `square` was dragged
   /// off the board.
@@ -127,7 +128,12 @@ class _BoardEditorState extends State<ChessboardEditor> {
   }
 
   Future<void> _loadImages(PieceAssets assets) async {
-    final dpr = WidgetsBinding.instance.platformDispatcher.implicitView?.devicePixelRatio;
+    final dpr =
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .implicitView
+            ?.devicePixelRatio;
     await ChessgroundImages.instance.loadAll(assets, devicePixelRatio: dpr);
     if (mounted) setState(() {});
   }
@@ -160,7 +166,8 @@ class _BoardEditorState extends State<ChessboardEditor> {
                           ),
                         ),
                       ),
-                    if (widget.pointerMode == EditorPointerMode.drag && piece != null)
+                    if (widget.pointerMode == EditorPointerMode.drag &&
+                        piece != null)
                       Draggable(
                         hitTestBehavior: HitTestBehavior.translucent,
                         dragAnchorStrategy: pointerDragAnchorStrategy,
@@ -194,7 +201,11 @@ class _BoardEditorState extends State<ChessboardEditor> {
                 );
               },
               onAcceptWithDetails: (details) {
-                widget.onDroppedPiece?.call(draggedPieceOrigin, square, details.data);
+                widget.onDroppedPiece?.call(
+                  draggedPieceOrigin,
+                  square,
+                  details.data,
+                );
                 draggedPieceOrigin = null;
               },
             ),
@@ -213,7 +224,8 @@ class _BoardEditorState extends State<ChessboardEditor> {
 
     final List<Widget> highlightedBackground = [
       background,
-      for (final MapEntry(key: square, value: highlight) in widget.squareHighlights.entries)
+      for (final MapEntry(key: square, value: highlight)
+          in widget.squareHighlights.entries)
         PositionedSquare(
           key: ValueKey('${square.name}-highlight'),
           size: widget.size,
@@ -244,7 +256,10 @@ class _BoardEditorState extends State<ChessboardEditor> {
                   borderRadius: widget.settings.borderRadius,
                   boxShadow: widget.settings.boxShadow,
                 ),
-                child: Stack(alignment: Alignment.topLeft, children: highlightedBackground),
+                child: Stack(
+                  alignment: Alignment.topLeft,
+                  children: highlightedBackground,
+                ),
               )
             else
               ...highlightedBackground,
@@ -265,7 +280,10 @@ class _BoardEditorState extends State<ChessboardEditor> {
             )
             : board;
 
-    return BrightnessHueFilter(brightness: widget.settings.brightness, child: borderedChessboard);
+    return BrightnessHueFilter(
+      brightness: widget.settings.brightness,
+      child: borderedChessboard,
+    );
   }
 
   void _onTapEvent(Offset localPosition) {
@@ -337,8 +355,15 @@ class PieceDragFeedback extends StatelessWidget {
   Widget build(BuildContext context) {
     final feedbackSize = squareSize * scale;
     return Transform.translate(
-      offset: Offset((offset.dx - 1) * feedbackSize / 2, (offset.dy - 1) * feedbackSize / 2),
-      child: PieceWidget(piece: piece, size: feedbackSize, pieceAssets: pieceAssets),
+      offset: Offset(
+        (offset.dx - 1) * feedbackSize / 2,
+        (offset.dy - 1) * feedbackSize / 2,
+      ),
+      child: PieceWidget(
+        piece: piece,
+        size: feedbackSize,
+        pieceAssets: pieceAssets,
+      ),
     );
   }
 }

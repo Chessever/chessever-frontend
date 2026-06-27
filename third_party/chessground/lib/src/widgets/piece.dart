@@ -46,7 +46,10 @@ class PieceWidget extends StatelessWidget {
     if (cachedImage == null) {
       // Transparent but opaque to hit tests, so Draggable children remain
       // interactive while the image loads.
-      return SizedBox.square(dimension: size, child: const ColoredBox(color: Color(0x00000000)));
+      return SizedBox.square(
+        dimension: size,
+        child: const ColoredBox(color: Color(0x00000000)),
+      );
     }
 
     final image = RawImage(

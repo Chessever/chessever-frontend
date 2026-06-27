@@ -315,11 +315,14 @@ class ChessboardSettings {
       dragFeedbackScale: dragFeedbackScale ?? this.dragFeedbackScale,
       dragFeedbackOffset: dragFeedbackOffset ?? this.dragFeedbackOffset,
       dragTargetKind: dragTargetKind ?? this.dragTargetKind,
-      pieceOrientationBehavior: pieceOrientationBehavior ?? this.pieceOrientationBehavior,
+      pieceOrientationBehavior:
+          pieceOrientationBehavior ?? this.pieceOrientationBehavior,
       enableDrops: enableDrops ?? this.enableDrops,
       enablePremoves: enablePremoves ?? this.enablePremoves,
-      enablePremoveCastling: enablePremoveCastling ?? this.enablePremoveCastling,
-      autoQueenPromotionOnPremove: autoQueenPromotionOnPremove ?? this.autoQueenPromotionOnPremove,
+      enablePremoveCastling:
+          enablePremoveCastling ?? this.enablePremoveCastling,
+      autoQueenPromotionOnPremove:
+          autoQueenPromotionOnPremove ?? this.autoQueenPromotionOnPremove,
       autoQueenPromotion: autoQueenPromotion ?? this.autoQueenPromotion,
       pieceShiftMethod: pieceShiftMethod ?? this.pieceShiftMethod,
       moveOnRelease: moveOnRelease ?? this.moveOnRelease,
@@ -356,7 +359,9 @@ class StaticChessboardSettings {
 
   /// Derives static settings from a full [ChessboardSettings], keeping only the
   /// options relevant to a non-interactive board.
-  factory StaticChessboardSettings.fromBoardSettings(ChessboardSettings settings) {
+  factory StaticChessboardSettings.fromBoardSettings(
+    ChessboardSettings settings,
+  ) {
     return StaticChessboardSettings(
       colorScheme: settings.colorScheme,
       pieceAssets: settings.pieceAssets,
@@ -435,7 +440,8 @@ class StaticChessboardSettings {
       animationDuration: animationDuration ?? this.animationDuration,
       showLastMove: showLastMove ?? this.showLastMove,
       blindfoldMode: blindfoldMode ?? this.blindfoldMode,
-      pieceOrientationBehavior: pieceOrientationBehavior ?? this.pieceOrientationBehavior,
+      pieceOrientationBehavior:
+          pieceOrientationBehavior ?? this.pieceOrientationBehavior,
     );
   }
 

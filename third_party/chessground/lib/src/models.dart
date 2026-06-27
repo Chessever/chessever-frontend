@@ -153,7 +153,9 @@ class Circle implements Shape {
 
   @override
   Shape newDest(Square newDest) {
-    return newDest == orig ? this : Arrow(color: color, orig: orig, dest: newDest, scale: scale);
+    return newDest == orig
+        ? this
+        : Arrow(color: color, orig: orig, dest: newDest, scale: scale);
   }
 
   @override
@@ -176,7 +178,11 @@ class Circle implements Shape {
 
   /// Creates a copy of this [Circle] with the given fields replaced by the new values.
   Circle copyWith({Color? color, Square? orig, double? scale}) {
-    return Circle(color: color ?? this.color, orig: orig ?? this.orig, scale: scale ?? this.scale);
+    return Circle(
+      color: color ?? this.color,
+      orig: orig ?? this.orig,
+      scale: scale ?? this.scale,
+    );
   }
 }
 
@@ -197,8 +203,12 @@ class Arrow implements Shape {
   ///
   /// The [orig] and [dest] must be different squares.
   /// The [scale] must be greater than 0.0 and at most 1.0.
-  const Arrow({required this.color, required this.orig, required this.dest, this.scale = 1.0})
-    : assert(orig != dest && scale > 0.0 && scale <= 1.0);
+  const Arrow({
+    required this.color,
+    required this.orig,
+    required this.dest,
+    this.scale = 1.0,
+  }) : assert(orig != dest && scale > 0.0 && scale <= 1.0);
 
   @override
   Shape newDest(Square newDest) {
@@ -292,7 +302,8 @@ class PieceShape implements Shape {
   }
 
   @override
-  int get hashCode => Object.hash(color, opacity, piece, pieceAssets, orig, scale);
+  int get hashCode =>
+      Object.hash(color, opacity, piece, pieceAssets, orig, scale);
 
   /// Creates a copy of this [PieceShape] with the given fields replaced by the new values.
   PieceShape copyWith({

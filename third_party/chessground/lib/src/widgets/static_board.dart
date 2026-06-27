@@ -71,7 +71,8 @@ class StaticChessboard extends StatefulWidget with ChessboardGeometry {
   State<StaticChessboard> createState() => _StaticChessboardState();
 }
 
-class _StaticChessboardState extends State<StaticChessboard> with SingleTickerProviderStateMixin {
+class _StaticChessboardState extends State<StaticChessboard>
+    with SingleTickerProviderStateMixin {
   bool _deferImagesLoading = false;
   bool _imagesLoaded = false;
   bool _highlightImagesLoaded = false;
@@ -81,7 +82,9 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
   late final ValueNotifier<Pieces> _piecesNotifier;
   late final ValueNotifier<TranslatingPieces> _translatingPiecesNotifier;
   late final ValueNotifier<FadingPieces> _fadingPiecesNotifier;
-  final ValueNotifier<NormalMove?> _noPendingPromotionNotifier = ValueNotifier(null);
+  final ValueNotifier<NormalMove?> _noPendingPromotionNotifier = ValueNotifier(
+    null,
+  );
 
   Pieces get pieces => _piecesNotifier.value;
   TranslatingPieces get translatingPieces => _translatingPiecesNotifier.value;
@@ -109,7 +112,10 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
       parent: _pieceAnimationController,
       curve: Curves.easeInOutCubic,
     );
-    _fadeAnimation = CurvedAnimation(parent: _pieceAnimationController, curve: Curves.easeInQuad);
+    _fadeAnimation = CurvedAnimation(
+      parent: _pieceAnimationController,
+      curve: Curves.easeInQuad,
+    );
     _highlightNotifier =
         BoardHighlightNotifier()..update(
           selected: null,
@@ -120,21 +126,29 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
           premove: null,
           checkSquare: null,
         );
-    _imagesLoaded = ChessgroundImages.instance.isAllLoaded(settings.pieceAssets);
+    _imagesLoaded = ChessgroundImages.instance.isAllLoaded(
+      settings.pieceAssets,
+    );
     if (!_imagesLoaded) _loadImages(settings.pieceAssets);
     _highlightImagesLoaded = _areHighlightImagesLoaded();
     if (!_highlightImagesLoaded) _loadHighlightImages();
   }
 
   Future<void> _loadImages(PieceAssets assets) async {
-    final dpr = WidgetsBinding.instance.platformDispatcher.implicitView?.devicePixelRatio;
+    final dpr =
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .implicitView
+            ?.devicePixelRatio;
     await ChessgroundImages.instance.loadAll(assets, devicePixelRatio: dpr);
     if (mounted) setState(() => _imagesLoaded = true);
   }
 
   bool _areHighlightImagesLoaded() {
     final lastMoveImage = settings.colorScheme.lastMove.image;
-    if (lastMoveImage != null && ChessgroundImages.instance.get(lastMoveImage) == null) {
+    if (lastMoveImage != null &&
+        ChessgroundImages.instance.get(lastMoveImage) == null) {
       return false;
     }
     for (final highlight in widget.squareHighlights.values) {
@@ -147,7 +161,12 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
   }
 
   Future<void> _loadHighlightImages() async {
-    final dpr = WidgetsBinding.instance.platformDispatcher.implicitView?.devicePixelRatio;
+    final dpr =
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .implicitView
+            ?.devicePixelRatio;
     final images = <AssetImage>[];
     final lastMoveImage = settings.colorScheme.lastMove.image;
     if (lastMoveImage != null) images.add(lastMoveImage);
@@ -157,7 +176,8 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
     }
     if (images.isEmpty) return;
     await Future.wait<void>([
-      for (final img in images) ChessgroundImages.instance.load(img, devicePixelRatio: dpr),
+      for (final img in images)
+        ChessgroundImages.instance.load(img, devicePixelRatio: dpr),
     ]);
     if (mounted) setState(() => _highlightImagesLoaded = true);
   }
@@ -181,7 +201,9 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.settings.pieceAssets != settings.pieceAssets) {
-      _imagesLoaded = ChessgroundImages.instance.isAllLoaded(settings.pieceAssets);
+      _imagesLoaded = ChessgroundImages.instance.isAllLoaded(
+        settings.pieceAssets,
+      );
       if (!_imagesLoaded) _loadImages(settings.pieceAssets);
     }
 
@@ -300,7 +322,8 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
     );
 
     final Map<Square, HighlightDetails> customHighlights = {
-      for (final MapEntry(key: square, value: highlight) in widget.squareHighlights.entries)
+      for (final MapEntry(key: square, value: highlight)
+          in widget.squareHighlights.entries)
         square: highlight.details,
     };
 
@@ -333,22 +356,36 @@ class _StaticChessboardState extends State<StaticChessboard> with SingleTickerPr
         clipBehavior: Clip.none,
         children: [
           if (!hasBorder &&
-              (settings.boxShadow.isNotEmpty || settings.borderRadius != BorderRadius.zero))
+              (settings.boxShadow.isNotEmpty ||
+                  settings.borderRadius != BorderRadius.zero))
             Container(
               clipBehavior: Clip.hardEdge,
               decoration: BoxDecoration(
                 borderRadius: settings.borderRadius,
                 boxShadow: settings.boxShadow,
               ),
-              child: Stack(alignment: Alignment.topLeft, children: highlightedBackground),
+              child: Stack(
+                alignment: Alignment.topLeft,
+                children: highlightedBackground,
+              ),
             )
           else
             ...highlightedBackground,
-          CustomPaint(size: Size.square(widget.size), painter: fadingPiecesPainter),
+          CustomPaint(
+            size: Size.square(widget.size),
+            painter: fadingPiecesPainter,
+          ),
           CustomPaint(size: Size.square(widget.size), painter: piecesPainter),
-          CustomPaint(size: Size.square(widget.size), painter: translatingPiecesPainter),
+          CustomPaint(
+            size: Size.square(widget.size),
+            painter: translatingPiecesPainter,
+          ),
           for (final shape in widget.shapes)
-            BoardShapeWidget(shape: shape, size: widget.size, orientation: widget.orientation),
+            BoardShapeWidget(
+              shape: shape,
+              size: widget.size,
+              orientation: widget.orientation,
+            ),
         ],
       ),
     );

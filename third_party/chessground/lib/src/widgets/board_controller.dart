@@ -97,7 +97,8 @@ class ChessboardController extends ChangeNotifier {
   @internal
   ValueNotifier<Pieces> get piecesNotifier => _piecesNotifier;
   @internal
-  ValueNotifier<TranslatingPieces> get translatingPiecesNotifier => _translatingPiecesNotifier;
+  ValueNotifier<TranslatingPieces> get translatingPiecesNotifier =>
+      _translatingPiecesNotifier;
   @internal
   ValueNotifier<FadingPieces> get fadingPiecesNotifier => _fadingPiecesNotifier;
   @internal
@@ -105,7 +106,8 @@ class ChessboardController extends ChangeNotifier {
   @internal
   ValueNotifier<Set<Shape>> get drawnShapesNotifier => _drawnShapesNotifier;
   @internal
-  ValueNotifier<NormalMove?> get pendingPromotionNotifier => _pendingPromotionNotifier;
+  ValueNotifier<NormalMove?> get pendingPromotionNotifier =>
+      _pendingPromotionNotifier;
 
   @internal
   Animation<double> get translationAnimation {
@@ -121,7 +123,10 @@ class ChessboardController extends ChangeNotifier {
 
   @internal
   void attachTo(TickerProvider vsync, Duration animationDuration) {
-    assert(_animationController == null, 'ChessboardController is already attached.');
+    assert(
+      _animationController == null,
+      'ChessboardController is already attached.',
+    );
     _animationController = AnimationController(
       animationBehavior: AnimationBehavior.preserve,
       duration: animationDuration,
@@ -131,7 +136,10 @@ class ChessboardController extends ChangeNotifier {
       parent: _animationController!,
       curve: Curves.easeInOutCubic,
     );
-    _fadeAnimation = CurvedAnimation(parent: _animationController!, curve: Curves.easeInQuad);
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController!,
+      curve: Curves.easeInQuad,
+    );
     _animationController!.addStatusListener(_onAnimationStatusChanged);
     // Re-attaching with animation pieces still pending means an animation was
     // interrupted by a detach/attach cycle (e.g. the board being reparented
@@ -182,7 +190,8 @@ class ChessboardController extends ChangeNotifier {
   }
 
   @internal
-  Duration get animationDuration => _animationController?.duration ?? Duration.zero;
+  Duration get animationDuration =>
+      _animationController?.duration ?? Duration.zero;
   @internal
   set animationDuration(Duration value) {
     _animationController?.duration = value;
@@ -218,7 +227,9 @@ class ChessboardController extends ChangeNotifier {
   void toggleDrawnShape(Shape shape) {
     final current = _drawnShapesNotifier.value;
     _drawnShapesNotifier.value =
-        current.contains(shape) ? current.difference({shape}) : {...current, shape};
+        current.contains(shape)
+            ? current.difference({shape})
+            : {...current, shape};
   }
 
   /// Removes all user-drawn shapes from the board.
@@ -265,7 +276,11 @@ class ChessboardController extends ChangeNotifier {
   /// If the triggering move was performed via drag and drop (recorded by the
   /// board through [recordDropMove]), the animation engine automatically
   /// suppresses the redundant translation of the dragged piece.
-  void updatePosition(GameData game, {bool animate = true, bool resetPremove = false}) {
+  void updatePosition(
+    GameData game, {
+    bool animate = true,
+    bool resetPremove = false,
+  }) {
     if (!animate) {
       _animationController?.stop();
       _translatingPiecesNotifier.value = {};
@@ -288,12 +303,17 @@ class ChessboardController extends ChangeNotifier {
       final newPieces = readFen(game.fen);
 
       if ((_animationController?.duration ?? Duration.zero) > Duration.zero) {
-        final (tp, fp) = preparePieceAnimations(oldPieces, newPieces, lastDrop: lastDrop);
+        final (tp, fp) = preparePieceAnimations(
+          oldPieces,
+          newPieces,
+          lastDrop: lastDrop,
+        );
         _translatingPiecesNotifier.value = tp;
         _fadingPiecesNotifier.value = fp;
       }
 
-      if (_translatingPiecesNotifier.value.isNotEmpty || _fadingPiecesNotifier.value.isNotEmpty) {
+      if (_translatingPiecesNotifier.value.isNotEmpty ||
+          _fadingPiecesNotifier.value.isNotEmpty) {
         _animationController?.forward(from: 0.0);
       } else {
         _animationController?.stop();

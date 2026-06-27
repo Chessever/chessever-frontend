@@ -15,7 +15,9 @@ import 'models.dart';
 class DrawShapeOptions {
   const DrawShapeOptions({
     this.enable = false,
-    this.newShapeColor = const Color(0xAA15781b), // default to lichess.org green
+    this.newShapeColor = const Color(
+      0xAA15781b,
+    ), // default to lichess.org green
   });
 
   /// Whether to enable shape drawing.

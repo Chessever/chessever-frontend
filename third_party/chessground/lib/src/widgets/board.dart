@@ -263,14 +263,18 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
           clipBehavior: Clip.none,
           children: [
             if (settings.border == null &&
-                (settings.boxShadow.isNotEmpty || settings.borderRadius != BorderRadius.zero))
+                (settings.boxShadow.isNotEmpty ||
+                    settings.borderRadius != BorderRadius.zero))
               Container(
                 clipBehavior: Clip.hardEdge,
                 decoration: BoxDecoration(
                   borderRadius: settings.borderRadius,
                   boxShadow: settings.boxShadow,
                 ),
-                child: Stack(alignment: Alignment.topLeft, children: highlightedBackground),
+                child: Stack(
+                  alignment: Alignment.topLeft,
+                  children: highlightedBackground,
+                ),
               )
             else
               ...highlightedBackground,
@@ -296,7 +300,11 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
               willChange: true,
             ),
             for (final shape in shapes)
-              BoardShapeWidget(shape: shape, size: widget.size, orientation: widget.orientation),
+              BoardShapeWidget(
+                shape: shape,
+                size: widget.size,
+                orientation: widget.orientation,
+              ),
             if (_shapeAvatar != null)
               BoardShapeWidget(
                 shape: _shapeAvatar!,
@@ -346,11 +354,13 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
                       final piece = details.data;
                       final backRankPawnDrop =
                           piece.role == Role.pawn &&
-                          (square.rank == Rank.first || square.rank == Rank.eighth);
+                          (square.rank == Rank.first ||
+                              square.rank == Rank.eighth);
                       if (backRankPawnDrop) return;
                       final move = DropMove(to: square, role: piece.role);
                       if (currentGame.sideToMove == piece.color &&
-                          currentGame.validDropSquares?.contains(square) == true) {
+                          currentGame.validDropSquares?.contains(square) ==
+                              true) {
                         _controller.recordDropMove(move);
                         widget.onMove?.call(move, viaDragAndDrop: true);
                       } else if (widget.settings.enablePremoves &&
@@ -365,7 +375,9 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
               valueListenable: _controller.pendingPromotionNotifier,
               builder: (context, pendingMove, _) {
                 if (pendingMove == null) return const SizedBox.shrink();
-                final pawnColor = pieces[pendingMove.from]?.color ?? _controller.game.sideToMove;
+                final pawnColor =
+                    pieces[pendingMove.from]?.color ??
+                    _controller.game.sideToMove;
                 return PromotionSelector(
                   pieceAssets: settings.pieceAssets,
                   move: pendingMove,
@@ -378,8 +390,12 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
                     final viaDragAndDrop = _pendingPromotionViaDragAndDrop;
                     _pendingPromotionViaDragAndDrop = false;
                     _controller.pendingPromotion = null;
-                    if (viaDragAndDrop) _controller.recordDropMove(resolvedMove);
-                    widget.onMove?.call(resolvedMove, viaDragAndDrop: viaDragAndDrop);
+                    if (viaDragAndDrop)
+                      _controller.recordDropMove(resolvedMove);
+                    widget.onMove?.call(
+                      resolvedMove,
+                      viaDragAndDrop: viaDragAndDrop,
+                    );
                   },
                   onCancel: () {
                     _pendingPromotionViaDragAndDrop = false;
@@ -426,14 +442,21 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     _lastSeenExplosionSquares = _controller.pendingExplosionSquares;
     _syncHighlightNotifier();
     _draggedPieceSquareNotifier = ValueNotifier<Square?>(null);
-    _imagesLoaded = ChessgroundImages.instance.isAllLoaded(widget.settings.pieceAssets);
+    _imagesLoaded = ChessgroundImages.instance.isAllLoaded(
+      widget.settings.pieceAssets,
+    );
     if (!_imagesLoaded) _loadImages(widget.settings.pieceAssets);
     _highlightImagesLoaded = _areHighlightImagesLoaded();
     if (!_highlightImagesLoaded) _loadHighlightImages();
   }
 
   Future<void> _loadImages(PieceAssets assets) async {
-    final dpr = WidgetsBinding.instance.platformDispatcher.implicitView?.devicePixelRatio;
+    final dpr =
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .implicitView
+            ?.devicePixelRatio;
     await ChessgroundImages.instance.loadAll(assets, devicePixelRatio: dpr);
     if (mounted) setState(() => _imagesLoaded = true);
   }
@@ -452,14 +475,22 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   }
 
   Future<void> _loadHighlightImages() async {
-    final dpr = WidgetsBinding.instance.platformDispatcher.implicitView?.devicePixelRatio;
+    final dpr =
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .implicitView
+            ?.devicePixelRatio;
     final colorScheme = widget.settings.colorScheme;
     final images = <AssetImage>[];
-    if (colorScheme.lastMove.image != null) images.add(colorScheme.lastMove.image!);
-    if (colorScheme.selected.image != null) images.add(colorScheme.selected.image!);
+    if (colorScheme.lastMove.image != null)
+      images.add(colorScheme.lastMove.image!);
+    if (colorScheme.selected.image != null)
+      images.add(colorScheme.selected.image!);
     if (images.isEmpty) return;
     await Future.wait<void>([
-      for (final img in images) ChessgroundImages.instance.load(img, devicePixelRatio: dpr),
+      for (final img in images)
+        ChessgroundImages.instance.load(img, devicePixelRatio: dpr),
     ]);
     if (mounted) setState(() => _highlightImagesLoaded = true);
   }
@@ -533,7 +564,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(Chessboard oldBoard) {
     super.didUpdateWidget(oldBoard);
-    if (oldBoard.settings.drawShape.enable && !widget.settings.drawShape.enable) {
+    if (oldBoard.settings.drawShape.enable &&
+        !widget.settings.drawShape.enable) {
       _drawModeLockOrigin = null;
       _drawOrigin = null;
       _shapeAvatar = null;
@@ -541,7 +573,9 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
     if (oldBoard.controller != widget.controller) {
       oldBoard.controller.removeListener(_onControllerChange);
-      oldBoard.controller.drawnShapesNotifier.removeListener(_onDrawnShapesChange);
+      oldBoard.controller.drawnShapesNotifier.removeListener(
+        _onDrawnShapesChange,
+      );
       oldBoard.controller.premoveNotifier.removeListener(_onPremoveChange);
       oldBoard.controller.detach();
       _controller.attachTo(this, widget.settings.animationDuration);
@@ -555,7 +589,9 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     _syncHighlightNotifier();
 
     if (oldBoard.settings.pieceAssets != widget.settings.pieceAssets) {
-      _imagesLoaded = ChessgroundImages.instance.isAllLoaded(widget.settings.pieceAssets);
+      _imagesLoaded = ChessgroundImages.instance.isAllLoaded(
+        widget.settings.pieceAssets,
+      );
       if (!_imagesLoaded) _loadImages(widget.settings.pieceAssets);
     }
 
@@ -564,7 +600,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       if (!_highlightImagesLoaded) _loadHighlightImages();
     }
 
-    if (oldBoard.settings.animationDuration != widget.settings.animationDuration) {
+    if (oldBoard.settings.animationDuration !=
+        widget.settings.animationDuration) {
       _controller.animationDuration = widget.settings.animationDuration;
     }
   }
@@ -578,10 +615,14 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
             ? game.validMoves[selected] ?? const <Square>{}
             : const <Square>{};
     final premoveDests =
-        widget.settings.showValidMoves ? _premoveDests ?? const <Square>{} : const <Square>{};
+        widget.settings.showValidMoves
+            ? _premoveDests ?? const <Square>{}
+            : const <Square>{};
     final premove = _controller.premove;
     final premoveHighlight =
-        premove != null && game.playerSide.name == game.sideToMove.opposite.name ? premove : null;
+        premove != null && game.playerSide.name == game.sideToMove.opposite.name
+            ? premove
+            : null;
     _controller.highlightNotifier.update(
       selected: selected,
       moveDests: moveDests,
@@ -643,9 +684,12 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
             _cancelShapesDoubleTapTimer?.cancel();
             _cancelShapesDoubleTapTimer = null;
           } else {
-            _cancelShapesDoubleTapTimer = Timer(_kCancelShapesDoubleTapDelay, () {
-              _cancelShapesDoubleTapTimer = null;
-            });
+            _cancelShapesDoubleTapTimer = Timer(
+              _kCancelShapesDoubleTapDelay,
+              () {
+                _cancelShapesDoubleTapTimer = null;
+              },
+            );
           }
         }
         // selecting a piece to move should clear drawn shapes
@@ -745,7 +789,9 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     if (!mounted) return;
 
     // draw mode takes priority over play mode when the draw mode lock is set
-    if (_shapeAvatar != null && _drawOrigin != null && _drawOrigin!.pointer == details.pointer) {
+    if (_shapeAvatar != null &&
+        _drawOrigin != null &&
+        _drawOrigin!.pointer == details.pointer) {
       final distance = (details.position - _drawOrigin!.position).distance;
       if (distance > _kDragDistanceThreshold) {
         final square = widget.offsetSquare(details.localPosition);
@@ -767,7 +813,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
             details.localPosition,
             _renderBox!,
             isLargeCircle:
-                !isMousePointer && widget.settings.dragTargetKind == DragTargetKind.circle,
+                !isMousePointer &&
+                widget.settings.dragTargetKind == DragTargetKind.circle,
           ),
         );
       }
@@ -780,7 +827,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       return;
     }
 
-    final distance = (details.position - _currentPointerDownEvent!.position).distance;
+    final distance =
+        (details.position - _currentPointerDownEvent!.position).distance;
     if (_dragAvatar == null && distance > _kDragDistanceThreshold) {
       _onDragStart(_currentPointerDownEvent!);
     }
@@ -792,7 +840,9 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       _squareTargetGlobalOffset(
         details.localPosition,
         _renderBox!,
-        isLargeCircle: !isMousePointer && widget.settings.dragTargetKind == DragTargetKind.circle,
+        isLargeCircle:
+            !isMousePointer &&
+            widget.settings.dragTargetKind == DragTargetKind.circle,
       ),
     );
   }
@@ -800,7 +850,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   void _onPointerUp(PointerUpEvent details) {
     if (!mounted) return;
 
-    if (_drawModeLockOrigin != null && _drawModeLockOrigin!.pointer == details.pointer) {
+    if (_drawModeLockOrigin != null &&
+        _drawModeLockOrigin!.pointer == details.pointer) {
       _drawModeLockOrigin = null;
     } else if (_shapeAvatar != null &&
         _drawOrigin != null &&
@@ -813,7 +864,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       return;
     }
 
-    if (_currentPointerDownEvent == null || _currentPointerDownEvent!.pointer != details.pointer) {
+    if (_currentPointerDownEvent == null ||
+        _currentPointerDownEvent!.pointer != details.pointer) {
       return;
     }
 
@@ -847,7 +899,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
           }
         } else {
           // if piece shift method is drag only we always deselect the piece after a drag
-          shouldDeselect = widget.settings.pieceShiftMethod == PieceShiftMethod.drag;
+          shouldDeselect =
+              widget.settings.pieceShiftMethod == PieceShiftMethod.drag;
         }
       }
       // if the user drags a piece outside the board, cancel the premove
@@ -868,7 +921,9 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
     // cancel premove if the user taps on the origin square of the premove
     if (_shouldCancelPremoveOnTapUp) {
-      if (_controller.premove case NormalMove(:final from) when from == square) {
+      if (_controller.premove case NormalMove(
+        :final from,
+      ) when from == square) {
         _shouldCancelPremoveOnTapUp = false;
         _controller.premove = null;
       }
@@ -882,7 +937,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   void _onPointerCancel(PointerCancelEvent details) {
     if (!mounted) return;
 
-    if (_drawModeLockOrigin != null && _drawModeLockOrigin!.pointer == details.pointer) {
+    if (_drawModeLockOrigin != null &&
+        _drawModeLockOrigin!.pointer == details.pointer) {
       _drawModeLockOrigin = null;
     } else if (_shapeAvatar != null &&
         _drawOrigin != null &&
@@ -894,7 +950,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       return;
     }
 
-    if (_currentPointerDownEvent == null || _currentPointerDownEvent!.pointer != details.pointer) {
+    if (_currentPointerDownEvent == null ||
+        _currentPointerDownEvent!.pointer != details.pointer) {
       return;
     }
 
@@ -911,24 +968,30 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     final square = widget.offsetSquare(origin.localPosition);
     final piece = square != null ? pieces[square] : null;
     final feedbackSize =
-        widget.squareSize * (isMousePointer ? 1 : widget.settings.dragFeedbackScale);
-    if (square != null && piece != null && (_isMovable(piece) || _isPremovable(piece))) {
+        widget.squareSize *
+        (isMousePointer ? 1 : widget.settings.dragFeedbackScale);
+    if (square != null &&
+        piece != null &&
+        (_isMovable(piece) || _isPremovable(piece))) {
       _draggedPieceSquareNotifier.value = square;
       _renderBox ??= context.findRenderObject()! as RenderBox;
 
       final dragFeedbackOffsetY =
-          (_isUpsideDown(piece.color) ? -1 : 1) * widget.settings.dragFeedbackOffset.dy;
+          (_isUpsideDown(piece.color) ? -1 : 1) *
+          widget.settings.dragFeedbackOffset.dy;
 
       final Offset feedbackOffset =
           feedbackSize == widget.squareSize
               ? Offset((-1 * feedbackSize) / 2, (-1 * feedbackSize) / 2)
               : Offset(
-                ((widget.settings.dragFeedbackOffset.dx - 1) * feedbackSize) / 2,
+                ((widget.settings.dragFeedbackOffset.dx - 1) * feedbackSize) /
+                    2,
                 ((dragFeedbackOffsetY - 1) * feedbackSize) / 2,
               );
 
       final targetKind =
-          isMousePointer && widget.settings.dragTargetKind != DragTargetKind.none
+          isMousePointer &&
+                  widget.settings.dragTargetKind != DragTargetKind.none
               ? DragTargetKind.square
               : widget.settings.dragTargetKind;
 
@@ -1020,9 +1083,12 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
   /// Whether the piece with this color should be displayed upside down, according to the
   /// widget settings.
-  bool _isUpsideDown(Side pieceColor) => switch (widget.settings.pieceOrientationBehavior) {
+  bool _isUpsideDown(Side pieceColor) => switch (widget
+      .settings
+      .pieceOrientationBehavior) {
     PieceOrientationBehavior.facingUser => false,
-    PieceOrientationBehavior.opponentUpsideDown => pieceColor == widget.orientation.opposite,
+    PieceOrientationBehavior.opponentUpsideDown =>
+      pieceColor == widget.orientation.opposite,
     PieceOrientationBehavior.sideToPlay =>
       _controller.game.sideToMove == widget.orientation.opposite,
   };
@@ -1031,7 +1097,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   bool _isMovable(Piece? piece) {
     final game = _controller.game;
     return piece != null &&
-        (game.playerSide == PlayerSide.both || game.playerSide.name == piece.color.name) &&
+        (game.playerSide == PlayerSide.both ||
+            game.playerSide.name == piece.color.name) &&
         game.sideToMove == piece.color;
   }
 
@@ -1053,13 +1120,18 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   /// Whether the piece is allowed to be premoved to the target square.
   bool _canPremoveTo(Square orig, Square dest) {
     return orig != dest &&
-        premovesOf(orig, pieces, canCastle: widget.settings.enablePremoveCastling).contains(dest);
+        premovesOf(
+          orig,
+          pieces,
+          canCastle: widget.settings.enablePremoveCastling,
+        ).contains(dest);
   }
 
   /// Whether the move is pawn move to the first or eighth rank.
   bool _isPromoMove(Piece piece, Square targetSquare) {
     final rank = targetSquare.rank;
-    return piece.role == Role.pawn && (rank == Rank.first || rank == Rank.eighth);
+    return piece.role == Role.pawn &&
+        (rank == Rank.first || rank == Rank.eighth);
   }
 
   /// Tries to move or set a premove the selected piece to the target square.
@@ -1083,7 +1155,8 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
         widget.onMove?.call(move, viaDragAndDrop: drop);
       }
       return true;
-    } else if (_isPremovable(selectedPiece) && _canPremoveTo(selected!, square)) {
+    } else if (_isPremovable(selectedPiece) &&
+        _canPremoveTo(selected!, square)) {
       final isPromoPremove = _isPromoMove(selectedPiece!, square);
       final premove =
           widget.settings.autoQueenPromotionOnPremove && isPromoPremove

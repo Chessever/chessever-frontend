@@ -6,11 +6,16 @@ void main() {
   group('ChessboardSettings', () {
     test('implements hashCode/==', () {
       expect(const ChessboardSettings(), const ChessboardSettings());
-      expect(const ChessboardSettings().hashCode, const ChessboardSettings().hashCode);
+      expect(
+        const ChessboardSettings().hashCode,
+        const ChessboardSettings().hashCode,
+      );
 
       expect(
         const ChessboardSettings(),
-        isNot(const ChessboardSettings(colorScheme: ChessboardColorScheme.blue)),
+        isNot(
+          const ChessboardSettings(colorScheme: ChessboardColorScheme.blue),
+        ),
       );
     });
 
@@ -18,7 +23,9 @@ void main() {
       expect(const ChessboardSettings().copyWith(), const ChessboardSettings());
 
       expect(
-        const ChessboardSettings().copyWith(colorScheme: ChessboardColorScheme.blue).colorScheme,
+        const ChessboardSettings()
+            .copyWith(colorScheme: ChessboardColorScheme.blue)
+            .colorScheme,
         ChessboardColorScheme.blue,
       );
 
@@ -26,7 +33,9 @@ void main() {
         const ChessboardSettings(
           border: BoardBorder(color: Color(0xFFFFFFFF), width: 16.0),
         ).copyWith(),
-        const ChessboardSettings(border: BoardBorder(color: Color(0xFFFFFFFF), width: 16.0)),
+        const ChessboardSettings(
+          border: BoardBorder(color: Color(0xFFFFFFFF), width: 16.0),
+        ),
       );
     });
   });

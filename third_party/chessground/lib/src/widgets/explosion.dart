@@ -18,9 +18,11 @@ class ExplosionSetNotifier extends ChangeNotifier {
   final Duration _duration;
   final List<_ActiveExplosion> _active = [];
 
-  ExplosionSetNotifier({required TickerProvider vsync, Duration duration = _defaultDuration})
-    : _vsync = vsync,
-      _duration = duration;
+  ExplosionSetNotifier({
+    required TickerProvider vsync,
+    Duration duration = _defaultDuration,
+  }) : _vsync = vsync,
+       _duration = duration;
 
   int get activeExplosionCount => _active.length;
 
@@ -58,8 +60,11 @@ class ExplosionsPainter extends CustomPainter {
   final double squareSize;
   final Side orientation;
 
-  ExplosionsPainter({required this.notifier, required this.squareSize, required this.orientation})
-    : super(repaint: notifier);
+  ExplosionsPainter({
+    required this.notifier,
+    required this.squareSize,
+    required this.orientation,
+  }) : super(repaint: notifier);
 
   static const List<(double, double, double)> _particles = [
     (0.0, 1.00, 1.00),
@@ -80,10 +85,17 @@ class ExplosionsPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final explosion in notifier._active) {
       final file =
-          orientation == Side.white ? explosion.square.file.value : 7 - explosion.square.file.value;
+          orientation == Side.white
+              ? explosion.square.file.value
+              : 7 - explosion.square.file.value;
       final rank =
-          orientation == Side.white ? 7 - explosion.square.rank.value : explosion.square.rank.value;
-      final center = Offset((file + 0.5) * squareSize, (rank + 0.5) * squareSize);
+          orientation == Side.white
+              ? 7 - explosion.square.rank.value
+              : explosion.square.rank.value;
+      final center = Offset(
+        (file + 0.5) * squareSize,
+        (rank + 0.5) * squareSize,
+      );
       // 0.75 × squareSize = half of 1.5× squareSize, matching the previous OverflowBox radius.
       _paintExplosion(canvas, center, squareSize * 0.75, explosion.progress);
     }
@@ -93,7 +105,12 @@ class ExplosionsPainter extends CustomPainter {
   bool shouldRepaint(ExplosionsPainter old) =>
       old.squareSize != squareSize || old.orientation != orientation;
 
-  static void _paintExplosion(Canvas canvas, Offset center, double maxR, double t) {
+  static void _paintExplosion(
+    Canvas canvas,
+    Offset center,
+    double maxR,
+    double t,
+  ) {
     final diameter = maxR * 2;
 
     // 1. Central flash: pale-yellow circle that expands and fades in the first 30%.
@@ -111,7 +128,11 @@ class ExplosionsPainter extends CustomPainter {
     if (fireOpacity > 0) {
       final expandT = Curves.easeOut.transform((t * 1.8).clamp(0.0, 1.0));
       final r = maxR * 0.75 * expandT;
-      canvas.drawCircle(center, r, Paint()..color = Color.fromRGBO(255, 70, 0, fireOpacity * 0.88));
+      canvas.drawCircle(
+        center,
+        r,
+        Paint()..color = Color.fromRGBO(255, 70, 0, fireOpacity * 0.88),
+      );
       canvas.drawCircle(
         center,
         r * 0.52,
@@ -152,7 +173,10 @@ class ExplosionsPainter extends CustomPainter {
       };
 
       canvas.drawCircle(
-        Offset(center.dx + math.cos(angle) * dist, center.dy + math.sin(angle) * dist),
+        Offset(
+          center.dx + math.cos(angle) * dist,
+          center.dy + math.sin(angle) * dist,
+        ),
         particleR,
         Paint()..color = color,
       );

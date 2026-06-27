@@ -121,7 +121,11 @@ class HighlightsPainter extends CustomPainter {
     if (showLastMove && lastMove != null) {
       for (final square in lastMove.squares) {
         if (premove == null || !premove.hasSquare(square)) {
-          _drawHighlight(canvas, _squareRect(square, squareSize, orientation), lastMoveDetails);
+          _drawHighlight(
+            canvas,
+            _squareRect(square, squareSize, orientation),
+            lastMoveDetails,
+          );
         }
       }
     }
@@ -134,11 +138,20 @@ class HighlightsPainter extends CustomPainter {
     }
 
     if (selected != null) {
-      _drawHighlight(canvas, _squareRect(selected, squareSize, orientation), selectedDetails);
+      _drawHighlight(
+        canvas,
+        _squareRect(selected, squareSize, orientation),
+        selectedDetails,
+      );
     }
 
-    for (final MapEntry(key: square, value: details) in squareHighlights.entries) {
-      _drawHighlight(canvas, _squareRect(square, squareSize, orientation), details);
+    for (final MapEntry(key: square, value: details)
+        in squareHighlights.entries) {
+      _drawHighlight(
+        canvas,
+        _squareRect(square, squareSize, orientation),
+        details,
+      );
     }
 
     if (moveDests.isNotEmpty) {
@@ -161,8 +174,18 @@ class HighlightsPainter extends CustomPainter {
     if (details.image != null) {
       final image = ChessgroundImages.instance.get(details.image!);
       if (image != null) {
-        final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
-        canvas.drawImageRect(image, src, rect, Paint()..filterQuality = FilterQuality.medium);
+        final src = Rect.fromLTWH(
+          0,
+          0,
+          image.width.toDouble(),
+          image.height.toDouble(),
+        );
+        canvas.drawImageRect(
+          image,
+          src,
+          rect,
+          Paint()..filterQuality = FilterQuality.medium,
+        );
       }
     }
   }
@@ -190,11 +213,17 @@ class HighlightsPainter extends CustomPainter {
 
   void _drawCheck(Canvas canvas, Square square) {
     final rect = _squareRect(square, squareSize, orientation);
-    final layerPaint = Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0);
+    final layerPaint =
+        Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0);
     canvas.saveLayer(rect, layerPaint);
     const gradient = RadialGradient(
       radius: 0.6,
-      colors: [Color(0xFFFF0000), Color(0xFFE70000), Color(0x00A90000), Color(0x009E0000)],
+      colors: [
+        Color(0xFFFF0000),
+        Color(0xFFE70000),
+        Color(0x00A90000),
+        Color(0x009E0000),
+      ],
       stops: [0.0, 0.25, 0.90, 1.0],
     );
     final paint = Paint()..shader = gradient.createShader(rect);
@@ -318,7 +347,12 @@ class PiecesPainter extends CustomPainter {
       if (image == null) continue;
 
       final dst = _squareRect(square, squareSize, orientation);
-      final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+      final src = Rect.fromLTWH(
+        0,
+        0,
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
       if (_isUpsideDown(
         entry.value.color,
         behavior: pieceOrientationBehavior,
@@ -414,7 +448,12 @@ class FadingPiecesPainter extends CustomPainter {
       if (image == null) continue;
 
       final dst = _squareRect(square, squareSize, orientation);
-      final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+      final src = Rect.fromLTWH(
+        0,
+        0,
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
 
       if (_isUpsideDown(
         piece.color,
@@ -508,8 +547,10 @@ class TranslatingPiecesPainter extends CustomPainter {
       if (image == null) continue;
 
       final orientationFactor = orientation == Side.white ? 1 : -1;
-      final dx = -(toSquare.file - fromSquare.file).toDouble() * orientationFactor;
-      final dy = (toSquare.rank - fromSquare.rank).toDouble() * orientationFactor;
+      final dx =
+          -(toSquare.file - fromSquare.file).toDouble() * orientationFactor;
+      final dy =
+          (toSquare.rank - fromSquare.rank).toDouble() * orientationFactor;
 
       final toRect = _squareRect(toSquare, squareSize, orientation);
       final dst = Rect.fromLTWH(
@@ -518,7 +559,12 @@ class TranslatingPiecesPainter extends CustomPainter {
         squareSize,
         squareSize,
       );
-      final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+      final src = Rect.fromLTWH(
+        0,
+        0,
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
 
       if (_isUpsideDown(
         piece.color,
@@ -588,7 +634,12 @@ class DragPiecePainter extends CustomPainter {
       feedbackSize,
       feedbackSize,
     );
-    final src = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
+    final src = Rect.fromLTWH(
+      0,
+      0,
+      img.width.toDouble(),
+      img.height.toDouble(),
+    );
     final paint = Paint()..filterQuality = FilterQuality.medium;
     if (upsideDown) {
       canvas.save();
@@ -642,15 +693,23 @@ class DragSquareTargetPainter extends CustomPainter {
           ..style = PaintingStyle.fill;
     if (targetKind == DragTargetKind.circle) {
       // pos is already offset by -squareSize/2 so the circle is centered on the square
-      canvas.drawCircle(Offset(pos.dx + squareSize, pos.dy + squareSize), squareSize, paint);
+      canvas.drawCircle(
+        Offset(pos.dx + squareSize, pos.dy + squareSize),
+        squareSize,
+        paint,
+      );
     } else {
-      canvas.drawRect(Rect.fromLTWH(pos.dx, pos.dy, squareSize, squareSize), paint);
+      canvas.drawRect(
+        Rect.fromLTWH(pos.dx, pos.dy, squareSize, squareSize),
+        paint,
+      );
     }
   }
 
   @override
   bool shouldRepaint(DragSquareTargetPainter oldDelegate) {
-    return squareSize != oldDelegate.squareSize || targetKind != oldDelegate.targetKind;
+    return squareSize != oldDelegate.squareSize ||
+        targetKind != oldDelegate.targetKind;
   }
 }
 
@@ -667,6 +726,7 @@ bool _isUpsideDown(
   Side? sideToMove,
 }) => switch (behavior) {
   PieceOrientationBehavior.facingUser => false,
-  PieceOrientationBehavior.opponentUpsideDown => pieceColor == orientation.opposite,
+  PieceOrientationBehavior.opponentUpsideDown =>
+    pieceColor == orientation.opposite,
   PieceOrientationBehavior.sideToPlay => sideToMove == orientation.opposite,
 };

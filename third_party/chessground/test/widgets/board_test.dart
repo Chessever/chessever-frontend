@@ -94,12 +94,14 @@ bool _isLastMoveHighlight(WidgetTester tester, Square square) {
   return p.showLastMove &&
       p.interactionNotifier.lastMove != null &&
       p.interactionNotifier.lastMove!.hasSquare(square) &&
-      (p.interactionNotifier.premove == null || !p.interactionNotifier.premove!.hasSquare(square));
+      (p.interactionNotifier.premove == null ||
+          !p.interactionNotifier.premove!.hasSquare(square));
 }
 
 bool _isPremoveHighlight(WidgetTester tester, Square square) {
   final p = _highlightsPainter(tester);
-  return p.interactionNotifier.premove != null && p.interactionNotifier.premove!.hasSquare(square);
+  return p.interactionNotifier.premove != null &&
+      p.interactionNotifier.premove!.hasSquare(square);
 }
 
 bool _isCheckSquareHighlight(WidgetTester tester, Square square) {
@@ -150,8 +152,14 @@ void main() {
       verifyNoMoreInteractions(onTouchedSquare);
     });
 
-    testWidgets('moved piece is animated when the position change', (WidgetTester tester) async {
-      const board = StaticChessboard(size: boardSize, orientation: Side.white, fen: kInitialFEN);
+    testWidgets('moved piece is animated when the position change', (
+      WidgetTester tester,
+    ) async {
+      const board = StaticChessboard(
+        size: boardSize,
+        orientation: Side.white,
+        fen: kInitialFEN,
+      );
 
       await tester.pumpWidget(board);
 
@@ -187,7 +195,8 @@ void main() {
       const board = StaticChessboard(
         size: boardSize,
         orientation: Side.white,
-        fen: 'rnbqk2r/pppp1ppp/5n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
+        fen:
+            'rnbqk2r/pppp1ppp/5n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
       );
 
       await tester.pumpWidget(board);
@@ -198,7 +207,8 @@ void main() {
       const board2 = StaticChessboard(
         size: boardSize,
         orientation: Side.white,
-        fen: 'rnbqk2r/pppp1ppp/5n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4',
+        fen:
+            'rnbqk2r/pppp1ppp/5n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4',
       );
 
       await tester.pumpWidget(board2);
@@ -209,10 +219,17 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('a piece moved by drag and drop is not animated', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+    testWidgets('a piece moved by drag and drop is not animated', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
-      await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+      await tester.dragFrom(
+        squareOffset(tester, Square.e2),
+        const Offset(0, -(squareSize * 2)),
+      );
       await tester.pump();
 
       // The dropped pawn is already at its destination, so it must not be
@@ -224,8 +241,12 @@ void main() {
       expect(_piecesPainter(tester).pieces.containsKey(Square.e2), isFalse);
     });
 
-    testWidgets('a piece moved by tap is animated', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+    testWidgets('a piece moved by tap is animated', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       await tester.tapAt(squareOffset(tester, Square.e2));
       await tester.pump();
@@ -241,7 +262,9 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('background is constrained to the size of the board', (WidgetTester tester) async {
+    testWidgets('background is constrained to the size of the board', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(viewOnlyBoard);
 
       final size = tester.getSize(find.byType(SolidColorChessboardBackground));
@@ -266,7 +289,9 @@ void main() {
       expect(size.height, boardSize - 32.0);
     });
 
-    testWidgets('change in hue will use a color filter', (WidgetTester tester) async {
+    testWidgets('change in hue will use a color filter', (
+      WidgetTester tester,
+    ) async {
       const board = StaticChessboard(
         size: boardSize,
         orientation: Side.white,
@@ -279,7 +304,9 @@ void main() {
       expect(find.byType(ColorFiltered), findsOneWidget);
     });
 
-    testWidgets('change in brightness will use a color filter', (WidgetTester tester) async {
+    testWidgets('change in brightness will use a color filter', (
+      WidgetTester tester,
+    ) async {
       const board = StaticChessboard(
         size: boardSize,
         orientation: Side.white,
@@ -298,7 +325,8 @@ void main() {
       WidgetTester tester,
     ) async {
       // Scholar's mate: Qxf7# — queen moved from h5 to f7, black king on e8 is in check.
-      const fen = 'r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4';
+      const fen =
+          'r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4';
       const lastMove = NormalMove(from: Square.h5, to: Square.f7);
 
       final controller = ChessboardController(
@@ -317,7 +345,11 @@ void main() {
         MaterialApp(
           home: Align(
             alignment: Alignment.topLeft,
-            child: Chessboard(controller: controller, size: boardSize, orientation: Side.white),
+            child: Chessboard(
+              controller: controller,
+              size: boardSize,
+              orientation: Side.white,
+            ),
           ),
         ),
       );
@@ -328,10 +360,14 @@ void main() {
       expect(_isCheckSquareHighlight(tester, Square.e8), isTrue);
     });
 
-    testWidgets('selecting and deselecting a square', (WidgetTester tester) async {
+    testWidgets('selecting and deselecting a square', (
+      WidgetTester tester,
+    ) async {
       for (final settings in [
         const ChessboardSettings(),
-        const ChessboardSettings(border: BoardBorder(width: 16.0, color: Color(0xFF000000))),
+        const ChessboardSettings(
+          border: BoardBorder(width: 16.0, color: Color(0xFF000000)),
+        ),
       ]) {
         final onTouchedSquare = OnTappedSquareMock();
         await tester.pumpWidget(
@@ -346,25 +382,37 @@ void main() {
         await tester.pump();
 
         expect(_isSelectedHighlight(tester, Square.a2), isTrue);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 2);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          2,
+        );
 
         // selecting same deselects
         await tester.tapAt(squareOffset(tester, Square.a2));
         await tester.pump();
         expect(_isSelectedHighlight(tester, Square.a2), isFalse);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          0,
+        );
 
         // selecting another square
         await tester.tapAt(squareOffset(tester, Square.a1));
         await tester.pump();
         expect(_isSelectedHighlight(tester, Square.a1), isTrue);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          0,
+        );
 
         // selecting an opposite piece deselects
         await tester.tapAt(squareOffset(tester, Square.e7));
         await tester.pump();
         expect(_isSelectedHighlight(tester, Square.a1), isFalse);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          0,
+        );
 
         // selecting an empty square deselects
         await tester.tapAt(squareOffset(tester, Square.a1));
@@ -395,7 +443,9 @@ void main() {
     testWidgets('play e2-e4 move by tap', (WidgetTester tester) async {
       for (final settings in [
         const ChessboardSettings(),
-        const ChessboardSettings(border: BoardBorder(width: 16.0, color: Color(0xFF000000))),
+        const ChessboardSettings(
+          border: BoardBorder(width: 16.0, color: Color(0xFF000000)),
+        ),
       ]) {
         await tester.pumpWidget(
           _TestApp(
@@ -408,14 +458,20 @@ void main() {
         await tester.pump();
 
         expect(_isSelectedHighlight(tester, Square.e2), isTrue);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 2);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          2,
+        );
 
         await tester.tapAt(squareOffset(tester, Square.e4));
         await tester.pump();
 
         expect(_piecesPainter(tester).pieces[Square.e4], Piece.whitePawn);
         expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          0,
+        );
 
         // wait for the animations to finish
         await tester.pumpAndSettle();
@@ -427,7 +483,9 @@ void main() {
       }
     });
 
-    testWidgets('Cannot move by tap if piece shift method is drag', (WidgetTester tester) async {
+    testWidgets('Cannot move by tap if piece shift method is drag', (
+      WidgetTester tester,
+    ) async {
       for (final settings in [
         const ChessboardSettings(pieceShiftMethod: PieceShiftMethod.drag),
         const ChessboardSettings(
@@ -449,10 +507,16 @@ void main() {
 
         // Tapping a square should have no effect...
         expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          0,
+        );
 
         // ... but move by drag should work
-        await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+        await tester.dragFrom(
+          squareOffset(tester, Square.e2),
+          const Offset(0, -(squareSize * 2)),
+        );
         await tester.pumpAndSettle();
         expect(_piecesPainter(tester).pieces[Square.e4], Piece.whitePawn);
         expect(_piecesPainter(tester).pieces.containsKey(Square.e2), isFalse);
@@ -467,28 +531,37 @@ void main() {
       }
     });
 
-    testWidgets('Square is always deselected after drag if piece shift method is drag', (
+    testWidgets(
+      'Square is always deselected after drag if piece shift method is drag',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            settings: ChessboardSettings(
+              pieceShiftMethod: PieceShiftMethod.drag,
+            ),
+          ),
+        );
+        await tester.tapAt(squareOffset(tester, Square.e2));
+        await tester.pump();
+
+        // simluate a drag that leaves the piece on the same square
+        await tester.dragFrom(
+          squareOffset(tester, Square.e2),
+          const Offset(0, -(squareSize / 2)),
+        );
+        await tester.pumpAndSettle();
+        expect(_isSelectedHighlight(tester, Square.e2), isFalse);
+      },
+    );
+
+    testWidgets('castling by selecting king then rook is possible', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
         const _TestApp(
-          initialPlayerSide: PlayerSide.both,
-          settings: ChessboardSettings(pieceShiftMethod: PieceShiftMethod.drag),
-        ),
-      );
-      await tester.tapAt(squareOffset(tester, Square.e2));
-      await tester.pump();
-
-      // simluate a drag that leaves the piece on the same square
-      await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize / 2)));
-      await tester.pumpAndSettle();
-      expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-    });
-
-    testWidgets('castling by selecting king then rook is possible', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const _TestApp(
-          fen: 'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
+          fen:
+              'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
           initialPlayerSide: PlayerSide.both,
         ),
       );
@@ -511,7 +584,9 @@ void main() {
     testWidgets('dragging off target', (WidgetTester tester) async {
       for (final settings in [
         const ChessboardSettings(),
-        const ChessboardSettings(border: BoardBorder(width: 16.0, color: Color(0xFF000000))),
+        const ChessboardSettings(
+          border: BoardBorder(width: 16.0, color: Color(0xFF000000)),
+        ),
       ]) {
         await tester.pumpWidget(
           _TestApp(
@@ -526,39 +601,59 @@ void main() {
         await tester.pumpAndSettle();
         expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
         expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          0,
+        );
       }
     });
 
     testWidgets('dragging off board', (WidgetTester tester) async {
       for (final settings in [
         const ChessboardSettings(),
-        const ChessboardSettings(border: BoardBorder(width: 16.0, color: Color(0xFF000000))),
+        const ChessboardSettings(
+          border: BoardBorder(width: 16.0, color: Color(0xFF000000)),
+        ),
       ]) {
         await tester.pumpWidget(
-          _TestApp(initialPlayerSide: PlayerSide.both, key: ValueKey(settings.hashCode)),
+          _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            key: ValueKey(settings.hashCode),
+          ),
         );
 
         await tester.dragFrom(
           squareOffset(tester, Square.e2),
-          squareOffset(tester, Square.e2) + const Offset(0, -boardSize + squareSize),
+          squareOffset(tester, Square.e2) +
+              const Offset(0, -boardSize + squareSize),
         );
         await tester.pumpAndSettle();
         expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
         expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-        expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          0,
+        );
       }
     });
 
     testWidgets('e2-e4 drag move', (WidgetTester tester) async {
       for (final settings in [
         const ChessboardSettings(),
-        const ChessboardSettings(border: BoardBorder(width: 16.0, color: Color(0xFF000000))),
+        const ChessboardSettings(
+          border: BoardBorder(width: 16.0, color: Color(0xFF000000)),
+        ),
       ]) {
         await tester.pumpWidget(
-          _TestApp(initialPlayerSide: PlayerSide.both, key: ValueKey(settings.hashCode)),
+          _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            key: ValueKey(settings.hashCode),
+          ),
         );
-        await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+        await tester.dragFrom(
+          squareOffset(tester, Square.e2),
+          const Offset(0, -(squareSize * 2)),
+        );
         await tester.pumpAndSettle();
         expect(_piecesPainter(tester).pieces[Square.e4], Piece.whitePawn);
         expect(_piecesPainter(tester).pieces.containsKey(Square.e2), isFalse);
@@ -579,7 +674,10 @@ void main() {
           initialPlayerSide: PlayerSide.white,
         ),
       );
-      await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+      await tester.dragFrom(
+        squareOffset(tester, Square.e2),
+        const Offset(0, -(squareSize * 2)),
+      );
       await tester.pumpAndSettle();
       expect(_piecesPainter(tester).pieces.containsKey(Square.e4), isFalse);
       expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
@@ -588,50 +686,63 @@ void main() {
 
       // Original square is still selected after drag attempt
       expect(_isSelectedHighlight(tester, Square.e2), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 2);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        2,
+      );
 
       // ...so we can still tap to move
       await tester.tapAt(squareOffset(tester, Square.e4));
       await tester.pump();
       expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        0,
+      );
       expect(_piecesPainter(tester).pieces[Square.e4], Piece.whitePawn);
       expect(_piecesPainter(tester).pieces.containsKey(Square.e2), isFalse);
       expect(_isLastMoveHighlight(tester, Square.e2), isTrue);
       expect(_isLastMoveHighlight(tester, Square.e4), isTrue);
     });
 
-    testWidgets('2 simultaneous pointer down events will cancel current drag/selection', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
-      await TestAsyncUtils.guard<void>(() async {
-        await tester.startGesture(squareOffset(tester, Square.e2));
+    testWidgets(
+      '2 simultaneous pointer down events will cancel current drag/selection',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const _TestApp(initialPlayerSide: PlayerSide.both),
+        );
+        await TestAsyncUtils.guard<void>(() async {
+          await tester.startGesture(squareOffset(tester, Square.e2));
 
-        await tester.pump();
+          await tester.pump();
 
-        expect(_isSelectedHighlight(tester, Square.e2), isTrue);
+          expect(_isSelectedHighlight(tester, Square.e2), isTrue);
 
-        await tester.startGesture(squareOffset(tester, Square.e4));
+          await tester.startGesture(squareOffset(tester, Square.e4));
 
-        await tester.pump();
+          await tester.pump();
 
-        // move is cancelled
-        expect(_piecesPainter(tester).pieces.containsKey(Square.e4), isFalse);
-        expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
-        // selection is cancelled
-        expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-      });
-    });
+          // move is cancelled
+          expect(_piecesPainter(tester).pieces.containsKey(Square.e4), isFalse);
+          expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
+          // selection is cancelled
+          expect(_isSelectedHighlight(tester, Square.e2), isFalse);
+        });
+      },
+    );
 
     testWidgets('while dragging a piece, other pointer events will cancel', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       // drag a piece and tap on another own square while dragging
       await TestAsyncUtils.guard<void>(() async {
-        final dragGesture = await tester.startGesture(squareOffset(tester, Square.e2));
+        final dragGesture = await tester.startGesture(
+          squareOffset(tester, Square.e2),
+        );
         await tester.pump();
 
         // trigger a piece drag by moving the pointer by 4 pixels
@@ -659,7 +770,9 @@ void main() {
 
       // drag a piece and tap on an empty square while dragging
       await TestAsyncUtils.guard<void>(() async {
-        final dragGesture = await tester.startGesture(squareOffset(tester, Square.d2));
+        final dragGesture = await tester.startGesture(
+          squareOffset(tester, Square.d2),
+        );
         await tester.pump();
 
         // trigger a piece drag by moving the pointer by 4 pixels
@@ -687,22 +800,27 @@ void main() {
       expect(_isSelectedHighlight(tester, Square.d2), isFalse);
     });
 
-    testWidgets('dragging an unselected piece to the same square should keep the piece selected', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
-      final e2 = squareOffset(tester, Square.e2);
-      await tester.dragFrom(e2, const Offset(0, -(squareSize / 3)));
-      await tester.pumpAndSettle();
+    testWidgets(
+      'dragging an unselected piece to the same square should keep the piece selected',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const _TestApp(initialPlayerSide: PlayerSide.both),
+        );
+        final e2 = squareOffset(tester, Square.e2);
+        await tester.dragFrom(e2, const Offset(0, -(squareSize / 3)));
+        await tester.pumpAndSettle();
 
-      expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
-      expect(_isSelectedHighlight(tester, Square.e2), isTrue);
-    });
+        expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
+        expect(_isSelectedHighlight(tester, Square.e2), isTrue);
+      },
+    );
 
     testWidgets('dragging an already selected piece should not deselect it', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
       final e2 = squareOffset(tester, Square.e2);
       await tester.tapAt(e2);
       await tester.pump();
@@ -743,7 +861,9 @@ void main() {
       expect(_isCheckSquareHighlight(tester, Square.e1), isTrue);
     });
 
-    testWidgets('piece is still selected when fen changes externally', (WidgetTester tester) async {
+    testWidgets('piece is still selected when fen changes externally', (
+      WidgetTester tester,
+    ) async {
       final controller = StreamController<GameEvent>.broadcast();
 
       addTearDown(() {
@@ -762,7 +882,10 @@ void main() {
       await tester.pump();
       expect(_isSelectedHighlight(tester, Square.d2), isTrue);
       // 4 premoves destinations are highlighted
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 4);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        4,
+      );
 
       controller.add(GameEvent.externalMove);
       await tester.pump(const Duration(milliseconds: 1));
@@ -770,80 +893,86 @@ void main() {
       // Selection should not be cleared
       expect(_isSelectedHighlight(tester, Square.d2), isTrue);
       // now 2 moves destinations are highlighted instead of 4
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 2);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        2,
+      );
     });
 
-    testWidgets('cancel piece selection if board is made non interactive again', (
-      WidgetTester tester,
-    ) async {
-      final controller = StreamController<GameEvent>.broadcast();
+    testWidgets(
+      'cancel piece selection if board is made non interactive again',
+      (WidgetTester tester) async {
+        final controller = StreamController<GameEvent>.broadcast();
 
-      addTearDown(() {
-        controller.close();
-      });
+        addTearDown(() {
+          controller.close();
+        });
 
-      await tester.pumpWidget(
-        _TestApp(
-          fen: kInitialBoardFEN,
-          initialPlayerSide: PlayerSide.white,
-          gameEventStream: controller.stream,
-        ),
-      );
+        await tester.pumpWidget(
+          _TestApp(
+            fen: kInitialBoardFEN,
+            initialPlayerSide: PlayerSide.white,
+            gameEventStream: controller.stream,
+          ),
+        );
 
-      await tester.tapAt(squareOffset(tester, Square.e2));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.e2), isTrue);
+        await tester.tapAt(squareOffset(tester, Square.e2));
+        await tester.pump();
+        expect(_isSelectedHighlight(tester, Square.e2), isTrue);
 
-      controller.add(GameEvent.nonInteractiveBoardEvent);
-      await tester.pump(const Duration(milliseconds: 1));
+        controller.add(GameEvent.nonInteractiveBoardEvent);
+        await tester.pump(const Duration(milliseconds: 1));
 
-      expect(_isSelectedHighlight(tester, Square.e2), isFalse);
-    });
+        expect(_isSelectedHighlight(tester, Square.e2), isFalse);
+      },
+    );
 
-    testWidgets('cancel piece current pointer event if board is made non interactive again', (
-      WidgetTester tester,
-    ) async {
-      final controller = StreamController<GameEvent>.broadcast();
+    testWidgets(
+      'cancel piece current pointer event if board is made non interactive again',
+      (WidgetTester tester) async {
+        final controller = StreamController<GameEvent>.broadcast();
 
-      addTearDown(() {
-        controller.close();
-      });
+        addTearDown(() {
+          controller.close();
+        });
 
-      await tester.pumpWidget(
-        _TestApp(
-          fen: 'r1bqkbnr/ppp2ppp/2np4/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 4',
-          initialPlayerSide: PlayerSide.white,
-          gameEventStream: controller.stream,
-        ),
-      );
+        await tester.pumpWidget(
+          _TestApp(
+            fen:
+                'r1bqkbnr/ppp2ppp/2np4/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 4',
+            initialPlayerSide: PlayerSide.white,
+            gameEventStream: controller.stream,
+          ),
+        );
 
-      await TestAsyncUtils.guard<void>(() async {
-        await tester.startGesture(squareOffset(tester, Square.f3));
+        await TestAsyncUtils.guard<void>(() async {
+          await tester.startGesture(squareOffset(tester, Square.f3));
+          await tester.pump();
+          expect(_isSelectedHighlight(tester, Square.f3), isTrue);
+        });
+
+        // make board non interactive in the middle of the gesture
+        controller.add(GameEvent.nonInteractiveBoardEvent);
+        await tester.pump(const Duration(milliseconds: 1));
+
+        expect(_isSelectedHighlight(tester, Square.f3), isFalse);
+
+        // board is not interactive
+        await tester.tapAt(squareOffset(tester, Square.f3));
+        await tester.pump();
+        expect(_isSelectedHighlight(tester, Square.f3), isFalse);
+
+        // make board interactive again
+        controller.add(GameEvent.interactiveBoardEvent);
+        await tester.pump(const Duration(milliseconds: 1));
+
+        // the piece selection should work (which would not be the case if the
+        // pointer event was not cancelled)
+        await tester.tapAt(squareOffset(tester, Square.f3));
         await tester.pump();
         expect(_isSelectedHighlight(tester, Square.f3), isTrue);
-      });
-
-      // make board non interactive in the middle of the gesture
-      controller.add(GameEvent.nonInteractiveBoardEvent);
-      await tester.pump(const Duration(milliseconds: 1));
-
-      expect(_isSelectedHighlight(tester, Square.f3), isFalse);
-
-      // board is not interactive
-      await tester.tapAt(squareOffset(tester, Square.f3));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f3), isFalse);
-
-      // make board interactive again
-      controller.add(GameEvent.interactiveBoardEvent);
-      await tester.pump(const Duration(milliseconds: 1));
-
-      // the piece selection should work (which would not be the case if the
-      // pointer event was not cancelled)
-      await tester.tapAt(squareOffset(tester, Square.f3));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f3), isTrue);
-    });
+      },
+    );
   });
 
   testWidgets('onTouchedSquare callback', (WidgetTester tester) async {
@@ -869,16 +998,28 @@ void main() {
     await tester.tapAt(squareOffset(tester, Square.e4));
 
     // Drag a piece to the same square -> should trigger callback
-    await tester.dragFrom(squareOffset(tester, Square.a2), const Offset(0, -(squareSize / 2)));
+    await tester.dragFrom(
+      squareOffset(tester, Square.a2),
+      const Offset(0, -(squareSize / 2)),
+    );
 
     // Drag from a empty square to the same square -> should trigger callback
-    await tester.dragFrom(squareOffset(tester, Square.a4), const Offset(0, -(squareSize / 2)));
+    await tester.dragFrom(
+      squareOffset(tester, Square.a4),
+      const Offset(0, -(squareSize / 2)),
+    );
 
     // Drag from an empty square another empty square -> should trigger callback on 1st square
-    await tester.dragFrom(squareOffset(tester, Square.a4), const Offset(0, -squareSize));
+    await tester.dragFrom(
+      squareOffset(tester, Square.a4),
+      const Offset(0, -squareSize),
+    );
 
     // Drag piece to a different square (i.e. make a move) -> should trigger callback on 1st square
-    await tester.dragFrom(squareOffset(tester, Square.a2), const Offset(0, -squareSize));
+    await tester.dragFrom(
+      squareOffset(tester, Square.a2),
+      const Offset(0, -squareSize),
+    );
 
     // Callback should be triggered even if the board is non-interactive
     controller.add(GameEvent.nonInteractiveBoardEvent);
@@ -898,7 +1039,10 @@ void main() {
   });
 
   group('moveOnRelease', () {
-    const settings = ChessboardSettings(animationDuration: Duration.zero, moveOnRelease: true);
+    const settings = ChessboardSettings(
+      animationDuration: Duration.zero,
+      moveOnRelease: true,
+    );
 
     testWidgets('move is committed on pointer up, not on pointer down', (
       WidgetTester tester,
@@ -914,7 +1058,9 @@ void main() {
 
       await TestAsyncUtils.guard<void>(() async {
         // Press on the destination square: the move must NOT be made yet.
-        final gesture = await tester.startGesture(squareOffset(tester, Square.e4));
+        final gesture = await tester.startGesture(
+          squareOffset(tester, Square.e4),
+        );
         await tester.pump();
         expect(_piecesPainter(tester).pieces.containsKey(Square.e4), isFalse);
         expect(_piecesPainter(tester).pieces[Square.e2], Piece.whitePawn);
@@ -943,7 +1089,9 @@ void main() {
 
       await TestAsyncUtils.guard<void>(() async {
         // Press on e3, then slide to e4 and release there.
-        final gesture = await tester.startGesture(squareOffset(tester, Square.e3));
+        final gesture = await tester.startGesture(
+          squareOffset(tester, Square.e3),
+        );
         await tester.pump();
         await gesture.moveTo(squareOffset(tester, Square.e4));
         await tester.pump();
@@ -957,7 +1105,9 @@ void main() {
       expect(_piecesPainter(tester).pieces.containsKey(Square.e2), isFalse);
     });
 
-    testWidgets('square target follows the finger before release', (WidgetTester tester) async {
+    testWidgets('square target follows the finger before release', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(settings: settings, initialPlayerSide: PlayerSide.white),
       );
@@ -971,22 +1121,27 @@ void main() {
         expect(_dragSquareTargetPainter(tester), isNull);
 
         // Press on e3: a square target appears.
-        final gesture = await tester.startGesture(squareOffset(tester, Square.e3));
+        final gesture = await tester.startGesture(
+          squareOffset(tester, Square.e3),
+        );
         await tester.pump();
-        final posOnE3 = _dragSquareTargetPainter(tester)?.positionNotifier.value;
+        final posOnE3 =
+            _dragSquareTargetPainter(tester)?.positionNotifier.value;
         expect(posOnE3, isNotNull);
 
         // Slide up one rank to e4: the target tracks the finger by one square.
         await gesture.moveTo(squareOffset(tester, Square.e4));
         await tester.pump();
-        final posOnE4 = _dragSquareTargetPainter(tester)?.positionNotifier.value;
+        final posOnE4 =
+            _dragSquareTargetPainter(tester)?.positionNotifier.value;
         expect(posOnE4, isNotNull);
         expect(posOnE4! - posOnE3!, const Offset(0, -squareSize));
 
         // Slide right one file to f4: the target tracks the finger horizontally.
         await gesture.moveTo(squareOffset(tester, Square.f4));
         await tester.pump();
-        final posOnF4 = _dragSquareTargetPainter(tester)?.positionNotifier.value;
+        final posOnF4 =
+            _dragSquareTargetPainter(tester)?.positionNotifier.value;
         expect(posOnF4, isNotNull);
         expect(posOnF4! - posOnE4, const Offset(squareSize, 0));
 
@@ -1010,7 +1165,9 @@ void main() {
 
       await TestAsyncUtils.guard<void>(() async {
         // e5 is not a legal destination for the e2 pawn.
-        final gesture = await tester.startGesture(squareOffset(tester, Square.e5));
+        final gesture = await tester.startGesture(
+          squareOffset(tester, Square.e5),
+        );
         await tester.pump();
         await gesture.up();
         await tester.pump();
@@ -1023,10 +1180,14 @@ void main() {
   });
 
   group('Drop squares enabled', () {
-    testWidgets('dragging a piece onto the board triggers DropMove', (WidgetTester tester) async {
+    testWidgets('dragging a piece onto the board triggers DropMove', (
+      WidgetTester tester,
+    ) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1'),
+        Setup.parseFen(
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1',
+        ),
       );
       await tester.pumpWidget(
         _TestApp(
@@ -1079,7 +1240,8 @@ void main() {
       final blackKnightDraggable = find.byKey(const Key('blackKnight'));
       await tester.drag(
         blackKnightDraggable,
-        squareOffset(tester, Square.e5) - tester.getCenter(blackKnightDraggable),
+        squareOffset(tester, Square.e5) -
+            tester.getCenter(blackKnightDraggable),
       );
 
       await tester.pumpAndSettle();
@@ -1087,7 +1249,9 @@ void main() {
       expect(_piecesPainter(tester).pieces[Square.e5], Piece.blackKnight);
     });
 
-    testWidgets('Cannot move pawns onto the back rank', (WidgetTester tester) async {
+    testWidgets('Cannot move pawns onto the back rank', (
+      WidgetTester tester,
+    ) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
         Setup.parseFen('8/8/3K4/8/3k4/8/8/8[PNp] w - - 0 1'),
@@ -1147,7 +1311,8 @@ void main() {
       final whiteKnightDraggable = find.byKey(const Key('whiteKnight'));
       await tester.drag(
         whiteKnightDraggable,
-        squareOffset(tester, Square.a8) - tester.getCenter(whiteKnightDraggable),
+        squareOffset(tester, Square.a8) -
+            tester.getCenter(whiteKnightDraggable),
       );
 
       await tester.pumpAndSettle();
@@ -1157,7 +1322,9 @@ void main() {
     testWidgets('Cannot play illegal drop moves', (WidgetTester tester) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
-        Setup.parseFen('rnb1kbnr/pppp2pp/8/4p3/8/2q2N2/PP2PPPP/R1B1KB1R[P] w - - 8 8'),
+        Setup.parseFen(
+          'rnb1kbnr/pppp2pp/8/4p3/8/2q2N2/PP2PPPP/R1B1KB1R[P] w - - 8 8',
+        ),
       );
       await tester.pumpWidget(
         _TestApp(
@@ -1209,7 +1376,9 @@ void main() {
     testWidgets('no drag targets if drop moves not explicitly enabled', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       expect(find.byType(DragTarget<Piece>), findsNothing);
     });
@@ -1219,7 +1388,9 @@ void main() {
       (WidgetTester tester) async {
         final pos = Position.setupPosition(
           Rule.crazyhouse,
-          Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1'),
+          Setup.parseFen(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1',
+          ),
         );
         await tester.pumpWidget(
           _TestApp(
@@ -1253,7 +1424,10 @@ void main() {
         await tester.pump();
 
         expect(
-          find.descendant(of: find.byType(DragTarget<Piece>), matching: find.byType(Container)),
+          find.descendant(
+            of: find.byType(DragTarget<Piece>),
+            matching: find.byType(Container),
+          ),
           findsOneWidget,
         );
 
@@ -1262,61 +1436,72 @@ void main() {
       },
     );
 
-    testWidgets('drop hover circle updates as pocket piece is dragged across squares', (
-      WidgetTester tester,
-    ) async {
-      final pos = Position.setupPosition(
-        Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1'),
-      );
-      await tester.pumpWidget(
-        _TestApp(
-          initialPlayerSide: PlayerSide.both,
-          rule: Rule.crazyhouse,
-          fen: pos.fen,
-          settings: const ChessboardSettings(enableDrops: true),
-          validDropSquares: pos.legalDrops.squares.toSet(),
-          bottomWidget: Draggable(
-            key: const Key('whitePawn'),
-            dragAnchorStrategy: pointerDragAnchorStrategy,
-            data: Piece.whitePawn,
-            feedback: const SizedBox.shrink(),
-            child: PieceWidget(
-              piece: Piece.whitePawn,
-              size: squareSize,
-              pieceAssets: PieceSet.merida.assets,
+    testWidgets(
+      'drop hover circle updates as pocket piece is dragged across squares',
+      (WidgetTester tester) async {
+        final pos = Position.setupPosition(
+          Rule.crazyhouse,
+          Setup.parseFen(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1',
+          ),
+        );
+        await tester.pumpWidget(
+          _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            rule: Rule.crazyhouse,
+            fen: pos.fen,
+            settings: const ChessboardSettings(enableDrops: true),
+            validDropSquares: pos.legalDrops.squares.toSet(),
+            bottomWidget: Draggable(
+              key: const Key('whitePawn'),
+              dragAnchorStrategy: pointerDragAnchorStrategy,
+              data: Piece.whitePawn,
+              feedback: const SizedBox.shrink(),
+              child: PieceWidget(
+                piece: Piece.whitePawn,
+                size: squareSize,
+                pieceAssets: PieceSet.merida.assets,
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.byKey(const Key('whitePawn'))),
-      );
-      await gesture.moveTo(squareOffset(tester, Square.e4));
-      await tester.pump();
-      expect(
-        find.descendant(of: find.byType(DragTarget<Piece>), matching: find.byType(Container)),
-        findsOneWidget,
-      );
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.byKey(const Key('whitePawn'))),
+        );
+        await gesture.moveTo(squareOffset(tester, Square.e4));
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byType(DragTarget<Piece>),
+            matching: find.byType(Container),
+          ),
+          findsOneWidget,
+        );
 
-      await gesture.moveTo(squareOffset(tester, Square.d4));
-      await tester.pump();
-      expect(
-        find.descendant(of: find.byType(DragTarget<Piece>), matching: find.byType(Container)),
-        findsOneWidget,
-      );
+        await gesture.moveTo(squareOffset(tester, Square.d4));
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byType(DragTarget<Piece>),
+            matching: find.byType(Container),
+          ),
+          findsOneWidget,
+        );
 
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
 
     testWidgets('drop hover circle disappears after pocket piece is dropped', (
       WidgetTester tester,
     ) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1'),
+        Setup.parseFen(
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1',
+        ),
       );
       await tester.pumpWidget(
         _TestApp(
@@ -1345,7 +1530,10 @@ void main() {
       await gesture.moveTo(squareOffset(tester, Square.e4));
       await tester.pump();
       expect(
-        find.descendant(of: find.byType(DragTarget<Piece>), matching: find.byType(Container)),
+        find.descendant(
+          of: find.byType(DragTarget<Piece>),
+          matching: find.byType(Container),
+        ),
         findsOneWidget,
       );
 
@@ -1353,16 +1541,23 @@ void main() {
       await tester.pumpAndSettle();
       // Circle is gone after the drop.
       expect(
-        find.descendant(of: find.byType(DragTarget<Piece>), matching: find.byType(Container)),
+        find.descendant(
+          of: find.byType(DragTarget<Piece>),
+          matching: find.byType(Container),
+        ),
         findsNothing,
       );
       expect(_piecesPainter(tester).pieces[Square.e4], Piece.whitePawn);
     });
 
-    testWidgets('pocket piece draggable uses pointer drag anchor strategy', (tester) async {
+    testWidgets('pocket piece draggable uses pointer drag anchor strategy', (
+      tester,
+    ) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1'),
+        Setup.parseFen(
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1',
+        ),
       );
       await tester.pumpWidget(
         _TestApp(
@@ -1389,7 +1584,9 @@ void main() {
         ),
       );
 
-      final draggable = tester.widget<Draggable<Piece>>(find.byKey(const Key('pocketPiece')));
+      final draggable = tester.widget<Draggable<Piece>>(
+        find.byKey(const Key('pocketPiece')),
+      );
       expect(draggable.dragAnchorStrategy, pointerDragAnchorStrategy);
     });
 
@@ -1398,7 +1595,9 @@ void main() {
       (tester) async {
         final pos = Position.setupPosition(
           Rule.crazyhouse,
-          Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1'),
+          Setup.parseFen(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[Pn] w KQkq - 0 1',
+          ),
         );
         await tester.pumpWidget(
           _TestApp(
@@ -1425,7 +1624,9 @@ void main() {
           ),
         );
 
-        final pieceTopLeft = tester.getTopLeft(find.byKey(const Key('pocketPiece')));
+        final pieceTopLeft = tester.getTopLeft(
+          find.byKey(const Key('pocketPiece')),
+        );
         // Use mouse pointer: its hit slop is 1px, so any small move triggers the
         // drag (touch slop is 18px and would require a larger moveBy).
         const move = Offset(0.0, -10.0);
@@ -1468,57 +1669,66 @@ void main() {
       },
     );
 
-    testWidgets("sets drop premove when dragging own pocket piece on opponent's turn", (
-      WidgetTester tester,
-    ) async {
-      final pos = Position.setupPosition(
-        Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[R] b KQkq - 0 1'),
-      );
-      await tester.pumpWidget(
-        _TestApp(
-          initialPlayerSide: PlayerSide.white,
-          rule: Rule.crazyhouse,
-          fen: pos.fen,
-          settings: const ChessboardSettings(enableDrops: true),
-          validDropSquares: pos.legalDrops.squares.toSet(),
-          bottomWidget: Draggable(
-            key: const Key('whiteRook'),
-            dragAnchorStrategy: pointerDragAnchorStrategy,
-            data: Piece.whiteRook,
-            feedback: const SizedBox.shrink(),
-            child: PieceWidget(
-              piece: Piece.whiteRook,
-              size: squareSize,
-              pieceAssets: PieceSet.merida.assets,
+    testWidgets(
+      "sets drop premove when dragging own pocket piece on opponent's turn",
+      (WidgetTester tester) async {
+        final pos = Position.setupPosition(
+          Rule.crazyhouse,
+          Setup.parseFen(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[R] b KQkq - 0 1',
+          ),
+        );
+        await tester.pumpWidget(
+          _TestApp(
+            initialPlayerSide: PlayerSide.white,
+            rule: Rule.crazyhouse,
+            fen: pos.fen,
+            settings: const ChessboardSettings(enableDrops: true),
+            validDropSquares: pos.legalDrops.squares.toSet(),
+            bottomWidget: Draggable(
+              key: const Key('whiteRook'),
+              dragAnchorStrategy: pointerDragAnchorStrategy,
+              data: Piece.whiteRook,
+              feedback: const SizedBox.shrink(),
+              child: PieceWidget(
+                piece: Piece.whiteRook,
+                size: squareSize,
+                pieceAssets: PieceSet.merida.assets,
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      final whiteRookDraggable = find.byKey(const Key('whiteRook'));
-      await tester.drag(
-        whiteRookDraggable,
-        squareOffset(tester, Square.f3) - tester.getCenter(whiteRookDraggable),
-      );
-      await tester.pumpAndSettle();
+        final whiteRookDraggable = find.byKey(const Key('whiteRook'));
+        await tester.drag(
+          whiteRookDraggable,
+          squareOffset(tester, Square.f3) -
+              tester.getCenter(whiteRookDraggable),
+        );
+        await tester.pumpAndSettle();
 
-      expect(_isPremoveHighlight(tester, Square.f3), isTrue);
-    });
+        expect(_isPremoveHighlight(tester, Square.f3), isTrue);
+      },
+    );
 
     testWidgets('does not set drop premove when enablePremoves is false', (
       WidgetTester tester,
     ) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[R] b KQkq - 0 1'),
+        Setup.parseFen(
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[R] b KQkq - 0 1',
+        ),
       );
       await tester.pumpWidget(
         _TestApp(
           initialPlayerSide: PlayerSide.white,
           rule: Rule.crazyhouse,
           fen: pos.fen,
-          settings: const ChessboardSettings(enableDrops: true, enablePremoves: false),
+          settings: const ChessboardSettings(
+            enableDrops: true,
+            enablePremoves: false,
+          ),
           validDropSquares: pos.legalDrops.squares.toSet(),
           bottomWidget: Draggable(
             key: const Key('whiteRook'),
@@ -1553,14 +1763,19 @@ void main() {
       // automatically after the opponent responds.
       final pos = Position.setupPosition(
         Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[R] w KQkq - 0 1'),
+        Setup.parseFen(
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[R] w KQkq - 0 1',
+        ),
       );
       await tester.pumpWidget(
         _TestApp(
           initialPlayerSide: PlayerSide.white,
           rule: Rule.crazyhouse,
           fen: pos.fen,
-          settings: const ChessboardSettings(enableDrops: true, animationDuration: Duration.zero),
+          settings: const ChessboardSettings(
+            enableDrops: true,
+            animationDuration: Duration.zero,
+          ),
           // f3 is deliberately absent from validDropSquares
           validDropSquares: const {Square.a1},
           shouldPlayOpponentMove: true,
@@ -1602,7 +1817,9 @@ void main() {
     ) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
-        Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[P] b KQkq - 0 1'),
+        Setup.parseFen(
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[P] b KQkq - 0 1',
+        ),
       );
       await tester.pumpWidget(
         _TestApp(
@@ -1637,21 +1854,22 @@ void main() {
   });
 
   group('Promotion', () {
-    testWidgets('selector is shown when pendingPromotion is set on the controller', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        const _TestApp(
-          initialPlayerSide: PlayerSide.both,
-          fen: '8/5P2/2RK2P1/8/4k3/8/8/7r w - - 0 1',
-          initialPromotionMove: NormalMove(from: Square.f7, to: Square.f8),
-        ),
-      );
+    testWidgets(
+      'selector is shown when pendingPromotion is set on the controller',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            fen: '8/5P2/2RK2P1/8/4k3/8/8/7r w - - 0 1',
+            initialPromotionMove: NormalMove(from: Square.f7, to: Square.f8),
+          ),
+        );
 
-      expect(find.byType(PromotionSelector), findsOneWidget);
-      // pawn at f7 is hidden by painter while selector is open
-      expect(_piecesPainter(tester).promotionMoveFrom, Square.f7);
-    });
+        expect(find.byType(PromotionSelector), findsOneWidget);
+        // pawn at f7 is hidden by painter while selector is open
+        expect(_piecesPainter(tester).promotionMoveFrom, Square.f7);
+      },
+    );
 
     testWidgets('promote a knight', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -1682,7 +1900,10 @@ void main() {
 
     testWidgets('Player on top promotes a bishop', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const _TestApp(initialPlayerSide: PlayerSide.both, fen: 'K7/8/k7/8/8/8/p7/1Q4n1 b - - 0 1'),
+        const _TestApp(
+          initialPlayerSide: PlayerSide.both,
+          fen: 'K7/8/k7/8/8/8/p7/1Q4n1 b - - 0 1',
+        ),
       );
 
       await tester.tapAt(squareOffset(tester, Square.a2));
@@ -1703,62 +1924,71 @@ void main() {
       expect(_piecesPainter(tester).promotionMoveFrom, isNull);
     });
 
-    testWidgets('onMove is called exactly once with the complete move after piece selection', (
-      WidgetTester tester,
-    ) async {
-      final recorded = <(Move, bool?)>[];
-      final position = Position.setupPosition(
-        Rule.chess,
-        Setup.parseFen('8/5P2/2RK2P1/8/4k3/8/8/7r w - - 0 1'),
-      );
-      final controller = ChessboardController(
-        game: GameData(
-          fen: position.fen,
-          playerSide: PlayerSide.both,
-          sideToMove: Side.white,
-          validMoves: makeLegalMoves(position),
-        ),
-      );
-      addTearDown(controller.dispose);
+    testWidgets(
+      'onMove is called exactly once with the complete move after piece selection',
+      (WidgetTester tester) async {
+        final recorded = <(Move, bool?)>[];
+        final position = Position.setupPosition(
+          Rule.chess,
+          Setup.parseFen('8/5P2/2RK2P1/8/4k3/8/8/7r w - - 0 1'),
+        );
+        final controller = ChessboardController(
+          game: GameData(
+            fen: position.fen,
+            playerSide: PlayerSide.both,
+            sideToMove: Side.white,
+            validMoves: makeLegalMoves(position),
+          ),
+        );
+        addTearDown(controller.dispose);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Align(
-            alignment: Alignment.topLeft,
-            child: Chessboard(
-              controller: controller,
-              size: boardSize,
-              orientation: Side.white,
-              onMove: (move, {viaDragAndDrop}) => recorded.add((move, viaDragAndDrop)),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Align(
+              alignment: Alignment.topLeft,
+              child: Chessboard(
+                controller: controller,
+                size: boardSize,
+                orientation: Side.white,
+                onMove:
+                    (move, {viaDragAndDrop}) =>
+                        recorded.add((move, viaDragAndDrop)),
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      await tester.tapAt(squareOffset(tester, Square.f7));
-      await tester.pump();
-      await tester.tapAt(squareOffset(tester, Square.f8));
-      await tester.pump();
-      await tester.pump();
+        await tester.tapAt(squareOffset(tester, Square.f7));
+        await tester.pump();
+        await tester.tapAt(squareOffset(tester, Square.f8));
+        await tester.pump();
+        await tester.pump();
 
-      expect(find.byType(PromotionSelector), findsOneWidget);
-      // no callback fired before the user picks a piece
-      expect(recorded, isEmpty);
+        expect(find.byType(PromotionSelector), findsOneWidget);
+        // no callback fired before the user picks a piece
+        expect(recorded, isEmpty);
 
-      // tap knight (second choice, rendered at f7 square for white top-rank promotion)
-      await tester.tapAt(squareOffset(tester, Square.f7));
-      await tester.pump();
+        // tap knight (second choice, rendered at f7 square for white top-rank promotion)
+        await tester.tapAt(squareOffset(tester, Square.f7));
+        await tester.pump();
 
-      expect(recorded, hasLength(1));
-      expect(
-        recorded.first.$1,
-        const NormalMove(from: Square.f7, to: Square.f8, promotion: Role.knight),
-      );
-      expect(recorded.first.$2, isFalse); // tap move, not drag
-      expect(find.byType(PromotionSelector), findsNothing);
-    });
+        expect(recorded, hasLength(1));
+        expect(
+          recorded.first.$1,
+          const NormalMove(
+            from: Square.f7,
+            to: Square.f8,
+            promotion: Role.knight,
+          ),
+        );
+        expect(recorded.first.$2, isFalse); // tap move, not drag
+        expect(find.byType(PromotionSelector), findsNothing);
+      },
+    );
 
-    testWidgets('onMove is not called when promotion is cancelled', (WidgetTester tester) async {
+    testWidgets('onMove is not called when promotion is cancelled', (
+      WidgetTester tester,
+    ) async {
       final recorded = <Move>[];
       final position = Position.setupPosition(
         Rule.chess,
@@ -1830,14 +2060,19 @@ void main() {
               controller: controller,
               size: boardSize,
               orientation: Side.white,
-              onMove: (move, {viaDragAndDrop}) => recorded.add((move, viaDragAndDrop)),
+              onMove:
+                  (move, {viaDragAndDrop}) =>
+                      recorded.add((move, viaDragAndDrop)),
             ),
           ),
         ),
       );
 
       // drag pawn from f7 to f8 (one square up)
-      await tester.dragFrom(squareOffset(tester, Square.f7), const Offset(0, -squareSize));
+      await tester.dragFrom(
+        squareOffset(tester, Square.f7),
+        const Offset(0, -squareSize),
+      );
       await tester.pump();
       expect(find.byType(PromotionSelector), findsOneWidget);
       expect(recorded, isEmpty);
@@ -1855,7 +2090,9 @@ void main() {
       expect(find.byType(PromotionSelector), findsNothing);
     });
 
-    testWidgets('default promotion shows 4 pieces without king', (WidgetTester tester) async {
+    testWidgets('default promotion shows 4 pieces without king', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(
           initialPlayerSide: PlayerSide.both,
@@ -1884,47 +2121,54 @@ void main() {
 
       // Verify no king piece is present
       final pieceWidgets = tester.widgetList<PieceWidget>(piecesInSelector);
-      final hasKing = pieceWidgets.any((widget) => widget.piece.role == Role.king);
+      final hasKing = pieceWidgets.any(
+        (widget) => widget.piece.role == Role.king,
+      );
       expect(hasKing, false);
     });
 
-    testWidgets('promotion with canPromoteToKing shows 5 pieces including king', (
+    testWidgets(
+      'promotion with canPromoteToKing shows 5 pieces including king',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            fen: '8/5P2/2RK2P1/8/4k3/8/8/7r w - - 0 1',
+            canPromoteToKing: true,
+          ),
+        );
+
+        await tester.tapAt(squareOffset(tester, Square.f7));
+        await tester.pump();
+        await tester.tapAt(squareOffset(tester, Square.f8));
+        await tester.pump();
+
+        // wait for promotion selector to show
+        await tester.pump();
+        expect(find.byType(PromotionSelector), findsOneWidget);
+
+        // Find all PieceWidget instances within the PromotionSelector
+        final promotionSelector = find.byType(PromotionSelector);
+        final piecesInSelector = find.descendant(
+          of: promotionSelector,
+          matching: find.byType(PieceWidget),
+        );
+
+        // has exactly 5 pieces (queen, knight, rook, bishop, king)
+        expect(piecesInSelector, findsNWidgets(5));
+
+        // Verify king piece is present
+        final pieceWidgets = tester.widgetList<PieceWidget>(piecesInSelector);
+        final hasKing = pieceWidgets.any(
+          (widget) => widget.piece.role == Role.king,
+        );
+        expect(hasKing, true);
+      },
+    );
+
+    testWidgets('can promote to king when enabled', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(
-        const _TestApp(
-          initialPlayerSide: PlayerSide.both,
-          fen: '8/5P2/2RK2P1/8/4k3/8/8/7r w - - 0 1',
-          canPromoteToKing: true,
-        ),
-      );
-
-      await tester.tapAt(squareOffset(tester, Square.f7));
-      await tester.pump();
-      await tester.tapAt(squareOffset(tester, Square.f8));
-      await tester.pump();
-
-      // wait for promotion selector to show
-      await tester.pump();
-      expect(find.byType(PromotionSelector), findsOneWidget);
-
-      // Find all PieceWidget instances within the PromotionSelector
-      final promotionSelector = find.byType(PromotionSelector);
-      final piecesInSelector = find.descendant(
-        of: promotionSelector,
-        matching: find.byType(PieceWidget),
-      );
-
-      // has exactly 5 pieces (queen, knight, rook, bishop, king)
-      expect(piecesInSelector, findsNWidgets(5));
-
-      // Verify king piece is present
-      final pieceWidgets = tester.widgetList<PieceWidget>(piecesInSelector);
-      final hasKing = pieceWidgets.any((widget) => widget.piece.role == Role.king);
-      expect(hasKing, true);
-    });
-
-    testWidgets('can promote to king when enabled', (WidgetTester tester) async {
       await tester.pumpWidget(
         const _TestApp(
           initialPlayerSide: PlayerSide.both,
@@ -1950,7 +2194,9 @@ void main() {
       expect(_piecesPainter(tester).pieces.containsKey(Square.f7), isFalse);
     });
 
-    testWidgets('Player on top can promote to King', (WidgetTester tester) async {
+    testWidgets('Player on top can promote to King', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(
           initialPlayerSide: PlayerSide.both,
@@ -1993,9 +2239,13 @@ void main() {
         ),
       );
 
-      await tester.tapAt(squareOffset(tester, Square.f7, orientation: orientation));
+      await tester.tapAt(
+        squareOffset(tester, Square.f7, orientation: orientation),
+      );
       await tester.pump();
-      await tester.tapAt(squareOffset(tester, Square.f8, orientation: orientation));
+      await tester.tapAt(
+        squareOffset(tester, Square.f8, orientation: orientation),
+      );
       await tester.pump();
 
       // wait for promotion selector to show
@@ -2013,50 +2263,59 @@ void main() {
       // promotion pawn is hidden by painter (still in pieces map but skipped due to promotionMoveFrom)
       expect(_piecesPainter(tester).promotionMoveFrom, Square.f7);
 
-      await tester.tapAt(squareOffset(tester, Square.f7, orientation: orientation));
+      await tester.tapAt(
+        squareOffset(tester, Square.f7, orientation: orientation),
+      );
       await tester.pump();
       expect(_piecesPainter(tester).pieces[Square.f8], Piece.whiteKnight);
       expect(_piecesPainter(tester).pieces.containsKey(Square.f7), isFalse);
     });
 
-    testWidgets('player at bottom promotes a bishop on flipped board (orientation black)', (
-      WidgetTester tester,
-    ) async {
-      const orientation = Side.black;
-      await tester.pumpWidget(
-        const _TestApp(
-          initialPlayerSide: PlayerSide.both,
-          fen: 'K7/8/k7/8/8/8/p7/1Q4n1 b - - 0 1',
-          orientation: orientation,
-        ),
-      );
+    testWidgets(
+      'player at bottom promotes a bishop on flipped board (orientation black)',
+      (WidgetTester tester) async {
+        const orientation = Side.black;
+        await tester.pumpWidget(
+          const _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            fen: 'K7/8/k7/8/8/8/p7/1Q4n1 b - - 0 1',
+            orientation: orientation,
+          ),
+        );
 
-      await tester.tapAt(squareOffset(tester, Square.a2, orientation: orientation));
-      await tester.pump();
-      await tester.tapAt(squareOffset(tester, Square.b1, orientation: orientation));
-      await tester.pump();
+        await tester.tapAt(
+          squareOffset(tester, Square.a2, orientation: orientation),
+        );
+        await tester.pump();
+        await tester.tapAt(
+          squareOffset(tester, Square.b1, orientation: orientation),
+        );
+        await tester.pump();
 
-      // wait for promotion selector to show
-      await tester.pump();
-      expect(find.byType(PromotionSelector), findsOneWidget);
-      final promotionSelector = find.byType(PromotionSelector);
-      final piecesInSelector = find.descendant(
-        of: promotionSelector,
-        matching: find.byType(PieceWidget),
-      );
+        // wait for promotion selector to show
+        await tester.pump();
+        expect(find.byType(PromotionSelector), findsOneWidget);
+        final promotionSelector = find.byType(PromotionSelector);
+        final piecesInSelector = find.descendant(
+          of: promotionSelector,
+          matching: find.byType(PieceWidget),
+        );
 
-      // has exactly 4 pieces (queen, knight, rook, bishop)
-      expect(piecesInSelector, findsNWidgets(4));
+        // has exactly 4 pieces (queen, knight, rook, bishop)
+        expect(piecesInSelector, findsNWidgets(4));
 
-      // promotion pawn is hidden by painter (still in pieces map but skipped due to promotionMoveFrom)
-      expect(_piecesPainter(tester).promotionMoveFrom, Square.a2);
+        // promotion pawn is hidden by painter (still in pieces map but skipped due to promotionMoveFrom)
+        expect(_piecesPainter(tester).promotionMoveFrom, Square.a2);
 
-      // selector opens downward from b1 (rank 1 at top); queen, knight, rook, bishop
-      await tester.tapAt(squareOffset(tester, Square.b4, orientation: orientation));
-      await tester.pump();
-      expect(_piecesPainter(tester).pieces[Square.b1], Piece.blackBishop);
-      expect(_piecesPainter(tester).pieces.containsKey(Square.a2), isFalse);
-    });
+        // selector opens downward from b1 (rank 1 at top); queen, knight, rook, bishop
+        await tester.tapAt(
+          squareOffset(tester, Square.b4, orientation: orientation),
+        );
+        await tester.pump();
+        expect(_piecesPainter(tester).pieces[Square.b1], Piece.blackBishop);
+        expect(_piecesPainter(tester).pieces.containsKey(Square.a2), isFalse);
+      },
+    );
 
     testWidgets('can promote to king on flipped board (orientation black)', (
       WidgetTester tester,
@@ -2071,9 +2330,13 @@ void main() {
         ),
       );
 
-      await tester.tapAt(squareOffset(tester, Square.f7, orientation: orientation));
+      await tester.tapAt(
+        squareOffset(tester, Square.f7, orientation: orientation),
+      );
       await tester.pump();
-      await tester.tapAt(squareOffset(tester, Square.f8, orientation: orientation));
+      await tester.tapAt(
+        squareOffset(tester, Square.f8, orientation: orientation),
+      );
       await tester.pump();
 
       // wait for promotion selector to show
@@ -2088,46 +2351,55 @@ void main() {
       // has exactly 5 pieces (queen, knight, rook, bishop,king)
       expect(piecesInSelector, findsNWidgets(5));
 
-      await tester.tapAt(squareOffset(tester, Square.f4, orientation: orientation));
+      await tester.tapAt(
+        squareOffset(tester, Square.f4, orientation: orientation),
+      );
       await tester.pump();
 
       expect(_piecesPainter(tester).pieces[Square.f8], Piece.whiteKing);
       expect(_piecesPainter(tester).pieces.containsKey(Square.f7), isFalse);
     });
 
-    testWidgets('player at bottom can promote to King on flipped board (orientation black)', (
-      WidgetTester tester,
-    ) async {
-      const orientation = Side.black;
-      await tester.pumpWidget(
-        const _TestApp(
-          initialPlayerSide: PlayerSide.both,
-          fen: 'K7/8/k7/8/8/8/p7/1Q4n1 b - - 0 1',
-          orientation: orientation,
-          canPromoteToKing: true,
-        ),
-      );
-      await tester.tapAt(squareOffset(tester, Square.a2, orientation: orientation));
-      await tester.pump();
-      await tester.tapAt(squareOffset(tester, Square.b1, orientation: orientation));
-      await tester.pump();
+    testWidgets(
+      'player at bottom can promote to King on flipped board (orientation black)',
+      (WidgetTester tester) async {
+        const orientation = Side.black;
+        await tester.pumpWidget(
+          const _TestApp(
+            initialPlayerSide: PlayerSide.both,
+            fen: 'K7/8/k7/8/8/8/p7/1Q4n1 b - - 0 1',
+            orientation: orientation,
+            canPromoteToKing: true,
+          ),
+        );
+        await tester.tapAt(
+          squareOffset(tester, Square.a2, orientation: orientation),
+        );
+        await tester.pump();
+        await tester.tapAt(
+          squareOffset(tester, Square.b1, orientation: orientation),
+        );
+        await tester.pump();
 
-      expect(find.byType(PromotionSelector), findsOneWidget);
-      final promotionSelector = find.byType(PromotionSelector);
-      final piecesInSelector = find.descendant(
-        of: promotionSelector,
-        matching: find.byType(PieceWidget),
-      );
+        expect(find.byType(PromotionSelector), findsOneWidget);
+        final promotionSelector = find.byType(PromotionSelector);
+        final piecesInSelector = find.descendant(
+          of: promotionSelector,
+          matching: find.byType(PieceWidget),
+        );
 
-      // has exactly 5 pieces (queen, knight, rook, bishop, king)
-      expect(piecesInSelector, findsNWidgets(5));
+        // has exactly 5 pieces (queen, knight, rook, bishop, king)
+        expect(piecesInSelector, findsNWidgets(5));
 
-      await tester.tapAt(squareOffset(tester, Square.b5, orientation: orientation));
-      await tester.pump();
+        await tester.tapAt(
+          squareOffset(tester, Square.b5, orientation: orientation),
+        );
+        await tester.pump();
 
-      expect(_piecesPainter(tester).pieces[Square.b1], Piece.blackKing);
-      expect(_piecesPainter(tester).pieces.containsKey(Square.a2), isFalse);
-    });
+        expect(_piecesPainter(tester).pieces[Square.b1], Piece.blackKing);
+        expect(_piecesPainter(tester).pieces.containsKey(Square.a2), isFalse);
+      },
+    );
 
     testWidgets('cancels promotion', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -2172,7 +2444,9 @@ void main() {
       expect(_piecesPainter(tester).pieces[Square.f8], Piece.whiteQueen);
       expect(_piecesPainter(tester).pieces.containsKey(Square.f7), isFalse);
     });
-    testWidgets('promotion works when enableDrops is true', (WidgetTester tester) async {
+    testWidgets('promotion works when enableDrops is true', (
+      WidgetTester tester,
+    ) async {
       final pos = Position.setupPosition(
         Rule.crazyhouse,
         Setup.parseFen('8/5P2/2RK2P1/8/4k3/8/8/7r[P] w - - 0 1'),
@@ -2189,7 +2463,10 @@ void main() {
       );
 
       // Drag pawn to promotion square
-      await tester.dragFrom(squareOffset(tester, Square.f7), const Offset(0, -squareSize));
+      await tester.dragFrom(
+        squareOffset(tester, Square.f7),
+        const Offset(0, -squareSize),
+      );
       await tester.pump();
 
       // promotion dialog should show
@@ -2212,64 +2489,7 @@ void main() {
   });
 
   group('premoves', () {
-    testWidgets('select and deselect with empty square', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const _TestApp(
-          fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-          initialPlayerSide: PlayerSide.white,
-        ),
-      );
-
-      await tester.tapAt(squareOffset(tester, Square.f1));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f1), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 7);
-
-      await tester.tapAt(squareOffset(tester, Square.b4));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f1), isFalse);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
-    });
-
-    testWidgets('select and deselect with opponent piece', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const _TestApp(
-          fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-          initialPlayerSide: PlayerSide.white,
-        ),
-      );
-
-      await tester.tapAt(squareOffset(tester, Square.f1));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f1), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 7);
-
-      await tester.tapAt(squareOffset(tester, Square.f8));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f1), isFalse);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
-    });
-
-    testWidgets('select and deselect with same piece', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        const _TestApp(
-          fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-          initialPlayerSide: PlayerSide.white,
-        ),
-      );
-
-      await tester.tapAt(squareOffset(tester, Square.f1));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f1), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 7);
-
-      await tester.tapAt(squareOffset(tester, Square.f1));
-      await tester.pump();
-      expect(_isSelectedHighlight(tester, Square.f1), isFalse);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
-    });
-
-    testWidgets('dragging an unselected piece to the same square should keep the piece selected', (
+    testWidgets('select and deselect with empty square', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -2279,13 +2499,98 @@ void main() {
         ),
       );
 
-      final f1 = squareOffset(tester, Square.f1);
-      await tester.dragFrom(f1, const Offset(0, -(squareSize / 3)));
-      await tester.pumpAndSettle();
-
+      await tester.tapAt(squareOffset(tester, Square.f1));
+      await tester.pump();
       expect(_isSelectedHighlight(tester, Square.f1), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 7);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        7,
+      );
+
+      await tester.tapAt(squareOffset(tester, Square.b4));
+      await tester.pump();
+      expect(_isSelectedHighlight(tester, Square.f1), isFalse);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        0,
+      );
     });
+
+    testWidgets('select and deselect with opponent piece', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(
+          fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+          initialPlayerSide: PlayerSide.white,
+        ),
+      );
+
+      await tester.tapAt(squareOffset(tester, Square.f1));
+      await tester.pump();
+      expect(_isSelectedHighlight(tester, Square.f1), isTrue);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        7,
+      );
+
+      await tester.tapAt(squareOffset(tester, Square.f8));
+      await tester.pump();
+      expect(_isSelectedHighlight(tester, Square.f1), isFalse);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        0,
+      );
+    });
+
+    testWidgets('select and deselect with same piece', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(
+          fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+          initialPlayerSide: PlayerSide.white,
+        ),
+      );
+
+      await tester.tapAt(squareOffset(tester, Square.f1));
+      await tester.pump();
+      expect(_isSelectedHighlight(tester, Square.f1), isTrue);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        7,
+      );
+
+      await tester.tapAt(squareOffset(tester, Square.f1));
+      await tester.pump();
+      expect(_isSelectedHighlight(tester, Square.f1), isFalse);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        0,
+      );
+    });
+
+    testWidgets(
+      'dragging an unselected piece to the same square should keep the piece selected',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const _TestApp(
+            fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+            initialPlayerSide: PlayerSide.white,
+          ),
+        );
+
+        final f1 = squareOffset(tester, Square.f1);
+        await tester.dragFrom(f1, const Offset(0, -(squareSize / 3)));
+        await tester.pumpAndSettle();
+
+        expect(_isSelectedHighlight(tester, Square.f1), isTrue);
+        expect(
+          _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+          7,
+        );
+      },
+    );
 
     testWidgets('dragging off target unselects', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -2298,7 +2603,10 @@ void main() {
       await tester.tapAt(squareOffset(tester, Square.f1));
       await tester.pump();
       expect(_isSelectedHighlight(tester, Square.f1), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 7);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        7,
+      );
 
       await tester.dragFrom(
         squareOffset(tester, Square.f1),
@@ -2307,7 +2615,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(_isSelectedHighlight(tester, Square.f1), isFalse);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        0,
+      );
     });
 
     testWidgets('dragging off board unselects', (WidgetTester tester) async {
@@ -2321,19 +2632,28 @@ void main() {
       await tester.tapAt(squareOffset(tester, Square.f1));
       await tester.pump();
       expect(_isSelectedHighlight(tester, Square.f1), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 7);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        7,
+      );
 
       await tester.dragFrom(
         squareOffset(tester, Square.f1),
-        squareOffset(tester, Square.f1) + const Offset(0, -boardSize + squareSize),
+        squareOffset(tester, Square.f1) +
+            const Offset(0, -boardSize + squareSize),
       );
       await tester.pumpAndSettle();
 
       expect(_isSelectedHighlight(tester, Square.f1), isFalse);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 0);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        0,
+      );
     });
 
-    testWidgets('set/unset by tapping empty square or opponent piece', (WidgetTester tester) async {
+    testWidgets('set/unset by tapping empty square or opponent piece', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(
           fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
@@ -2378,14 +2698,17 @@ void main() {
       // unset by dragging off board
       await tester.dragFrom(
         squareOffset(tester, Square.e4),
-        squareOffset(tester, Square.e4) + const Offset(0, -boardSize + squareSize),
+        squareOffset(tester, Square.e4) +
+            const Offset(0, -boardSize + squareSize),
       );
       await tester.pump();
       expect(_isPremoveHighlight(tester, Square.e4), isFalse);
       expect(_isPremoveHighlight(tester, Square.f5), isFalse);
     });
 
-    testWidgets('unset by dragging to an empty square', (WidgetTester tester) async {
+    testWidgets('unset by dragging to an empty square', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(
           fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
@@ -2408,7 +2731,9 @@ void main() {
       expect(_isPremoveHighlight(tester, Square.f5), isFalse);
     });
 
-    testWidgets('unset by tapping same origin square again', (WidgetTester tester) async {
+    testWidgets('unset by tapping same origin square again', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(
           fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
@@ -2444,7 +2769,10 @@ void main() {
       // premove is still set
       expect(_isPremoveHighlight(tester, Square.d1), isTrue);
       expect(_isPremoveHighlight(tester, Square.f3), isTrue);
-      expect(_moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester), 4);
+      expect(
+        _moveDestHighlightCount(tester) + _premoveDestHighlightCount(tester),
+        4,
+      );
       await tester.tapAt(squareOffset(tester, Square.d4));
       await tester.pump();
       // premove is changed
@@ -2465,7 +2793,10 @@ void main() {
       await makeMove(tester, Square.d1, Square.f3);
       expect(_isPremoveHighlight(tester, Square.d1), isTrue);
       expect(_isPremoveHighlight(tester, Square.f3), isTrue);
-      await tester.dragFrom(squareOffset(tester, Square.d2), const Offset(0, -squareSize * 2));
+      await tester.dragFrom(
+        squareOffset(tester, Square.d2),
+        const Offset(0, -squareSize * 2),
+      );
       await tester.pump();
       // premove is changed
       expect(_isPremoveHighlight(tester, Square.d1), isFalse);
@@ -2482,14 +2813,19 @@ void main() {
         ),
       );
 
-      await tester.dragFrom(squareOffset(tester, Square.e4), const Offset(0, -squareSize));
+      await tester.dragFrom(
+        squareOffset(tester, Square.e4),
+        const Offset(0, -squareSize),
+      );
       await tester.pumpAndSettle();
       expect(_isPremoveHighlight(tester, Square.e4), isTrue);
       expect(_isPremoveHighlight(tester, Square.e5), isTrue);
       expect(_isSelectedHighlight(tester, Square.e4), isFalse);
     });
 
-    testWidgets('select another piece from same side does not unset', (WidgetTester tester) async {
+    testWidgets('select another piece from same side does not unset', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(
           fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
@@ -2547,7 +2883,10 @@ void main() {
         _TestApp(
           rule: Rule.crazyhouse,
           fen: pos.fen,
-          settings: const ChessboardSettings(animationDuration: Duration.zero, enableDrops: true),
+          settings: const ChessboardSettings(
+            animationDuration: Duration.zero,
+            enableDrops: true,
+          ),
           validDropSquares: pos.legalDrops.squares.toSet(),
           initialPlayerSide: PlayerSide.white,
           shouldPlayOpponentMove: true,
@@ -2617,7 +2956,9 @@ void main() {
       expect(_piecesPainter(tester).pieces[Square.g8], Piece.whiteQueen);
     });
 
-    testWidgets('play a premove with promotion, autoqueen disabled', (WidgetTester tester) async {
+    testWidgets('play a premove with promotion, autoqueen disabled', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         const _TestApp(
           settings: ChessboardSettings(
@@ -2699,22 +3040,37 @@ void main() {
   });
 
   group('Drawing shapes', () {
-    testWidgets('preconfigure board to draw a circle', (WidgetTester tester) async {
+    testWidgets('preconfigure board to draw a circle', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         _TestApp(
           initialPlayerSide: PlayerSide.both,
-          initialShapes: {const Circle(orig: Square.e4, color: Color(0xFF0000FF))},
+          initialShapes: {
+            const Circle(orig: Square.e4, color: Color(0xFF0000FF)),
+          },
         ),
       );
 
-      expect(find.byType(BoardShapeWidget), paints..path(color: const Color(0xFF0000FF)));
+      expect(
+        find.byType(BoardShapeWidget),
+        paints..path(color: const Color(0xFF0000FF)),
+      );
     });
 
-    testWidgets('preconfigure board to draw an arrow', (WidgetTester tester) async {
+    testWidgets('preconfigure board to draw an arrow', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         _TestApp(
           initialPlayerSide: PlayerSide.both,
-          initialShapes: {const Arrow(orig: Square.e2, dest: Square.e4, color: Color(0xFF0000FF))},
+          initialShapes: {
+            const Arrow(
+              orig: Square.e2,
+              dest: Square.e4,
+              color: Color(0xFF0000FF),
+            ),
+          },
         ),
       );
 
@@ -2726,7 +3082,9 @@ void main() {
       );
     });
 
-    testWidgets('preconfigure board to draw a piece shape', (WidgetTester tester) async {
+    testWidgets('preconfigure board to draw a piece shape', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         _TestApp(
           initialPlayerSide: PlayerSide.both,
@@ -2748,14 +3106,20 @@ void main() {
     });
 
     testWidgets('cannot draw if not enabled', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       await TestAsyncUtils.guard<void>(() async {
         // keep pressing an empty square to enable drawing shapes
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
 
         // drawing a circle with another tap
-        final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
+        final tapGesture = await tester.startGesture(
+          squareOffset(tester, Square.e4),
+        );
         await tapGesture.up();
 
         await pressGesture.up();
@@ -2765,14 +3129,20 @@ void main() {
     });
 
     testWidgets('draw a circle by hand', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       await TestAsyncUtils.guard<void>(() async {
         // keep pressing an empty square to enable drawing shapes
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
 
         // drawing a circle with another tap
-        final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
+        final tapGesture = await tester.startGesture(
+          squareOffset(tester, Square.e4),
+        );
         await tapGesture.up();
 
         await pressGesture.up();
@@ -2781,16 +3151,26 @@ void main() {
       // wait for the double tap delay to expire
       await tester.pump(const Duration(milliseconds: 210));
 
-      expect(find.byType(BoardShapeWidget), paints..path(color: const Color(0xFF0000FF)));
+      expect(
+        find.byType(BoardShapeWidget),
+        paints..path(color: const Color(0xFF0000FF)),
+      );
     });
 
     testWidgets('draw an arrow by hand', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       // keep pressing an empty square to enable drawing shapes
-      final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
+      final pressGesture = await tester.startGesture(
+        squareOffset(tester, Square.a3),
+      );
 
-      await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+      await tester.dragFrom(
+        squareOffset(tester, Square.e2),
+        const Offset(0, -(squareSize * 2)),
+      );
 
       await pressGesture.up();
 
@@ -2805,13 +3185,22 @@ void main() {
       );
     });
 
-    testWidgets('can draw shapes on an non-interactive board', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.none));
+    testWidgets('can draw shapes on an non-interactive board', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.none),
+      );
 
       // keep pressing an empty square to enable drawing shapes
-      final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
+      final pressGesture = await tester.startGesture(
+        squareOffset(tester, Square.a3),
+      );
 
-      await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+      await tester.dragFrom(
+        squareOffset(tester, Square.e2),
+        const Offset(0, -(squareSize * 2)),
+      );
 
       await pressGesture.up();
 
@@ -2827,14 +3216,20 @@ void main() {
     });
 
     testWidgets('double tap to clear shapes', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       await TestAsyncUtils.guard<void>(() async {
         // keep pressing an empty square to enable drawing shapes
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
 
         // drawing a circle with another tap
-        final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
+        final tapGesture = await tester.startGesture(
+          squareOffset(tester, Square.e4),
+        );
         await tapGesture.up();
 
         await pressGesture.up();
@@ -2844,9 +3239,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 210));
 
       // keep pressing an empty square to enable drawing shapes
-      final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
+      final pressGesture = await tester.startGesture(
+        squareOffset(tester, Square.a3),
+      );
 
-      await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+      await tester.dragFrom(
+        squareOffset(tester, Square.e2),
+        const Offset(0, -(squareSize * 2)),
+      );
 
       await pressGesture.up();
 
@@ -2862,15 +3262,23 @@ void main() {
       expect(find.byType(BoardShapeWidget), findsNothing);
     });
 
-    testWidgets('selecting one piece should clear user drawn shapes', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+    testWidgets('selecting one piece should clear user drawn shapes', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       await TestAsyncUtils.guard<void>(() async {
         // keep pressing an empty square to enable drawing shapes
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
 
         // drawing a circle with another tap
-        final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
+        final tapGesture = await tester.startGesture(
+          squareOffset(tester, Square.e4),
+        );
         await tapGesture.up();
 
         await pressGesture.up();
@@ -2887,13 +3295,21 @@ void main() {
       expect(find.byType(BoardShapeWidget), findsNothing);
     });
 
-    testWidgets('drawing the same circle twice removes it', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+    testWidgets('drawing the same circle twice removes it', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       Future<void> drawCircleOnE4() async {
         await TestAsyncUtils.guard<void>(() async {
-          final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
-          final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
+          final pressGesture = await tester.startGesture(
+            squareOffset(tester, Square.a3),
+          );
+          final tapGesture = await tester.startGesture(
+            squareOffset(tester, Square.e4),
+          );
           await tapGesture.up();
           await pressGesture.up();
         });
@@ -2907,12 +3323,21 @@ void main() {
       expect(find.byType(BoardShapeWidget), findsNothing);
     });
 
-    testWidgets('drawing the same arrow twice removes it', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+    testWidgets('drawing the same arrow twice removes it', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.both),
+      );
 
       Future<void> drawArrowE2E4() async {
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
-        await tester.dragFrom(squareOffset(tester, Square.e2), const Offset(0, -(squareSize * 2)));
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
+        await tester.dragFrom(
+          squareOffset(tester, Square.e2),
+          const Offset(0, -(squareSize * 2)),
+        );
         await pressGesture.up();
         await tester.pump(const Duration(milliseconds: 210));
       }
@@ -2924,28 +3349,40 @@ void main() {
       expect(find.byType(BoardShapeWidget), findsNothing);
     });
 
-    testWidgets('drawing a different shape on the same square adds to the set', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+    testWidgets(
+      'drawing a different shape on the same square adds to the set',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const _TestApp(initialPlayerSide: PlayerSide.both),
+        );
 
-      // draw a circle on e4
-      await TestAsyncUtils.guard<void>(() async {
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
-        final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
-        await tapGesture.up();
+        // draw a circle on e4
+        await TestAsyncUtils.guard<void>(() async {
+          final pressGesture = await tester.startGesture(
+            squareOffset(tester, Square.a3),
+          );
+          final tapGesture = await tester.startGesture(
+            squareOffset(tester, Square.e4),
+          );
+          await tapGesture.up();
+          await pressGesture.up();
+        });
+        await tester.pump(const Duration(milliseconds: 210));
+
+        // draw an arrow from e4 to e6 — different shape, same origin square
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
+        await tester.dragFrom(
+          squareOffset(tester, Square.e4),
+          const Offset(0, -(squareSize * 2)),
+        );
         await pressGesture.up();
-      });
-      await tester.pump(const Duration(milliseconds: 210));
+        await tester.pump(const Duration(milliseconds: 210));
 
-      // draw an arrow from e4 to e6 — different shape, same origin square
-      final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
-      await tester.dragFrom(squareOffset(tester, Square.e4), const Offset(0, -(squareSize * 2)));
-      await pressGesture.up();
-      await tester.pump(const Duration(milliseconds: 210));
-
-      expect(find.byType(BoardShapeWidget), findsNWidgets(2));
-    });
+        expect(find.byType(BoardShapeWidget), findsNWidgets(2));
+      },
+    );
 
     testWidgets('external shapes are displayed alongside drawn shapes', (
       WidgetTester tester,
@@ -2953,7 +3390,13 @@ void main() {
       await tester.pumpWidget(
         _TestApp(
           initialPlayerSide: PlayerSide.both,
-          initialShapes: {const Arrow(orig: Square.d1, dest: Square.d4, color: Color(0xFFFF0000))},
+          initialShapes: {
+            const Arrow(
+              orig: Square.d1,
+              dest: Square.d4,
+              color: Color(0xFFFF0000),
+            ),
+          },
         ),
       );
 
@@ -2962,8 +3405,12 @@ void main() {
 
       await TestAsyncUtils.guard<void>(() async {
         // draw a circle by hand
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
-        final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
+        final tapGesture = await tester.startGesture(
+          squareOffset(tester, Square.e4),
+        );
         await tapGesture.up();
         await pressGesture.up();
       });
@@ -2981,14 +3428,20 @@ void main() {
       await tester.pumpWidget(
         _TestApp(
           initialPlayerSide: PlayerSide.both,
-          initialShapes: {const Circle(orig: Square.d4, color: Color(0xFFFF0000))},
+          initialShapes: {
+            const Circle(orig: Square.d4, color: Color(0xFFFF0000)),
+          },
         ),
       );
 
       await TestAsyncUtils.guard<void>(() async {
         // draw a circle by hand
-        final pressGesture = await tester.startGesture(squareOffset(tester, Square.a3));
-        final tapGesture = await tester.startGesture(squareOffset(tester, Square.e4));
+        final pressGesture = await tester.startGesture(
+          squareOffset(tester, Square.a3),
+        );
+        final tapGesture = await tester.startGesture(
+          squareOffset(tester, Square.e4),
+        );
         await tapGesture.up();
         await pressGesture.up();
       });
@@ -3019,12 +3472,21 @@ void main() {
           PieceOrientationBehavior.facingUser => false,
           PieceOrientationBehavior.opponentUpsideDown =>
             entry.value.color == painter.orientation.opposite,
-          PieceOrientationBehavior.sideToPlay => painter.sideToMove == painter.orientation.opposite,
+          PieceOrientationBehavior.sideToPlay =>
+            painter.sideToMove == painter.orientation.opposite,
         };
         if (entry.value.color == Side.white) {
-          expect(isUpsideDown, expectWhiteUpsideDown, reason: 'white is upside down');
+          expect(
+            isUpsideDown,
+            expectWhiteUpsideDown,
+            reason: 'white is upside down',
+          );
         } else {
-          expect(isUpsideDown, expectBlackUpsideDown, reason: 'black is upside down');
+          expect(
+            isUpsideDown,
+            expectBlackUpsideDown,
+            reason: 'black is upside down',
+          );
         }
       }
     }
@@ -3034,17 +3496,27 @@ void main() {
         await tester.pumpWidget(
           _TestApp(
             key: ValueKey(orientation),
-            settings: const ChessboardSettings(animationDuration: Duration.zero),
+            settings: const ChessboardSettings(
+              animationDuration: Duration.zero,
+            ),
             initialPlayerSide: PlayerSide.both,
             orientation: orientation,
           ),
         );
 
-        checkUpsideDownPieces(tester, expectWhiteUpsideDown: false, expectBlackUpsideDown: false);
+        checkUpsideDownPieces(
+          tester,
+          expectWhiteUpsideDown: false,
+          expectBlackUpsideDown: false,
+        );
 
         await makeMove(tester, Square.e2, Square.e4);
 
-        checkUpsideDownPieces(tester, expectWhiteUpsideDown: false, expectBlackUpsideDown: false);
+        checkUpsideDownPieces(
+          tester,
+          expectWhiteUpsideDown: false,
+          expectBlackUpsideDown: false,
+        );
       }
     });
 
@@ -3057,7 +3529,8 @@ void main() {
             orientation: orientation,
             settings: const ChessboardSettings(
               animationDuration: Duration.zero,
-              pieceOrientationBehavior: PieceOrientationBehavior.opponentUpsideDown,
+              pieceOrientationBehavior:
+                  PieceOrientationBehavior.opponentUpsideDown,
             ),
           ),
         );
@@ -3120,8 +3593,11 @@ void main() {
       controller.dispose();
     });
 
-    Widget buildBoard() =>
-        Chessboard(controller: controller, size: boardSize, orientation: Side.white);
+    Widget buildBoard() => Chessboard(
+      controller: controller,
+      size: boardSize,
+      orientation: Side.white,
+    );
 
     testWidgets(
       'no explosion on initial render even when triggerExplosion was called before pump',
@@ -3133,7 +3609,9 @@ void main() {
       },
     );
 
-    testWidgets('explosion is active when triggerExplosion is called', (WidgetTester tester) async {
+    testWidgets('explosion is active when triggerExplosion is called', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(buildBoard());
       controller.triggerExplosion({Square.e4});
       await tester.pump();
@@ -3141,7 +3619,9 @@ void main() {
       expect(_explosionsPainter(tester).notifier.activeExplosionCount, 1);
     });
 
-    testWidgets('one active explosion per square in the set', (WidgetTester tester) async {
+    testWidgets('one active explosion per square in the set', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(buildBoard());
       controller.triggerExplosion({Square.e4, Square.d5, Square.f6});
       await tester.pump();
@@ -3149,7 +3629,9 @@ void main() {
       expect(_explosionsPainter(tester).notifier.activeExplosionCount, 3);
     });
 
-    testWidgets('explosions are removed after animation completes', (WidgetTester tester) async {
+    testWidgets('explosions are removed after animation completes', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(buildBoard());
       controller.triggerExplosion({Square.e4});
       await tester.pump();
@@ -3161,7 +3643,9 @@ void main() {
       expect(_explosionsPainter(tester).notifier.activeExplosionCount, 0);
     });
 
-    testWidgets('same Set reference does not re-trigger explosions', (WidgetTester tester) async {
+    testWidgets('same Set reference does not re-trigger explosions', (
+      WidgetTester tester,
+    ) async {
       final squares = {Square.e4};
 
       await tester.pumpWidget(buildBoard());
@@ -3220,146 +3704,157 @@ void main() {
     // _BoardState and creates a new one before disposing the old one, which
     // previously triggered the "ChessboardController is already attached"
     // assertion in attachTo().
-    testWidgets('does not crash when a sibling is inserted before the board in a Column', (
-      WidgetTester tester,
-    ) async {
-      bool showExtra = false;
+    testWidgets(
+      'does not crash when a sibling is inserted before the board in a Column',
+      (WidgetTester tester) async {
+        bool showExtra = false;
 
-      await tester.pumpWidget(
-        StatefulBuilder(
-          builder: (context, setState) {
-            return MaterialApp(
-              // NoSplash avoids loading ink_sparkle.frag shader in tests;
-              // Flutter 3.44 changed the shader format and it fails in the test environment.
-              theme: ThemeData(splashFactory: NoSplash.splashFactory),
-              home: Column(
-                children: [
-                  if (showExtra) const SizedBox(height: 10),
-                  Chessboard(controller: controller, size: boardSize, orientation: Side.white),
-                  ElevatedButton(
-                    onPressed: () => setState(() => showExtra = !showExtra),
-                    child: const Text('toggle'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
+        await tester.pumpWidget(
+          StatefulBuilder(
+            builder: (context, setState) {
+              return MaterialApp(
+                // NoSplash avoids loading ink_sparkle.frag shader in tests;
+                // Flutter 3.44 changed the shader format and it fails in the test environment.
+                theme: ThemeData(splashFactory: NoSplash.splashFactory),
+                home: Column(
+                  children: [
+                    if (showExtra) const SizedBox(height: 10),
+                    Chessboard(
+                      controller: controller,
+                      size: boardSize,
+                      orientation: Side.white,
+                    ),
+                    ElevatedButton(
+                      onPressed: () => setState(() => showExtra = !showExtra),
+                      child: const Text('toggle'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
 
-      expect(find.byType(Chessboard), findsOneWidget);
-      expect(_piecesPainter(tester).pieces.length, 32);
+        expect(find.byType(Chessboard), findsOneWidget);
+        expect(_piecesPainter(tester).pieces.length, 32);
 
-      await tester.tap(find.text('toggle'));
-      await tester.pump();
+        await tester.tap(find.text('toggle'));
+        await tester.pump();
 
-      expect(find.byType(Chessboard), findsOneWidget);
-      expect(_piecesPainter(tester).pieces.length, 32);
-    });
+        expect(find.byType(Chessboard), findsOneWidget);
+        expect(_piecesPainter(tester).pieces.length, 32);
+      },
+    );
 
-    testWidgets('controller remains functional after the board shifts position in a Column', (
-      WidgetTester tester,
-    ) async {
-      bool showExtra = false;
+    testWidgets(
+      'controller remains functional after the board shifts position in a Column',
+      (WidgetTester tester) async {
+        bool showExtra = false;
 
-      await tester.pumpWidget(
-        StatefulBuilder(
-          builder: (context, setState) {
-            return MaterialApp(
-              theme: ThemeData(splashFactory: NoSplash.splashFactory),
-              home: Column(
-                children: [
-                  if (showExtra) const SizedBox(height: 10),
-                  Chessboard(controller: controller, size: boardSize, orientation: Side.white),
-                  ElevatedButton(
-                    onPressed: () => setState(() => showExtra = !showExtra),
-                    child: const Text('toggle'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
+        await tester.pumpWidget(
+          StatefulBuilder(
+            builder: (context, setState) {
+              return MaterialApp(
+                theme: ThemeData(splashFactory: NoSplash.splashFactory),
+                home: Column(
+                  children: [
+                    if (showExtra) const SizedBox(height: 10),
+                    Chessboard(
+                      controller: controller,
+                      size: boardSize,
+                      orientation: Side.white,
+                    ),
+                    ElevatedButton(
+                      onPressed: () => setState(() => showExtra = !showExtra),
+                      child: const Text('toggle'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
 
-      // Shift the board to a new position in the tree.
-      await tester.tap(find.text('toggle'));
-      await tester.pump();
+        // Shift the board to a new position in the tree.
+        await tester.tap(find.text('toggle'));
+        await tester.pump();
 
-      // Controller should still drive the board correctly.
-      controller.updatePosition(
-        const GameData(
-          fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-          playerSide: PlayerSide.none,
-          sideToMove: Side.black,
-          validMoves: {},
-        ),
-        animate: false,
-        resetPremove: true,
-      );
-      await tester.pump();
+        // Controller should still drive the board correctly.
+        controller.updatePosition(
+          const GameData(
+            fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+            playerSide: PlayerSide.none,
+            sideToMove: Side.black,
+            validMoves: {},
+          ),
+          animate: false,
+          resetPremove: true,
+        );
+        await tester.pump();
 
-      expect(_piecesPainter(tester).pieces.containsKey(Square.e4), isTrue);
-      expect(_piecesPainter(tester).pieces.containsKey(Square.e2), isFalse);
-    });
+        expect(_piecesPainter(tester).pieces.containsKey(Square.e4), isTrue);
+        expect(_piecesPainter(tester).pieces.containsKey(Square.e2), isFalse);
+      },
+    );
 
     // Regression: after a tree shift, the old _BoardState.dispose() called
     // detach() on the controller, nulling the animations that the new state had
     // just set up in its initState(). Any subsequent rebuild (e.g. from setState
     // triggered by piece selection) then crashed with "not attached".
-    testWidgets('board is still interactive after tree shift (setState-triggered rebuild)', (
-      WidgetTester tester,
-    ) async {
-      bool showExtra = false;
-      const position = Chess.initial;
-      final interactiveController = ChessboardController(
-        game: GameData(
-          fen: kInitialFEN,
-          playerSide: PlayerSide.both,
-          sideToMove: Side.white,
-          validMoves: makeLegalMoves(position),
-        ),
-      );
-      addTearDown(interactiveController.dispose);
+    testWidgets(
+      'board is still interactive after tree shift (setState-triggered rebuild)',
+      (WidgetTester tester) async {
+        bool showExtra = false;
+        const position = Chess.initial;
+        final interactiveController = ChessboardController(
+          game: GameData(
+            fen: kInitialFEN,
+            playerSide: PlayerSide.both,
+            sideToMove: Side.white,
+            validMoves: makeLegalMoves(position),
+          ),
+        );
+        addTearDown(interactiveController.dispose);
 
-      await tester.pumpWidget(
-        StatefulBuilder(
-          builder: (context, setState) {
-            return MaterialApp(
-              theme: ThemeData(splashFactory: NoSplash.splashFactory),
-              home: Column(
-                children: [
-                  if (showExtra) const SizedBox(height: 10),
-                  Chessboard(
-                    controller: interactiveController,
-                    size: boardSize,
-                    orientation: Side.white,
-                    onMove: (_, {viaDragAndDrop}) {},
-                  ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => showExtra = !showExtra),
-                    child: const Text('toggle'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
+        await tester.pumpWidget(
+          StatefulBuilder(
+            builder: (context, setState) {
+              return MaterialApp(
+                theme: ThemeData(splashFactory: NoSplash.splashFactory),
+                home: Column(
+                  children: [
+                    if (showExtra) const SizedBox(height: 10),
+                    Chessboard(
+                      controller: interactiveController,
+                      size: boardSize,
+                      orientation: Side.white,
+                      onMove: (_, {viaDragAndDrop}) {},
+                    ),
+                    ElevatedButton(
+                      onPressed: () => setState(() => showExtra = !showExtra),
+                      child: const Text('toggle'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
 
-      // Shift the board (inserts a sibling before it).
-      await tester.tap(find.text('toggle'));
-      await tester.pump();
-      // At this point the old _BoardState has been disposed. Without the fix,
-      // dispose() would have nulled the controller's animations.
+        // Shift the board (inserts a sibling before it).
+        await tester.tap(find.text('toggle'));
+        await tester.pump();
+        // At this point the old _BoardState has been disposed. Without the fix,
+        // dispose() would have nulled the controller's animations.
 
-      // Tapping a piece triggers setState inside _BoardState, which rebuilds
-      // the board and accesses _controller.fadeAnimation — crashing without fix.
-      await tester.tapAt(squareOffset(tester, Square.e2));
-      await tester.pump();
+        // Tapping a piece triggers setState inside _BoardState, which rebuilds
+        // the board and accesses _controller.fadeAnimation — crashing without fix.
+        await tester.tapAt(squareOffset(tester, Square.e2));
+        await tester.pump();
 
-      expect(_isSelectedHighlight(tester, Square.e2), isTrue);
-    });
+        expect(_isSelectedHighlight(tester, Square.e2), isTrue);
+      },
+    );
 
     test('detached animation getters fall back instead of null-crashing', () {
       // Sentry CHESSEVER-1N2: Flutter can still build/paint a board during a
@@ -3375,57 +3870,60 @@ void main() {
     // Regression: same bug but in the reverse direction — removing the sibling
     // shifts the board from index 1 back to index 0, going through the same
     // deactivate → new initState → old dispose sequence.
-    testWidgets('board is still interactive after reverse tree shift (sibling removal)', (
+    testWidgets(
+      'board is still interactive after reverse tree shift (sibling removal)',
+      (WidgetTester tester) async {
+        bool showExtra = true;
+        const position = Chess.initial;
+        final interactiveController = ChessboardController(
+          game: GameData(
+            fen: kInitialFEN,
+            playerSide: PlayerSide.both,
+            sideToMove: Side.white,
+            validMoves: makeLegalMoves(position),
+          ),
+        );
+        addTearDown(interactiveController.dispose);
+
+        await tester.pumpWidget(
+          StatefulBuilder(
+            builder: (context, setState) {
+              return MaterialApp(
+                theme: ThemeData(splashFactory: NoSplash.splashFactory),
+                home: Column(
+                  children: [
+                    if (showExtra) const SizedBox(height: 10),
+                    Chessboard(
+                      controller: interactiveController,
+                      size: boardSize,
+                      orientation: Side.white,
+                      onMove: (_, {viaDragAndDrop}) {},
+                    ),
+                    ElevatedButton(
+                      onPressed: () => setState(() => showExtra = !showExtra),
+                      child: const Text('toggle'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+
+        // Remove the sibling to shift board back to index 0.
+        await tester.tap(find.text('toggle'));
+        await tester.pump();
+
+        await tester.tapAt(squareOffset(tester, Square.e2));
+        await tester.pump();
+
+        expect(_isSelectedHighlight(tester, Square.e2), isTrue);
+      },
+    );
+
+    testWidgets('board survives repeated back-and-forth tree shifts', (
       WidgetTester tester,
     ) async {
-      bool showExtra = true;
-      const position = Chess.initial;
-      final interactiveController = ChessboardController(
-        game: GameData(
-          fen: kInitialFEN,
-          playerSide: PlayerSide.both,
-          sideToMove: Side.white,
-          validMoves: makeLegalMoves(position),
-        ),
-      );
-      addTearDown(interactiveController.dispose);
-
-      await tester.pumpWidget(
-        StatefulBuilder(
-          builder: (context, setState) {
-            return MaterialApp(
-              theme: ThemeData(splashFactory: NoSplash.splashFactory),
-              home: Column(
-                children: [
-                  if (showExtra) const SizedBox(height: 10),
-                  Chessboard(
-                    controller: interactiveController,
-                    size: boardSize,
-                    orientation: Side.white,
-                    onMove: (_, {viaDragAndDrop}) {},
-                  ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => showExtra = !showExtra),
-                    child: const Text('toggle'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
-
-      // Remove the sibling to shift board back to index 0.
-      await tester.tap(find.text('toggle'));
-      await tester.pump();
-
-      await tester.tapAt(squareOffset(tester, Square.e2));
-      await tester.pump();
-
-      expect(_isSelectedHighlight(tester, Square.e2), isTrue);
-    });
-
-    testWidgets('board survives repeated back-and-forth tree shifts', (WidgetTester tester) async {
       bool showExtra = false;
 
       await tester.pumpWidget(
@@ -3436,7 +3934,11 @@ void main() {
               home: Column(
                 children: [
                   if (showExtra) const SizedBox(height: 10),
-                  Chessboard(controller: controller, size: boardSize, orientation: Side.white),
+                  Chessboard(
+                    controller: controller,
+                    size: boardSize,
+                    orientation: Side.white,
+                  ),
                   ElevatedButton(
                     onPressed: () => setState(() => showExtra = !showExtra),
                     child: const Text('toggle'),
@@ -3452,7 +3954,8 @@ void main() {
       // goes through the full deactivate → new initState → old dispose cycle.
       // updatePosition(animate: false) forces a rebuild after each shift so
       // that any broken animation state is exercised immediately.
-      const altFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+      const altFen =
+          'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
       for (var i = 0; i < 3; i++) {
         await tester.tap(find.text('toggle'));
         await tester.pump();
@@ -3487,7 +3990,9 @@ void main() {
       WidgetTester tester,
     ) async {
       // White knight on f3, black pawn on e5 (plus kings).
-      final captureController = nonInteractiveController('4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1');
+      final captureController = nonInteractiveController(
+        '4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1',
+      );
       addTearDown(captureController.dispose);
 
       // The board carries a GlobalKey and lives in one of two branches. Flipping
@@ -3537,7 +4042,10 @@ void main() {
 
       // Precondition: the animation has finished and been committed to the static
       // position, so no animation pieces linger.
-      expect(_translatingPiecesPainter(tester)?.translatingPieces ?? const {}, isEmpty);
+      expect(
+        _translatingPiecesPainter(tester)?.translatingPieces ?? const {},
+        isEmpty,
+      );
       expect(_fadingPiecesPainter(tester)?.fadingPieces ?? const {}, isEmpty);
 
       // Reparent the board: detaches and re-attaches the controller.
@@ -3546,13 +4054,19 @@ void main() {
 
       // The freshly attached controller is at value 0.0; with nothing committed
       // to animate, no ghosts are painted over the static position.
-      expect(_translatingPiecesPainter(tester)?.translatingPieces ?? const {}, isEmpty);
+      expect(
+        _translatingPiecesPainter(tester)?.translatingPieces ?? const {},
+        isEmpty,
+      );
       expect(_fadingPiecesPainter(tester)?.fadingPieces ?? const {}, isEmpty);
 
       // The static position is intact: knight on e5, pawn gone.
       expect(_piecesPainter(tester).pieces[Square.e5], Piece.whiteKnight);
       expect(_piecesPainter(tester).pieces.containsKey(Square.e5), isTrue);
-      expect(_piecesPainter(tester).pieces.values.where((p) => p == Piece.blackPawn), isEmpty);
+      expect(
+        _piecesPainter(tester).pieces.values.where((p) => p == Piece.blackPawn),
+        isEmpty,
+      );
     });
 
     // Regression (lichess-org/mobile#3272 follow-up): clearing the translating
@@ -3563,157 +4077,194 @@ void main() {
     // stale frame in which the destination square was left blank and the animated
     // piece visibly disappears on the canvas. This asserts the actual rendered
     // pixels, which the notifier-only check above cannot catch.
-    testWidgets('animated piece stays painted after a tree shift clears the animation', (
-      WidgetTester tester,
-    ) async {
-      // Render real (solid blue) piece images so we can read painted pixels.
-      final pieceAssets = const ChessboardSettings().pieceAssets;
-      for (final asset in pieceAssets.values.toSet()) {
-        ChessgroundImages.instance.add(asset, await _createFakeImage(45, 45));
-      }
-      addTearDown(() {
+    testWidgets(
+      'animated piece stays painted after a tree shift clears the animation',
+      (WidgetTester tester) async {
+        // Render real (solid blue) piece images so we can read painted pixels.
+        final pieceAssets = const ChessboardSettings().pieceAssets;
         for (final asset in pieceAssets.values.toSet()) {
-          ChessgroundImages.instance.evict(asset);
+          ChessgroundImages.instance.add(asset, await _createFakeImage(45, 45));
         }
-      });
+        addTearDown(() {
+          for (final asset in pieceAssets.values.toSet()) {
+            ChessgroundImages.instance.evict(asset);
+          }
+        });
 
-      final captureController = nonInteractiveController('4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1');
-      addTearDown(captureController.dispose);
+        final captureController = nonInteractiveController(
+          '4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1',
+        );
+        addTearDown(captureController.dispose);
 
-      final boundaryKey = GlobalKey();
-      final boardKey = GlobalKey();
-      bool moved = false;
-      await tester.pumpWidget(
-        StatefulBuilder(
-          builder: (context, setState) {
-            final board = RepaintBoundary(
-              key: boundaryKey,
-              child: Chessboard(
-                key: boardKey,
-                controller: captureController,
-                size: boardSize,
-                orientation: Side.white,
-              ),
-            );
-            return MaterialApp(
-              theme: ThemeData(splashFactory: NoSplash.splashFactory),
-              home: Column(
-                children: [
-                  Expanded(child: moved ? const SizedBox.shrink() : board),
-                  Expanded(child: moved ? board : const SizedBox.shrink()),
-                  ElevatedButton(
-                    onPressed: () => setState(() => moved = !moved),
-                    child: const Text('toggle'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
+        final boundaryKey = GlobalKey();
+        final boardKey = GlobalKey();
+        bool moved = false;
+        await tester.pumpWidget(
+          StatefulBuilder(
+            builder: (context, setState) {
+              final board = RepaintBoundary(
+                key: boundaryKey,
+                child: Chessboard(
+                  key: boardKey,
+                  controller: captureController,
+                  size: boardSize,
+                  orientation: Side.white,
+                ),
+              );
+              return MaterialApp(
+                theme: ThemeData(splashFactory: NoSplash.splashFactory),
+                home: Column(
+                  children: [
+                    Expanded(child: moved ? const SizedBox.shrink() : board),
+                    Expanded(child: moved ? board : const SizedBox.shrink()),
+                    ElevatedButton(
+                      onPressed: () => setState(() => moved = !moved),
+                      child: const Text('toggle'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
 
-      // Animate Nxe5: the knight translates f3 -> e5 (skipped by the static
-      // painter) and the captured pawn fades out on e5.
-      captureController.updatePosition(
-        const GameData(
-          fen: '4k3/8/8/4N3/8/8/8/4K3 b - - 0 1',
-          playerSide: PlayerSide.none,
-          sideToMove: Side.black,
-          validMoves: {},
-        ),
-      );
-      await tester.pumpAndSettle();
+        // Animate Nxe5: the knight translates f3 -> e5 (skipped by the static
+        // painter) and the captured pawn fades out on e5.
+        captureController.updatePosition(
+          const GameData(
+            fen: '4k3/8/8/4N3/8/8/8/4K3 b - - 0 1',
+            playerSide: PlayerSide.none,
+            sideToMove: Side.black,
+            validMoves: {},
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      // Reparent the board: deactivate() -> detach() clears the translating
-      // notifier, activate() -> attachTo() re-attaches a fresh controller.
-      await tester.tap(find.text('toggle'));
-      await tester.pumpAndSettle();
+        // Reparent the board: deactivate() -> detach() clears the translating
+        // notifier, activate() -> attachTo() re-attaches a fresh controller.
+        await tester.tap(find.text('toggle'));
+        await tester.pumpAndSettle();
 
-      // The knight must remain visible on e5 (solid blue piece), not vanish.
-      // Offset is relative to the board's own origin (the RepaintBoundary), white
-      // orientation: file e -> x index 4, rank 5 -> y index 7 - 4 = 3.
-      const e5Center = Offset(4 * squareSize + squareSize / 2, 3 * squareSize + squareSize / 2);
-      final color = await _renderedColorAt(tester, boundaryKey, e5Center);
-      expect(color.a, greaterThan(0.75), reason: 'e5 should be opaque (piece present)');
-      expect(color.b, greaterThan(0.75), reason: 'e5 should show the blue knight');
-      expect(color.r, lessThan(0.3), reason: 'e5 should not show the bare board square');
-    });
+        // The knight must remain visible on e5 (solid blue piece), not vanish.
+        // Offset is relative to the board's own origin (the RepaintBoundary), white
+        // orientation: file e -> x index 4, rank 5 -> y index 7 - 4 = 3.
+        const e5Center = Offset(
+          4 * squareSize + squareSize / 2,
+          3 * squareSize + squareSize / 2,
+        );
+        final color = await _renderedColorAt(tester, boundaryKey, e5Center);
+        expect(
+          color.a,
+          greaterThan(0.75),
+          reason: 'e5 should be opaque (piece present)',
+        );
+        expect(
+          color.b,
+          greaterThan(0.75),
+          reason: 'e5 should show the blue knight',
+        );
+        expect(
+          color.r,
+          lessThan(0.3),
+          reason: 'e5 should not show the bare board square',
+        );
+      },
+    );
 
     // When a tree shift interrupts an animation that is still in flight, the
     // fresh controller is re-attached at value 0.0. Re-attaching commits the
     // interrupted pieces to the static position so the translating painter does
     // not leave the knight frozen at its origin.
-    testWidgets('interrupting an in-flight animation with a tree shift commits the pieces', (
-      WidgetTester tester,
-    ) async {
-      final captureController = nonInteractiveController('4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1');
-      addTearDown(captureController.dispose);
+    testWidgets(
+      'interrupting an in-flight animation with a tree shift commits the pieces',
+      (WidgetTester tester) async {
+        final captureController = nonInteractiveController(
+          '4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1',
+        );
+        addTearDown(captureController.dispose);
 
-      final boardKey = GlobalKey();
-      bool moved = false;
-      await tester.pumpWidget(
-        StatefulBuilder(
-          builder: (context, setState) {
-            final board = Chessboard(
-              key: boardKey,
-              controller: captureController,
-              size: boardSize,
-              orientation: Side.white,
-            );
-            return MaterialApp(
-              theme: ThemeData(splashFactory: NoSplash.splashFactory),
-              home: Column(
-                children: [
-                  Expanded(child: moved ? const SizedBox.shrink() : board),
-                  Expanded(child: moved ? board : const SizedBox.shrink()),
-                  ElevatedButton(
-                    onPressed: () => setState(() => moved = !moved),
-                    child: const Text('toggle'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
+        final boardKey = GlobalKey();
+        bool moved = false;
+        await tester.pumpWidget(
+          StatefulBuilder(
+            builder: (context, setState) {
+              final board = Chessboard(
+                key: boardKey,
+                controller: captureController,
+                size: boardSize,
+                orientation: Side.white,
+              );
+              return MaterialApp(
+                theme: ThemeData(splashFactory: NoSplash.splashFactory),
+                home: Column(
+                  children: [
+                    Expanded(child: moved ? const SizedBox.shrink() : board),
+                    Expanded(child: moved ? board : const SizedBox.shrink()),
+                    ElevatedButton(
+                      onPressed: () => setState(() => moved = !moved),
+                      child: const Text('toggle'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
 
-      captureController.updatePosition(
-        const GameData(
-          fen: '4k3/8/8/4N3/8/8/8/4K3 b - - 0 1',
-          playerSide: PlayerSide.none,
-          sideToMove: Side.black,
-          validMoves: {},
-        ),
-      );
-      // Pump only partway through the 250ms animation: it is still in flight.
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(_translatingPiecesPainter(tester)!.translatingPieces, isNotEmpty);
+        captureController.updatePosition(
+          const GameData(
+            fen: '4k3/8/8/4N3/8/8/8/4K3 b - - 0 1',
+            playerSide: PlayerSide.none,
+            sideToMove: Side.black,
+            validMoves: {},
+          ),
+        );
+        // Pump only partway through the 250ms animation: it is still in flight.
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(
+          _translatingPiecesPainter(tester)!.translatingPieces,
+          isNotEmpty,
+        );
 
-      // Reparent mid-animation: detach disposes the controller, attachTo commits
-      // the interrupted pieces straight to the static position.
-      await tester.tap(find.text('toggle'));
-      await tester.pump();
+        // Reparent mid-animation: detach disposes the controller, attachTo commits
+        // the interrupted pieces straight to the static position.
+        await tester.tap(find.text('toggle'));
+        await tester.pump();
 
-      expect(_translatingPiecesPainter(tester)?.translatingPieces ?? const {}, isEmpty);
-      expect(_fadingPiecesPainter(tester)?.fadingPieces ?? const {}, isEmpty);
-      expect(_piecesPainter(tester).pieces[Square.e5], Piece.whiteKnight);
-      expect(_piecesPainter(tester).pieces.values.where((p) => p == Piece.blackPawn), isEmpty);
-    });
+        expect(
+          _translatingPiecesPainter(tester)?.translatingPieces ?? const {},
+          isEmpty,
+        );
+        expect(_fadingPiecesPainter(tester)?.fadingPieces ?? const {}, isEmpty);
+        expect(_piecesPainter(tester).pieces[Square.e5], Piece.whiteKnight);
+        expect(
+          _piecesPainter(
+            tester,
+          ).pieces.values.where((p) => p == Piece.blackPawn),
+          isEmpty,
+        );
+      },
+    );
   });
 
   group('board piece rendering', () {
-    testWidgets('all pieces are rendered by PiecesPainter regardless of cache state', (
-      WidgetTester tester,
-    ) async {
-      // Cache is empty — pieces should still be tracked in PiecesPainter.
-      await tester.pumpWidget(
-        const StaticChessboard(size: boardSize, orientation: Side.white, fen: kInitialFEN),
-      );
+    testWidgets(
+      'all pieces are rendered by PiecesPainter regardless of cache state',
+      (WidgetTester tester) async {
+        // Cache is empty — pieces should still be tracked in PiecesPainter.
+        await tester.pumpWidget(
+          const StaticChessboard(
+            size: boardSize,
+            orientation: Side.white,
+            fen: kInitialFEN,
+          ),
+        );
 
-      expect(_piecesPainter(tester).pieces.length, 32);
-      // No fallback PieceWidget in the tree for static board pieces.
-      expect(find.byType(PieceWidget), findsNothing);
-    });
+        expect(_piecesPainter(tester).pieces.length, 32);
+        // No fallback PieceWidget in the tree for static board pieces.
+        expect(find.byType(PieceWidget), findsNothing);
+      },
+    );
 
     testWidgets('PiecesPainter renders pieces when all images are pre-cached', (
       WidgetTester tester,
@@ -3729,7 +4280,11 @@ void main() {
       });
 
       await tester.pumpWidget(
-        const StaticChessboard(size: boardSize, orientation: Side.white, fen: kInitialFEN),
+        const StaticChessboard(
+          size: boardSize,
+          orientation: Side.white,
+          fen: kInitialFEN,
+        ),
       );
 
       expect(_piecesPainter(tester).pieces.length, 32);
@@ -3738,38 +4293,48 @@ void main() {
   });
 
   group('drag avatar rendering', () {
-    testWidgets('drag piece is drawn by _DragPiecePainter on canvas (no PieceWidget overlay)', (
-      WidgetTester tester,
-    ) async {
-      final asset = const ChessboardSettings().pieceAssets[Piece.whitePawn.kind]!;
-      final fakeImage = await _createFakeImage(45, 45);
-      ChessgroundImages.instance.add(asset, fakeImage);
-      addTearDown(() => ChessgroundImages.instance.evict(asset));
+    testWidgets(
+      'drag piece is drawn by _DragPiecePainter on canvas (no PieceWidget overlay)',
+      (WidgetTester tester) async {
+        final asset =
+            const ChessboardSettings().pieceAssets[Piece.whitePawn.kind]!;
+        final fakeImage = await _createFakeImage(45, 45);
+        ChessgroundImages.instance.add(asset, fakeImage);
+        addTearDown(() => ChessgroundImages.instance.evict(asset));
 
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.both));
+        await tester.pumpWidget(
+          const _TestApp(initialPlayerSide: PlayerSide.both),
+        );
 
-      // No PieceWidget in tree — all static pieces rendered by PiecesPainter.
-      expect(find.byType(PieceWidget), findsNothing);
-
-      await TestAsyncUtils.guard<void>(() async {
-        final gesture = await tester.startGesture(squareOffset(tester, Square.e2));
-        await tester.pump();
-        // Exceed the _kDragDistanceThreshold of 3.0 px to start a drag.
-        await gesture.moveBy(const Offset(0, -4));
-        await tester.pump();
-
-        // Drag avatar uses _DragPiecePainter — still no PieceWidget in tree.
+        // No PieceWidget in tree — all static pieces rendered by PiecesPainter.
         expect(find.byType(PieceWidget), findsNothing);
 
-        await gesture.up();
-      });
-      await tester.pump();
-    });
+        await TestAsyncUtils.guard<void>(() async {
+          final gesture = await tester.startGesture(
+            squareOffset(tester, Square.e2),
+          );
+          await tester.pump();
+          // Exceed the _kDragDistanceThreshold of 3.0 px to start a drag.
+          await gesture.moveBy(const Offset(0, -4));
+          await tester.pump();
+
+          // Drag avatar uses _DragPiecePainter — still no PieceWidget in tree.
+          expect(find.byType(PieceWidget), findsNothing);
+
+          await gesture.up();
+        });
+        await tester.pump();
+      },
+    );
   });
 
   group('no unnecessary rebuilds', () {
-    testWidgets('selecting a piece does not rebuild the board widget', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.white));
+    testWidgets('selecting a piece does not rebuild the board widget', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.white),
+      );
 
       final highlightsBefore = _highlightsPainter(tester);
       final piecesBefore = _piecesPainter(tester);
@@ -3799,7 +4364,9 @@ void main() {
     testWidgets('deselecting a piece does not rebuild the board widget', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.white));
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.white),
+      );
 
       // Select e2 first.
       await tester.tapAt(squareOffset(tester, Square.e2));
@@ -3832,8 +4399,12 @@ void main() {
       );
     });
 
-    testWidgets('making a move does not rebuild the board widget', (WidgetTester tester) async {
-      await tester.pumpWidget(const _TestApp(initialPlayerSide: PlayerSide.white));
+    testWidgets('making a move does not rebuild the board widget', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        const _TestApp(initialPlayerSide: PlayerSide.white),
+      );
 
       final highlightsBefore = _highlightsPainter(tester);
       final piecesBefore = _piecesPainter(tester);
@@ -3869,7 +4440,10 @@ void main() {
       addTearDown(gameEventController.close);
 
       await tester.pumpWidget(
-        _TestApp(initialPlayerSide: PlayerSide.white, gameEventStream: gameEventController.stream),
+        _TestApp(
+          initialPlayerSide: PlayerSide.white,
+          gameEventStream: gameEventController.stream,
+        ),
       );
 
       final highlightsBefore = _highlightsPainter(tester);
@@ -3900,7 +4474,8 @@ void main() {
 }
 
 Future<void> makeMove(WidgetTester tester, Square from, Square to) async {
-  final orientation = tester.widget<Chessboard>(find.byType(Chessboard)).orientation;
+  final orientation =
+      tester.widget<Chessboard>(find.byType(Chessboard)).orientation;
   await tester.tapAt(squareOffset(tester, from, orientation: orientation));
   await tester.pump();
   await tester.tapAt(squareOffset(tester, to, orientation: orientation));
@@ -3971,7 +4546,10 @@ class _TestAppState extends State<_TestApp> {
   StreamSubscription<GameEvent>? _gameEventSub;
 
   ChessboardSettings get defaultSettings => ChessboardSettings(
-    drawShape: const DrawShapeOptions(enable: true, newShapeColor: Color(0xFF0000FF)),
+    drawShape: const DrawShapeOptions(
+      enable: true,
+      newShapeColor: Color(0xFF0000FF),
+    ),
     canPromoteToKing: widget.canPromoteToKing,
   );
 
@@ -4000,7 +4578,8 @@ class _TestAppState extends State<_TestApp> {
       fen: position.fen,
       lastMove: lastMove,
       playerSide: interactiveSide,
-      kingSquareInCheck: position.isCheck ? position.board.kingOf(position.turn) : null,
+      kingSquareInCheck:
+          position.isCheck ? position.board.kingOf(position.turn) : null,
       sideToMove: position.turn == Side.white ? Side.white : Side.black,
       validMoves: makeLegalMoves(position),
       validDropSquares: widget.validDropSquares,
@@ -4018,7 +4597,8 @@ class _TestAppState extends State<_TestApp> {
       case GameEvent.externalMove:
         final allMoves = [
           for (final entry in position.legalMoves.entries)
-            for (final dest in entry.value.squares) NormalMove(from: entry.key, to: dest),
+            for (final dest in entry.value.squares)
+              NormalMove(from: entry.key, to: dest),
         ];
         if (allMoves.isNotEmpty) {
           position = position.playUnchecked(allMoves.first);
@@ -4044,7 +4624,8 @@ class _TestAppState extends State<_TestApp> {
       Timer(const Duration(milliseconds: 200), () {
         final allMoves = [
           for (final entry in position.legalMoves.entries)
-            for (final dest in entry.value.squares) NormalMove(from: entry.key, to: dest),
+            for (final dest in entry.value.squares)
+              NormalMove(from: entry.key, to: dest),
         ];
         final opponentMove = allMoves.first;
         position = position.playUnchecked(opponentMove);
@@ -4061,8 +4642,10 @@ class _TestAppState extends State<_TestApp> {
             if (premove is NormalMove &&
                 premove.promotion == null &&
                 position.board.roleAt(premove.from) == Role.pawn &&
-                ((premove.to.rank == Rank.first && position.turn == Side.black) ||
-                    (premove.to.rank == Rank.eighth && position.turn == Side.white))) {
+                ((premove.to.rank == Rank.first &&
+                        position.turn == Side.black) ||
+                    (premove.to.rank == Rank.eighth &&
+                        position.turn == Side.white))) {
               // Promotion premove with autoQueenPromotionOnPremove disabled
               final promoMove = premove;
               scheduleMicrotask(() {
@@ -4109,7 +4692,11 @@ class _TestAppState extends State<_TestApp> {
   }
 }
 
-Offset squareOffset(WidgetTester tester, Square id, {Side orientation = Side.white}) {
+Offset squareOffset(
+  WidgetTester tester,
+  Square id, {
+  Side orientation = Side.white,
+}) {
   // Use boardWidget.squareSize (based on widget.size) rather than the rendered
   // rect width — rect is unreliable when the board is pumped without a parent
   // that provides loose constraints (e.g. direct pumpWidget without MaterialApp
@@ -4118,8 +4705,12 @@ Offset squareOffset(WidgetTester tester, Square id, {Side orientation = Side.whi
   final double sq =
       chessboardFinder.evaluate().isNotEmpty
           ? tester.widget<Chessboard>(chessboardFinder).squareSize
-          : tester.widget<StaticChessboard>(find.byType(StaticChessboard)).squareSize;
-  final topLeft = tester.getTopLeft(find.byKey(const ValueKey('board-container')));
+          : tester
+              .widget<StaticChessboard>(find.byType(StaticChessboard))
+              .squareSize;
+  final topLeft = tester.getTopLeft(
+    find.byKey(const ValueKey('board-container')),
+  );
   final x = orientation == Side.black ? 7 - id.file : id.file;
   final y = orientation == Side.black ? id.rank : 7 - id.rank;
   return topLeft + Offset(x * sq + sq / 2, y * sq + sq / 2);
@@ -4137,8 +4728,13 @@ Future<ui.Image> _createFakeImage(int width, int height) {
 ///
 /// `toImage` only completes outside the test's fake-async zone, so the capture
 /// must run inside [WidgetTester.runAsync].
-Future<Color> _renderedColorAt(WidgetTester tester, GlobalKey boundaryKey, Offset offset) async {
-  final boundary = boundaryKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+Future<Color> _renderedColorAt(
+  WidgetTester tester,
+  GlobalKey boundaryKey,
+  Offset offset,
+) async {
+  final boundary =
+      boundaryKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
   final color = await tester.runAsync(() async {
     final image = await boundary.toImage();
     final byteData = (await image.toByteData())!;
