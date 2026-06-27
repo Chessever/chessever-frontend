@@ -1,0 +1,66 @@
+name: chessground
+description: Chess board UI developed for lichess.org. It has no chess logic inside so it can be used for chess variants.
+version: 10.1.0
+repository: https://github.com/lichess-org/flutter-chessground
+funding:
+  - https://lichess.org/patron
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+  flutter: ">=3.29.0"
+
+dependencies:
+  dartchess: ^0.13.1
+  flutter:
+    sdk: flutter
+  meta: ^1.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lint: ^2.8.0
+  mocktail: ^1.0.5
+
+flutter:
+  assets:
+    - assets/piece_sets/alpha/
+    - assets/piece_sets/anarcandy/
+    - assets/piece_sets/california/
+    - assets/piece_sets/caliente/
+    - assets/piece_sets/cardinal/
+    - assets/piece_sets/cburnett/
+    - assets/piece_sets/celtic/
+    - assets/piece_sets/chess7/
+    - assets/piece_sets/chessnut/
+    - assets/piece_sets/cooke/
+    - assets/piece_sets/companion/
+    - assets/piece_sets/disguised/
+    - assets/piece_sets/dubrovny/
+    - assets/piece_sets/fantasy/
+    - assets/piece_sets/firi/
+    - assets/piece_sets/fresca/
+    - assets/piece_sets/gioco/
+    - assets/piece_sets/governor/
+    - assets/piece_sets/horsey/
+    - assets/piece_sets/icpieces/
+    - assets/piece_sets/kiwen-suwi/
+    - assets/piece_sets/kosal/
+    - assets/piece_sets/leipzig/
+    - assets/piece_sets/letter/
+    - assets/piece_sets/maestro/
+    - assets/piece_sets/merida/
+    - assets/piece_sets/monarchy/
+    - assets/piece_sets/mpchess/
+    - assets/piece_sets/pirouetti/
+    - assets/piece_sets/pixel/
+    - assets/piece_sets/reillycraig/
+    - assets/piece_sets/rhosgfx/
+    - assets/piece_sets/riohacha/
+    - assets/piece_sets/shapes/
+    - assets/piece_sets/spatial/
+    - assets/piece_sets/staunty/
+    - assets/piece_sets/symmetric/
+    - assets/piece_sets/tatiana/
+    - assets/piece_sets/totoy/
+    - assets/piece_sets/xkcd/
+    - assets/boards/

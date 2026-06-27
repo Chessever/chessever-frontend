@@ -173,6 +173,8 @@ dev_dependencies:
 
 
 dependency_overrides:
+  chessground:
+    path: third_party/chessground
   app_links: ^6.4.1
 
 # For information on the generic Dart part of this file, see the
