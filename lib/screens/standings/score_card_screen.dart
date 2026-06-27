@@ -1,3 +1,4 @@
+import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
@@ -10,6 +11,7 @@ import 'package:chessever2/screens/standings/providers/twic_scorecard_event_game
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
+import 'package:chessever2/screens/standings/widgets/player_event_share_image_card.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/player_profile/widgets/performance_stats_row.dart';
@@ -42,6 +44,10 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/event_card/event_context_menu.dart' show buildEventShareUrl;
+import 'package:path_provider/path_provider.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:motor/motor.dart';
 
 final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
@@ -571,6 +577,42 @@ class ScoreCardScreen extends ConsumerWidget {
     final photoFuture = FidePhotoService.getPhotoUrlOrNull(
       player.fideId?.toString(),
     );
+    final eventName = selectedBroadcast?.name ?? contextEvent;
+    final shareRows = _buildPlayerEventShareRows(
+      playerGames: playerGames,
+      player: player,
+      playerUtils: playerUtils,
+      playerRatings: playerRatings,
+      hasEventContext: hasEventContext,
+    );
+    Future<void> sharePlayerProfile() => _sharePlayerEventProfile(
+      context: context,
+      player: player,
+      photoFuture: photoFuture,
+      initials: initials,
+      eventName: eventName,
+      performanceRating: performanceRating,
+      eventScore: eventScore,
+      eventTotalGames: eventTotalGames,
+      ratingDiff:
+          hasEventContext
+              ? (player.scoreChange != 0
+                  ? player.scoreChange
+                  : (totalRatingDiff != 0.0 ? totalRatingDiff.round() : null))
+              : null,
+      standardRating:
+          playerRatings?.getRating('standard') ?? player.score.round(),
+      rapidRating: playerRatings?.getRating('rapid'),
+      blitzRating: playerRatings?.getRating('blitz'),
+      rows: shareRows,
+      shareUrl:
+          selectedBroadcast == null
+              ? null
+              : buildEventShareUrl(
+                id: selectedBroadcast.id,
+                title: selectedBroadcast.name,
+              ),
+    );
 
     // Consistent horizontal padding - matches chessboard screen patterns
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -600,7 +642,7 @@ class ScoreCardScreen extends ConsumerWidget {
             ),
             child: CustomScrollView(
               slivers: [
-                const _SliverScoreboardAppBar(),
+                _SliverScoreboardAppBar(onShareProfile: sharePlayerProfile),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.symmetric(
@@ -929,6 +971,128 @@ class ScoreCardScreen extends ConsumerWidget {
     return null;
   }
 
+
+  List<PlayerEventShareGameRow> _buildPlayerEventShareRows({
+    required List<GamesTourModel> playerGames,
+    required PlayerStandingModel player,
+    required dynamic playerUtils,
+    required dynamic playerRatings,
+    required bool hasEventContext,
+  }) {
+    return [
+      for (final game in playerGames)
+        _playerEventShareRowFor(
+          game: game,
+          player: player,
+          playerUtils: playerUtils,
+          playerRatings: playerRatings,
+          hasEventContext: hasEventContext,
+        ),
+    ];
+  }
+
+  PlayerEventShareGameRow _playerEventShareRowFor({
+    required GamesTourModel game,
+    required PlayerStandingModel player,
+    required dynamic playerUtils,
+    required dynamic playerRatings,
+    required bool hasEventContext,
+  }) {
+    final isWhite = playerUtils.isSamePlayerWithFideId(
+      game.whitePlayer.name,
+      player.name,
+      fideId1: game.whitePlayer.fideId,
+      fideId2: player.fideId,
+    );
+    final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
+    final playerRating = _getPlayerRatingForSide(game, isWhite);
+    final opponentRating = _getPlayerRatingForSide(game, !isWhite);
+    double ratingChange = 0.0;
+    if (playerRating > 0 && opponentRating > 0) {
+      final tc = game.timeControl;
+      final fideK = tc != null ? playerRatings?.getK(tc) : null;
+      final fidePlayerRating =
+          tc != null ? playerRatings?.getRating(tc)?.toDouble() : null;
+      ratingChange = _calculateFideRatingChange(
+        playerRating,
+        opponentRating,
+        game.gameStatus,
+        isWhite,
+        game,
+        fideK: fideK,
+        playerRatingOverride: fidePlayerRating,
+      );
+    }
+
+    return PlayerEventShareGameRow(
+      roundLabel: hasEventContext ? _buildRoundLabel(game) : null,
+      countryCode: opponent.countryCode,
+      title: opponent.title,
+      name: opponent.name,
+      rating: opponent.rating,
+      ratingChange: ratingChange != 0.0 ? ratingChange : null,
+      result: _getPlayerResult(game, isWhite),
+      isWhite: isWhite,
+    );
+  }
+
+  Future<void> _sharePlayerEventProfile({
+    required BuildContext context,
+    required PlayerStandingModel player,
+    required Future<String?>? photoFuture,
+    required String initials,
+    required String? eventName,
+    required int? performanceRating,
+    required double? eventScore,
+    required int? eventTotalGames,
+    required int? ratingDiff,
+    required int? standardRating,
+    required int? rapidRating,
+    required int? blitzRating,
+    required List<PlayerEventShareGameRow> rows,
+    required String? shareUrl,
+  }) async {
+    try {
+      final logicalWidth = math.min(MediaQuery.of(context).size.width, 430.0);
+      final imageBytes = await ScreenshotController().captureFromWidget(
+        PlayerEventShareImageCard(
+          width: logicalWidth,
+          player: player,
+          photoFuture: photoFuture,
+          initials: initials,
+          eventName: eventName,
+          performanceRating: performanceRating,
+          eventScore: eventScore,
+          eventTotalGames: eventTotalGames,
+          ratingDiff: ratingDiff,
+          standardRating: standardRating,
+          rapidRating: rapidRating,
+          blitzRating: blitzRating,
+          rows: rows,
+        ),
+        context: context,
+        pixelRatio: 3.0,
+        delay: const Duration(milliseconds: 250),
+      );
+      final tempDir = await getTemporaryDirectory();
+      final file = io.File('${tempDir.path}/chessever_player_profile.png');
+      await file.writeAsBytes(imageBytes);
+      if (!context.mounted) return;
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        text: shareUrl,
+        subject: eventName?.trim().isNotEmpty == true ? eventName : 'ChessEver',
+        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+      );
+    } catch (error) {
+      debugPrint('Failed to share player profile: $error');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to share player profile')),
+      );
+    }
+  }
+
   void _navigateToPlayerProfile(
     BuildContext context,
     WidgetRef ref,
@@ -1108,7 +1272,7 @@ class _PlayerHeaderRow extends StatelessWidget {
         ),
         if (hasTournamentContext)
           Icon(
-            Icons.keyboard_arrow_down,
+            Icons.more_horiz,
             color: context.colors.textPrimaryMuted,
             size: 20.ic,
           ),
@@ -1170,7 +1334,9 @@ class _PlayerAvatarTile extends StatelessWidget {
 }
 
 class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
-  const _SliverScoreboardAppBar();
+  const _SliverScoreboardAppBar({this.onShareProfile});
+
+  final Future<void> Function()? onShareProfile;
 
   @override
   ConsumerState<_SliverScoreboardAppBar> createState() =>
@@ -1281,7 +1447,11 @@ class _SliverScoreboardAppBarState
         maxHeight: MediaQuery.of(context).size.height * 0.6,
         maxWidth: ResponsiveHelper.bottomSheetMaxWidth,
       ),
-      builder: (context) => _PlayerSelectionSheet(players: players),
+      builder:
+          (context) => _PlayerSelectionSheet(
+            players: players,
+            onShareProfile: widget.onShareProfile,
+          ),
     );
   }
 
@@ -1499,8 +1669,9 @@ class _RatingDisplay extends ConsumerWidget {
 /// Bottom sheet for selecting a player from the tournament
 class _PlayerSelectionSheet extends ConsumerWidget {
   final List<PlayerStandingModel> players;
+  final Future<void> Function()? onShareProfile;
 
-  const _PlayerSelectionSheet({required this.players});
+  const _PlayerSelectionSheet({required this.players, this.onShareProfile});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1519,6 +1690,34 @@ class _PlayerSelectionSheet extends ConsumerWidget {
             borderRadius: BorderRadius.circular(2.br),
           ),
         ),
+        if (onShareProfile != null) ...[
+          InkWell(
+            onTap: () {
+              Navigator.pop(context);
+              onShareProfile!();
+            },
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.ios_share,
+                    color: context.colors.brand,
+                    size: 18.ic,
+                  ),
+                  SizedBox(width: 10.w),
+                  Text(
+                    'Share Profile',
+                    style: AppTypography.textSmBold.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Divider(color: context.colors.surfaceRecessed, height: 1.h),
+        ],
         // Title
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
@@ -1598,7 +1797,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                           style: AppTypography.textSmMedium.copyWith(
                             color:
                                 isSelected
-                                    ? kGreenColor
+                                    ? context.colors.brand
                                     : context.colors.textPrimary,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -1608,14 +1807,12 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                       Text(
                         player.score.toStringAsFixed(0),
                         style: AppTypography.textXsMedium.copyWith(
-                          color: context.colors.textPrimaryMuted,
+                          color:
+                              isSelected
+                                  ? context.colors.brand
+                                  : context.colors.textPrimaryMuted,
                         ),
                       ),
-                      // Selected indicator
-                      if (isSelected) ...[
-                        SizedBox(width: 6.w),
-                        Icon(Icons.check, color: kGreenColor, size: 18.ic),
-                      ],
                     ],
                   ),
                 ),
