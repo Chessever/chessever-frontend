@@ -50,19 +50,6 @@ type UserBoardSettings = {
   piece_style_index: number | null;
 };
 
-type PositionRow = {
-  id: number | string;
-  fen: string;
-};
-
-type EvalRow = {
-  position_id: number | string;
-  depth: number | null;
-  pvs: unknown;
-  multi_pv?: number | null;
-  pvs_count?: number | null;
-};
-
 type EvalSnapshot = {
   cp: number | null;
   mate: number | null;
@@ -153,6 +140,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
 const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
+const GAMEBASE_API_BASE =
+  Deno.env.get("GAMEBASE_API_BASE")?.trim() || "https://service.chessever.com";
+const GAMEBASE_API_KEY = Deno.env.get("GAMEBASE_API_KEY")?.trim() ?? "";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase environment variables.");
@@ -206,6 +196,18 @@ const LIVE_ACTIVITY_TOKEN_GRACE_MS = readIntEnv(
   15 * 60 * 1000,
 );
 const CONCURRENCY = readIntEnv("LIVE_ACTIVITY_REFRESH_CONCURRENCY", 5, 1, 20);
+const GAMEBASE_EVAL_CONCURRENCY = readIntEnv(
+  "LIVE_ACTIVITY_GAMEBASE_EVAL_CONCURRENCY",
+  5,
+  1,
+  20,
+);
+const GAMEBASE_EVAL_TIMEOUT_MS = readIntEnv(
+  "LIVE_ACTIVITY_GAMEBASE_EVAL_TIMEOUT_MS",
+  1_500,
+  100,
+  10_000,
+);
 const UPDATE_PRIORITY = normalizeLiveActivityPriority(
   readIntEnv("LIVE_ACTIVITY_UPDATE_PRIORITY", 10, 5, 10),
 );
@@ -382,7 +384,7 @@ async function buildRefreshContext(rows: LiveSubscriptionRow[]) {
   const boardSettings = await fetchBoardSettings(
     unique(rows.map((row) => row.user_id)),
   );
-  const evalSnapshots = await fetchEvalSnapshots(
+  const evalSnapshots = await fetchGamebaseEvalSnapshots(
     unique(
       Array.from(games.values())
         .map((game) => game.fen)
@@ -783,6 +785,20 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchLiveActivityDelivery(notificationId: string) {
   try {
     const res = await fetch(
@@ -839,12 +855,14 @@ function buildLiveUpdatePayload(args: {
     blackFide,
   );
   // Eval priority: the broadcast PGN's own engine eval for the last move (a real
-  // Stockfish score, present on ~25% of live games and always matching the current
-  // position) → the positions/evals cache by exact FEN → a crude material count as
-  // a last resort. The first two are real engine evals; the estimate is the fallback.
+  // Stockfish score, present on some live games and always matching the current
+  // position) → Gamebase /api/eval, backed by the large public.engine_eval corpus.
+  // Do not use the small Supabase app positions/evals cache here; it is not the
+  // authoritative eval source for production widgets.
   const evalSnapshot = parseEvalFromPgn(args.game.pgn) ??
     (fen
-      ? args.evalSnapshots.get(fen) ?? estimateEvalSnapshotFromFen(fen)
+      ? args.evalSnapshots.get(fen) ??
+        args.evalSnapshots.get(normalizeFenForEvalLookup(fen))
       : null);
   const clockTiming = buildClockTiming(args.game, fen);
 
@@ -1061,70 +1079,101 @@ async function fetchBoardSettings(userIds: string[]) {
   return map;
 }
 
-async function fetchEvalSnapshots(fens: string[]) {
+async function fetchGamebaseEvalSnapshots(fens: string[]) {
   const map = new Map<string, EvalSnapshot>();
   if (fens.length === 0) return map;
-
-  const { data: positions, error: positionsError } = await supabase
-    .from("positions")
-    .select("id,fen")
-    .in("fen", fens);
-
-  if (positionsError) throw positionsError;
-
-  const fenByPositionId = new Map<string, string>();
-  for (const row of (positions ?? []) as PositionRow[]) {
-    if (row.id != null && row.fen) {
-      fenByPositionId.set(String(row.id), row.fen);
-    }
+  if (!GAMEBASE_API_KEY) {
+    console.warn("[LIVE_ACTIVITY_REFRESH] GAMEBASE_API_KEY missing; evals disabled");
+    return map;
   }
 
-  const positionIds = Array.from(fenByPositionId.keys());
-  if (positionIds.length === 0) return map;
-
-  const { data: evals, error: evalsError } = await supabase
-    .from("evals")
-    .select("position_id,depth,pvs,multi_pv,pvs_count")
-    .in("position_id", positionIds);
-
-  if (evalsError) throw evalsError;
-
-  const bestByPositionId = new Map<
-    string,
-    { snapshot: EvalSnapshot; depth: number; multiPv: number }
-  >();
-
-  for (const row of (evals ?? []) as EvalRow[]) {
-    const positionId = String(row.position_id);
-    if (!fenByPositionId.has(positionId)) continue;
-
-    const snapshot = parseEvalSnapshot(row);
-    if (!snapshot) continue;
-
-    const depth = parseFiniteInt(row.depth) ?? 0;
-    const multiPv = parseFiniteInt(row.multi_pv) ??
-      parseFiniteInt(row.pvs_count) ??
-      countPvLines(row.pvs);
-    const existing = bestByPositionId.get(positionId);
-    if (
-      !existing ||
-      depth > existing.depth ||
-      (depth === existing.depth && multiPv > existing.multiPv)
-    ) {
-      bestByPositionId.set(positionId, {
-        snapshot: { ...snapshot, depth },
-        depth,
-        multiPv,
-      });
-    }
+  const normalizedByFen = new Map<string, string>();
+  for (const fen of fens) {
+    normalizedByFen.set(fen, normalizeFenForEvalLookup(fen));
   }
 
-  for (const [positionId, best] of bestByPositionId) {
-    const fen = fenByPositionId.get(positionId);
-    if (fen) map.set(fen, best.snapshot);
+  const snapshotsByNormalizedFen = new Map<string, EvalSnapshot>();
+  await mapWithConcurrency(
+    unique(Array.from(normalizedByFen.values())),
+    GAMEBASE_EVAL_CONCURRENCY,
+    async (normalizedFen) => {
+      const snapshot = await fetchGamebaseEvalSnapshot(normalizedFen);
+      if (snapshot) snapshotsByNormalizedFen.set(normalizedFen, snapshot);
+    },
+  );
+
+  for (const [fen, normalizedFen] of normalizedByFen) {
+    const snapshot = snapshotsByNormalizedFen.get(normalizedFen);
+    if (snapshot) {
+      map.set(fen, snapshot);
+      map.set(normalizedFen, snapshot);
+    }
   }
 
   return map;
+}
+
+async function fetchGamebaseEvalSnapshot(
+  normalizedFen: string,
+): Promise<EvalSnapshot | null> {
+  const url = new URL(
+    `${GAMEBASE_API_BASE.replace(/\/$/, "")}/api/eval`,
+  );
+  url.searchParams.set("fen", normalizedFen);
+
+  try {
+    const res = await fetchWithTimeout(
+      url.toString(),
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "X-API-Key": GAMEBASE_API_KEY,
+        },
+      },
+      GAMEBASE_EVAL_TIMEOUT_MS,
+    );
+
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      console.warn(
+        `[LIVE_ACTIVITY_REFRESH] Gamebase eval returned ${res.status}`,
+      );
+      return null;
+    }
+
+    const json = await res.json();
+    const data = isRecord(json?.data) ? json.data : null;
+    const pvs = Array.isArray(data?.pvs) ? data.pvs : [];
+    const first = pvs.length > 0 && isRecord(pvs[0]) ? pvs[0] : null;
+    if (!first) return null;
+
+    let cp = parseFiniteInt(first.cp);
+    let mate = parseFiniteInt(first.mate);
+    const whitePerspective = first.whitePerspective !== false;
+    if (!whitePerspective) {
+      if (cp !== null) cp = -cp;
+      if (mate !== null) mate = -mate;
+    }
+
+    if (cp === null && mate === null) return null;
+    return {
+      cp: mate !== null ? null : cp,
+      mate,
+      depth: parseFiniteInt(data?.depth),
+    };
+  } catch (error) {
+    console.warn(
+      "[LIVE_ACTIVITY_REFRESH] Gamebase eval failed:",
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
+}
+
+function normalizeFenForEvalLookup(fen: string) {
+  const parts = fen.trim().split(/\s+/);
+  return parts.length >= 4 ? parts.slice(0, 4).join(" ") : fen.trim();
 }
 
 async function markLiveSubscriptionEvent(
@@ -1596,34 +1645,6 @@ function parseEvalFromPgn(pgn: string | null): EvalSnapshot | null {
   return { cp: Math.max(-10000, Math.min(10000, cp)), mate: null, depth: null };
 }
 
-function estimateEvalSnapshotFromFen(fen: string) {
-  const side = parseSideToMove(fen);
-  const check = analyzePosition(fen);
-  if (check.isCheckmate && side) {
-    return { cp: null, mate: side === "w" ? -1 : 1 };
-  }
-
-  const grid = parseFenBoard(fen);
-  if (!grid) return { cp: null, mate: null };
-  const values: Record<string, number> = {
-    p: 100,
-    n: 320,
-    b: 330,
-    r: 500,
-    q: 900,
-    k: 0,
-  };
-  let cp = 0;
-  for (const row of grid) {
-    for (const piece of row) {
-      if (!piece) continue;
-      const value = values[piece.toLowerCase()] ?? 0;
-      cp += piece === piece.toUpperCase() ? value : -value;
-    }
-  }
-  return { cp: Math.max(-2500, Math.min(2500, cp)), mate: null };
-}
-
 function buildClockTiming(game: GameRow, fen: string | null) {
   const activeColor = activeClockColorFromFen(fen);
   const anchorTime = game.last_move_time ?? null;
@@ -1657,44 +1678,6 @@ function activeClockColorFromFen(fen: string | null): "white" | "black" | null {
   if (side === "w") return "white";
   if (side === "b") return "black";
   return null;
-}
-
-function parseEvalSnapshot(row: EvalRow): EvalSnapshot | null {
-  const pv = firstPvLine(row.pvs);
-  if (!pv) return null;
-
-  const mate = parseFiniteInt(pv.mate);
-  if (mate !== null) {
-    return { cp: null, mate, depth: parseFiniteInt(row.depth) };
-  }
-
-  const score = isRecord(pv.score) ? pv.score : null;
-  const scoreMate = score ? parseFiniteInt(score.mate) : null;
-  if (scoreMate !== null) {
-    return { cp: null, mate: scoreMate, depth: parseFiniteInt(row.depth) };
-  }
-
-  const cp = parseFiniteInt(pv.cp);
-  if (cp !== null) {
-    return { cp, mate: null, depth: parseFiniteInt(row.depth) };
-  }
-
-  const scoreCp = score ? parseFiniteInt(score.cp) : null;
-  if (scoreCp !== null) {
-    return { cp: scoreCp, mate: null, depth: parseFiniteInt(row.depth) };
-  }
-
-  return null;
-}
-
-function firstPvLine(pvs: unknown): Record<string, unknown> | null {
-  if (!Array.isArray(pvs)) return null;
-  const first = pvs[0];
-  return isRecord(first) ? first : null;
-}
-
-function countPvLines(pvs: unknown) {
-  return Array.isArray(pvs) ? pvs.length : 0;
 }
 
 function parseSideToMove(fen: string) {
