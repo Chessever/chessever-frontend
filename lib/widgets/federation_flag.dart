@@ -1,5 +1,5 @@
 import 'package:chessever2/utils/country_utils.dart';
-import 'package:chessever2/utils/png_asset.dart';
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_country_flags/flutter_country_flags.dart' as fcf;
 
@@ -46,19 +46,19 @@ class FederationFlag extends StatelessWidget {
     final normalized = raw.toUpperCase();
 
     if (raw.isEmpty) {
-      return _unknownPlaceholder(context);
+      return _noFlag();
     }
 
     final lowerRaw = raw.toLowerCase();
 
     if (_unknownSentinels.contains(lowerRaw)) {
-      return _unknownPlaceholder(context);
+      return _noFlag();
     }
 
-    // Lichess returns the literal "FIDE" for stateless / sanctioned players;
-    // when no real federation can be resolved, render the FIDE logo.
+    // FID/FIDE is not a real country flag. If no better player-profile
+    // backfill is available upstream, show no flag rather than a generic logo.
     if (normalized == 'FID' || normalized == 'FIDE') {
-      return _fideLogo(context);
+      return _noFlag();
     }
 
     // Handle UK subdivisions (England, Scotland, Wales) with their own flags.
@@ -71,9 +71,10 @@ class FederationFlag extends StatelessWidget {
 
     String? iso2;
     if (normalized.length == 2) {
-      iso2 = normalized;
+      iso2 = CountryService().findByCode(normalized)?.countryCode;
     } else if (normalized.length == 3) {
-      iso2 = CountryUtils.toIso2Code(normalized);
+      final mapped = CountryUtils.toIso2Code(normalized);
+      iso2 = CountryService().findByCode(mapped)?.countryCode;
     } else {
       // Country name (e.g. "Norway", "Austria") — use manual mapping first
       // (more reliable), then fall back to country_picker's name lookup.
@@ -82,7 +83,7 @@ class FederationFlag extends StatelessWidget {
     }
 
     if (iso2 == null || iso2.length != 2) {
-      return _unknownPlaceholder(context);
+      return _noFlag();
     }
 
     return _iso2Flag(context, iso2);
@@ -104,7 +105,7 @@ class FederationFlag extends StatelessWidget {
 
   Widget _ukSubdivisionFlag(BuildContext context, String fideCode) {
     final country = _ukSubdivisions[fideCode];
-    if (country == null) return _fallback(context);
+    if (country == null) return _noFlag();
 
     final radius = borderRadius ?? BorderRadius.circular(3);
     return ClipRRect(
@@ -117,58 +118,7 @@ class FederationFlag extends StatelessWidget {
     );
   }
 
-  Widget _fideLogo(BuildContext context) {
-    final w = width;
-    final h = height;
-    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final cacheW = w != null ? (w * pixelRatio).toInt() : null;
-    final cacheH = h != null ? (h * pixelRatio).toInt() : null;
-
-    return ClipRRect(
-      borderRadius: borderRadius ?? BorderRadius.circular(3),
-      child: Image.asset(
-        PngAsset.fideLogo,
-        width: w,
-        height: h,
-        fit: BoxFit.cover,
-        cacheWidth: cacheW,
-        cacheHeight: cacheH,
-        errorBuilder: (_, __, ___) => SizedBox(width: w, height: h),
-      ),
-    );
-  }
-
-  Widget _fallback(BuildContext context) {
-    return _unknownPlaceholder(context);
-  }
-
-  /// Renders a neutral globe placeholder when no real federation can be
-  /// resolved (e.g. TWIC `fed: "Unknown"` or a country name that isn't in any
-  /// of our mapping tables). Previously this returned the FIDE webp logo,
-  /// which is mostly-white and looked like a blank rectangle at flag sizes.
-  Widget _unknownPlaceholder(BuildContext context) {
-    final w = width;
-    final h = height;
-    final iconSize = (h ?? w ?? 16) * 0.85;
-    final brightness = Theme.of(context).brightness;
-    // High-contrast surface so the globe placeholder is clearly visible
-    // against the card body, regardless of the active theme.
-    final bg = brightness == Brightness.light
-        ? const Color(0xFF6B7280)
-        : const Color(0xFF374151);
-    return ClipRRect(
-      borderRadius: borderRadius ?? BorderRadius.circular(3),
-      child: Container(
-        width: w,
-        height: h,
-        alignment: Alignment.center,
-        color: bg,
-        child: Icon(
-          Icons.public_rounded,
-          size: iconSize,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
+  /// Unknown/missing federation should not render a generic flag-like symbol.
+  /// Cards and player rows should only show a flag when we know the country.
+  Widget _noFlag() => const SizedBox.shrink();
 }

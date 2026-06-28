@@ -360,8 +360,8 @@ class _PlayerInfo extends StatelessWidget {
 
     // Imported PGNs often omit [WhiteFed]/[BlackFed] but include FideId tags,
     // so BackfilledFederationFlag resolves the country via Supabase's
-    // chess_players lookup and falls back to the FIDE logo only when no
-    // federation and no resolvable fideId are available.
+    // chess_players lookup. If no real country is available, the flag widget
+    // renders nothing rather than a generic placeholder.
     final flag = BackfilledFederationFlag(
       federation: federation,
       fideId: fideId,
