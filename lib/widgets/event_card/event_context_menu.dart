@@ -16,6 +16,14 @@ import 'package:share_plus/share_plus.dart';
 /// Actions available from the event card long-press context menu.
 enum EventContextAction { share, copyPgn }
 
+/// URL query parameter that selects a sub-tab of the broadcast/event page.
+/// The web frontend and the in-app deep link handler both read `?tab=<value>`
+/// (the traditional "tab in URL" convention) so an event link and a standings
+/// link are the SAME URL plus a tab marker. Keep these in sync with
+/// `DeepLinkService` and the web broadcast route.
+const String kEventTabQueryParam = 'tab';
+const String kEventStandingsTab = 'standings';
+
 /// Builds the canonical shareable URL for an event, mirroring
 /// `lichess.org/broadcast/<tour.slug>/<tour.id>` on chessever.com.
 ///
@@ -24,20 +32,31 @@ enum EventContextAction { share, copyPgn }
 /// without any other change. The fallback path uses the group_broadcast id
 /// and a slugified title — always works, but the path tail isn't a Lichess
 /// short id.
+///
+/// Pass [tab] (e.g. [kEventStandingsTab]) to deep-link a specific tab of the
+/// event page; it is appended as `?tab=<tab>` so the same link opens the
+/// Standings tab in-app and renders standings on the web.
 String buildEventShareUrl({
   required String id,
   required String title,
   String? tourId,
   String? tourSlug,
+  String? tab,
 }) {
+  final String base;
   if (tourId != null &&
       tourId.isNotEmpty &&
       tourSlug != null &&
       tourSlug.isNotEmpty) {
-    return 'https://chessever.com/broadcast/$tourSlug/$tourId';
+    base = 'https://chessever.com/broadcast/$tourSlug/$tourId';
+  } else {
+    final slug = _slugify(title);
+    base = 'https://chessever.com/broadcast/$slug/$id';
   }
-  final slug = _slugify(title);
-  return 'https://chessever.com/broadcast/$slug/$id';
+  if (tab != null && tab.isNotEmpty) {
+    return '$base?$kEventTabQueryParam=$tab';
+  }
+  return base;
 }
 
 String _slugify(String input) {

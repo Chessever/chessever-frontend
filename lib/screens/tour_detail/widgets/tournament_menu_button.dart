@@ -430,11 +430,15 @@ class TournamentMenuButton extends ConsumerWidget {
           padding: EdgeInsets.zero,
           height: 36.h,
           onTap: () {
+            // Standings share = the event link + the standings tab marker, so
+            // the same URL renders standings on the web and opens the Standings
+            // tab in-app.
             final url = buildEventShareUrl(
               id: fallbackId,
               title: aboutModel.name,
               tourId: aboutModel.id,
               tourSlug: aboutModel.slug,
+              tab: kEventStandingsTab,
             );
             unawaited(_shareStandings(ref, context, aboutModel.name, url));
           },

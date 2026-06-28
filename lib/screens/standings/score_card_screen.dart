@@ -162,6 +162,21 @@ final playerGamesProvider = FutureProvider.family<
   }
 });
 
+/// Turns a Lichess-style event slug (e.g. `45th-chess-olympiad-2024--open`)
+/// into a readable title (`45th Chess Olympiad 2024 Open`). Used as the last
+/// fallback for the shared event name when no broadcast/tour name is in hand,
+/// so the share card shows the real event instead of a generic placeholder.
+String? _humanizeEventSlug(String? slug) {
+  if (slug == null) return null;
+  final words = slug
+      .split(RegExp(r'[-_]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase() + w.substring(1))
+      .toList();
+  final title = words.join(' ').trim();
+  return title.isEmpty ? null : title;
+}
+
 class ScoreCardScreen extends ConsumerWidget {
   const ScoreCardScreen({super.key});
 
@@ -623,10 +638,15 @@ class ScoreCardScreen extends ConsumerWidget {
       player.fideId?.toString(),
     );
     // contextEvent is a Lichess tour ID (e.g. "GtTXd69H"), not a human name.
-    // Prefer broadcast name; fall back to the tour's aboutTourModel name.
+    // Prefer the broadcast name, then the tour's aboutTourModel name, then a
+    // readable title derived from the player's games' tour slug — so the share
+    // card shows the real event name instead of a generic placeholder.
     final eventName =
         selectedBroadcast?.name ??
-        ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel.name;
+        ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel.name ??
+        _humanizeEventSlug(
+          playerGames.isNotEmpty ? playerGames.first.tourSlug : null,
+        );
     final shareRows = _buildPlayerEventShareRows(
       playerGames: playerGames,
       player: player,

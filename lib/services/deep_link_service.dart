@@ -34,6 +34,8 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
     show PlayerProfileDataSource;
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
+import 'package:chessever2/widgets/event_card/event_context_menu.dart'
+    show kEventStandingsTab, kEventTabQueryParam;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -305,11 +307,14 @@ class DeepLinkService {
           ref,
         );
       } else if (broadcastId != null && broadcastId.isNotEmpty) {
+        // `?tab=standings` opens the event on its Standings tab (the same link
+        // that renders standings on the web). Absent/other values open Games.
+        final eventTab = uri.queryParameters[kEventTabQueryParam];
         _addBreadcrumb(
           'routing to broadcast event',
-          data: {'broadcastId': _maskedValue(broadcastId)},
+          data: {'broadcastId': _maskedValue(broadcastId), 'tab': eventTab},
         );
-        _navigateToEvent(broadcastId, navigatorKey, ref);
+        _navigateToEvent(broadcastId, navigatorKey, ref, tab: eventTab);
       } else {
         _addBreadcrumb(
           'deep link ignored',
@@ -854,6 +859,7 @@ class DeepLinkService {
     WidgetRef ref, {
     String? roundId,
     String? tourId,
+    String? tab,
   }) async {
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
@@ -947,7 +953,9 @@ class DeepLinkService {
 
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       ref.read(selectedTourModeProvider.notifier).state =
-          TournamentDetailScreenMode.games;
+          tab == kEventStandingsTab
+              ? TournamentDetailScreenMode.standings
+              : TournamentDetailScreenMode.games;
 
       debugPrint(
         'DeepLinkService: Event loaded, navigating to tournament detail',
@@ -1267,7 +1275,7 @@ class DeepLinkService {
   }
 
   Map<String, String> _whitelistedQueryParameters(Uri uri) {
-    final allowed = <String>{'stop_live'};
+    final allowed = <String>{'stop_live', kEventTabQueryParam};
     final safe = <String, String>{};
     for (final entry in uri.queryParameters.entries) {
       if (allowed.contains(entry.key)) {
