@@ -36,12 +36,18 @@ const String kEventStandingsTab = 'standings';
 /// Pass [tab] (e.g. [kEventStandingsTab]) to deep-link a specific tab of the
 /// event page; it is appended as `?tab=<tab>` so the same link opens the
 /// Standings tab in-app and renders standings on the web.
+///
+/// Pass [playerFideId] to link a specific player's scorecard within the event
+/// (`/broadcast/<slug>/<id>/player/<fideId>`): the same link opens the event and
+/// then that player's scorecard in-app, and renders the player card on the web.
+/// A player link takes precedence over [tab].
 String buildEventShareUrl({
   required String id,
   required String title,
   String? tourId,
   String? tourSlug,
   String? tab,
+  int? playerFideId,
 }) {
   final String base;
   if (tourId != null &&
@@ -52,6 +58,9 @@ String buildEventShareUrl({
   } else {
     final slug = _slugify(title);
     base = 'https://chessever.com/broadcast/$slug/$id';
+  }
+  if (playerFideId != null) {
+    return '$base/player/$playerFideId';
   }
   if (tab != null && tab.isNotEmpty) {
     return '$base?$kEventTabQueryParam=$tab';
@@ -280,7 +289,7 @@ class _EventMenuRow extends StatelessWidget {
       width: double.infinity,
       height: 40.h,
       padding: EdgeInsets.symmetric(horizontal: 14.w),
-      decoration:  BoxDecoration(color: context.colors.surface),
+      decoration: BoxDecoration(color: context.colors.surface),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

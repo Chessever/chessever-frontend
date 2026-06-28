@@ -50,6 +50,7 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show buildEventShareUrl;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:motor/motor.dart';
@@ -168,11 +169,12 @@ final playerGamesProvider = FutureProvider.family<
 /// so the share card shows the real event instead of a generic placeholder.
 String? _humanizeEventSlug(String? slug) {
   if (slug == null) return null;
-  final words = slug
-      .split(RegExp(r'[-_]+'))
-      .where((w) => w.isNotEmpty)
-      .map((w) => w[0].toUpperCase() + w.substring(1))
-      .toList();
+  final words =
+      slug
+          .split(RegExp(r'[-_]+'))
+          .where((w) => w.isNotEmpty)
+          .map((w) => w[0].toUpperCase() + w.substring(1))
+          .toList();
   final title = words.join(' ').trim();
   return title.isEmpty ? null : title;
 }
@@ -641,12 +643,31 @@ class ScoreCardScreen extends ConsumerWidget {
     // Prefer the broadcast name, then the tour's aboutTourModel name, then a
     // readable title derived from the player's games' tour slug — so the share
     // card shows the real event name instead of a generic placeholder.
+    final aboutModel =
+        ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
     final eventName =
         selectedBroadcast?.name ??
-        ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel.name ??
+        aboutModel?.name ??
         _humanizeEventSlug(
           playerGames.isNotEmpty ? playerGames.first.tourSlug : null,
         );
+    // Scorecard share link encodes this player so opening it pushes the event
+    // and then this player's scorecard (and renders the player card on the web).
+    final eventShareId =
+        aboutModel?.groupBroadcastId?.isNotEmpty == true
+            ? aboutModel!.groupBroadcastId!
+            : (aboutModel?.id ?? selectedBroadcast?.id);
+    final playerShareUrl =
+        (hasEventContext && eventShareId != null && eventShareId.isNotEmpty)
+            ? buildEventShareUrl(
+              id: eventShareId,
+              title: eventName ?? selectedBroadcast?.name ?? 'ChessEver',
+              tourId: aboutModel?.id,
+              tourSlug: aboutModel?.slug,
+              // null fideId → buildEventShareUrl returns the plain event URL.
+              playerFideId: player.fideId,
+            )
+            : null;
     final shareRows = _buildPlayerEventShareRows(
       playerGames: playerGames,
       player: player,
@@ -674,13 +695,7 @@ class ScoreCardScreen extends ConsumerWidget {
       rapidRating: playerRatings?.getRating('rapid'),
       blitzRating: playerRatings?.getRating('blitz'),
       rows: shareRows,
-      shareUrl:
-          selectedBroadcast == null
-              ? null
-              : buildEventShareUrl(
-                id: selectedBroadcast.id,
-                title: selectedBroadcast.name,
-              ),
+      shareUrl: playerShareUrl,
     );
 
     // Consistent horizontal padding - matches chessboard screen patterns
@@ -708,7 +723,7 @@ class ScoreCardScreen extends ConsumerWidget {
       ref.read(selectedPlayerProvider.notifier).state = nextPlayer;
     }
 
-    return Scaffold(
+    final scoreCardScaffold = Scaffold(
       key: e2eKey(E2eIds.scorecardRoot),
       backgroundColor: context.colors.background,
       body: SafeArea(
@@ -1005,6 +1020,13 @@ class ScoreCardScreen extends ConsumerWidget {
         ),
       ),
     );
+
+    // Detect a screenshot of the scorecard and nudge sharing the branded card.
+    return ScreenshotShareNudge(
+      enabled: hasEventContext && playerGames.isNotEmpty,
+      onShare: sharePlayerProfile,
+      child: scoreCardScaffold,
+    );
   }
 
   (double?, int?) _parseScoreValues(String scoreText) {
@@ -1218,13 +1240,10 @@ class ScoreCardScreen extends ConsumerWidget {
       await file.writeAsBytes(imageBytes);
       if (!context.mounted) return;
 
-      // Player deep link: event URL + /player/<fideId>. Opens this exact
-      // scorecard in-app (universal link) and renders an OG preview on the web.
-      final fideId = player.fideId;
-      final playerShareUrl =
-          (shareUrl != null && shareUrl.isNotEmpty && fideId != null)
-              ? '$shareUrl/player/$fideId'
-              : shareUrl;
+      // shareUrl already encodes /player/<fideId> when a FIDE id is available
+      // (built via buildEventShareUrl). Opening it pushes the event then this
+      // player's scorecard in-app, and renders the player OG card on the web.
+      final playerShareUrl = shareUrl;
       final subject =
           eventName?.trim().isNotEmpty == true ? eventName! : 'ChessEver';
 

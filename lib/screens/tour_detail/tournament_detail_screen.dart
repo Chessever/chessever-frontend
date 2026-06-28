@@ -15,6 +15,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_scree
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/utils/share_standings.dart';
+import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
@@ -255,7 +257,19 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                               } else if (index == 1) {
                                 return GamesTourScreen();
                               } else if (index == 2) {
-                                return PlayerTourScreen();
+                                // Screenshot of the standings tab → nudge to
+                                // share the branded standings image instead.
+                                return ScreenshotShareNudge(
+                                  enabled:
+                                      selectedTourMode ==
+                                      TournamentDetailScreenMode.standings,
+                                  onShare:
+                                      () => shareTournamentStandings(
+                                        context,
+                                        scopedRef,
+                                      ),
+                                  child: PlayerTourScreen(),
+                                );
                               } else {
                                 return Center(
                                   child: Text(

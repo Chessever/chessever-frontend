@@ -151,6 +151,7 @@ dependencies:
   file_picker: ^8.1.4
   receive_sharing_intent: ^1.8.1
   lottie: ^3.3.3
+  flutter_screenshot_detect: ^0.1.7
 
 dev_dependencies:
   flutter_test:
