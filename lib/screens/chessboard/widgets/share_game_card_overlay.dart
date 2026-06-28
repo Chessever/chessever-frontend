@@ -24,7 +24,7 @@ import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/utils/png_asset.dart';
+
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
@@ -1505,18 +1505,8 @@ class _ShareCard extends ConsumerWidget {
             ),
           ),
           SizedBox(width: elementSpacing.w),
-          // Country flag
-          if (playerCountry.toUpperCase() == 'FID') ...[
-            Image.asset(
-              PngAsset.fideLogo,
-              height: flagHeight.h,
-              width: flagWidth.w,
-              fit: BoxFit.cover,
-              cacheWidth: 48,
-              cacheHeight: 36,
-            ),
-            SizedBox(width: elementSpacing.w),
-          ] else if (playerCountry.isNotEmpty) ...[
+          // Show a real country flag only when the country is known.
+          if (playerCountry.isNotEmpty) ...[
             CountryFlag.fromCountryCode(
               playerCountry,
               theme: ImageTheme(height: flagHeight.h, width: flagWidth.w),

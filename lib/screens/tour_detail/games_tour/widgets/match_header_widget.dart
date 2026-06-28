@@ -4,7 +4,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/png_asset.dart';
+
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -307,18 +307,6 @@ Widget? _playerFlag(WidgetRef ref, PlayerCard? player) {
   final countryCode = player.countryCode.trim();
   if (countryCode.isEmpty) return null;
 
-  // Check for FIDE flag
-  if (countryCode.toUpperCase() == 'FID') {
-    return Image.asset(
-      PngAsset.fideLogo,
-      height: 12.h,
-      width: 16.w,
-      fit: BoxFit.cover,
-      cacheWidth: 48,
-      cacheHeight: 36,
-    );
-  }
-
   // Validate country code using the location service
   final validCountryCode = ref
       .read(locationServiceProvider)
@@ -327,8 +315,7 @@ Widget? _playerFlag(WidgetRef ref, PlayerCard? player) {
   if (validCountryCode.isEmpty) return null;
 
   return CountryFlag.fromCountryCode(
-validCountryCode,
-  theme: ImageTheme(height: 12.h,
-    width: 16.w,),
-);
+    validCountryCode,
+    theme: ImageTheme(height: 12.h, width: 16.w),
+  );
 }

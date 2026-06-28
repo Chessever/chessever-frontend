@@ -2,7 +2,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/png_asset.dart';
+
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -67,7 +67,9 @@ class RecentOpponentsList extends StatelessWidget {
             width: 24.w,
             child: Text(
               '$index',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimaryMuted),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimaryMuted,
+              ),
             ),
           ),
 
@@ -76,22 +78,14 @@ class RecentOpponentsList extends StatelessWidget {
 
           SizedBox(width: 10.w),
 
-          // Country flag
-          opponent.countryCode.toUpperCase() == 'FID'
-              ? Image.asset(
-                PngAsset.fideLogo,
-                height: 14.h,
-                width: 20.w,
-                fit: BoxFit.cover,
-                cacheWidth:
-                    (20 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                cacheHeight:
-                    (14 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-              )
-              : CountryFlag.fromCountryCode(
+          // Country flag: leave blank for unknown/FID placeholder values.
+          opponent.countryCode.trim().isNotEmpty &&
+                  opponent.countryCode.toUpperCase() != 'FID'
+              ? CountryFlag.fromCountryCode(
                 opponent.countryCode,
                 theme: ImageTheme(height: 14.h, width: 20.w),
-              ),
+              )
+              : SizedBox(width: 20.w, height: 14.h),
 
           SizedBox(width: 8.w),
 
@@ -99,7 +93,9 @@ class RecentOpponentsList extends StatelessWidget {
           Expanded(
             child: Text(
               '${opponent.title != null ? '${opponent.title} ' : ''}${opponent.name}',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -109,7 +105,9 @@ class RecentOpponentsList extends StatelessWidget {
           // Rating
           Text(
             opponent.rating.toString(),
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimaryMuted),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimaryMuted,
+            ),
           ),
         ],
       ),

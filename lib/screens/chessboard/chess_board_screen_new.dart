@@ -87,7 +87,7 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/png_asset.dart';
+
 import 'package:chessever2/utils/url_launcher_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -8685,8 +8685,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         // (mirroring the win red tint), redrawing each king above the tint so it
         // stays visible. 0xCCADE1CD is the same mint the old squareHighlight used.
         Widget drawKingTint(Square square, PieceKind kind) {
-          final effectiveFile = widget.isFlipped ? 7 - square.file : square.file;
-          final effectiveRank = widget.isFlipped ? square.rank : 7 - square.rank;
+          final effectiveFile =
+              widget.isFlipped ? 7 - square.file : square.file;
+          final effectiveRank =
+              widget.isFlipped ? square.rank : 7 - square.rank;
           final isLightSquare = (effectiveFile + effectiveRank) % 2 == 0;
           final baseSquareColor =
               isLightSquare ? colorScheme.lightSquare : colorScheme.darkSquare;
@@ -15901,18 +15903,8 @@ class _EventInfoSheet extends ConsumerWidget {
             ),
           ),
           SizedBox(width: 10.w),
-          // Country flag - handle FID (FIDE) specially like PlayerFirstRowDetailWidget
-          if (player.countryCode.toUpperCase() == 'FID') ...[
-            Image.asset(
-              PngAsset.fideLogo,
-              height: 14.h,
-              width: 20.w,
-              fit: BoxFit.cover,
-              cacheWidth: 48,
-              cacheHeight: 36,
-            ),
-            SizedBox(width: 8.w),
-          ] else if (validCountryCode.isNotEmpty) ...[
+          // Show a real country flag only when the country is known.
+          if (validCountryCode.isNotEmpty) ...[
             CountryFlag.fromCountryCode(
               validCountryCode,
               theme: ImageTheme(width: 20.w, height: 14.h),

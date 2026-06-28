@@ -17,7 +17,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
-import 'package:chessever2/utils/png_asset.dart';
+
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -686,18 +686,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Country flag
-                  if (effectiveFederation?.toUpperCase() == 'FID')
-                    Image.asset(
-                      PngAsset.fideLogo,
-                      height: 16.h,
-                      width: 22.w,
-                      fit: BoxFit.cover,
-                      cacheWidth:
-                          (22 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                      cacheHeight:
-                          (16 * MediaQuery.devicePixelRatioOf(context)).toInt(),
-                    )
-                  else if (countryCode.isNotEmpty)
+                  if (countryCode.isNotEmpty)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(2.br),
                       child: CountryFlag.fromCountryCode(
@@ -706,9 +695,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       ),
                     ),
 
-                  if (countryCode.isNotEmpty ||
-                      effectiveFederation?.toUpperCase() == 'FID')
-                    SizedBox(width: 8.w),
+                  if (countryCode.isNotEmpty) SizedBox(width: 8.w),
 
                   // Title and name
                   Flexible(
