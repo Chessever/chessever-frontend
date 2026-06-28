@@ -228,11 +228,10 @@ packages:
   chessground:
     dependency: "direct main"
     description:
-      name: chessground
-      sha256: "8d1c02befc1f7c67405b70c977ccb7bfa0ecbf8f11fe88531f32a89bfd1e21c7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "10.1.0"
+      path: "third_party/chessground"
+      relative: true
+    source: path
+    version: "10.1.1"
   clarity_flutter:
     dependency: "direct main"
     description:

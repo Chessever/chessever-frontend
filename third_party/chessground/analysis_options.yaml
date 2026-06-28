@@ -1,0 +1,16 @@
+include: package:lint/package.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+formatter:
+  page_width: 100
+
+linter:
+  rules:
+    directives_ordering: false
+    always_use_package_imports: false
+    prefer_single_quotes: true

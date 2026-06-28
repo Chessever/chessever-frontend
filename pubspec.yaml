@@ -110,7 +110,7 @@ dependencies:
   talker: ^5.1.17
   collection: ^1.19.1
 
-  chessground: ^10.1.0
+  chessground: ^10.1.1
   dartchess: ^0.13.1
   fast_immutable_collections: ^11.2.0
   flutter_soloud: 4.0.10
@@ -173,6 +173,13 @@ dev_dependencies:
 
 
 dependency_overrides:
+  # Vendored chessground 10.1.1 (verbatim) + a 4-line guard on the controller's
+  # detached animation getters — fixes fatal Sentry CHESSEVER-1N2
+  # (ChessboardController.fadeAnimation null-check on phone reparent/remount).
+  # Keep this at the NEWEST published chessground: on bump, re-vendor and reapply
+  # the patch. See third_party/chessground/PATCH.md.
+  chessground:
+    path: third_party/chessground
   app_links: ^6.4.1
 
 # For information on the generic Dart part of this file, see the
