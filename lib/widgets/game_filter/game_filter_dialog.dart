@@ -5,6 +5,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
@@ -78,9 +79,11 @@ class GameFilterDialog extends StatefulWidget {
 class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameResultFilter _result;
   late GameColorFilter _color;
+  late GameFinishFilter _finish;
   late GameTimeControlFilter _timeControl;
   late GameOnlineFilter _online;
   late GameLiveFilter _live;
+  late GameEcoFilter _eco;
   late RangeValues _yearRange;
   late int? _selectedMinRating;
   late List<GameSortCriterion> _sorts;
@@ -92,9 +95,11 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     super.initState();
     _result = widget.initialFilter.result;
     _color = widget.initialFilter.color;
+    _finish = widget.initialFilter.finish;
     _timeControl = widget.initialFilter.timeControl;
     _online = widget.initialFilter.online;
     _live = widget.initialFilter.live;
+    _eco = widget.initialFilter.eco;
     _yearRange = RangeValues(
       widget.initialFilter.minYear.toDouble(),
       widget.initialFilter.maxYear.toDouble(),
@@ -144,44 +149,17 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 1. Status (Live / Completed) — top priority when shown.
-                    // In database/My-Likes contexts the caller drops this
-                    // (saved games are always finished); Sort controls render
-                    // independently via [showSortSection], so contexts that
-                    // keep Status (e.g. smart events) can still offer Sort.
-                    if (widget.showLiveFilter) ...[
-                      _sectionLabel('Status'),
-                      SizedBox(height: 8.h),
-                      _chipGrid<GameLiveFilter>(
-                        values: GameLiveFilter.values,
-                        selected: _live,
-                        label:
-                            (v) =>
-                                v == GameLiveFilter.all ? 'All' : v.displayText,
-                        onTap: (v) {
-                          HapticFeedbackService.selection();
-                          setState(() => _live = v);
-                        },
-                      ),
-                      SizedBox(height: 20.h),
-                    ],
-                    if (widget.showSortSection) ...[
-                      _buildSortSection(),
-                      SizedBox(height: 20.h),
-                    ],
-
-                    // 2. Time Control
+                    // Standard smart-game filter order:
+                    // Time control → Avg. Rating → ECO / Opening → Finish → Result → Date range.
                     if (widget.showTimeControlFilter) ...[
                       _sectionLabel('Time Control'),
                       SizedBox(height: 8.h),
                       _chipGrid<GameTimeControlFilter>(
                         values: GameTimeControlFilter.values,
                         selected: _timeControl,
-                        label:
-                            (v) =>
-                                v == GameTimeControlFilter.all
-                                    ? 'All'
-                                    : v.displayText,
+                        label: (v) => v == GameTimeControlFilter.all
+                            ? 'All'
+                            : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
                           setState(() => _timeControl = v);
@@ -190,9 +168,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       SizedBox(height: 20.h),
                     ],
 
-                    // 3. Level
                     if (widget.showLevelFilter) ...[
-                      _sectionLabel('Level'),
+                      _sectionLabel('Avg. Rating'),
                       SizedBox(height: 8.h),
                       RatingTierFilter(
                         selectedMinRating: _selectedMinRating,
@@ -204,15 +181,37 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       SizedBox(height: 20.h),
                     ],
 
-                    // 4. Result (box grid)
+                    _sectionLabel('ECO / Opening'),
+                    SizedBox(height: 8.h),
+                    EcoFilterDropdown(
+                      value: _eco,
+                      onChanged: (value) {
+                        HapticFeedbackService.selection();
+                        setState(() => _eco = value);
+                      },
+                    ),
+                    SizedBox(height: 20.h),
+
+                    _sectionLabel('Finish'),
+                    SizedBox(height: 8.h),
+                    _chipGrid<GameFinishFilter>(
+                      values: GameFinishFilter.values,
+                      selected: _finish,
+                      label: (v) => v.displayText,
+                      onTap: (v) {
+                        HapticFeedbackService.selection();
+                        setState(() => _finish = v);
+                      },
+                    ),
+                    SizedBox(height: 20.h),
+
                     _sectionLabel('Result'),
                     SizedBox(height: 8.h),
                     _chipGrid<GameResultFilter>(
                       values: GameResultFilter.values,
                       selected: _result,
-                      label:
-                          (v) =>
-                              v == GameResultFilter.all ? 'All' : v.displayText,
+                      label: (v) =>
+                          v == GameResultFilter.all ? 'All' : v.displayText,
                       onTap: (v) {
                         HapticFeedbackService.selection();
                         setState(() => _result = v);
@@ -220,19 +219,14 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                     ),
                     SizedBox(height: 20.h),
 
-                    // 5. Color (box grid) — hidden in database/My-Likes
-                    // contexts via [showColorFilter].
                     if (widget.showColorFilter) ...[
                       _sectionLabel('Color'),
                       SizedBox(height: 8.h),
                       _chipGrid<GameColorFilter>(
                         values: GameColorFilter.values,
                         selected: _color,
-                        label:
-                            (v) =>
-                                v == GameColorFilter.all
-                                    ? 'All'
-                                    : v.displayText,
+                        label: (v) =>
+                            v == GameColorFilter.all ? 'All' : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
                           setState(() => _color = v);
@@ -241,18 +235,35 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       SizedBox(height: 20.h),
                     ],
 
-                    // 6. Format (online/OTB) — only when caller enables it
+                    if (widget.showLiveFilter) ...[
+                      _sectionLabel('Status'),
+                      SizedBox(height: 8.h),
+                      _chipGrid<GameLiveFilter>(
+                        values: GameLiveFilter.values,
+                        selected: _live,
+                        label: (v) =>
+                            v == GameLiveFilter.all ? 'All' : v.displayText,
+                        onTap: (v) {
+                          HapticFeedbackService.selection();
+                          setState(() => _live = v);
+                        },
+                      ),
+                      SizedBox(height: 20.h),
+                    ],
+
+                    if (widget.showSortSection) ...[
+                      _buildSortSection(),
+                      SizedBox(height: 20.h),
+                    ],
+
                     if (widget.showFormatFilter) ...[
                       _sectionLabel('Format'),
                       SizedBox(height: 8.h),
                       _chipGrid<GameOnlineFilter>(
                         values: GameOnlineFilter.values,
                         selected: _online,
-                        label:
-                            (v) =>
-                                v == GameOnlineFilter.all
-                                    ? 'All'
-                                    : v.displayText,
+                        label: (v) =>
+                            v == GameOnlineFilter.all ? 'All' : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
                           setState(() => _online = v);
@@ -263,7 +274,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
 
                     // 7. Year range
                     if (widget.showYearFilter) ...[
-                      _sectionLabel('Year'),
+                      _sectionLabel('Date Range'),
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
                         values: _yearRange,
@@ -375,23 +386,23 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       result: _result,
       // Color hidden → never carry a stale color filter (no UI to clear it).
       color: widget.showColorFilter ? _color : GameColorFilter.all,
+      finish: _finish,
+      eco: _eco,
       // Same rule for a hidden Time Control section.
-      timeControl:
-          widget.showTimeControlFilter
-              ? _timeControl
-              : GameTimeControlFilter.all,
+      timeControl: widget.showTimeControlFilter
+          ? _timeControl
+          : GameTimeControlFilter.all,
       online: _online,
       live: _live,
-      minYear:
-          widget.showYearFilter
-              ? _yearRange.start.round()
-              : GameFilter.defaultMinYear,
-      maxYear:
-          widget.showYearFilter ? _yearRange.end.round() : DateTime.now().year,
-      minRating:
-          widget.showLevelFilter
-              ? _selectedMinRating ?? GameFilter.defaultMinRating
-              : GameFilter.defaultMinRating,
+      minYear: widget.showYearFilter
+          ? _yearRange.start.round()
+          : GameFilter.defaultMinYear,
+      maxYear: widget.showYearFilter
+          ? _yearRange.end.round()
+          : DateTime.now().year,
+      minRating: widget.showLevelFilter
+          ? _selectedMinRating ?? GameFilter.defaultMinRating
+          : GameFilter.defaultMinRating,
       maxRating: GameFilter.absoluteMaxRating,
       sorts: widget.showSortSection ? _sorts : const [],
     );
@@ -420,9 +431,11 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     setState(() {
       _result = GameResultFilter.all;
       _color = GameColorFilter.all;
+      _finish = GameFinishFilter.all;
       _timeControl = GameTimeControlFilter.all;
       _online = GameOnlineFilter.all;
       _live = GameLiveFilter.all;
+      _eco = GameEcoFilter.all;
       _yearRange = RangeValues(
         GameFilter.defaultMinYear.toDouble(),
         DateTime.now().year.toDouble(),
@@ -503,14 +516,11 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         ),
         SizedBox(height: 8.h),
         _adaptiveChipLayout(
-          measureLabels:
-              GamebaseSortField.values.map(_sortFieldLabel).toList(),
+          measureLabels: GamebaseSortField.values.map(_sortFieldLabel).toList(),
           extraPerChip: widget.showSortDirection ? 4.w + 12.ic : 0,
-          chipsBuilder:
-              (expanded) =>
-                  GamebaseSortField.values
-                      .map((f) => _buildSortChip(f, expanded: expanded))
-                      .toList(),
+          chipsBuilder: (expanded) => GamebaseSortField.values
+              .map((f) => _buildSortChip(f, expanded: expanded))
+              .toList(),
         ),
       ],
     );
@@ -549,16 +559,15 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
               SizedBox(
                 width: 12.ic,
                 height: 12.ic,
-                child:
-                    isSelected
-                        ? Icon(
-                          criterion!.direction == GamebaseSortDirection.asc
-                              ? Icons.arrow_upward_rounded
-                              : Icons.arrow_downward_rounded,
-                          size: 12.ic,
-                          color: kBlackColor,
-                        )
-                        : null,
+                child: isSelected
+                    ? Icon(
+                        criterion!.direction == GamebaseSortDirection.asc
+                            ? Icons.arrow_upward_rounded
+                            : Icons.arrow_downward_rounded,
+                        size: 12.ic,
+                        color: kBlackColor,
+                      )
+                    : null,
               ),
             ],
           ],
@@ -619,10 +628,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                   Expanded(child: chips[i]),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child:
-                        i + 1 < chips.length
-                            ? chips[i + 1]
-                            : const SizedBox.shrink(),
+                    child: i + 1 < chips.length
+                        ? chips[i + 1]
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -641,42 +649,33 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   }) {
     return _adaptiveChipLayout(
       measureLabels: values.map(label).toList(),
-      chipsBuilder:
-          (expanded) =>
-              values.map((v) {
-                final isSelected = v == selected;
-                return GestureDetector(
-                  onTap: () => onTap(v),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 14.w,
-                      vertical: 10.h,
-                    ),
-                    // Equal-width grid cells center their label; row chips
-                    // hug their content as before.
-                    alignment: expanded ? Alignment.center : null,
-                    decoration: BoxDecoration(
-                      color:
-                          isSelected
-                              ? kPrimaryColor
-                              : context.colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Text(
-                      label(v),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color:
-                            isSelected
-                                ? kBlackColor
-                                : context.colors.textPrimary,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+      chipsBuilder: (expanded) => values.map((v) {
+        final isSelected = v == selected;
+        return GestureDetector(
+          onTap: () => onTap(v),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+            // Equal-width grid cells center their label; row chips
+            // hug their content as before.
+            alignment: expanded ? Alignment.center : null,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? kPrimaryColor
+                  : context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(8.br),
+            ),
+            child: Text(
+              label(v),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textXsMedium.copyWith(
+                color: isSelected ? kBlackColor : context.colors.textPrimary,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

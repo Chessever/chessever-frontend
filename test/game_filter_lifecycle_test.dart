@@ -40,6 +40,24 @@ void main() {
 
       expect(filtered.map((game) => game.gameStatus), [GameStatus.whiteWins]);
     });
+
+    test('finish filter keeps only games ending by selected move', () {
+      final shortGame = _game(
+        status: GameStatus.whiteWins,
+        pgn: '1. e4 e5 2. Nf3 Nc6 15. Qxf7# 1-0',
+      );
+      final longGame = _game(
+        status: GameStatus.blackWins,
+        pgn: '1. d4 Nf6 2. c4 e6 26. Qb3 Be7 0-1',
+      );
+
+      final filtered = GameFilterHelper.applyFilter([
+        shortGame,
+        longGame,
+      ], GameFilter(finish: GameFinishFilter.byMove20));
+
+      expect(filtered, [shortGame]);
+    });
   });
 }
 
@@ -48,6 +66,7 @@ GamesTourModel _game({
   DateTime? lastMoveTime,
   DateTime? gameDay,
   String? lastMove,
+  String? pgn,
 }) {
   return GamesTourModel(
     gameId: '${status.name}-${lastMoveTime ?? gameDay}',
@@ -65,6 +84,7 @@ GamesTourModel _game({
     lastMoveTime: lastMoveTime,
     gameDay: gameDay,
     lastMove: lastMove,
+    pgn: pgn,
   );
 }
 

@@ -18,10 +18,10 @@ class RatingTierFilter extends StatelessWidget {
   final ValueChanged<int?> onChanged;
 
   static const tiers = <RatingTier>[
-    RatingTier(label: 'GM', subtitle: '+2500', minRating: 2500),
-    RatingTier(label: 'IM', subtitle: '+2400', minRating: 2400),
-    RatingTier(label: 'FM', subtitle: '+2300', minRating: 2300),
-    RatingTier(label: 'CM', subtitle: '+2200', minRating: 2200),
+    RatingTier(label: '2500+', subtitle: '', minRating: 2500),
+    RatingTier(label: '2400+', subtitle: '', minRating: 2400),
+    RatingTier(label: '2300+', subtitle: '', minRating: 2300),
+    RatingTier(label: '2200+', subtitle: '', minRating: 2200),
   ];
 
   static int? normalizeMinRating(int? minRating) {
@@ -40,7 +40,7 @@ class RatingTierFilter extends StatelessWidget {
 
     for (final tier in tiers) {
       if (tier.minRating == normalized) {
-        return '${tier.label} ${tier.subtitle}';
+        return tier.label;
       }
     }
 
@@ -60,6 +60,20 @@ class RatingTierFilter extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 320),
         child: Column(
           children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _RatingChip(
+                    label: 'Any',
+                    isSelected: selected == null,
+                    onTap: () => onChanged(null),
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                const Expanded(child: SizedBox.shrink()),
+              ],
+            ),
+            SizedBox(height: 8.h),
             for (var i = 0; i < tiers.length; i += 2) ...[
               if (i > 0) SizedBox(height: 8.h),
               Row(
@@ -73,19 +87,56 @@ class RatingTierFilter extends StatelessWidget {
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child:
-                        i + 1 < tiers.length
-                            ? _TierChip(
-                              tier: tiers[i + 1],
-                              isSelected: selected == tiers[i + 1].minRating,
-                              onChanged: onChanged,
-                            )
-                            : const SizedBox.shrink(),
+                    child: i + 1 < tiers.length
+                        ? _TierChip(
+                            tier: tiers[i + 1],
+                            isSelected: selected == tiers[i + 1].minRating,
+                            onChanged: onChanged,
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RatingChip extends StatelessWidget {
+  const _RatingChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(8.br),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.textXsMedium.copyWith(
+            color: isSelected ? kBlackColor : context.colors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -129,20 +180,21 @@ class _TierChip extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            SizedBox(width: 4.w),
-            Flexible(
-              child: Text(
-                tier.subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textXsMedium.copyWith(
-                  color:
-                      isSelected
-                          ? kBlackColor.withValues(alpha: 0.7)
-                          : context.colors.textSecondary,
+            if (tier.subtitle.isNotEmpty) ...[
+              SizedBox(width: 4.w),
+              Flexible(
+                child: Text(
+                  tier.subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: isSelected
+                        ? kBlackColor.withValues(alpha: 0.7)
+                        : context.colors.textSecondary,
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),

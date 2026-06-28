@@ -46,6 +46,37 @@ extension GameResultFilterX on GameResultFilter {
   }
 }
 
+/// Finish-length filter for miniature-style game collections.
+enum GameFinishFilter { all, byMove25, byMove20, byMove15 }
+
+extension GameFinishFilterX on GameFinishFilter {
+  String get displayText {
+    switch (this) {
+      case GameFinishFilter.all:
+        return 'All';
+      case GameFinishFilter.byMove25:
+        return '≤25';
+      case GameFinishFilter.byMove20:
+        return '≤20';
+      case GameFinishFilter.byMove15:
+        return '≤15';
+    }
+  }
+
+  int? get maxMoveNumber {
+    switch (this) {
+      case GameFinishFilter.all:
+        return null;
+      case GameFinishFilter.byMove25:
+        return 25;
+      case GameFinishFilter.byMove20:
+        return 20;
+      case GameFinishFilter.byMove15:
+        return 15;
+    }
+  }
+}
+
 /// Color filter options
 enum GameColorFilter { all, white, black }
 
@@ -231,6 +262,7 @@ class GameFilter {
   GameFilter({
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
+    this.finish = GameFinishFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     this.online = GameOnlineFilter.all,
     this.live = GameLiveFilter.all,
@@ -246,6 +278,7 @@ class GameFilter {
 
   final GameResultFilter result;
   final GameColorFilter color;
+  final GameFinishFilter finish;
   final GameTimeControlFilter timeControl;
   final GameOnlineFilter online;
   final GameLiveFilter live;
@@ -273,6 +306,7 @@ class GameFilter {
   bool get hasActiveFilters =>
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
+      finish != GameFinishFilter.all ||
       timeControl != GameTimeControlFilter.all ||
       online != GameOnlineFilter.all ||
       live != GameLiveFilter.all ||
@@ -287,6 +321,7 @@ class GameFilter {
     int count = 0;
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
+    if (finish != GameFinishFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
     if (online != GameOnlineFilter.all) count++;
     if (live != GameLiveFilter.all) count++;
@@ -302,6 +337,7 @@ class GameFilter {
   GameFilter copyWith({
     GameResultFilter? result,
     GameColorFilter? color,
+    GameFinishFilter? finish,
     GameTimeControlFilter? timeControl,
     GameOnlineFilter? online,
     GameLiveFilter? live,
@@ -315,6 +351,7 @@ class GameFilter {
     return GameFilter(
       result: result ?? this.result,
       color: color ?? this.color,
+      finish: finish ?? this.finish,
       timeControl: timeControl ?? this.timeControl,
       online: online ?? this.online,
       live: live ?? this.live,
@@ -335,6 +372,7 @@ class GameFilter {
     return other is GameFilter &&
         other.result == result &&
         other.color == color &&
+        other.finish == finish &&
         other.timeControl == timeControl &&
         other.online == online &&
         other.live == live &&
@@ -350,6 +388,7 @@ class GameFilter {
   int get hashCode => Object.hash(
     result,
     color,
+    finish,
     timeControl,
     online,
     live,
@@ -429,6 +468,17 @@ class GameFilterHelper {
 
       // Result filter
       if (!filter.result.matches(game.gameStatus)) return false;
+
+      // Finish filter
+      if (filter.finish != GameFinishFilter.all) {
+        final moveNumber = _estimateFinalMoveNumber(game);
+        final maxMoveNumber = filter.finish.maxMoveNumber;
+        if (moveNumber == null ||
+            maxMoveNumber == null ||
+            moveNumber > maxMoveNumber) {
+          return false;
+        }
+      }
 
       // Time control filter
       if (filter.timeControl != GameTimeControlFilter.all) {
@@ -519,5 +569,32 @@ class GameFilterHelper {
     // No fallback - if timeControl is not set in the database, we can't reliably
     // determine it. Return 'all' which means "unknown" and won't filter out the game.
     return GameTimeControlFilter.all;
+  }
+
+  static int? _estimateFinalMoveNumber(GamesTourModel game) {
+    final pgn = game.pgn;
+    if (pgn != null && pgn.isNotEmpty) {
+      return _estimateMoveNumberFromPgn(pgn);
+    }
+
+    final lastMove = game.lastMove;
+    if (lastMove == null || lastMove.isEmpty) return null;
+    return _estimateMoveNumberFromPgn(lastMove);
+  }
+
+  static int? _estimateMoveNumberFromPgn(String text) {
+    final cleaned = text
+        .replaceAll(RegExp(r'\[[^\]]*\]'), ' ')
+        .replaceAll(RegExp(r'\{[^}]*\}'), ' ')
+        .replaceAll(RegExp(r'\([^)]*\)'), ' ')
+        .replaceAll(RegExp(r'\$\d+'), ' ');
+    final matches = RegExp(r'\b(\d{1,3})\s*\.{1,3}').allMatches(cleaned);
+    int? maxMove;
+    for (final match in matches) {
+      final value = int.tryParse(match.group(1) ?? '');
+      if (value == null) continue;
+      if (maxMove == null || value > maxMove) maxMove = value;
+    }
+    return maxMove;
   }
 }

@@ -4,6 +4,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -88,18 +89,27 @@ class PremiumGamesFilter {
   const PremiumGamesFilter({
     this.dateRange = PremiumGamesDateRange.allTime,
     this.result = PremiumGamesResult.all,
+    this.timeControl = GameTimeControlFilter.all,
+    this.eco = GameEcoFilter.all,
+    this.finish = GameFinishFilter.all,
     this.minElo,
     this.maxElo,
   });
 
   final PremiumGamesDateRange dateRange;
   final PremiumGamesResult result;
+  final GameTimeControlFilter timeControl;
+  final GameEcoFilter eco;
+  final GameFinishFilter finish;
   final int? minElo;
   final int? maxElo;
 
   bool get hasActiveFilters {
     return dateRange != PremiumGamesDateRange.allTime ||
         result != PremiumGamesResult.all ||
+        timeControl != GameTimeControlFilter.all ||
+        !eco.isAll ||
+        finish != GameFinishFilter.all ||
         minElo != null ||
         maxElo != null;
   }
@@ -107,6 +117,9 @@ class PremiumGamesFilter {
   PremiumGamesFilter copyWith({
     PremiumGamesDateRange? dateRange,
     PremiumGamesResult? result,
+    GameTimeControlFilter? timeControl,
+    GameEcoFilter? eco,
+    GameFinishFilter? finish,
     int? minElo,
     int? maxElo,
     bool clearElo = false,
@@ -114,6 +127,9 @@ class PremiumGamesFilter {
     return PremiumGamesFilter(
       dateRange: dateRange ?? this.dateRange,
       result: result ?? this.result,
+      timeControl: timeControl ?? this.timeControl,
+      eco: eco ?? this.eco,
+      finish: finish ?? this.finish,
       minElo: clearElo ? null : (minElo ?? this.minElo),
       maxElo: clearElo ? null : (maxElo ?? this.maxElo),
     );
@@ -169,14 +185,15 @@ final premiumGamesFilterProvider =
     );
 
 /// Provider for premium games based on type.
-final premiumGamesProvider = StateNotifierProvider.autoDispose.family<
-  PremiumGamesNotifier,
-  AsyncValue<PremiumGamesState>,
-  PremiumGamesType
->((ref, type) {
-  ref.keepAlive();
-  return PremiumGamesNotifier(ref, type);
-});
+final premiumGamesProvider = StateNotifierProvider.autoDispose
+    .family<
+      PremiumGamesNotifier,
+      AsyncValue<PremiumGamesState>,
+      PremiumGamesType
+    >((ref, type) {
+      ref.keepAlive();
+      return PremiumGamesNotifier(ref, type);
+    });
 
 /// Notifier for managing premium games state.
 class PremiumGamesNotifier
@@ -304,11 +321,10 @@ class PremiumGamesNotifier
     }
 
     // Get FIDE IDs from favorites
-    final fideIds =
-        favorites
-            .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-            .map((f) => f.fideId!)
-            .toList();
+    final fideIds = favorites
+        .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
+        .map((f) => f.fideId!)
+        .toList();
 
     if (fideIds.isEmpty) {
       debugPrint('[PremiumGames] No FIDE IDs for favorites');
@@ -415,6 +431,16 @@ class PremiumGamesNotifier
 
       // Result filter
       if (!filter.result.matches(game.effectiveGameStatus)) {
+        return false;
+      }
+
+      final gameFilter = GameFilter(
+        result: GameResultFilter.all,
+        timeControl: filter.timeControl,
+        eco: filter.eco,
+        finish: filter.finish,
+      );
+      if (!GameFilterHelper.applyFilter([game], gameFilter).contains(game)) {
         return false;
       }
 

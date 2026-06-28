@@ -5,6 +5,8 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -42,13 +44,19 @@ class _PremiumGamesFilterDialogState
     extends ConsumerState<PremiumGamesFilterDialog> {
   late PremiumGamesDateRange _dateRange;
   late PremiumGamesResult _result;
+  late GameTimeControlFilter _timeControl;
   late int? _selectedMinElo;
+  late GameEcoFilter _eco;
+  late GameFinishFilter _finish;
 
   @override
   void initState() {
     super.initState();
     _dateRange = widget.initialFilter.dateRange;
     _result = widget.initialFilter.result;
+    _timeControl = widget.initialFilter.timeControl;
+    _eco = widget.initialFilter.eco;
+    _finish = widget.initialFilter.finish;
     _selectedMinElo = RatingTierFilter.normalizeMinRating(
       widget.initialFilter.minElo,
     );
@@ -111,21 +119,57 @@ class _PremiumGamesFilterDialogState
                   ),
                   SizedBox(height: 20.h),
 
-                  // Date Range
-                  _SectionTitle(title: 'Date Range'),
+                  // Standard smart-game filter order.
+                  _SectionTitle(title: 'Time control'),
                   SizedBox(height: 8.h),
                   _ChipGrid(
-                    items: PremiumGamesDateRange.values,
-                    selectedItem: _dateRange,
-                    getLabel: (item) => item.displayText,
+                    items: GameTimeControlFilter.values,
+                    selectedItem: _timeControl,
+                    getLabel: (item) => item == GameTimeControlFilter.all
+                        ? 'All'
+                        : item.displayText,
                     onSelected: (item) {
                       HapticFeedbackService.selection();
-                      setState(() => _dateRange = item);
+                      setState(() => _timeControl = item);
                     },
                   ),
                   SizedBox(height: 20.h),
 
-                  // Result
+                  _SectionTitle(title: 'Avg. Rating'),
+                  SizedBox(height: 8.h),
+                  RatingTierFilter(
+                    selectedMinRating: _selectedMinElo,
+                    onChanged: (value) {
+                      HapticFeedbackService.selection();
+                      setState(() => _selectedMinElo = value);
+                    },
+                  ),
+                  SizedBox(height: 20.h),
+
+                  _SectionTitle(title: 'ECO / Opening'),
+                  SizedBox(height: 8.h),
+                  EcoFilterDropdown(
+                    value: _eco,
+                    onChanged: (value) {
+                      HapticFeedbackService.selection();
+                      setState(() => _eco = value);
+                    },
+                  ),
+                  SizedBox(height: 20.h),
+
+                  _SectionTitle(title: 'Finish'),
+                  SizedBox(height: 8.h),
+                  _ChipGrid(
+                    items: GameFinishFilter.values,
+                    selectedItem: _finish,
+                    getLabel: (item) => item.displayText,
+                    onSelected: (item) {
+                      HapticFeedbackService.selection();
+                      setState(() => _finish = item);
+                    },
+                  ),
+                  SizedBox(height: 20.h),
+
                   _SectionTitle(title: 'Result'),
                   SizedBox(height: 8.h),
                   _ChipGrid(
@@ -139,13 +183,15 @@ class _PremiumGamesFilterDialogState
                   ),
                   SizedBox(height: 20.h),
 
-                  _SectionTitle(title: 'Level'),
+                  _SectionTitle(title: 'Date range'),
                   SizedBox(height: 8.h),
-                  RatingTierFilter(
-                    selectedMinRating: _selectedMinElo,
-                    onChanged: (value) {
+                  _ChipGrid(
+                    items: PremiumGamesDateRange.values,
+                    selectedItem: _dateRange,
+                    getLabel: (item) => item.displayText,
+                    onSelected: (item) {
                       HapticFeedbackService.selection();
-                      setState(() => _selectedMinElo = value);
+                      setState(() => _dateRange = item);
                     },
                   ),
                   SizedBox(height: 16.h),
@@ -217,6 +263,9 @@ class _PremiumGamesFilterDialogState
     setState(() {
       _dateRange = PremiumGamesDateRange.allTime;
       _result = PremiumGamesResult.all;
+      _timeControl = GameTimeControlFilter.all;
+      _eco = GameEcoFilter.all;
+      _finish = GameFinishFilter.all;
       _selectedMinElo = null;
     });
   }
@@ -226,6 +275,9 @@ class _PremiumGamesFilterDialogState
     final filter = PremiumGamesFilter(
       dateRange: _dateRange,
       result: _result,
+      timeControl: _timeControl,
+      eco: _eco,
+      finish: _finish,
       minElo: _selectedMinElo,
       maxElo: null,
     );
@@ -289,10 +341,9 @@ class _ChipGrid<T> extends StatelessWidget {
               color: isSelected ? kPrimaryColor : context.colors.surface,
               borderRadius: BorderRadius.circular(8.br),
               border: Border.all(
-                color:
-                    isSelected
-                        ? kPrimaryColor
-                        : context.colors.surfaceRecessed.withValues(alpha: 0.3),
+                color: isSelected
+                    ? kPrimaryColor
+                    : context.colors.surfaceRecessed.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
