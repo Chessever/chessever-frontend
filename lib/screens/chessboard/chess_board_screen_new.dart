@@ -7350,7 +7350,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   // chessground v10: the interactive board is driven by a [ChessboardController]
   // instead of being rebuilt with a new `fen`. We own it here, seed it in
   // initState, and push new positions via [updatePosition] in didUpdateWidget.
-  late final ChessboardController _boardController;
+  //
+  // Android PiP recovery intentionally re-keys/remounts the Chessboard to shake
+  // a stale Surface after returning to the app. That remount must use a fresh
+  // controller too: chessground detaches the old controller during deactivate(),
+  // clearing its animation handles, and reusing it can trip
+  // `ChessboardController.fadeAnimation`'s null-check during the next build.
+  late ChessboardController _boardController;
+  int _attachedAndroidPipRecoveryEpoch = 0;
 
   // Swipe-to-flip: drag-driven progress + a fixed-duration commit animation.
   // Progress is the unit-π rotation factor (×π → radians for Transform.rotateX).
@@ -7771,21 +7778,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final analysisState = widget.chessBoardState.analysisState;
     _wasAtEnd = _isAtGameEnd(analysisState);
     _boardController = ChessboardController(game: _gameDataFor(analysisState));
-    // Seed a pending programmatic promotion if one already exists at mount
-    // (e.g. PiP-recovery remount or hot-reload mid-promotion) so the selector
-    // still appears — didUpdateWidget only mirrors *changes*.
-    if (analysisState.promotionMove != null) {
-      _boardController.pendingPromotion = analysisState.promotionMove;
-    }
-    // When the board's promotion selector closes (pick or dismiss) it clears
-    // pendingPromotion. Mirror that back so a *cancelled* programmatic promotion
-    // doesn't leave analysisState.promotionMove stale (guarded clear → safe).
-    // pendingPromotionNotifier is @internal but is the only signal for "selector
-    // closed" — the controller doesn't notifyListeners on promotion changes.
-    // ignore: invalid_use_of_internal_member
-    _boardController.pendingPromotionNotifier.addListener(
-      _onBoardPendingPromotionChanged,
-    );
+    _seedBoardControllerPromotion(analysisState);
+    _attachBoardControllerPromotionListener();
     // Baseline the selection-clear request so the first nav move is detected.
     _lastSelectionClearRequestId = ref.read(
       boardSelectionClearRequestProvider(
@@ -7822,13 +7816,56 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     }
   }
 
+  void _attachBoardControllerPromotionListener() {
+    // When the board's promotion selector closes (pick or dismiss) it clears
+    // pendingPromotion. Mirror that back so a *cancelled* programmatic promotion
+    // doesn't leave analysisState.promotionMove stale (guarded clear → safe).
+    // pendingPromotionNotifier is @internal but is the only signal for "selector
+    // closed" — the controller doesn't notifyListeners on promotion changes.
+    // ignore: invalid_use_of_internal_member
+    _boardController.pendingPromotionNotifier.addListener(
+      _onBoardPendingPromotionChanged,
+    );
+  }
+
+  void _detachBoardControllerPromotionListener(ChessboardController controller) {
+    // ignore: invalid_use_of_internal_member
+    controller.pendingPromotionNotifier.removeListener(
+      _onBoardPendingPromotionChanged,
+    );
+  }
+
+  void _seedBoardControllerPromotion(AnalysisBoardState analysisState) {
+    // Seed a pending programmatic promotion if one already exists at mount,
+    // hot-reload, or Android PiP recovery remount so the selector still appears.
+    if (analysisState.promotionMove != null) {
+      _boardController.pendingPromotion = analysisState.promotionMove;
+    }
+  }
+
+  void _replaceBoardControllerForAndroidPipRecovery(int recoveryEpoch) {
+    if (recoveryEpoch == _attachedAndroidPipRecoveryEpoch) return;
+    _attachedAndroidPipRecoveryEpoch = recoveryEpoch;
+
+    final previousController = _boardController;
+    _detachBoardControllerPromotionListener(previousController);
+
+    final analysisState = widget.chessBoardState.analysisState;
+    _boardController = ChessboardController(game: _gameDataFor(analysisState));
+    _seedBoardControllerPromotion(analysisState);
+    _attachBoardControllerPromotionListener();
+
+    // Let the old Chessboard finish its deactivate/dispose with the controller
+    // it was built with before disposing the controller object itself.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      previousController.dispose();
+    });
+  }
+
   @override
   void dispose() {
     _cancelLikeInteraction(resetAnchor: true);
-    // ignore: invalid_use_of_internal_member
-    _boardController.pendingPromotionNotifier.removeListener(
-      _onBoardPendingPromotionChanged,
-    );
+    _detachBoardControllerPromotionListener(_boardController);
     _boardController.dispose();
     _flipCommitCtrl.dispose();
     _flipProgress.dispose();
@@ -8583,6 +8620,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         _androidPipBoardRecoveryKey(widget.game, widget.index),
       ),
     );
+    _replaceBoardControllerForAndroidPipRecovery(androidPipRecoveryEpoch);
 
     // chessground v10: the board is driven by [_boardController] — seeded in
     // initState and fed new positions in didUpdateWidget. The position (fen),
