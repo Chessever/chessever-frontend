@@ -722,18 +722,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         ? 5.w
                         : 6.w,
               ),
-            FederationFlag(
-              federation:
-                  effectivePlayerCard.countryCode.trim().isNotEmpty
-                      ? effectivePlayerCard.countryCode
-                      : (validCountryCode.isNotEmpty
-                          ? validCountryCode
-                          : 'FID'),
-              height: flagHeight,
-              width: flagWidth,
-              borderRadius: BorderRadius.circular(2.br),
-            ),
-            SizedBox(width: elementSpacing),
+            if (validCountryCode.isNotEmpty) ...[
+              FederationFlag(
+                federation: validCountryCode,
+                height: flagHeight,
+                width: flagWidth,
+                borderRadius: BorderRadius.circular(2.br),
+              ),
+              SizedBox(width: elementSpacing),
+            ],
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {

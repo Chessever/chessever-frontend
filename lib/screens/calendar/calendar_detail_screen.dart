@@ -1,17 +1,14 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_detail_screen_provider.dart';
-import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -180,44 +177,9 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                 ),
                 filteredTours.when(
                   data: (filteredEvents) {
-                    final currentFav = ref.watch(
-                      starredProvider(GroupEventCategory.current.name),
-                    );
-
-                    final pastFav = ref.watch(
-                      starredProvider(GroupEventCategory.past.name),
-                    );
-
-                    final liveFav = ref.watch(
-                      starredProvider(GroupEventCategory.forYou.name),
-                    );
-
-                    final starredFavorites = [
-                      ...currentFav,
-                      ...pastFav,
-                      ...liveFav,
-                    ];
-
-                    // Combine both lists
-                    final allFavorites = <String>{...starredFavorites}.toList();
-
-                    final isSearching = searchController.text.trim().isNotEmpty;
-                    final filterMode = ref.watch(calendarFilterModeProvider);
-
-                    // For favorites/upcoming modes, use isolate-sorted results (date-based)
-                    // For 'all' mode when not searching, apply favorite sorting
-                    final finalEvents =
-                        (filterMode != CalendarFilterMode.all || isSearching)
-                            ? filteredEvents
-                            : ref
-                                .read(tournamentSortingServiceProvider)
-                                .sortBasedOnFavorite(
-                                  tours: filteredEvents,
-                                  favorites: allFavorites,
-                                );
                     return Expanded(
                       child: AllEventsTabWidget(
-                        filteredEvents: finalEvents,
+                        filteredEvents: filteredEvents,
                         onSelect: (event) {
                           ref
                               .read(

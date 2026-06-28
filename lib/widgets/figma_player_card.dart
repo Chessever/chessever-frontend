@@ -4,7 +4,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/png_asset.dart';
+
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:country_flags/country_flags.dart';
@@ -19,6 +19,7 @@ import 'package:skeletonizer/skeletonizer.dart' as skel;
 /// - [showFavoriteButton] = false: Shows score on the right (for standings)
 class FigmaPlayerCard extends ConsumerWidget {
   final PlayerStandingModel player;
+
   /// Nullable so search results can render immediately while the overall
   /// standing rank is still being resolved asynchronously. A shimmer
   /// placeholder is shown in the rank slot until the number arrives.
@@ -72,7 +73,7 @@ class FigmaPlayerCard extends ConsumerWidget {
       onLongPressStart: onLongPress,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-        decoration:  BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(color: Color(0xFF1F1F1F), width: 1),
           ),
@@ -83,28 +84,29 @@ class FigmaPlayerCard extends ConsumerWidget {
             // standing rank is still resolving for remote search results.
             SizedBox(
               width: 24.w,
-              child: rank != null
-                  ? Text(
-                      rank.toString(),
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textTertiary,
-                      ),
-                      textAlign: TextAlign.center,
-                    )
-                  : skel.Skeletonizer(
-                      enabled: true,
-                      effect: const skel.ShimmerEffect(
-                        baseColor: Color(0xFF2A2A2A),
-                        highlightColor: Color(0xFF3A3A3A),
-                      ),
-                      child: Text(
-                        '00',
+              child:
+                  rank != null
+                      ? Text(
+                        rank.toString(),
                         style: AppTypography.textSmMedium.copyWith(
                           color: context.colors.textTertiary,
                         ),
                         textAlign: TextAlign.center,
+                      )
+                      : skel.Skeletonizer(
+                        enabled: true,
+                        effect: const skel.ShimmerEffect(
+                          baseColor: Color(0xFF2A2A2A),
+                          highlightColor: Color(0xFF3A3A3A),
+                        ),
+                        child: Text(
+                          '00',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: context.colors.textTertiary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ),
             ),
             SizedBox(width: 12.w),
             // Player photo with title badge overlay
@@ -162,31 +164,20 @@ class FigmaPlayerCard extends ConsumerWidget {
                   Row(
                     children: [
                       // Country flag
-                      if (player.countryCode.isNotEmpty)
+                      if (validCountryCode.isNotEmpty)
                         Padding(
                           padding: EdgeInsets.only(right: 6.w),
                           child: SizedBox(
                             width: 18.w,
                             height: 12.h,
-                            child:
-                                player.countryCode.toUpperCase() == 'FID'
-                                    ? Image.asset(
-                                      PngAsset.fideLogo,
-                                      height: 12.h,
-                                      width: 18.w,
-                                      fit: BoxFit.contain,
-                                      cacheWidth: 48,
-                                      cacheHeight: 36,
-                                    )
-                                    : validCountryCode.isNotEmpty
-                                    ? CountryFlag.fromCountryCode(
-validCountryCode,
-  theme: ImageTheme(height: 12.h,
-                                      width: 18.w,
-                                      shape: RoundedRectangle(2.br),
-),
-                                    )
-                                    : null,
+                            child: CountryFlag.fromCountryCode(
+                              validCountryCode,
+                              theme: ImageTheme(
+                                height: 12.h,
+                                width: 18.w,
+                                shape: RoundedRectangle(2.br),
+                              ),
+                            ),
                           ),
                         ),
                       // Rating

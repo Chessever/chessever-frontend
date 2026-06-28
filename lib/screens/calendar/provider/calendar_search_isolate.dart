@@ -185,7 +185,7 @@ CalendarSearchResult filterCalendarEventsIsolate(CalendarSearchParams params) {
 
   final summaries = <MonthEventsData>[];
   for (int i = 1; i <= 12; i++) {
-    final sorted = _sortEvents(monthEvents[i]!, filterMode: params.filterMode);
+    final sorted = _sortEvents(monthEvents[i]!);
     summaries.add(
       MonthEventsData(
         monthName: params.monthNames[i - 1],
@@ -340,48 +340,15 @@ void _addDateTokens(Set<String> tokens, DateTime date) {
   return (singleDate, singleDate);
 }
 
-List<CalendarEventData> _sortEvents(
-  List<CalendarEventData> events, {
-  required String filterMode,
-}) {
+List<CalendarEventData> _sortEvents(List<CalendarEventData> events) {
   if (events.isEmpty) return events;
 
   final sorted = List<CalendarEventData>.from(events);
 
-  if (filterMode == 'favorites') {
-    // Favorites: starred events sorted by newest date first
-    sorted.sort((a, b) => _compareByDate(a, b, descending: true));
-  } else if (filterMode == 'upcoming') {
-    // Upcoming: date ascending (soonest first)
-    sorted.sort(_compareByDate);
-  } else {
-    // Category-based sorting for regular view
-    const categoryOrder = {
-      'live': 0,
-      'ongoing': 1,
-      'upcoming': 2,
-      'completed': 3,
-    };
-
-    sorted.sort((a, b) {
-      final catA = categoryOrder[a.tourEventCategory] ?? 3;
-      final catB = categoryOrder[b.tourEventCategory] ?? 3;
-
-      if (catA != catB) return catA.compareTo(catB);
-
-      // For upcoming events, sort by start date ascending
-      if (a.tourEventCategory == 'upcoming') {
-        final dateA = a.startDate ?? a.endDate;
-        final dateB = b.startDate ?? b.endDate;
-        if (dateA != null && dateB != null) {
-          return dateA.compareTo(dateB);
-        }
-      }
-
-      // For other categories, sort by ELO descending
-      return b.maxAvgElo.compareTo(a.maxAvgElo);
-    });
-  }
+  // Calendar lists should read chronologically inside each month/filter.
+  // Do not rank by title, category, or ELO here: users expect July events to
+  // progress by their actual start date even when an event began in June.
+  sorted.sort(_compareByDate);
 
   return sorted;
 }
@@ -495,7 +462,7 @@ DetailSearchResult filterDetailEventsIsolate(DetailSearchParams params) {
   }
 
   return DetailSearchResult(
-    events: _sortEvents(filteredEvents, filterMode: params.filterMode),
+    events: _sortEvents(filteredEvents),
     eventsToPrime: eventsToPrime,
   );
 }

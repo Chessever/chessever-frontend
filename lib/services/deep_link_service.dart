@@ -21,6 +21,17 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
+    show playerTourScreenProvider;
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/score_card_screen.dart'
+    show
+        selectedPlayerProvider,
+        scoreCardGamesContextProvider,
+        scoreCardHasEventContextProvider,
+        scoreCardPlayerProfileDataSourceProvider;
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart'
+    show PlayerProfileDataSource;
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:flutter/material.dart';
@@ -166,6 +177,7 @@ class DeepLinkService {
       String? bookShareToken;
       String? folderId;
       String? broadcastId;
+      int? playerFideId;
 
       // Universal link: https://chessever.com/games/<id>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
@@ -186,11 +198,15 @@ class DeepLinkService {
 
       // Universal link: https://chessever.com/broadcast/<slug>/<id>
       // Also accept /broadcast/<id> for links without a slug.
+      // Player scorecard: https://chessever.com/broadcast/<slug>/<id>/player/<fideId>
       if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'broadcast') {
         if (uri.pathSegments.length >= 3) {
           broadcastId = uri.pathSegments[2];
         } else if (uri.pathSegments.length == 2) {
           broadcastId = uri.pathSegments[1];
+        }
+        if (uri.pathSegments.length >= 5 && uri.pathSegments[3] == 'player') {
+          playerFideId = int.tryParse(uri.pathSegments[4]);
         }
       }
 
@@ -216,11 +232,21 @@ class DeepLinkService {
       }
 
       // Custom scheme: com.chessever.app://broadcast/<slug>/<id>
-      // Also accept com.chessever.app://broadcast/<id>.
+      // Also accept com.chessever.app://broadcast/<id> and
+      // com.chessever.app://broadcast/<slug>/<id>/player/<fideId>.
       if (broadcastId == null &&
           uri.host == 'broadcast' &&
           uri.pathSegments.isNotEmpty) {
-        broadcastId = uri.pathSegments.last;
+        final segs = uri.pathSegments;
+        final playerIdx = segs.indexOf('player');
+        if (playerIdx > 0) {
+          broadcastId = segs[playerIdx - 1];
+          if (playerIdx + 1 < segs.length) {
+            playerFideId = int.tryParse(segs[playerIdx + 1]);
+          }
+        } else {
+          broadcastId = segs.last;
+        }
       }
 
       _addBreadcrumb(
@@ -262,6 +288,22 @@ class DeepLinkService {
           data: {'folderId': _maskedValue(folderId)},
         );
         _navigateToFolder(folderId, navigatorKey, ref);
+      } else if (broadcastId != null &&
+          broadcastId.isNotEmpty &&
+          playerFideId != null) {
+        _addBreadcrumb(
+          'routing to player scorecard',
+          data: {
+            'broadcastId': _maskedValue(broadcastId),
+            'fideId': playerFideId.toString(),
+          },
+        );
+        _navigateToPlayerScorecard(
+          broadcastId,
+          playerFideId,
+          navigatorKey,
+          ref,
+        );
       } else if (broadcastId != null && broadcastId.isNotEmpty) {
         _addBreadcrumb(
           'routing to broadcast event',
@@ -948,6 +990,144 @@ class DeepLinkService {
       if (text != null) return text;
     }
     return null;
+  }
+
+  /// Opens a specific player's scorecard from a shared link
+  /// `chessever.com/broadcast/<slug>/<id>/player/<fideId>`. Resolves the event
+  /// exactly like [_navigateToEvent], lands on the tournament detail (standings)
+  /// so the scorecard has a back-stack, then matches the player by FIDE id in
+  /// the standings and pushes the scorecard. If the player can't be resolved
+  /// (standings still loading, no FIDE id) it degrades gracefully to the event.
+  Future<void> _navigateToPlayerScorecard(
+    String groupBroadcastId,
+    int fideId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) {
+      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
+      return;
+    }
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      AppAuthState? resolvedState = ref.read(authStateProvider).value;
+      if (resolvedState == null) {
+        try {
+          resolvedState = await ref.read(authStateProvider.future);
+        } catch (_) {
+          resolvedState = null;
+        }
+      }
+      if (!_isFullyAuthenticated(resolvedState)) {
+        debugPrint(
+          'DeepLinkService: User not authenticated, routing to auth screen',
+        );
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/auth_screen',
+          (route) => false,
+        );
+        return;
+      }
+
+      final routeContext = await _resolveEventRouteContext(
+        ref,
+        groupBroadcastId: groupBroadcastId,
+      );
+      if (routeContext == null) {
+        debugPrint(
+          'DeepLinkService: Could not resolve event for player scorecard '
+          '(group_broadcast_id=$groupBroadcastId)',
+        );
+        _navigateToHome(navigatorKey);
+        return;
+      }
+
+      final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+      final broadcast = await broadcastRepo
+          .getGroupBroadcastById(routeContext.groupBroadcastId)
+          .timeout(_fetchTimeout);
+
+      await _preselectTourAndRound(
+        ref,
+        groupBroadcastId: broadcast.id,
+        tourId: routeContext.tourId,
+        roundId: routeContext.roundId,
+      );
+
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+      ref.read(selectedTourModeProvider.notifier).state =
+          TournamentDetailScreenMode.standings;
+
+      // Land on the event first so the scorecard has a back-stack and the
+      // standings providers are scoped to this broadcast.
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/tournament_detail_screen',
+        (route) => route.isFirst,
+      );
+
+      // Resolve the player from the tournament standings, then open the
+      // scorecard. Degrades to the event if the player can't be matched.
+      PlayerStandingModel? matched;
+      try {
+        final standings = await ref
+            .read(playerTourScreenProvider.future)
+            .timeout(_fetchTimeout);
+        for (final standing in standings) {
+          if (standing.fideId == fideId) {
+            matched = standing;
+            break;
+          }
+        }
+      } catch (e) {
+        debugPrint(
+          'DeepLinkService: Failed to resolve standings for player: $e',
+        );
+      }
+
+      if (matched == null) {
+        debugPrint(
+          'DeepLinkService: Player $fideId not found in standings; '
+          'staying on event',
+        );
+        return;
+      }
+
+      ref.read(selectedPlayerProvider.notifier).state = matched;
+      ref.read(scoreCardGamesContextProvider.notifier).state = null;
+      ref.read(scoreCardHasEventContextProvider.notifier).state = true;
+      ref.read(scoreCardPlayerProfileDataSourceProvider.notifier).state =
+          PlayerProfileDataSource.supabase;
+      ref.read(chessboardViewFromProviderNew.notifier).state =
+          ChessboardView.tour;
+
+      navigatorKey.currentState?.pushNamed('/scorecard_screen');
+    } catch (e, stackTrace) {
+      debugPrint('DeepLinkService: Failed to open player scorecard: $e');
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'navigate_to_player_scorecard',
+        extras: {
+          'groupBroadcastId': groupBroadcastId,
+          'fideId': fideId.toString(),
+        },
+      );
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+    } finally {
+      _isNavigating = false;
+    }
   }
 
   Future<void> _preselectTourAndRound(

@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -30,6 +28,98 @@ class _SearchCacheEntry {
   _SearchCacheEntry({required this.result, required this.cachedAt});
 
   bool get isFresh => DateTime.now().difference(cachedAt) < _searchCacheTtl;
+}
+
+@visibleForTesting
+List<SearchResult> dedupeTournamentSearchResultsByLogicalEvent(
+  List<SearchResult> results,
+) {
+  if (results.length < 2) {
+    return List<SearchResult>.of(results, growable: false);
+  }
+
+  final byLogicalEvent = <String, SearchResult>{};
+  for (final result in results) {
+    final key = _logicalEventKey(result.tournament);
+    final existing = byLogicalEvent[key];
+    if (existing == null ||
+        _tournamentPreferenceScore(result) >
+            _tournamentPreferenceScore(existing)) {
+      byLogicalEvent[key] = result;
+    }
+  }
+
+  return byLogicalEvent.values.toList(growable: false);
+}
+
+String _logicalEventKey(GroupEventCardModel event) {
+  // Dedupe is scoped by source so calendar/community events never erase
+  // Lichess broadcasts. Undated rows do not have enough identity to merge
+  // safely, so their id stays in the key.
+  if (event.startDate == null && event.endDate == null) {
+    return [event.eventSource.name, 'undated', event.id].join('|');
+  }
+  final eventDate = event.startDate ?? event.endDate;
+  final baseTitle = _canonicalEventTitle(event.title, eventDate);
+  return [
+    event.eventSource.name,
+    baseTitle,
+    _dateKey(event.startDate),
+    _dateKey(event.endDate),
+  ].join('|');
+}
+
+String _canonicalEventTitle(String title, DateTime? eventDate) {
+  // Broadcast stages are stored as "Parent event | Section"; search should
+  // surface the parent event once, not every section row.
+  final withoutStage = title.split('|').first;
+  var normalized = withoutStage.toLowerCase().trim();
+  final year = eventDate?.year;
+  if (year != null) {
+    normalized =
+        normalized
+            .replaceFirst(RegExp(r'\b' + year.toString() + r'\s*$'), '')
+            .trim();
+  }
+  return normalized
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+String _dateKey(DateTime? date) {
+  if (date == null) return 'unknown';
+  final year = date.year.toString().padLeft(4, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '$year-$month-$day';
+}
+
+int _tournamentPreferenceScore(SearchResult result) {
+  const noStageBonus = 40000;
+  const matchingYearBonus = 20000;
+  const maxEloBonus = 9999;
+  const searchTermsBonus = 999;
+  const matchScoreBonus = 999;
+
+  final event = result.tournament;
+  var score = event.maxAvgElo.clamp(0, maxEloBonus);
+  final title = event.title.toLowerCase();
+  final eventYear = event.startDate?.year ?? event.endDate?.year;
+
+  // Preference order: parent/stageless title > matching year > event strength
+  // > rich search terms > query match score.
+  if (!title.contains('|')) {
+    score += noStageBonus;
+  }
+  if (eventYear != null && title.contains(eventYear.toString())) {
+    score += matchingYearBonus;
+  }
+  if (event.searchTerms.length > 1) {
+    score += event.searchTerms.length.clamp(0, searchTermsBonus);
+  }
+  score += result.score.round().clamp(0, matchScoreBonus);
+  return score;
 }
 
 final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
@@ -105,11 +195,12 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
   // events whose NAME references the country. Match on word-prefix so short
   // codes ("us", "no") don't slip in via mid-word substrings ("August").
   final qLowerForFilter = trimmedQuery.toLowerCase();
-  final broadcasts = isCountrySearch
-      ? rawBroadcasts
-          .where((b) => _nameStartsWithToken(b.name, qLowerForFilter))
-          .toList()
-      : rawBroadcasts;
+  final broadcasts =
+      isCountrySearch
+          ? rawBroadcasts
+              .where((b) => _nameStartsWithToken(b.name, qLowerForFilter))
+              .toList()
+          : rawBroadcasts;
 
   debugPrint(
     '[Search] Query: "$trimmedQuery", results: ${broadcasts.length} events, ${directPlayerResults.length} players',
@@ -242,11 +333,6 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
       ..addAll(byNormalizedName.values);
   }
 
-  await _backfillMissingPlayerRatings(
-    playerResults,
-    ref.read(gamebaseRepositoryProvider),
-  );
-
   // Merge resilient local-search results from ALL categories (current + past)
   // This ensures we find events even if Supabase RPC is slow or returns limited results
   final allLocalSearches = [localSearchCurrent, localSearchPast];
@@ -351,8 +437,11 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
     }
   }
 
+  final dedupedTournamentResults = dedupeTournamentSearchResultsByLogicalEvent(
+    tournamentResults,
+  );
   final searchResult = EnhancedSearchResult(
-    tournamentResults: tournamentResults,
+    tournamentResults: dedupedTournamentResults,
     playerResults: playerResults,
     allPlayers: allPlayers,
     countryFedCode: fideCountryCode,
@@ -366,124 +455,6 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
 
   return searchResult;
 });
-
-Future<void> _backfillMissingPlayerRatings(
-  List<SearchResult> playerResults,
-  GamebaseRepository gamebaseRepository,
-) async {
-  final lookups = <String, SearchPlayer>{};
-
-  for (final result in playerResults) {
-    final player = result.player;
-    if (player == null) continue;
-    if ((player.rating ?? 0) > 0) continue;
-
-    final lookupKey =
-        (player.fideId != null && player.fideId! > 0)
-            ? 'fide:${player.fideId}'
-            : 'name:${_normalizePlayerLookupName(player.name)}';
-    lookups.putIfAbsent(lookupKey, () => player);
-  }
-
-  if (lookups.isEmpty) return;
-
-  final resolvedRatings = <String, int?>{};
-  await Future.wait(
-    lookups.entries.map((entry) async {
-      resolvedRatings[entry.key] = await _fetchGamebaseDisplayRating(
-        gamebaseRepository,
-        entry.value,
-      );
-    }),
-    eagerError: false,
-  );
-
-  for (var i = 0; i < playerResults.length; i++) {
-    final result = playerResults[i];
-    final player = result.player;
-    if (player == null || (player.rating ?? 0) > 0) continue;
-
-    final lookupKey =
-        (player.fideId != null && player.fideId! > 0)
-            ? 'fide:${player.fideId}'
-            : 'name:${_normalizePlayerLookupName(player.name)}';
-    final fallbackRating = resolvedRatings[lookupKey];
-    if (fallbackRating == null || fallbackRating <= 0) continue;
-
-    playerResults[i] = SearchResult(
-      tournament: result.tournament,
-      score: result.score,
-      matchedText: result.matchedText,
-      type: result.type,
-      player: player.copyWith(rating: fallbackRating),
-    );
-  }
-}
-
-Future<int?> _fetchGamebaseDisplayRating(
-  GamebaseRepository gamebaseRepository,
-  SearchPlayer player,
-) async {
-  try {
-    final fideId = player.fideId;
-    final candidates =
-        (fideId != null && fideId > 0)
-            ? await gamebaseRepository.getPlayers(
-              fideId: fideId.toString(),
-              pageSize: 5,
-            )
-            : await gamebaseRepository.getPlayers(
-              name: player.name,
-              pageSize: 10,
-            );
-
-    if (candidates.isEmpty) return null;
-
-    final normalizedTarget = _normalizePlayerLookupName(player.name);
-    GamebasePlayer? bestMatch;
-
-    if (fideId != null && fideId > 0) {
-      for (final candidate in candidates) {
-        if (candidate.fideId == fideId.toString()) {
-          bestMatch = candidate;
-          break;
-        }
-      }
-    }
-
-    for (final candidate in candidates) {
-      final normalizedCandidate = _normalizePlayerLookupName(candidate.name);
-      if (normalizedCandidate == normalizedTarget) {
-        bestMatch ??= candidate;
-        break;
-      }
-      if (bestMatch == null &&
-          (normalizedCandidate.contains(normalizedTarget) ||
-              normalizedTarget.contains(normalizedCandidate))) {
-        bestMatch = candidate;
-      }
-    }
-
-    bestMatch ??= candidates.first;
-
-    final displayRating =
-        bestMatch.ratingClassical ??
-        bestMatch.ratingRapid ??
-        bestMatch.ratingBlitz ??
-        bestMatch.highestRating;
-    return (displayRating != null && displayRating > 0) ? displayRating : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-String _normalizePlayerLookupName(String name) {
-  return name
-      .toLowerCase()
-      .replaceAll(',', ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-}
 
 /// True when any whitespace/punctuation-separated word in `name` starts with
 /// `token` (lowercase). Avoids mid-word false positives like "us" → "August".

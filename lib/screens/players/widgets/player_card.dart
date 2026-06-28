@@ -1,10 +1,8 @@
-import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
-import '../../../theme/app_theme.dart';
 import '../../../utils/svg_asset.dart';
 import '../../../widgets/svg_widget.dart';
 
@@ -138,7 +136,9 @@ class _PlayerCardState extends State<PlayerCard>
               width: 24.w,
               child: Text(
                 '${widget.rank}.',
-                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
 
@@ -146,20 +146,13 @@ class _PlayerCardState extends State<PlayerCard>
             Container(
               margin: EdgeInsets.only(right: 8.sp),
               child:
-                  widget.countryCode.toUpperCase() == 'FID'
-                      ? Image.asset(
-                        PngAsset.fideLogo,
-                        height: 14.h,
-                        width: 20.w,
-                        fit: BoxFit.cover,
-                        cacheWidth: 48,
-                        cacheHeight: 36,
+                  widget.countryCode.trim().isNotEmpty &&
+                          widget.countryCode.toUpperCase() != 'FID'
+                      ? CountryFlag.fromCountryCode(
+                        widget.countryCode,
+                        theme: ImageTheme(height: 14.h, width: 20.w),
                       )
-                      : CountryFlag.fromCountryCode(
-widget.countryCode,
-  theme: ImageTheme(height: 14.h,
-                        width: 20.w,),
-),
+                      : SizedBox(width: 20.w, height: 14.h),
             ),
 
             // GM prefix and player name
@@ -186,7 +179,9 @@ widget.countryCode,
               child: Text(
                 widget.elo.toString(),
                 textAlign: TextAlign.center,
-                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
 
@@ -196,7 +191,9 @@ widget.countryCode,
               child: Text(
                 widget.age.toString(),
                 textAlign: TextAlign.center,
-                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
 

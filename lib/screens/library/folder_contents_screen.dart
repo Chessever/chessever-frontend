@@ -279,7 +279,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            userFacingError(e, fallback: 'Could not remove this item. Please try again.'),
+            userFacingError(
+              e,
+              fallback: 'Could not remove this item. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -297,8 +300,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       context,
       title: 'Add to "$_currentFolderName"',
       showCreateDatabase: _isFolder,
-      createDatabaseTitle: 'Create Database',
-      createDatabaseSubtitle: 'Add a database to hold games here',
+      createDatabaseTitle: 'Create Folder or Database',
+      createDatabaseSubtitle: 'Add a subfolder or a database here',
       showImports: _isDatabase,
     );
     if (choice == null || !mounted) return;
@@ -330,7 +333,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              userFacingError(e, fallback: 'Could not open the file picker. Please try again.'),
+              userFacingError(
+                e,
+                fallback: 'Could not open the file picker. Please try again.',
+              ),
               style: AppTypography.textSmMedium.copyWith(
                 color: context.colors.textPrimary,
               ),
@@ -419,6 +425,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       context,
       initialParentId: widget.folder.id,
       lockToParent: true,
+      defaultToDatabase: true,
     );
     if (data == null || data.name.trim().isEmpty) return;
 
@@ -451,7 +458,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            userFacingError(e, fallback: 'Could not create this item. Please try again.'),
+            userFacingError(
+              e,
+              fallback: 'Could not create this item. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -502,7 +512,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            userFacingError(e, fallback: 'Could not rename this item. Please try again.'),
+            userFacingError(
+              e,
+              fallback: 'Could not rename this item. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -561,7 +574,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         SnackBar(
           content: Text(
             error != null
-                ? userFacingError(error, fallback: 'Export failed. Please try again.')
+                ? userFacingError(
+                  error,
+                  fallback: 'Export failed. Please try again.',
+                )
                 : 'Nothing to export here',
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
@@ -607,7 +623,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            userFacingError(e, fallback: 'Could not share this. Please try again.'),
+            userFacingError(
+              e,
+              fallback: 'Could not share this. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
@@ -1076,7 +1095,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             SizedBox(height: 8.h),
             Text(
               isFolder
-                  ? 'Create a database here.'
+                  ? 'Create a folder or database here.'
                   : 'Save your first game here!',
               style: AppTypography.textSmRegular.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.5),

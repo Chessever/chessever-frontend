@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/event_mute_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
@@ -11,14 +13,19 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
+    show playerTourScreenProvider;
+import 'package:chessever2/screens/tour_detail/widgets/standings_share_image_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 enum TournamentMenuAction {
@@ -32,6 +39,7 @@ enum TournamentMenuAction {
   disableNotifications,
   enableNotifications,
   shareEvent,
+  shareStandings,
 }
 
 class TournamentMenuButton extends ConsumerWidget {
@@ -414,6 +422,116 @@ class TournamentMenuButton extends ConsumerWidget {
               size: 16,
             ),
           ),
+        ),
+      );
+      items.add(
+        PopupMenuItem<TournamentMenuAction>(
+          value: TournamentMenuAction.shareStandings,
+          padding: EdgeInsets.zero,
+          height: 36.h,
+          onTap: () {
+            final url = buildEventShareUrl(
+              id: fallbackId,
+              title: aboutModel.name,
+              tourId: aboutModel.id,
+              tourSlug: aboutModel.slug,
+            );
+            unawaited(_shareStandings(ref, context, aboutModel.name, url));
+          },
+          child: _MenuDropDownItem(
+            text: "Share standings",
+            icon: Icon(
+              Icons.leaderboard_outlined,
+              color: context.colors.textPrimary,
+              size: 16,
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Renders the tournament standings to a branded share image and opens the
+  /// preview sheet (Share Image / Share Link). Mirrors the player scorecard
+  /// share: off-screen [captureCardPng] + [showShareImagePreview]. The link is
+  /// the event page (`/broadcast/<slug>/<id>`), which carries its own OG tags.
+  Future<void> _shareStandings(
+    WidgetRef ref,
+    BuildContext context,
+    String eventName,
+    String shareUrl,
+  ) async {
+    try {
+      final standings = await ref.read(playerTourScreenProvider.future);
+      if (!context.mounted) return;
+      if (standings.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Standings are still loading. Try again in a moment.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final width = math.min(MediaQuery.of(context).size.width, 430.0);
+      final imageBytes = await captureCardPng(
+        context,
+        width: width,
+        pixelRatio: 3.0,
+        child: StandingsShareImageCard(
+          width: width,
+          eventName: eventName,
+          standings: standings,
+        ),
+      );
+      if (imageBytes == null) {
+        throw StateError('Standings share render produced no image');
+      }
+      if (!context.mounted) return;
+
+      final tempDir = await getTemporaryDirectory();
+      final safeName =
+          eventName
+              .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+              .replaceAll(RegExp(r'^-+|-+$'), '')
+              .toLowerCase();
+      final file = File(
+        '${tempDir.path}/${safeName.isEmpty ? 'chessever-event' : safeName}-standings.png',
+      );
+      await file.writeAsBytes(imageBytes);
+      if (!context.mounted) return;
+
+      final subject =
+          eventName.trim().isNotEmpty
+              ? '$eventName standings'
+              : 'ChessEver standings';
+      await showShareImagePreview(
+        context,
+        imageBytes: imageBytes,
+        onShareImage: () async {
+          await Share.shareXFiles(
+            [XFile(file.path, mimeType: 'image/png')],
+            text: shareUrl,
+            subject: subject,
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          );
+        },
+        onShareLink: () async {
+          await Share.share(
+            shareUrl,
+            subject: subject,
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('Failed to share standings: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not share standings. Please try again.'),
         ),
       );
     }

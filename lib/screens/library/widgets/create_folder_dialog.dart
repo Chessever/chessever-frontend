@@ -88,12 +88,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     _controller = TextEditingController(text: widget.initialValue ?? '');
     _focusNode = FocusNode();
     _selectedParentId = widget.initialParentId;
-    // Inside a folder only databases are allowed; game-save flows want a
-    // database destination. Top-level '+' defaults to Folder.
-    _isDatabase =
-        widget.isLocked ||
-        widget.initialParentId != null ||
-        widget.defaultToDatabase;
+    // Folder parents can contain either subfolders or databases. Game-save
+    // flows pass defaultToDatabase so their first choice remains a database.
+    _isDatabase = widget.defaultToDatabase;
 
     // Auto-focus the text field
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -197,8 +194,8 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
 
               SizedBox(height: 24.h),
 
-              // Type Selection (only if not renaming and not locked)
-              if (!widget.isRename && !widget.isLocked) ...[
+              // Type Selection
+              if (!widget.isRename) ...[
                 _buildTypeSelector(),
                 SizedBox(height: 20.h),
               ],
@@ -268,7 +265,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   Widget _buildParentSelector(List<LibraryFolder> parents) {
     if (parents.isEmpty) {
       return Text(
-        'Create a folder first to organize databases inside it.',
+        'Create a folder first to organize items inside it.',
         style: AppTypography.textXsRegular.copyWith(color: kRedColor),
       ).animate().fadeIn();
     }
@@ -327,10 +324,9 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
   }
 
   Widget _buildLockedContext(List<LibraryFolder> parents) {
-    final parent = parents.firstWhere(
-      (p) => p.id == _selectedParentId,
-      orElse: () => parents.first,
-    );
+    final parent = parents.where((p) => p.id == _selectedParentId).firstOrNull;
+    final contextLabel =
+        parent == null ? 'Inside this folder' : 'Inside "${parent.name}"';
     return Container(
       padding: EdgeInsets.all(12.sp),
       decoration: BoxDecoration(
@@ -344,7 +340,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Inside folder "${parent.name}"',
+              contextLabel,
               style: AppTypography.textXsMedium.copyWith(
                 color: context.colors.textPrimary.withValues(alpha: 0.7),
               ),
