@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_country_flags/flutter_country_flags.dart' as fcf;
@@ -29,7 +30,7 @@ class FederationFlag extends StatelessWidget {
 
   /// Federation values from the Gamebase API that mean "no real federation
   /// resolved" — TWIC fills this in for historical / unrated / unknown players.
-  /// Treat them as an unknown placeholder, not as a FIDE-stateless tag.
+  /// Treat them as unknown placeholders, not as federation flags.
   static const Set<String> _unknownSentinels = {
     'unknown',
     'none',
@@ -55,10 +56,10 @@ class FederationFlag extends StatelessWidget {
       return _noFlag();
     }
 
-    // FID/FIDE is not a real country flag. If no better player-profile
-    // backfill is available upstream, show no flag rather than a generic logo.
+    // FID/FIDE is an explicit FIDE federation flag used for some official
+    // FIDE-event players. Render it rather than leaving an empty flag slot.
     if (normalized == 'FID' || normalized == 'FIDE') {
-      return _noFlag();
+      return _fideFlag(context);
     }
 
     // Handle UK subdivisions (England, Scotland, Wales) with their own flags.
@@ -114,6 +115,19 @@ class FederationFlag extends StatelessWidget {
         country: country,
         width: width,
         height: height,
+      ),
+    );
+  }
+
+  Widget _fideFlag(BuildContext context) {
+    final radius = borderRadius ?? BorderRadius.circular(3);
+    return ClipRRect(
+      borderRadius: radius,
+      child: Image.asset(
+        PngAsset.fideLogo,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
       ),
     );
   }
