@@ -73,8 +73,8 @@ class NotificationServiceExtension : INotificationServiceExtension {
     }
 
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    val gameId = live.optJSONObject("event_attributes")?.optString("game_id") ?: "game"
-    val notificationId = "live_$gameId".hashCode()
+    val notificationGameId = gameId ?: "game"
+    val notificationId = notificationId(notificationGameId)
 
     manager.notify(notificationId, updated)
 
