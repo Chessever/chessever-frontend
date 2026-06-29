@@ -26,10 +26,37 @@ void main() {
         'board-30',
       ]);
     });
+
+    test('puts live games above completed games before round ordering', () {
+      final games = [
+        _game(
+          'completed-newer-round',
+          boardNr: 1,
+          roundSlug: 'round-8',
+          status: GameStatus.whiteWins,
+        ),
+        _game('live-older-round', boardNr: 2, roundSlug: 'round-7'),
+      ];
+
+      final sorted = sortGameModelsForGamesTab(
+        games: games,
+        pinnedIds: const [],
+      );
+
+      expect(sorted.map((game) => game.gameId).toList(), [
+        'live-older-round',
+        'completed-newer-round',
+      ]);
+    });
   });
 }
 
-GamesTourModel _game(String id, {required int boardNr}) {
+GamesTourModel _game(
+  String id, {
+  required int boardNr,
+  String roundSlug = 'round-1',
+  GameStatus status = GameStatus.ongoing,
+}) {
   return GamesTourModel(
     gameId: id,
     whitePlayer: _player('White $id'),
@@ -38,10 +65,10 @@ GamesTourModel _game(String id, {required int boardNr}) {
     blackTimeDisplay: '--:--',
     whiteClockCentiseconds: 0,
     blackClockCentiseconds: 0,
-    gameStatus: GameStatus.ongoing,
+    gameStatus: status,
     boardNr: boardNr,
     roundId: 'round-1',
-    roundSlug: 'round-1',
+    roundSlug: roundSlug,
     tourId: 'tour-1',
   );
 }

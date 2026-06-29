@@ -49,8 +49,18 @@ class NotificationServiceExtension : INotificationServiceExtension {
 
     val context = event.context
     val eventType = liveEventType(live)
+    val gameId = liveGameId(live)
     if (eventType == "dismiss") {
-      liveGameId(live)?.let { cancelLiveNotification(context, it) }
+      gameId?.let {
+        suppressLiveNotification(context, it)
+        cancelLiveNotification(context, it)
+      }
+      event.preventDefault()
+      return
+    }
+
+    if (gameId != null && isLiveNotificationSuppressed(context, gameId)) {
+      cancelLiveNotification(context, gameId)
       event.preventDefault()
       return
     }
@@ -79,15 +89,22 @@ class NotificationServiceExtension : INotificationServiceExtension {
    * with [onNotificationReceived]. Called from MainActivity's MethodChannel.
    */
   fun postLocalLiveNotification(context: Context, live: JSONObject) {
-    if (liveEventType(live) == "dismiss") {
-      liveGameId(live)?.let { cancelLiveNotification(context, it) }
+    val eventType = liveEventType(live)
+    val gameId = liveGameId(live)
+    if (eventType == "dismiss") {
+      gameId?.let {
+        suppressLiveNotification(context, it)
+        cancelLiveNotification(context, it)
+      }
       return
     }
 
+    gameId?.let { clearLiveNotificationSuppression(context, it) }
+
     val notification = buildLiveNotification(context, live) ?: return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    val gameId = live.optJSONObject("event_attributes")?.optString("game_id") ?: "game"
-    manager.notify(notificationId(gameId), notification)
+    val notificationGameId = live.optJSONObject("event_attributes")?.optString("game_id") ?: "game"
+    manager.notify(notificationId(notificationGameId), notification)
   }
 
   fun cancelLiveNotification(context: Context, gameId: String) {
@@ -226,6 +243,17 @@ class NotificationServiceExtension : INotificationServiceExtension {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
+    val deleteIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+      action = ACTION_DISMISS_LIVE_UPDATES
+      putExtra("game_id", gameId)
+    }
+    val deletePendingIntent = PendingIntent.getBroadcast(
+      context,
+      notificationId(gameId) + 2,
+      deleteIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
     // Build notification
     val builder = NotificationCompat.Builder(context, CHANNEL_ID)
       .setContentTitle("$white vs $black")
@@ -242,6 +270,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
       .setCategory(NotificationCompat.CATEGORY_STATUS)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
       .setContentIntent(pendingIntent)
+      .setDeleteIntent(deletePendingIntent)
       .setGroup("live_games")
       .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
 
@@ -275,7 +304,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
     // Add action to end updates
     if (eventType != "end") {
       val stopIntent = Intent(context, NotificationActionReceiver::class.java).apply {
-        action = "STOP_LIVE_UPDATES"
+        action = ACTION_STOP_LIVE_UPDATES
         putExtra("game_id", gameId)
       }
       val stopPendingIntent = PendingIntent.getBroadcast(
@@ -993,6 +1022,33 @@ class NotificationServiceExtension : INotificationServiceExtension {
 
   companion object {
     private const val CHANNEL_ID = "live_updates"
+    private const val PREFS_NAME = "chessever_live_notification_prefs"
+    private const val SUPPRESSED_PREFIX = "suppressed_live_game_"
+    const val ACTION_STOP_LIVE_UPDATES = "STOP_LIVE_UPDATES"
+    const val ACTION_DISMISS_LIVE_UPDATES = "DISMISS_LIVE_UPDATES"
+
+    fun suppressLiveNotification(context: Context, gameId: String) {
+      if (gameId.isBlank()) return
+      context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(SUPPRESSED_PREFIX + gameId, true)
+        .apply()
+    }
+
+    fun clearLiveNotificationSuppression(context: Context, gameId: String) {
+      if (gameId.isBlank()) return
+      context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .remove(SUPPRESSED_PREFIX + gameId)
+        .apply()
+    }
+
+    fun isLiveNotificationSuppressed(context: Context, gameId: String): Boolean {
+      if (gameId.isBlank()) return false
+      return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getBoolean(SUPPRESSED_PREFIX + gameId, false)
+    }
+
     private val photoCache = mutableMapOf<String, Bitmap?>()
     private val pieceBitmapCache = mutableMapOf<String, Bitmap?>()
     // ChessEver logo avatar fallback — loaded once, reused for every card.
@@ -1110,8 +1166,9 @@ class NotificationServiceExtension : INotificationServiceExtension {
  */
 class NotificationActionReceiver : android.content.BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
-    if (intent.action == "STOP_LIVE_UPDATES") {
+    if (intent.action == NotificationServiceExtension.ACTION_STOP_LIVE_UPDATES) {
       val gameId = intent.getStringExtra("game_id") ?: return
+      NotificationServiceExtension.suppressLiveNotification(context, gameId)
       val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       val notificationId = "live_$gameId".hashCode()
       manager.cancel(notificationId)
@@ -1123,6 +1180,12 @@ class NotificationActionReceiver : android.content.BroadcastReceiver() {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
       }
       context.startActivity(deepLink)
+    } else if (intent.action == NotificationServiceExtension.ACTION_DISMISS_LIVE_UPDATES) {
+      val gameId = intent.getStringExtra("game_id") ?: return
+      NotificationServiceExtension.suppressLiveNotification(context, gameId)
+      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val notificationId = "live_$gameId".hashCode()
+      manager.cancel(notificationId)
     }
   }
 }

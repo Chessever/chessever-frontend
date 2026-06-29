@@ -104,6 +104,11 @@ List<GamesTourModel> _processGamesWorker(_GamesProcessingArgs args) {
       if (!aPinned && bPinned) return 1;
     }
 
+    final aLive = GameStatus.fromString(a.status).isOngoing;
+    final bLive = GameStatus.fromString(b.status).isOngoing;
+    if (aLive && !bLive) return -1;
+    if (!aLive && bLive) return 1;
+
     final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
     final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
 
@@ -647,6 +652,11 @@ class GamesTourScreenProvider
       final bPinned = pinnedIds.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
+
+      final aLive = GameStatus.fromString(a.status).isOngoing;
+      final bLive = GameStatus.fromString(b.status).isOngoing;
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
 
       final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
       final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);

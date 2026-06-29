@@ -452,20 +452,22 @@ class GroupBroadcastRepository extends BaseRepository {
 
       // Fallback: if FTS returns few results, also try trigram search on name.
       if (resultsById.length < 10) {
-        final trigramRes = await supabase
-            .from('group_broadcasts')
-            .select(
-              'id, created_at, name, search, max_avg_elo, date_start, date_end, time_control',
-            )
-            .ilike('name', '%$trimmedQuery%')
-            .order('date_start', ascending: false, nullsFirst: false)
-            .limit(40);
+        for (final nameQuery in _nameSearchVariants(trimmedQuery)) {
+          final trigramRes = await supabase
+              .from('group_broadcasts')
+              .select(
+                'id, created_at, name, search, max_avg_elo, date_start, date_end, time_control',
+              )
+              .ilike('name', '%$nameQuery%')
+              .order('date_start', ascending: false, nullsFirst: false)
+              .limit(40);
 
-        final trigramList = trigramRes as List?;
-        if (trigramList != null) {
-          for (final row in trigramList) {
-            final broadcast = GroupBroadcast.fromJson(row);
-            resultsById.putIfAbsent(broadcast.id, () => broadcast);
+          final trigramList = trigramRes as List?;
+          if (trigramList != null) {
+            for (final row in trigramList) {
+              final broadcast = GroupBroadcast.fromJson(row);
+              resultsById.putIfAbsent(broadcast.id, () => broadcast);
+            }
           }
         }
       }
@@ -675,6 +677,19 @@ class GroupBroadcastRepository extends BaseRepository {
             .toSet()
             .toList();
     return tokens;
+  }
+
+  List<String> _nameSearchVariants(String query) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return const [];
+
+    final variants = <String>{trimmed};
+    final chessCom = RegExp(r'\bchesscom\b', caseSensitive: false);
+    if (chessCom.hasMatch(trimmed)) {
+      variants.add(trimmed.replaceAll(chessCom, 'chess.com'));
+      variants.add(trimmed.replaceAll(chessCom, 'chess com'));
+    }
+    return variants.toList(growable: false);
   }
 
   /// Fetch the (id, slug) of the primary tour under a group_broadcast.

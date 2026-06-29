@@ -261,6 +261,11 @@ List<GamesTourModel> sortGameModelsForGamesTab({
 }
 
 int _compareGameModelsByDisplayOrder(GamesTourModel a, GamesTourModel b) {
+  final aLive = a.gameStatus.isOngoing;
+  final bLive = b.gameStatus.isOngoing;
+  if (aLive && !bLive) return -1;
+  if (!aLive && bLive) return 1;
+
   final roundA = _extractRoundNumber(a.roundSlug);
   final roundB = _extractRoundNumber(b.roundSlug);
   if (roundA != roundB) {

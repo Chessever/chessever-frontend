@@ -1958,6 +1958,46 @@ class ChessBoardScreenNotifierNew
     });
   }
 
+  Future<void> insertNullMoveAfterPvMove(
+    AnalysisLine line,
+    int moveIndex,
+  ) async {
+    if (_isEditingBlockedByPreview(reason: 'insert null move after PV move')) {
+      return;
+    }
+    _exitPvPreviewIfActive();
+    final currentState = state.value;
+    if (currentState == null || line.moves.isEmpty) return;
+
+    final navigator = _analysisNavigator;
+    if (navigator == null) {
+      _releaseLog('🎯 INSERT PV NULL MOVE: No navigator available');
+      return;
+    }
+
+    final lastMoveIndex = moveIndex.clamp(0, line.moves.length - 1);
+    final pvPrefix = line.copyWith(
+      moves: line.moves.take(lastMoveIndex + 1).toList(growable: false),
+      sanMoves: line.sanMoves.take(lastMoveIndex + 1).toList(growable: false),
+    );
+
+    if (pvPrefix.moves.isEmpty || pvPrefix.sanMoves.isEmpty) return;
+
+    _releaseLog(
+      '🎯 INSERT PV NULL MOVE: Inserting ${pvPrefix.moves.length} PV moves, then null move',
+    );
+
+    navigator.appendMovesFromPv(
+      moves: pvPrefix.moves,
+      sanMoves: pvPrefix.sanMoves,
+    );
+    navigator.insertNullMoveAtPointer();
+    HapticFeedback.mediumImpact();
+    _syncAnalysisFromNavigator(navigator.state);
+    _updateEvaluation(force: true);
+    await _persistAnalysisState();
+  }
+
   void updateVariationComment({
     required String variationId,
     required String comment,
@@ -4055,9 +4095,7 @@ class ChessBoardScreenNotifierNew
     // the navigator sync below preserves it via copyWith otherwise.
     if (currentState.analysisState.promotionMove != null) {
       currentState = currentState.copyWith(
-        analysisState: currentState.analysisState.copyWith(
-          promotionMove: null,
-        ),
+        analysisState: currentState.analysisState.copyWith(promotionMove: null),
       );
       state = AsyncValue.data(currentState);
     }
@@ -4197,9 +4235,7 @@ class ChessBoardScreenNotifierNew
     if (currentState.analysisState.promotionMove == null) return;
     state = AsyncValue.data(
       currentState.copyWith(
-        analysisState: currentState.analysisState.copyWith(
-          promotionMove: null,
-        ),
+        analysisState: currentState.analysisState.copyWith(promotionMove: null),
       ),
     );
   }
@@ -4617,7 +4653,6 @@ class ChessBoardScreenNotifierNew
     _clearActiveEvalState();
     _updateEvaluation(force: force);
   }
-
 
   String _getSamplePgnData() {
     return '''
@@ -6865,9 +6900,7 @@ class ChessBoardScreenNotifierNew
           // through progressive opacity and arrow/head scale.
           final isThreatsMode = state.value?.isThreatsMode ?? false;
           final baseArrowColor =
-              isThreatsMode
-                  ? const Color(0xFFFF0000)
-                  : const Color(0xFF98B39A);
+              isThreatsMode ? const Color(0xFFFF0000) : const Color(0xFF98B39A);
           final arrowColor = _engineArrowColorForRank(baseArrowColor, i);
           final arrowScale = _engineArrowScaleForRank(i);
 
@@ -6929,12 +6962,7 @@ class ChessBoardScreenNotifierNew
             }
 
             arrowShapes.add(
-              Arrow(
-                color: arrowColor,
-                orig: from,
-                dest: to,
-                scale: arrowScale,
-              ),
+              Arrow(color: arrowColor, orig: from, dest: to, scale: arrowScale),
             );
           }
         } catch (e) {
@@ -7011,7 +7039,10 @@ class ChessBoardScreenNotifierNew
   /// priority on the board.
   Color getVariantArrowColor(int variantIndex) {
     if (variantIndex >= 0 && variantIndex < _variantColors.length) {
-      return _engineArrowColorForRank(_variantColors[variantIndex], variantIndex);
+      return _engineArrowColorForRank(
+        _variantColors[variantIndex],
+        variantIndex,
+      );
     }
     final colorIndex = variantIndex % _variantColors.length;
     return _engineArrowColorForRank(_variantColors[colorIndex], variantIndex);

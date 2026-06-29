@@ -131,7 +131,7 @@ class FederationFlag extends StatelessWidget {
         PngAsset.fideLogo,
         width: width,
         height: height,
-        fit: BoxFit.contain,
+        fit: BoxFit.cover,
       ),
     );
   }

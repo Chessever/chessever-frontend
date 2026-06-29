@@ -1294,7 +1294,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     }
 
-    if (widget.dataSource == PlayerProfileDataSource.twic) {
+    if (state.isLoadingMore ||
+        state.hasMorePages ||
+        (state.totalCount != null && state.totalCount! > 0)) {
       listEntries.add(const _PlayerPaginationFooterEntry());
     }
 
@@ -1445,7 +1447,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     if (entry is _PlayerPaginationFooterEntry) {
       return Padding(
         padding: EdgeInsets.only(top: 12.h),
-        child: _buildTwicPaginationFooter(state),
+        child: _buildPaginationFooter(state),
       );
     }
 
@@ -1556,7 +1558,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
-  Widget _buildTwicPaginationFooter(PlayerProfileGamesState state) {
+  Widget _buildPaginationFooter(PlayerProfileGamesState state) {
     if (state.isLoadingMore) {
       return Container(
         padding: EdgeInsets.symmetric(vertical: 14.h),
@@ -1585,10 +1587,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     }
 
     if (state.hasMorePages) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).loadMore();
-      });
+      if (widget.dataSource == PlayerProfileDataSource.twic) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref
+              .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+              .loadMore();
+        });
+      }
 
       return GestureDetector(
         onTap:

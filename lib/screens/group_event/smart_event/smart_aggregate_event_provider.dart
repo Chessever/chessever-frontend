@@ -648,28 +648,27 @@ Set<String> readSmartEventHiddenIds(Map<String, dynamic> metadata) {
 /// [SmartEventRequest.dismissScopeId]; folded into the saved row's metadata
 /// when the user saves the event. Intentionally NOT persisted: an unsaved smart
 /// event is a transient preview.
-final _smartEventSessionHiddenIdsProvider = StateProvider.family<
-    Set<String>,
-    String
->((ref, dismissScopeId) => const <String>{});
+final _smartEventSessionHiddenIdsProvider =
+    StateProvider.family<Set<String>, String>(
+      (ref, dismissScopeId) => const <String>{},
+    );
 
 /// The saved favorite (if any) whose smart event matches [dismissScopeId].
 /// `dismissScopeId` is tier/elo-independent, so this resolves the same saved
 /// event regardless of the in-screen tier dropdown.
-final smartEventSavedFavoriteProvider = Provider.family<FavoriteEvent?, String>((
-  ref,
-  dismissScopeId,
-) {
-  final favorites = ref.watch(favoriteEventsProvider).valueOrNull ?? const [];
-  for (final favorite in favorites) {
-    if (!isSmartFavoriteEvent(favorite)) continue;
-    if (SmartEventRequest.fromFavoriteEvent(favorite).dismissScopeId ==
-        dismissScopeId) {
-      return favorite;
+final smartEventSavedFavoriteProvider = Provider.family<FavoriteEvent?, String>(
+  (ref, dismissScopeId) {
+    final favorites = ref.watch(favoriteEventsProvider).valueOrNull ?? const [];
+    for (final favorite in favorites) {
+      if (!isSmartFavoriteEvent(favorite)) continue;
+      if (SmartEventRequest.fromFavoriteEvent(favorite).dismissScopeId ==
+          dismissScopeId) {
+        return favorite;
+      }
     }
-  }
-  return null;
-});
+    return null;
+  },
+);
 
 /// The tournaments hidden from a smart event view, keyed by
 /// [SmartEventRequest.dismissScopeId]. Source of truth:
@@ -682,13 +681,14 @@ final smartEventSavedFavoriteProvider = Provider.family<FavoriteEvent?, String>(
 /// starts fresh instead of resurrecting the deleted event's hides. (The old
 /// content-keyed local store had no such lifecycle and leaked configs across
 /// re-creations.)
-final smartEventDismissedEventIdsProvider = Provider.family<Set<String>, String>(
-  (ref, dismissScopeId) {
-    final favorite = ref.watch(smartEventSavedFavoriteProvider(dismissScopeId));
-    if (favorite != null) return readSmartEventHiddenIds(favorite.metadata);
-    return ref.watch(_smartEventSessionHiddenIdsProvider(dismissScopeId));
-  },
-);
+final smartEventDismissedEventIdsProvider =
+    Provider.family<Set<String>, String>((ref, dismissScopeId) {
+      final favorite = ref.watch(
+        smartEventSavedFavoriteProvider(dismissScopeId),
+      );
+      if (favorite != null) return readSmartEventHiddenIds(favorite.metadata);
+      return ref.watch(_smartEventSessionHiddenIdsProvider(dismissScopeId));
+    });
 
 /// Persist the hidden tournaments for a smart event. Routes to the saved
 /// favorite's metadata (server-side, isolated to that row) when the event is
@@ -701,11 +701,10 @@ void setSmartEventHiddenIds(
   final favorite = ref.read(smartEventSavedFavoriteProvider(dismissScopeId));
   if (favorite != null) {
     unawaited(
-      ref
-          .read(favoriteEventsProvider.notifier)
-          .updateMetadata(favorite.eventId, {
-            smartEventHiddenMetadataKey: ids.toList(growable: false),
-          }),
+      ref.read(favoriteEventsProvider.notifier).updateMetadata(
+        favorite.eventId,
+        {smartEventHiddenMetadataKey: ids.toList(growable: false)},
+      ),
     );
   } else {
     ref
@@ -718,16 +717,15 @@ void setSmartEventHiddenIds(
 /// been folded into a saved row (on save) or when the event is deleted, so a
 /// later unsaved view of the same scope can't resurrect stale session hides.
 void resetSmartEventSessionHidden(WidgetRef ref, String dismissScopeId) {
-  ref
-      .read(_smartEventSessionHiddenIdsProvider(dismissScopeId).notifier)
-      .state = const <String>{};
+  ref.read(_smartEventSessionHiddenIdsProvider(dismissScopeId).notifier).state =
+      const <String>{};
 }
 
 /// THE single data path for the smart event view. One server fetch per query
-/// (events narrowed to the `group_broadcasts_current` view — the same source
-/// as the home Current tab — search and filters applied server-side), then a
-/// deterministic client-side sort. No snapshot fallback, no second source:
-/// what loads is what renders, so the list can't reshuffle after first paint.
+/// over the events carried by the request (live, current, or saved favorite
+/// history), then a deterministic client-side sort. No snapshot fallback, no
+/// second source: what loads is what renders, so the list can't reshuffle
+/// after first paint.
 final smartAggregateEventRepositoryProvider = FutureProvider.autoDispose
     .family<SmartAggregateEvent, SmartEventGamesQuery>((ref, query) async {
       final dismissedIds = ref.watch(
@@ -751,13 +749,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
       .toList(growable: false);
   if (activeEvents.isEmpty) return SmartAggregateEvent.empty;
 
-  final currentEvents = await _currentSmartEvents(
-    ref: ref,
-    events: activeEvents,
-  );
-  if (currentEvents.isEmpty) return SmartAggregateEvent.empty;
-
-  final eventIds = currentEvents
+  final eventIds = activeEvents
       .map((event) => event.id)
       .toList(growable: false);
   final tourRepository = ref.read(tourRepositoryProvider);
@@ -785,7 +777,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
   final tourIds = <String>[];
   final seenTourIds = <String>{};
   final tourIdToEventId = <String, String>{};
-  for (final event in currentEvents) {
+  for (final event in activeEvents) {
     for (final tour in toursByEvent[event.id] ?? const []) {
       if (seenTourIds.add(tour.id)) {
         tourIds.add(tour.id);
@@ -797,7 +789,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
   if (tourIds.isEmpty) {
     return _buildAggregateEventFromGameRows(
       request: request,
-      events: currentEvents,
+      events: activeEvents,
       games: const <Games>[],
       tourIdToEventId: tourIdToEventId,
       minAverageElo: _effectiveMinAverageElo(request, query.filter),
@@ -820,7 +812,7 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
 
   return _buildAggregateEventFromGameRows(
     request: request,
-    events: currentEvents,
+    events: activeEvents,
     games: games,
     tourIdToEventId: tourIdToEventId,
     minAverageElo: minAverageElo,
@@ -837,24 +829,6 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
 /// "more games with more filters". The cap only guards against pathological
 /// aggregations; when it is hit the trailing (incomplete) day is trimmed.
 const int _smartEventGamesFetchCap = 6000;
-
-Future<List<GroupEventCardModel>> _currentSmartEvents({
-  required Ref ref,
-  required List<GroupEventCardModel> events,
-}) async {
-  if (events.isEmpty) return const <GroupEventCardModel>[];
-
-  final currentEventIds = await ref.read(
-    smartCurrentEventIdsProvider(
-      SmartCurrentEventIdsQuery(events.map((event) => event.id)),
-    ).future,
-  );
-  if (currentEventIds.isEmpty) return const <GroupEventCardModel>[];
-
-  return events
-      .where((event) => currentEventIds.contains(event.id))
-      .toList(growable: false);
-}
 
 SmartAggregateEvent _buildAggregateEventFromGameRows({
   required SmartEventRequest request,
@@ -1082,9 +1056,7 @@ List<GamesTourModel> _trimTrailingPartialDay(List<GamesTourModel> sortedGames) {
   final oldestDay = _smartGameDay(sortedGames.last);
   if (_smartGameDay(sortedGames.first) == oldestDay) return sortedGames;
   final cut =
-      sortedGames.lastIndexWhere(
-        (game) => _smartGameDay(game) != oldestDay,
-      ) +
+      sortedGames.lastIndexWhere((game) => _smartGameDay(game) != oldestDay) +
       1;
   return sortedGames.sublist(0, cut);
 }

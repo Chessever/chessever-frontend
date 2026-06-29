@@ -17,7 +17,6 @@ import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
-import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -104,7 +103,7 @@ class EventCard extends ConsumerWidget {
 
     return Skeletonizer(
       enabled: nextRoundLoading,
-      effect:  ShimmerEffect(
+      effect: ShimmerEffect(
         baseColor: context.colors.surfaceRecessed,
         highlightColor: context.colors.divider,
         duration: Duration(seconds: 1),
@@ -223,20 +222,22 @@ class EventCard extends ConsumerWidget {
         // Light theme adds a faint border + subtle drop shadow so the white
         // card pops off the light-grey scaffold (matches the settings-page
         // _SettingCard look). Dark theme is unchanged.
-        border: context.isLightTheme
-            ? Border.all(
-                color: context.colors.divider.withValues(alpha: 0.4),
-              )
-            : null,
-        boxShadow: context.isLightTheme
-            ? [
-                BoxShadow(
-                  color: context.colors.shadow,
-                  blurRadius: 8,
-                  offset: const Offset(0, 1),
-                ),
-              ]
-            : null,
+        border:
+            context.isLightTheme
+                ? Border.all(
+                  color: context.colors.divider.withValues(alpha: 0.4),
+                )
+                : null,
+        boxShadow:
+            context.isLightTheme
+                ? [
+                  BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 8,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+                : null,
       ),
       padding: EdgeInsets.all(6.sp),
       child: ConstrainedBox(
@@ -382,19 +383,21 @@ class _MetaLine extends StatelessWidget {
     // `onLight` is misnamed — it really means "rendered over the dark image
     // gradient on the tablet card," so the text always needs to be a light
     // ink with a soft shadow regardless of theme.
-    final baseColor = onLight
-        ? Colors.white.withValues(alpha: 0.9)
-        : context.colors.textPrimaryMuted;
+    final baseColor =
+        onLight
+            ? Colors.white.withValues(alpha: 0.9)
+            : context.colors.textPrimaryMuted;
     final style = AppTypography.textXsMedium.copyWith(
       color: baseColor,
-      shadows: onLight
-          ? [
-              Shadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 3,
-              ),
-            ]
-          : null,
+      shadows:
+          onLight
+              ? [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 3,
+                ),
+              ]
+              : null,
     );
 
     final spans = <InlineSpan>[];
@@ -473,7 +476,10 @@ class _EventImage extends ConsumerWidget {
 
     if (isCommunity) {
       final countryCode = _extractCountryCode(ref, event.location);
-      final flag = _FlagEventImage(countryCode: countryCode);
+      final flag = _FlagEventImage(
+        countryCode: countryCode,
+        fallbackTitle: event.title,
+      );
       if (!shouldUseHero) return flag;
       return Heroine(
         tag: heroTag,
@@ -500,9 +506,10 @@ class _EventImage extends ConsumerWidget {
           // white card in light theme. Pure black-at-0.1 is the convention
           // (avoid tinted neutrals — they look like dirt at the edge).
           // Dark theme keeps no border to preserve the original look.
-          border: context.isLightTheme
-              ? Border.all(color: Colors.black.withValues(alpha: 0.1))
-              : null,
+          border:
+              context.isLightTheme
+                  ? Border.all(color: Colors.black.withValues(alpha: 0.1))
+                  : null,
         ),
         clipBehavior: Clip.antiAlias,
         child: imageAsync.when(
@@ -517,7 +524,7 @@ class _EventImage extends ConsumerWidget {
                 placeholder:
                     (context, url) => Skeletonizer(
                       enabled: true,
-                      effect:  ShimmerEffect(
+                      effect: ShimmerEffect(
                         baseColor: context.colors.surfaceRecessed,
                         highlightColor: context.colors.divider,
                         duration: Duration(seconds: 1),
@@ -531,16 +538,17 @@ class _EventImage extends ConsumerWidget {
             }
             return _buildFallbackFlag(imageData.fallbackCountryCode);
           },
-          loading: () => Skeletonizer(
-            enabled: true,
-            effect: ShimmerEffect(
-              baseColor: context.colors.skeleton,
-              highlightColor: context.colors.divider,
-              duration: const Duration(seconds: 1),
-            ),
-            child: Container(color: context.colors.surfaceRecessed),
-          ),
-          error: (_, __) => const LogoPatternFallback(),
+          loading:
+              () => Skeletonizer(
+                enabled: true,
+                effect: ShimmerEffect(
+                  baseColor: context.colors.skeleton,
+                  highlightColor: context.colors.divider,
+                  duration: const Duration(seconds: 1),
+                ),
+                child: Container(color: context.colors.surfaceRecessed),
+              ),
+          error: (_, __) => _EventFallbackArtwork(title: event.title),
         ),
       ),
     );
@@ -592,8 +600,7 @@ class _EventImage extends ConsumerWidget {
       );
     }
 
-    // No country code available - show logo pattern
-    return const LogoPatternFallback();
+    return _EventFallbackArtwork(title: event.title);
   }
 
   String? _extractCountryCode(WidgetRef ref, String? location) {
@@ -621,9 +628,13 @@ class _EventImage extends ConsumerWidget {
 }
 
 class _FlagEventImage extends StatelessWidget {
-  const _FlagEventImage({required this.countryCode});
+  const _FlagEventImage({
+    required this.countryCode,
+    required this.fallbackTitle,
+  });
 
   final String? countryCode;
+  final String fallbackTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -669,11 +680,65 @@ class _FlagEventImage extends StatelessWidget {
                 ),
               ),
             ),
-            if (countryCode == null) const LogoPatternFallback(),
+            if (countryCode == null)
+              _EventFallbackArtwork(title: fallbackTitle),
           ],
         ),
       ),
     );
+  }
+}
+
+class _EventFallbackArtwork extends StatelessWidget {
+  const _EventFallbackArtwork({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF202329), Color(0xFF303846)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: 42.w,
+          height: 42.w,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+          ),
+          child: Text(
+            _eventInitials(title),
+            maxLines: 1,
+            overflow: TextOverflow.clip,
+            style: AppTypography.textSmSemiBold.copyWith(
+              color: Colors.white,
+              fontSize: 15.sp,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _eventInitials(String title) {
+    final tokens = title
+        .split('|')
+        .first
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), ' ')
+        .split(RegExp(r'\s+'))
+        .map((token) => token.trim())
+        .where((token) => token.isNotEmpty && int.tryParse(token) == null)
+        .toList(growable: false);
+    if (tokens.isEmpty) return '?';
+    return tokens.take(2).map((token) => token[0].toUpperCase()).join();
   }
 }
 
@@ -690,7 +755,7 @@ class _TabletEventBackground extends ConsumerWidget {
 
     if (isCommunity) {
       final countryCode = _extractCountryCode(ref, event.location);
-      return _buildFlagBackground(countryCode);
+      return _buildFlagBackground(countryCode, fallbackTitle: event.title);
     }
 
     final imageAsync = ref.watch(eventImageProvider(event.id));
@@ -710,14 +775,19 @@ class _TabletEventBackground extends ConsumerWidget {
             fadeOutDuration: const Duration(milliseconds: 200),
             placeholder: (context, url) => _buildLoadingBackground(context),
             errorWidget:
-                (context, url, error) =>
-                    _buildFlagBackground(imageData.fallbackCountryCode),
+                (context, url, error) => _buildFlagBackground(
+                  imageData.fallbackCountryCode,
+                  fallbackTitle: event.title,
+                ),
           );
         }
-        return _buildFlagBackground(imageData.fallbackCountryCode);
+        return _buildFlagBackground(
+          imageData.fallbackCountryCode,
+          fallbackTitle: event.title,
+        );
       },
       loading: () => _buildLoadingBackground(context),
-      error: (_, __) =>  LogoPatternFallback(),
+      error: (_, __) => _EventFallbackArtwork(title: event.title),
     );
   }
 
@@ -726,22 +796,26 @@ class _TabletEventBackground extends ConsumerWidget {
       enabled: true,
       // Dark theme keeps the original tuned greys; only light theme swaps to
       // theme-aware tokens so the shimmer doesn't paint as a dark patch.
-      effect: context.isLightTheme
-          ? ShimmerEffect(
-              baseColor: context.colors.skeleton,
-              highlightColor: context.colors.divider,
-              duration: const Duration(seconds: 1),
-            )
-          : const ShimmerEffect(
-              baseColor: Color(0xFF2A2A2A),
-              highlightColor: Color(0xFF3A3A3A),
-              duration: Duration(seconds: 1),
-            ),
+      effect:
+          context.isLightTheme
+              ? ShimmerEffect(
+                baseColor: context.colors.skeleton,
+                highlightColor: context.colors.divider,
+                duration: const Duration(seconds: 1),
+              )
+              : const ShimmerEffect(
+                baseColor: Color(0xFF2A2A2A),
+                highlightColor: Color(0xFF3A3A3A),
+                duration: Duration(seconds: 1),
+              ),
       child: ColoredBox(color: context.colors.surface),
     );
   }
 
-  Widget _buildFlagBackground(String? countryCode) {
+  Widget _buildFlagBackground(
+    String? countryCode, {
+    required String fallbackTitle,
+  }) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -760,7 +834,7 @@ class _TabletEventBackground extends ConsumerWidget {
             theme: ImageTheme(height: double.infinity, width: double.infinity),
           ),
         if (countryCode == null || countryCode.isEmpty)
-          const LogoPatternFallback(),
+          _EventFallbackArtwork(title: fallbackTitle),
       ],
     );
   }
@@ -1093,9 +1167,10 @@ class _NextRoundLine extends ConsumerWidget {
 
     // Tablet image background path always needs light ink; the rest of the
     // card uses theme-aware muted text.
-    final baseColor = onLight
-        ? Colors.white.withValues(alpha: 0.9)
-        : context.colors.textPrimaryMuted;
+    final baseColor =
+        onLight
+            ? Colors.white.withValues(alpha: 0.9)
+            : context.colors.textPrimaryMuted;
 
     final textStyle = AppTypography.textXxsMedium.copyWith(
       color: baseColor,

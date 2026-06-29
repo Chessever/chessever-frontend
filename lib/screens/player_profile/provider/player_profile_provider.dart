@@ -2889,6 +2889,18 @@ class _TwicGamesPageResult {
   final int? totalCount;
 }
 
+class _SupabaseGamesPageResult {
+  const _SupabaseGamesPageResult({
+    required this.games,
+    required this.hasMore,
+    required this.nextPageNumber,
+  });
+
+  final List<GamesTourModel> games;
+  final bool hasMore;
+  final int nextPageNumber;
+}
+
 class PlayerProfileGamesNotifier
     extends StateNotifier<PlayerProfileGamesState> {
   PlayerProfileGamesNotifier(this._ref, this._playerKey)
@@ -2899,7 +2911,7 @@ class PlayerProfileGamesNotifier
   final Ref _ref;
   final PlayerProfileKey _playerKey;
   int _loadToken = 0;
-  static const int _supabasePageSize = 1000;
+  static const int _supabasePageSize = 120;
   static const int _twicPageSize = 60;
   List<GamesTourModel>? _globalSearchFallbackCache;
 
@@ -2915,42 +2927,6 @@ class PlayerProfileGamesNotifier
       merged[game.gameId] = game;
     }
     return merged.values.toList(growable: false);
-  }
-
-  Future<List<Games>> _loadAllSupabaseGames(GameRepository gameRepo) async {
-    final seenIds = <String>{};
-    final allGames = <Games>[];
-
-    for (var page = 0; page < 200; page++) {
-      final offset = page * _supabasePageSize;
-      final batch =
-          _playerKey.hasFideId
-              ? await gameRepo.getGamesByFideIdPaginated(
-                _playerKey.fideId.toString(),
-                limit: _supabasePageSize,
-                offset: offset,
-              )
-              : await gameRepo.getGamesByPlayerNamePaginated(
-                _playerKey.playerName,
-                limit: _supabasePageSize,
-                offset: offset,
-              );
-
-      if (batch.isEmpty) break;
-
-      final before = seenIds.length;
-      for (final game in batch) {
-        if (seenIds.add(game.id)) {
-          allGames.add(game);
-        }
-      }
-
-      if (batch.length < _supabasePageSize || seenIds.length == before) {
-        break;
-      }
-    }
-
-    return allGames;
   }
 
   Future<void> _loadGames() async {
@@ -2984,14 +2960,11 @@ class PlayerProfileGamesNotifier
         totalCount = page.totalCount;
       } else {
         final gameRepo = _ref.read(gameRepositoryProvider);
-        final games = await _loadAllSupabaseGames(gameRepo);
-
-        allGames =
-            games
-                .map((game) => GamesTourModel.fromGame(game))
-                .where((game) => !_isVariantEvent(game.tourSlug))
-                .toList();
-        totalCount = allGames.length;
+        final page = await _loadSupabaseGamesPage(gameRepo, pageNumber: 0);
+        allGames = page.games;
+        hasMorePages = page.hasMore;
+        nextPageNumber = page.nextPageNumber;
+        totalCount = page.hasMore ? null : allGames.length;
       }
 
       // Sort by date descending
@@ -3023,6 +2996,36 @@ class PlayerProfileGamesNotifier
   // ---------------------------------------------------------------------------
   // TWIC: Pure server-side filtered loading
   // ---------------------------------------------------------------------------
+
+  Future<_SupabaseGamesPageResult> _loadSupabaseGamesPage(
+    GameRepository gameRepo, {
+    required int pageNumber,
+  }) async {
+    final offset = pageNumber * _supabasePageSize;
+    final batch =
+        _playerKey.hasFideId
+            ? await gameRepo.getGamesByFideIdPaginated(
+              _playerKey.fideId.toString(),
+              limit: _supabasePageSize,
+              offset: offset,
+            )
+            : await gameRepo.getGamesByPlayerNamePaginated(
+              _playerKey.playerName,
+              limit: _supabasePageSize,
+              offset: offset,
+            );
+
+    final games = batch
+        .map((game) => GamesTourModel.fromGame(game))
+        .where((game) => !_isVariantEvent(game.tourSlug))
+        .toList(growable: false);
+
+    return _SupabaseGamesPageResult(
+      games: games,
+      hasMore: batch.length >= _supabasePageSize,
+      nextPageNumber: pageNumber + 1,
+    );
+  }
 
   Future<_TwicGamesPageResult> _loadTwicGamesFilteredPage({
     required int pageNumber,
@@ -3502,25 +3505,52 @@ class PlayerProfileGamesNotifier
   }
 
   Future<void> loadMore() async {
-    if (_playerKey.source != PlayerProfileDataSource.twic) return;
     if (state.isLoading || state.isLoadingMore || !state.hasMorePages) return;
 
     final token = _loadToken;
     state = state.copyWith(isLoadingMore: true, error: null);
     try {
-      final page = await _loadTwicGamesFilteredPage(
-        pageNumber: state.nextPageNumber,
-        pageSize: _twicPageSize,
-      );
+      late final List<GamesTourModel> pageGames;
+      late final bool pageHasMore;
+      late final int pageNextPageNumber;
+      int? pageTotalCount;
+
+      if (_playerKey.source == PlayerProfileDataSource.twic) {
+        final page = await _loadTwicGamesFilteredPage(
+          pageNumber: state.nextPageNumber,
+          pageSize: _twicPageSize,
+        );
+        pageGames = page.games;
+        pageHasMore = page.hasMore;
+        pageNextPageNumber = page.nextPageNumber;
+        pageTotalCount = page.totalCount;
+      } else {
+        final page = await _loadSupabaseGamesPage(
+          _ref.read(gameRepositoryProvider),
+          pageNumber: state.nextPageNumber,
+        );
+        pageGames = page.games;
+        pageHasMore = page.hasMore;
+        pageNextPageNumber = page.nextPageNumber;
+      }
       if (!mounted || token != _loadToken) return;
 
-      final merged = _mergeGames(state.allGames, page.games);
+      final merged = _mergeGames(state.allGames, pageGames);
+      final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
+      merged.sort((a, b) {
+        final aTime = a.lastMoveTime ?? epochFallback;
+        final bTime = b.lastMoveTime ?? epochFallback;
+        return bTime.compareTo(aTime);
+      });
       state = state.copyWith(
         allGames: merged,
         isLoadingMore: false,
-        hasMorePages: page.hasMore,
-        nextPageNumber: page.nextPageNumber,
-        totalCount: page.totalCount ?? state.totalCount,
+        hasMorePages: pageHasMore,
+        nextPageNumber: pageNextPageNumber,
+        totalCount:
+            _playerKey.source == PlayerProfileDataSource.twic
+                ? pageTotalCount ?? state.totalCount
+                : (pageHasMore ? state.totalCount : merged.length),
       );
     } catch (e) {
       if (!mounted || token != _loadToken) return;
@@ -3531,13 +3561,9 @@ class PlayerProfileGamesNotifier
     }
   }
 
-  /// Loads all remaining TWIC pages for the current filter/search state.
+  /// Loads remaining pages for the current filter/search state.
   /// Returns the final loaded game count in memory.
   Future<int> loadAllRemainingPages({int maxPages = 250}) async {
-    if (_playerKey.source != PlayerProfileDataSource.twic) {
-      return state.allGames.length;
-    }
-
     var pages = 0;
     var previousCount = state.allGames.length;
 
