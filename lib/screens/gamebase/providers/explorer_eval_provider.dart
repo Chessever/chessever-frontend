@@ -9,6 +9,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_lifecycle_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 
 class ExplorerPvLine {
@@ -127,6 +128,20 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 
     if (fen.trim().isEmpty) return;
     evaluatePosition(fen, force: force);
+  }
+
+  void handleForegroundResume() {
+    final fen = state.fen.trim();
+    if (_isDisposed ||
+        !_engineEnabled ||
+        fen.isEmpty ||
+        fen.split(' ').length < 4) {
+      return;
+    }
+
+    _cancelWatchdog();
+    state = state.copyWith(isEvaluating: true);
+    evaluatePosition(fen, force: true);
   }
 
   Future<void> evaluatePosition(String fen, {bool force = false}) async {
@@ -342,6 +357,10 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               '🛑 EXPLORER EVAL: Cancelled for ${normalizedKey.split(' ').first} (gen=$gen)',
             );
             if (!_isStale(gen)) {
+              state = state.copyWith(isEvaluating: false);
+              if (!StockfishSingleton().appIsForeground) {
+                return;
+              }
               // Job was preempted (likely by another provider). Cancel our
               // own Stockfish jobs first, then retry after a brief delay.
               // Cancelling first prevents the retry from coalescing with a
@@ -350,7 +369,6 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               debugPrint(
                 '🔄 EXPLORER EVAL: Scheduling retry after cancellation',
               );
-              state = state.copyWith(isEvaluating: false);
               StockfishSingleton().cancelEvaluationsForOwner(_ownerId).then((
                 _,
               ) {
@@ -617,6 +635,13 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 }
 
 final explorerEvalProvider =
-    StateNotifierProvider.autoDispose<ExplorerEvalNotifier, ExplorerEvalState>(
-      (ref) => ExplorerEvalNotifier(ref),
-    );
+    StateNotifierProvider.autoDispose<ExplorerEvalNotifier, ExplorerEvalState>((
+      ref,
+    ) {
+      final notifier = ExplorerEvalNotifier(ref);
+      ref.listen<int>(stockfishForegroundGenerationProvider, (previous, next) {
+        if (previous == null || previous == next) return;
+        notifier.handleForegroundResume();
+      });
+      return notifier;
+    });

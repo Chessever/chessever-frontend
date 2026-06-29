@@ -8,6 +8,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider, Ref;
+import 'stockfish_lifecycle_provider.dart';
 import 'stockfish_singleton.dart';
 
 // REMOVED: _LichessRateLimitTracker - Lichess API removed, relying only on Stockfish
@@ -180,6 +181,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
+  ref.watch(stockfishForegroundGenerationProvider);
 
   if (fen.isEmpty) {
     return _emptyCloudEval(fen, multiPV: multiPV);
@@ -357,6 +359,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
+  ref.watch(stockfishForegroundGenerationProvider);
 
   if (fen.isEmpty) {
     return _emptyCloudEval(fen, multiPV: multiPV);
@@ -455,6 +458,7 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
+  ref.watch(stockfishForegroundGenerationProvider);
 
   if (fen.isEmpty) {
     return _emptyCloudEval(fen, multiPV: 1);

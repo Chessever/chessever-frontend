@@ -12,6 +12,7 @@ import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_lifecycle_provider.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
@@ -676,7 +677,7 @@ Future<void> _bootstrapE2eSession(WidgetRef ref) async {
   }
 }
 
-void _initializePostStartupServices() {
+void _initializePostStartupServices(WidgetRef ref) {
   final supabaseUrl = _getEnv('SUPABASE_URL');
   final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
 
@@ -687,6 +688,7 @@ void _initializePostStartupServices() {
   WidgetsBinding.instance.addObserver(
     LifecycleEventHandler(
       onAppExit: () async {
+        StockfishSingleton().markAppBackgrounded();
         // Fully dispose the engine on background to free native resources.
         // On Android this prevents the OS from aggressively killing the app
         // due to background native thread activity. The engine will lazily
@@ -699,6 +701,7 @@ void _initializePostStartupServices() {
         }
       },
       onAppResume: () async {
+        StockfishSingleton().markAppForegrounded();
         if (kDebugMode) {
           unawaited(
             Sentry.captureMessage(
@@ -720,13 +723,14 @@ void _initializePostStartupServices() {
         ForegroundTaskScheduler.schedule(
           key: 'root_stockfish_recovery',
           delay: kForegroundHeavyRefreshDelay,
-          task: () {
+          task: () async {
             final stockfish = StockfishSingleton();
             if (stockfish.requiresRecovery) {
-              unawaited(stockfish.forceRecovery());
+              await stockfish.forceRecovery();
             } else if (!Platform.isAndroid) {
-              unawaited(stockfish.warmUp());
+              await stockfish.warmUp();
             }
+            notifyStockfishForegroundResumed(ref);
           },
         );
 
@@ -870,7 +874,7 @@ class _StartupGateState extends ConsumerState<StartupGate> {
       _e2eStartupLog('StartupGate: bootstrapE2eSession done');
       if (!_postStartupInitialized) {
         _e2eStartupLog('StartupGate: initializePostStartupServices start');
-        _initializePostStartupServices();
+        _initializePostStartupServices(ref);
         _postStartupInitialized = true;
         _e2eStartupLog('StartupGate: initializePostStartupServices done');
       }

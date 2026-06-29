@@ -135,6 +135,7 @@ class StockfishSingleton {
       false; // Lock to prevent concurrent engine initialization
   bool _previousJobCompleted =
       true; // Track if last job ended via bestmove (engine idle)
+  bool _appIsForeground = true;
   Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
   static const int _maxBackgroundBacklog =
@@ -143,6 +144,7 @@ class StockfishSingleton {
   // Global instance lock to prevent "Multiple instances not supported" on Android
   // Android's native Stockfish library requires strict single-instance management
   Completer<void>? _instanceLock;
+  Completer<void>? _disposeCompleter;
   DateTime? _lastDisposeTime; // Track when engine was last disposed
   static const Duration _androidMinDisposalWait = Duration(milliseconds: 800);
   static const Duration _iosMinDisposalWait = Duration(milliseconds: 100);
@@ -194,6 +196,18 @@ class StockfishSingleton {
     // restart. Resolve to an empty/cancelled eval so callers degrade gracefully
     // without ever spawning the engine. Release builds are unaffected.
     if (kDebugMode && !kEnableStockfishInDebug) {
+      return EnhancedCloudEval(
+        fen: fen,
+        knodes: 0,
+        depth: 0,
+        pvs: [Pv(moves: '', cp: 0, mate: 0)],
+        isCancelled: true,
+        requestedMultiPv: multiPV,
+      );
+    }
+
+    if (!_appIsForeground) {
+      debugPrint('🛑 STOCKFISH: Skipping eval while app is backgrounded');
       return EnhancedCloudEval(
         fen: fen,
         knodes: 0,
@@ -436,6 +450,7 @@ class StockfishSingleton {
     // — its blocking native FFI isolates make hot restart hang. Release builds
     // are unaffected (guard is tree-shaken out).
     if (kDebugMode && !kEnableStockfishInDebug) return;
+    if (!_appIsForeground) return;
     if (_engine != null) return;
     if (_isInitializing) return;
 
@@ -449,6 +464,16 @@ class StockfishSingleton {
       debugPrint('⚠️ STOCKFISH: Pre-warm failed (will retry on demand): $e');
     }
   }
+
+  void markAppBackgrounded() {
+    _appIsForeground = false;
+  }
+
+  void markAppForegrounded() {
+    _appIsForeground = true;
+  }
+
+  bool get appIsForeground => _appIsForeground;
 
   Future<void> _cancelCurrentEvaluation() async {
     // Capture to a local so a concurrent caller racing through the await below
@@ -493,25 +518,7 @@ class StockfishSingleton {
   Future<void> cancelAllEvaluations() async {
     debugPrint('🛑 STOCKFISH: Cancelling all evaluations...');
     await _cancelCurrentEvaluation();
-    if (_jobQueue.isNotEmpty) {
-      final jobCount = _jobQueue.length;
-      for (final job in _jobQueue) {
-        _pendingJobs.remove(job.key);
-        if (!job.completer.isCompleted) {
-          job.completer.complete(
-            EnhancedCloudEval(
-              fen: job.fen,
-              knodes: 0,
-              depth: 0,
-              pvs: [Pv(moves: '', cp: 0, mate: 0)],
-              isCancelled: true,
-            ),
-          );
-        }
-      }
-      _jobQueue.clear();
-      debugPrint('🛑 STOCKFISH: Cancelled $jobCount queued jobs');
-    }
+    _completeQueuedJobsAsCancelled(reason: 'cancelAllEvaluations');
     // Bump generation so any running _processQueue loop will exit after its
     // current await point, preventing concurrent queue processors.
     _queueGeneration++;
@@ -1229,6 +1236,16 @@ class StockfishSingleton {
   }
 
   Future<void> _ensureEngineReady() async {
+    final activeDispose = _disposeCompleter;
+    if (activeDispose != null) {
+      debugPrint('🔒 STOCKFISH: Waiting for in-flight disposal...');
+      try {
+        await activeDispose.future;
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH: In-flight disposal failed before init: $e');
+      }
+    }
+
     // If another call is already initializing, wait for it
     if (_isInitializing && _initCompleter != null) {
       debugPrint('🔒 STOCKFISH: Waiting for ongoing initialization...');
@@ -1446,22 +1463,7 @@ class StockfishSingleton {
     _currentSubscription?.cancel();
     _currentSubscription = null;
 
-    for (final job in _jobQueue) {
-      if (!job.completer.isCompleted) {
-        job.completer.complete(
-          EnhancedCloudEval(
-            fen: job.fen,
-            knodes: 0,
-            depth: 0,
-            pvs: [Pv(moves: '', cp: 0, mate: 0)],
-            isCancelled: true,
-            requestedMultiPv: job.multiPV,
-          ),
-        );
-      }
-    }
-    _jobQueue.clear();
-    _pendingJobs.clear();
+    _completeQueuedJobsAsCancelled(reason: 'hotRestart');
     _isProcessing = false;
     _isInitializing = false;
     _initCompleter = null;
@@ -1499,23 +1501,7 @@ class StockfishSingleton {
     _currentSubscription?.cancel();
     _currentSubscription = null;
 
-    // Complete all queued jobs as cancelled
-    for (final job in _jobQueue) {
-      if (!job.completer.isCompleted) {
-        job.completer.complete(
-          EnhancedCloudEval(
-            fen: job.fen,
-            knodes: 0,
-            depth: 0,
-            pvs: [Pv(moves: '', cp: 0, mate: 0)],
-            isCancelled: true,
-            requestedMultiPv: job.multiPV,
-          ),
-        );
-      }
-    }
-    _jobQueue.clear();
-    _pendingJobs.clear();
+    _completeQueuedJobsAsCancelled(reason: 'dispose');
     _isProcessing = false;
     _queueGeneration++;
     _isInitializing = false;
@@ -1545,26 +1531,95 @@ class StockfishSingleton {
 
   /// Async dispose with proper cleanup timing - use when you need to reinitialize afterwards.
   Future<void> disposeAsync() async {
-    await _cancelCurrentEvaluation();
+    final activeDispose = _disposeCompleter;
+    if (activeDispose != null) {
+      await activeDispose.future;
+      return;
+    }
+
+    final disposeCompleter = Completer<void>();
+    _disposeCompleter = disposeCompleter;
+
+    try {
+      _queueGeneration++;
+      await _cancelCurrentEvaluation();
+      _completeQueuedJobsAsCancelled(reason: 'disposeAsync');
+      _isProcessing = false;
+
+      final releaseLock = await _acquireInstanceLock();
+      try {
+        _isInitializing = false;
+        if (_initCompleter != null && !_initCompleter!.isCompleted) {
+          _initCompleter!.completeError(StateError('Stockfish disposed'));
+        }
+        _initCompleter = null;
+
+        // Use safe disposal with proper timing
+        if (_engine != null) {
+          await _safeDisposeEngine();
+        }
+      } finally {
+        releaseLock();
+      }
+
+      _evaluationCache.clear();
+      debugPrint('🧹 STOCKFISH: Singleton disposed async');
+      disposeCompleter.complete();
+    } catch (e, st) {
+      if (!disposeCompleter.isCompleted) {
+        disposeCompleter.completeError(e, st);
+      }
+      rethrow;
+    } finally {
+      if (identical(_disposeCompleter, disposeCompleter)) {
+        _disposeCompleter = null;
+      }
+    }
+  }
+
+  void _completeQueuedJobsAsCancelled({required String reason}) {
+    if (_jobQueue.isEmpty && _pendingJobs.isEmpty) return;
+
+    final jobs = <_EvalJob>{..._jobQueue, ..._pendingJobs.values};
+    var completed = 0;
+    for (final job in jobs) {
+      _pendingJobs.remove(job.key);
+      if (!job.completer.isCompleted) {
+        job.completer.complete(_cancelledEvalForJob(job));
+        completed++;
+      }
+    }
     _jobQueue.clear();
     _pendingJobs.clear();
-    _isProcessing = false;
-    _isInitializing = false;
-    _initCompleter = null;
 
-    // Release any pending instance lock
-    if (_instanceLock != null && !_instanceLock!.isCompleted) {
-      _instanceLock!.complete();
+    if (completed > 0) {
+      debugPrint('🛑 STOCKFISH: Cancelled $completed queued jobs ($reason)');
     }
-    _instanceLock = null;
+  }
 
-    // Use safe disposal with proper timing
-    if (_engine != null) {
-      await _safeDisposeEngine();
-    }
+  EnhancedCloudEval _cancelledEvalForJob(_EvalJob job) {
+    return EnhancedCloudEval(
+      fen: job.fen,
+      knodes: 0,
+      depth: 0,
+      pvs: [Pv(moves: '', cp: 0, mate: 0)],
+      isCancelled: true,
+      requestedMultiPv: job.multiPV,
+    );
+  }
 
-    _evaluationCache.clear();
-    debugPrint('🧹 STOCKFISH: Singleton disposed async');
+  @visibleForTesting
+  Future<EnhancedCloudEval> debugEnqueueQueuedEvaluationForTest({
+    required String fen,
+    int multiPV = 1,
+  }) {
+    final key =
+        'test_${DateTime.now().microsecondsSinceEpoch}_${_jobQueue.length}';
+    final completer = Completer<EnhancedCloudEval>();
+    final job = _EvalJob(fen, 1, key, key, completer, multiPV: multiPV);
+    _jobQueue.add(job);
+    _pendingJobs[key] = job;
+    return completer.future;
   }
 
   Future<void> _resetEngineAfterFailure() async {
