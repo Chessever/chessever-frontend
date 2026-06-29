@@ -8,7 +8,7 @@ import 'package:image/image.dart' as img;
 
 void main() {
   group('computeGifExportWindow', () {
-    test('uses the selected move only as the GIF end position', () {
+    test('uses the full game even when an earlier move is selected', () {
       final moves = List.generate(20, (i) => 'move$i');
 
       final window = computeGifExportWindow(
@@ -18,17 +18,17 @@ void main() {
       );
 
       expect(window, isNotNull);
-      expect(window!.movesToAnimate, moves.take(6).toList());
+      expect(window!.movesToAnimate, moves);
       expect(window.globalMoveOffset, 0);
       expect(window.captureStartFen, 'custom start');
     });
 
-    test('keeps the full selected prefix for long games', () {
+    test('keeps the full game for long games', () {
       final moves = List.generate(80, (i) => 'move$i');
 
       final window = computeGifExportWindow(
         moveSans: moves,
-        currentMoveIndex: 79,
+        currentMoveIndex: 5,
       );
 
       expect(window, isNotNull);
@@ -37,13 +37,14 @@ void main() {
       expect(window.movesToAnimate.last, 'move79');
     });
 
-    test('returns null when the selected end is the initial position', () {
+    test('still shares the full game from the initial selected position', () {
       final window = computeGifExportWindow(
         moveSans: const ['e4', 'e5'],
         currentMoveIndex: -1,
       );
 
-      expect(window, isNull);
+      expect(window, isNotNull);
+      expect(window!.movesToAnimate, ['e4', 'e5']);
     });
   });
 
