@@ -656,22 +656,9 @@ class _ShareGameRow extends StatelessWidget {
   final int index;
   final bool isLast;
 
-  Color get _outcomeColor {
-    switch (row.outcome) {
-      case PlayerEventGameOutcome.win:
-        return PlayerEventShareImageCard._win;
-      case PlayerEventGameOutcome.loss:
-        return PlayerEventShareImageCard._loss;
-      case PlayerEventGameOutcome.draw:
-      case PlayerEventGameOutcome.other:
-        return PlayerEventShareImageCard._textMid;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final titleText = (row.title ?? '').trim();
-    final pillColor = _outcomeColor;
 
     return Container(
       height: 48,
@@ -698,23 +685,6 @@ class _ShareGameRow extends StatelessWidget {
                 color: PlayerEventShareImageCard._textMid,
                 fontSize: 13.5,
                 fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          // Piece-colour the player had: white/black ring.
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: row.isWhite ? Colors.white : const Color(0xFF1A1A1C),
-              border: Border.all(
-                color:
-                    row.isWhite
-                        ? Colors.transparent
-                        : Colors.white.withValues(alpha: 0.45),
-                width: 1,
               ),
             ),
           ),
@@ -782,21 +752,30 @@ class _ShareGameRow extends StatelessWidget {
             ),
           ],
           const SizedBox(width: 12),
-          // Result chip, tinted by outcome.
+          // Result on a white/black piece-colour circle (mirrors the live
+          // scorecard): the circle fill conveys the side the player had, the
+          // inverted text the score. Replaces the old colour-tinted chip.
           Container(
-            constraints: const BoxConstraints(minWidth: 34),
-            height: 24,
-            padding: const EdgeInsets.symmetric(horizontal: 9),
+            width: 28,
+            height: 28,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: pillColor.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(8),
+              shape: BoxShape.circle,
+              color: row.isWhite ? Colors.white : Colors.black,
+              border:
+                  row.isWhite
+                      ? null
+                      : Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        width: 1.1,
+                      ),
             ),
             child: Text(
               row.result,
               maxLines: 1,
+              textAlign: TextAlign.center,
               style: AppTypography.textSmBold.copyWith(
-                color: pillColor,
+                color: row.isWhite ? Colors.black : Colors.white,
                 fontSize: 13.5,
               ),
             ),

@@ -1,10 +1,8 @@
-import 'package:chessever2/utils/location_service_provider.dart';
-
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -48,10 +46,6 @@ class StandingScoreCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(countryCode);
-
     final Color backgroundColor =
         index.isOdd ? context.colors.surface : context.colors.surface;
     BorderRadius? borderRadius;
@@ -98,13 +92,11 @@ class StandingScoreCard extends ConsumerWidget {
             SizedBox(
               width: 16.w,
               height: 12.h,
-              child:
-                  validCountryCode.isNotEmpty
-                      ? CountryFlag.fromCountryCode(
-                        validCountryCode,
-                        theme: ImageTheme(height: 12.h, width: 16.w),
-                      )
-                      : null,
+              child: FederationFlag(
+                federation: countryCode,
+                width: 16.w,
+                height: 12.h,
+              ),
             ),
             SizedBox(width: 8.w), // Gap between flag and name
             // Player name - takes remaining space

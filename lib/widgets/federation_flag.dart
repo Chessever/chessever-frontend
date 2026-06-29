@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_country_flags/flutter_country_flags.dart' as fcf;
@@ -55,10 +56,10 @@ class FederationFlag extends StatelessWidget {
       return _noFlag();
     }
 
-    // FID/FIDE is not a real country flag. If no better player-profile
-    // backfill is available upstream, show no flag rather than a generic logo.
+    // FID/FIDE = sanctioned/neutral players (e.g. RU/BY). Show the FIDE
+    // logo so the slot isn't blank when no backfill resolved a real country.
     if (normalized == 'FID' || normalized == 'FIDE') {
-      return _noFlag();
+      return _fideLogoFlag();
     }
 
     // Handle UK subdivisions (England, Scotland, Wales) with their own flags.
@@ -121,4 +122,17 @@ class FederationFlag extends StatelessWidget {
   /// Unknown/missing federation should not render a generic flag-like symbol.
   /// Cards and player rows should only show a flag when we know the country.
   Widget _noFlag() => const SizedBox.shrink();
+
+  Widget _fideLogoFlag() {
+    final radius = borderRadius ?? BorderRadius.circular(3);
+    return ClipRRect(
+      borderRadius: radius,
+      child: Image.asset(
+        PngAsset.fideLogo,
+        width: width,
+        height: height,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
 }

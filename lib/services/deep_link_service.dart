@@ -1083,23 +1083,15 @@ class DeepLinkService {
       );
 
       // Resolve the player from the tournament standings, then open the
-      // scorecard. Degrades to the event if the player can't be matched.
-      PlayerStandingModel? matched;
-      try {
-        final standings = await ref
-            .read(playerTourScreenProvider.future)
-            .timeout(_fetchTimeout);
-        for (final standing in standings) {
-          if (standing.fideId == fideId) {
-            matched = standing;
-            break;
-          }
-        }
-      } catch (e) {
-        debugPrint(
-          'DeepLinkService: Failed to resolve standings for player: $e',
-        );
-      }
+      // scorecard. `playerTourScreenProvider` returns synchronously with `[]`
+      // until `tourDetailScreenProvider` resolves, so a one-shot `.future`
+      // await sees an empty list on cold-start and bails out. Listen for the
+      // first non-empty emission instead so we wait for real data.
+      final matched = await _awaitPlayerInStandings(
+        ref,
+        fideId,
+        timeout: const Duration(seconds: 20),
+      );
 
       if (matched == null) {
         debugPrint(
@@ -1135,6 +1127,65 @@ class DeepLinkService {
       );
     } finally {
       _isNavigating = false;
+    }
+  }
+
+  /// Waits for `playerTourScreenProvider` to emit a non-empty standings list
+  /// and returns the player matching [fideId], or null on timeout / no match.
+  ///
+  /// One-shot `.future` is unsafe here: on cold-start the provider's `build`
+  /// short-circuits to `[]` while `tourDetailScreenProvider` is still loading,
+  /// so a single await resolves immediately with an empty list and the caller
+  /// silently bails out. Subscribing instead waits until standings actually
+  /// populate (or the player is confirmed absent).
+  Future<PlayerStandingModel?> _awaitPlayerInStandings(
+    WidgetRef ref,
+    int fideId, {
+    required Duration timeout,
+  }) async {
+    final completer = Completer<PlayerStandingModel?>();
+    Timer? timer;
+    ProviderSubscription<AsyncValue<List<PlayerStandingModel>>>? sub;
+
+    void finish(PlayerStandingModel? value) {
+      if (completer.isCompleted) return;
+      completer.complete(value);
+    }
+
+    void inspect(AsyncValue<List<PlayerStandingModel>> async) {
+      if (completer.isCompleted) return;
+      async.when(
+        data: (standings) {
+          if (standings.isEmpty) return; // still warming up; keep listening
+          for (final s in standings) {
+            if (s.fideId == fideId) {
+              finish(s);
+              return;
+            }
+          }
+          finish(null); // loaded but absent → degrade to event
+        },
+        loading: () {},
+        error: (error, _) {
+          debugPrint(
+            'DeepLinkService: standings error while awaiting player: $error',
+          );
+          // Keep listening: provider can recover with cached data.
+        },
+      );
+    }
+
+    try {
+      sub = ref.listenManual<AsyncValue<List<PlayerStandingModel>>>(
+        playerTourScreenProvider,
+        (_, next) => inspect(next),
+        fireImmediately: true,
+      );
+      timer = Timer(timeout, () => finish(null));
+      return await completer.future;
+    } finally {
+      timer?.cancel();
+      sub?.close();
     }
   }
 

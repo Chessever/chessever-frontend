@@ -85,6 +85,8 @@ PODS:
   - Flutter (1.0.0)
   - flutter_native_splash (2.4.3):
     - Flutter
+  - flutter_screenshot_detect (0.0.1):
+    - Flutter
   - flutter_soloud (0.0.1):
     - Flutter
   - gal (1.0.0):
@@ -230,6 +232,7 @@ DEPENDENCIES:
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - Flutter (from `Flutter`)
   - flutter_native_splash (from `.symlinks/plugins/flutter_native_splash/ios`)
+  - flutter_screenshot_detect (from `.symlinks/plugins/flutter_screenshot_detect/ios`)
   - flutter_soloud (from `.symlinks/plugins/flutter_soloud/ios`)
   - gal (from `.symlinks/plugins/gal/darwin`)
   - google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`)
@@ -300,6 +303,8 @@ EXTERNAL SOURCES:
     :path: Flutter
   flutter_native_splash:
     :path: ".symlinks/plugins/flutter_native_splash/ios"
+  flutter_screenshot_detect:
+    :path: ".symlinks/plugins/flutter_screenshot_detect/ios"
   flutter_soloud:
     :path: ".symlinks/plugins/flutter_soloud/ios"
   gal:
@@ -362,6 +367,7 @@ SPEC CHECKSUMS:
   FirebaseCoreInternal: 9afa45b1159304c963da48addb78275ef701c6b4
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_native_splash: c32d145d68aeda5502d5f543ee38c192065986cf
+  flutter_screenshot_detect: 1617896225a428f4aef698050c8900460566e1ff
   flutter_soloud: d9969a9777b511239e85da6e108e05b429207baf
   gal: baecd024ebfd13c441269ca7404792a7152fde89
   google_sign_in_ios: 00dfa94252eb10278b64828c81bcb7158a81a53a

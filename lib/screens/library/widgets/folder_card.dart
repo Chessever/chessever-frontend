@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
@@ -73,6 +75,34 @@ class FolderCard extends ConsumerWidget {
     );
   }
 
+  /// Library node glyph. Databases get the chess-database cylinder glyph
+  /// (matching the desktop app); folders keep the folder outline; the special
+  /// My Likes collection keeps its heart.
+  Widget _buildNodeIcon(
+    BuildContext context, {
+    required double size,
+    required bool isLiked,
+  }) {
+    if (isLiked) {
+      return Icon(Icons.favorite, size: size, color: context.colors.danger);
+    }
+    if (folder.isDatabase) {
+      return _ChessDatabaseGlyph(
+        color: context.colors.iconPrimary,
+        size: size,
+      );
+    }
+    return SvgWidget(
+      SvgAsset.folderOutline,
+      width: size,
+      height: size,
+      colorFilter:
+          context.isLightTheme
+              ? ColorFilter.mode(context.colors.iconPrimary, BlendMode.srcIn)
+              : null,
+    );
+  }
+
   Widget _buildCompactCard(BuildContext context) {
     return GestureDetector(
       onTap: onTap ?? () => _navigateToFolder(context),
@@ -96,17 +126,10 @@ class FolderCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(10.br),
                 ),
                 child: Center(
-                  child: SvgWidget(
-                    SvgAsset.folderOutline,
-                    width: 18.sp,
-                    height: 18.sp,
-                    colorFilter:
-                        context.isLightTheme
-                            ? ColorFilter.mode(
-                              context.colors.iconPrimary,
-                              BlendMode.srcIn,
-                            )
-                            : null,
+                  child: _buildNodeIcon(
+                    context,
+                    size: 18.sp,
+                    isLiked: folder.isLikedGames,
                   ),
                 ),
               ),
@@ -224,25 +247,11 @@ class FolderCard extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(iconRadius),
                   ),
                   child: Center(
-                    child:
-                        isLiked
-                            ? Icon(
-                              Icons.favorite,
-                              size: svgSize,
-                              color: context.colors.danger,
-                            )
-                            : SvgWidget(
-                              SvgAsset.folderOutline,
-                              width: svgSize,
-                              height: svgSize,
-                              colorFilter:
-                                  context.isLightTheme
-                                      ? ColorFilter.mode(
-                                        context.colors.iconPrimary,
-                                        BlendMode.srcIn,
-                                      )
-                                      : null,
-                            ),
+                    child: _buildNodeIcon(
+                      context,
+                      size: svgSize,
+                      isLiked: isLiked,
+                    ),
                   ),
                 ),
                 // Shared link badge for subscribed books
@@ -1204,5 +1213,89 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
         ),
       ),
     );
+  }
+}
+
+/// Chess-database glyph: a database cylinder with a tiny 2x2 chessboard,
+/// ported from the desktop app to mark database nodes in the library.
+class _ChessDatabaseGlyph extends StatelessWidget {
+  const _ChessDatabaseGlyph({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(painter: _ChessDatabaseGlyphPainter(color)),
+    );
+  }
+}
+
+class _ChessDatabaseGlyphPainter extends CustomPainter {
+  const _ChessDatabaseGlyphPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 20, size.height / 20);
+    final stroke =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.45
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+    final fill =
+        Paint()
+          ..color = color.withValues(alpha: 0.14)
+          ..style = PaintingStyle.fill;
+    final squareFill =
+        Paint()
+          ..color = color.withValues(alpha: 0.42)
+          ..style = PaintingStyle.fill;
+
+    final body = Rect.fromLTWH(3.2, 4.4, 13.6, 11.8);
+    final top = Rect.fromLTWH(3.2, 2.2, 13.6, 5.0);
+    final bottom = Rect.fromLTWH(3.2, 13.7, 13.6, 4.8);
+
+    final path =
+        Path()
+          ..moveTo(body.left, top.center.dy)
+          ..lineTo(body.left, bottom.center.dy)
+          ..arcTo(bottom, math.pi, -math.pi, false)
+          ..lineTo(body.right, top.center.dy);
+
+    canvas.drawPath(path, fill);
+    canvas.drawOval(top, fill);
+    canvas.drawPath(path, stroke);
+    canvas.drawOval(top, stroke);
+    canvas.drawArc(bottom, 0, math.pi, false, stroke);
+
+    const cell = 2.25;
+    final boardLeft = body.left + 4.55;
+    final boardTop = body.top + 5.25;
+    final boardStroke =
+        Paint()
+          ..color = color.withValues(alpha: 0.72)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.75;
+    final board = Rect.fromLTWH(boardLeft, boardTop, cell * 2, cell * 2);
+    canvas.drawRect(board, boardStroke);
+    canvas.drawRect(Rect.fromLTWH(boardLeft, boardTop, cell, cell), squareFill);
+    canvas.drawRect(
+      Rect.fromLTWH(boardLeft + cell, boardTop + cell, cell, cell),
+      squareFill,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _ChessDatabaseGlyphPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
