@@ -15,4 +15,14 @@ void main() {
       expect(PlayerEventShareImageCard.formatShareScore(0, 7), '0/7');
     });
   });
+  group('share image copy', () {
+    test('uses clean player rating and brand slogan copy', () {
+      expect(PlayerEventShareImageCard.formatHeaderRating(2529), '2529');
+      expect(
+        PlayerEventShareImageCard.formatHeaderRating(2529),
+        isNot(contains('FIDE')),
+      );
+      expect(PlayerEventShareImageCard.footerSlogan, 'Follow Chess Better');
+    });
+  });
 }
