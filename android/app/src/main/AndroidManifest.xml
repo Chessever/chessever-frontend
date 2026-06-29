@@ -7,6 +7,10 @@
    <uses-permission android:name="android.permission.INTERNET" />
    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+   <!-- Required so flutter_screenshot_detect can register/unregister the screen
+        capture callback on Android 14+ (API 34+). Without it the unregister in
+        Activity.onDestroy throws SecurityException (Sentry CHESSEVER-1PC). -->
+   <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE" />
    <!-- Required by AppsFlyer for advertising ID on Android 13+ (API 33+) -->
    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 

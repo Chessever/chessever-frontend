@@ -1135,7 +1135,18 @@ class ChessBoardScreenNotifierNew
 
       while (true) {
         gameData = PgnGame.parsePgn(resolvedPgn);
-        startingPos = PgnGame.startingPosition(gameData.headers);
+        try {
+          startingPos = PgnGame.startingPosition(gameData.headers);
+        } on PositionSetupException catch (e, st) {
+          // Non-standard variant (e.g. Chess960/odds) whose starting FEN
+          // dartchess can't set up. These occasionally slip past variant
+          // filtering; surface a clean error state instead of letting the throw
+          // escape through the eval microtask (Sentry CHESSEVER-1PB).
+          if (mounted && thisGeneration == _parseGeneration) {
+            state = AsyncValue.error(e, st);
+          }
+          return;
+        }
 
         Position tempPos = startingPos;
         allMoves = [];

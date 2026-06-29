@@ -591,7 +591,27 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     _engineEnabled = false;
     _generation++;
     _cancelWatchdog();
-    _stopAndClear(reason: 'dispose');
+    // Do NOT route through _stopAndClear here: it reads
+    // engineDepthTrackerProvider and mutates `state`. During dispose the
+    // ProviderContainer may already be torn down (e.g. the whole ProviderScope
+    // is unmounting), and reading another provider then throws
+    // "Tried to read a provider from a ProviderContainer that was already
+    // disposed" (Sentry CHESSEVER-129). Stop the engine directly; the tracker
+    // reset is best-effort and skipped once the container is gone.
+    StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+    try {
+      final tracker = ref.read(engineDepthTrackerProvider.notifier);
+      tracker.clear(
+        EngineComponent.evaluationGauge,
+        reason: 'opening explorer dispose',
+      );
+      tracker.clear(
+        EngineComponent.principalVariation,
+        reason: 'opening explorer dispose',
+      );
+    } catch (_) {
+      // Container already disposed — nothing left to clear.
+    }
     super.dispose();
   }
 }

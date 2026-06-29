@@ -80,6 +80,49 @@ final RouteObserver<PageRoute<dynamic>> pageRouteObserver =
 // Global navigator key for upgrader dialog
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+/// Drops Sentry events that are expected, transient, or user-driven rather than
+/// actionable bugs: offline/DNS network failures, supabase auth retries while
+/// offline, user-cancelled Google sign-in, and benign plugin platform
+/// exceptions. Keeps the dashboard focused on real crashes. Matches on
+/// exception type + message so it survives release obfuscation of our frames.
+bool _shouldDropSentryEvent(SentryEvent event) {
+  final haystack = StringBuffer();
+  final throwable = event.throwable;
+  if (throwable != null) haystack.write(throwable.toString());
+  final exceptions = event.exceptions;
+  if (exceptions != null) {
+    for (final ex in exceptions) {
+      haystack
+        ..write(' ')
+        ..write(ex.type ?? '')
+        ..write(' ')
+        ..write(ex.value ?? '');
+    }
+  }
+  final hay = haystack.toString().toLowerCase();
+  if (hay.isEmpty) return false;
+
+  const dropContains = <String>[
+    'failed host lookup', // offline / DNS
+    'socketexception',
+    'authretryablefetchexception', // supabase auth retry while offline
+    'connection closed while receiving data',
+    'connection closed before full header',
+    'connection reset by peer',
+    'network is unreachable',
+    'no internet connection', // NetworkException
+    'no active stream to cancel', // benign EventChannel cancel race
+  ];
+  for (final needle in dropContains) {
+    if (hay.contains(needle)) return true;
+  }
+  // User-cancelled Google sign-in is a normal flow, not an error.
+  if (hay.contains('googlesigninexception') && hay.contains('cancel')) {
+    return true;
+  }
+  return false;
+}
+
 /// Helper function to get environment variables.
 ///
 /// * Prefer compile-time values provided via `--dart-define` or
@@ -285,7 +328,10 @@ Future<void> main() async {
 
             // Add beforeSend to catch any remaining errors and ensure non-blocking
             options.beforeSend = (event, hint) {
-              // Let the event through - errors during processing are handled internally
+              // Drop expected/transient noise (offline network, cancelled
+              // sign-in, benign plugin platform exceptions) so the dashboard
+              // only surfaces actionable crashes.
+              if (_shouldDropSentryEvent(event)) return null;
               return event;
             };
           },

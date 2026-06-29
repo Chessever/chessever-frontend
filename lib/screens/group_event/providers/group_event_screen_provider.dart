@@ -314,8 +314,13 @@ class _GroupEventScreenController
               )
               : sortingService.sortAllTours(tourEventCardModel);
 
+      if (!mounted) return;
       state = AsyncValue.data(sortedTours);
     } catch (error, stackTrace) {
+      // The screen may have been disposed mid-load; setting state after dispose
+      // throws "Tried to use _GroupEventScreenController after dispose"
+      // (Sentry CHESSEVER-16Q).
+      if (!mounted) return;
       state = AsyncValue.error(error, stackTrace);
     }
   }

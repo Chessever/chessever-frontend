@@ -967,6 +967,9 @@ class DeepLinkService {
       );
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load event: $e');
+      // A slow/offline network makes the 10s fetch timeout (or socket failure)
+      // throw here. That is expected and already handled by routing home, so
+      // record it as a breadcrumb rather than a Sentry error (CHESSEVER-169).
       _captureDeepLinkException(
         e,
         stackTrace,
@@ -976,6 +979,7 @@ class DeepLinkService {
           'roundId': roundId,
           'tourId': tourId,
         },
+        captureAsException: !_isTransientNetworkError(e),
       );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
@@ -984,6 +988,20 @@ class DeepLinkService {
     } finally {
       _isNavigating = false;
     }
+  }
+
+  /// Transient, user-environment errors (slow/offline network) that are
+  /// expected and recovered from — not actionable crashes.
+  bool _isTransientNetworkError(Object error) {
+    if (error is TimeoutException) return true;
+    final text = error.toString().toLowerCase();
+    return text.contains('socketexception') ||
+        text.contains('failed host lookup') ||
+        text.contains('connection closed') ||
+        text.contains('connection reset') ||
+        text.contains('network is unreachable') ||
+        text.contains('no internet') ||
+        text.contains('authretryablefetchexception');
   }
 
   String? _asNonEmptyString(dynamic value) {

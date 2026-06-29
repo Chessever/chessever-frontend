@@ -121,7 +121,7 @@ class _PaywallContent extends HookConsumerWidget {
     ref.listen<SubscriptionState>(subscriptionProvider, (prev, next) {
       final wasSubscribed = prev?.isSubscribed ?? false;
       if (!wasSubscribed && next.isSubscribed && hostContext.mounted) {
-        Navigator.of(hostContext, rootNavigator: true).pop(true);
+        Navigator.maybeOf(hostContext, rootNavigator: true)?.pop(true);
         unawaited(showPremiumCelebration(hostContext));
       }
     });
@@ -234,8 +234,13 @@ class _PaywallContent extends HookConsumerWidget {
             alignment: Alignment.centerRight,
             child: GestureDetector(
               onTap:
-                  () =>
-                      Navigator.of(hostContext, rootNavigator: true).pop(false),
+                  // maybeOf (not of): once the host route is gone, Navigator.of
+                  // does `navigator!` on null → "Null check operator used on a
+                  // null value" in the tap callback (Sentry CHESSEVER-1GT).
+                  () => Navigator.maybeOf(
+                    hostContext,
+                    rootNavigator: true,
+                  )?.pop(false),
               child: Container(
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
