@@ -1171,12 +1171,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
     final games = state.filteredGames;
 
-    // Build a mapping of game IDs to their indices for reliable lookup
-    final gameIdToIndex = <String, int>{};
-    for (int i = 0; i < games.length; i++) {
-      gameIdToIndex[games[i].gameId] = i;
-    }
-
     if (games.isEmpty) {
       final isTwic = widget.dataSource == PlayerProfileDataSource.twic;
       if (isTwic &&
@@ -1257,6 +1251,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           listEntries.add(
             _PlayerGridRowEntry(
               games: rowGames,
+              eventGames: eventGames,
               gridColumns: gridColumns,
               isLast: isLast,
             ),
@@ -1266,7 +1261,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         for (int i = 0; i < eventGames.length; i++) {
           final game = eventGames[i];
           final isLast = i == eventGames.length - 1;
-          final globalIndex = gameIdToIndex[game.gameId] ?? 0;
+          final eventGameIndex = i;
           final showHint =
               isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
           if (isFirstGameCard) isFirstGameCard = false;
@@ -1275,7 +1270,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             listEntries.add(
               _PlayerBoardGameEntry(
                 game: game,
-                gameIndex: globalIndex,
+                eventGames: eventGames,
+                gameIndex: eventGameIndex,
                 isLast: isLast,
               ),
             );
@@ -1283,7 +1279,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             listEntries.add(
               _PlayerCardGameEntry(
                 game: game,
-                gameIndex: globalIndex,
+                eventGames: eventGames,
+                gameIndex: eventGameIndex,
                 animationIndex: listEntries.length,
                 showHint: showHint,
                 isLast: isLast,
@@ -1312,9 +1309,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           (context, index) => _buildListEntry(
             listEntries[index],
             state: state,
-            games: games,
             isSelectionMode: isSelectionMode,
-            gameIdToIndex: gameIdToIndex,
           ),
           childCount: listEntries.length,
         ),
@@ -1325,9 +1320,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget _buildListEntry(
     _PlayerGamesListEntry entry, {
     required PlayerProfileGamesState state,
-    required List<GamesTourModel> games,
     required bool isSelectionMode,
-    required Map<String, int> gameIdToIndex,
   }) {
     if (entry is _PlayerEventHeaderEntry) {
       return Padding(
@@ -1361,8 +1354,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                     j < entry.games.length
                         ? _buildGridGame(
                           entry.games[j],
-                          gameIdToIndex[entry.games[j].gameId] ?? 0,
-                          games,
+                          entry.eventGames.indexWhere(
+                            (game) => game.gameId == entry.games[j].gameId,
+                          ),
+                          entry.eventGames,
                         )
                         : const SizedBox.shrink(),
               ),
@@ -1378,7 +1373,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         child: BoardGameCardWrapperWidget(
           key: ValueKey('player_board_game_${entry.game.gameId}'),
           game: entry.game,
-          orderedGames: games,
+          orderedGames: entry.eventGames,
           gameIndex: entry.gameIndex,
           allowStockfishFallback: true,
           streamEnabled: true,
@@ -1407,7 +1402,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       final isSelected = _selectedGameIds.contains(entry.game.gameId);
       Widget gameCard = LiveGamebaseSearchGameCard(
         game: entry.game,
-        allGames: games,
+        allGames: entry.eventGames,
         gameIndex: entry.gameIndex,
         animationIndex: entry.animationIndex,
         showRound: true,
@@ -1893,11 +1888,13 @@ class _PlayerEventHeaderEntry extends _PlayerGamesListEntry {
 class _PlayerGridRowEntry extends _PlayerGamesListEntry {
   const _PlayerGridRowEntry({
     required this.games,
+    required this.eventGames,
     required this.gridColumns,
     required this.isLast,
   });
 
   final List<GamesTourModel> games;
+  final List<GamesTourModel> eventGames;
   final int gridColumns;
   final bool isLast;
 }
@@ -1905,11 +1902,13 @@ class _PlayerGridRowEntry extends _PlayerGamesListEntry {
 class _PlayerBoardGameEntry extends _PlayerGamesListEntry {
   const _PlayerBoardGameEntry({
     required this.game,
+    required this.eventGames,
     required this.gameIndex,
     required this.isLast,
   });
 
   final GamesTourModel game;
+  final List<GamesTourModel> eventGames;
   final int gameIndex;
   final bool isLast;
 }
@@ -1917,6 +1916,7 @@ class _PlayerBoardGameEntry extends _PlayerGamesListEntry {
 class _PlayerCardGameEntry extends _PlayerGamesListEntry {
   const _PlayerCardGameEntry({
     required this.game,
+    required this.eventGames,
     required this.gameIndex,
     required this.animationIndex,
     required this.showHint,
@@ -1924,6 +1924,7 @@ class _PlayerCardGameEntry extends _PlayerGamesListEntry {
   });
 
   final GamesTourModel game;
+  final List<GamesTourModel> eventGames;
   final int gameIndex;
   final int animationIndex;
   final bool showHint;
