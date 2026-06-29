@@ -140,23 +140,24 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       const shareUrlKey = 'shareUrl';
       final resolvedShareUrl =
           (extras?[shareUrlKey] as String?) ?? _effectiveShareUrl;
-      await Sentry.captureMessage(
-        message,
-        level: SentryLevel.info,
-        withScope: (scope) {
-          scope.setTag('area', 'share_game');
-          scope.setTag('stage', stage);
-          scope.setContexts(
-            'share_game',
-            {
-              'gameId': widget.gameId,
-              'shareUrl': resolvedShareUrl,
-              'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
-              ...?extras,
-            }.map((key, value) => MapEntry(key, value?.toString())),
-          );
-        },
-      ).timeout(const Duration(seconds: 2));
+      // Info-level share telemetry belongs in breadcrumbs, not as standalone
+      // Sentry issues. captureMessage surfaced "share image completed"/"started"
+      // as top "errors" by user count (CHESSEVER-15Y) despite being successes.
+      Sentry.addBreadcrumb(
+        Breadcrumb(
+          category: 'share_game',
+          message: message,
+          type: 'user',
+          level: SentryLevel.info,
+          data: {
+            'stage': stage,
+            'gameId': widget.gameId,
+            'shareUrl': resolvedShareUrl,
+            'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
+            ...?extras,
+          }.map((key, value) => MapEntry(key, value?.toString())),
+        ),
+      );
     } catch (_) {}
   }
 

@@ -111,6 +111,9 @@ bool _shouldDropSentryEvent(SentryEvent event) {
     'connection reset by peer',
     'network is unreachable',
     'no internet connection', // NetworkException
+    'connection timeout', // DioException slow network (CHESSEVER-12B)
+    'receive timeout', // DioException slow network
+    'send timeout', // DioException slow network
     'no active stream to cancel', // benign EventChannel cancel race
     // Self-healing Stockfish engine lifecycle resets: the singleton already
     // retries up to 7x with native quit + back-off and reinitialises on the
@@ -124,6 +127,16 @@ bool _shouldDropSentryEvent(SentryEvent event) {
   }
   // User-cancelled Google sign-in is a normal flow, not an error.
   if (hay.contains('googlesigninexception') && hay.contains('cancel')) {
+    return true;
+  }
+  // Apple sign-in cancel / "couldn't be completed" (error 1000/1001) is a normal
+  // user-driven outcome, not an actionable bug (CHESSEVER-Q9).
+  if (hay.contains('signinwithappleauthorizationexception') &&
+      (hay.contains('cancel') ||
+          hay.contains('error 1000') ||
+          hay.contains('error 1001') ||
+          hay.contains('authorizationerrorcode.unknown') ||
+          hay.contains('authorizationerrorcode.canceled'))) {
     return true;
   }
   return false;

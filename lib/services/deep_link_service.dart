@@ -693,11 +693,20 @@ class DeepLinkService {
       }
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load game: $e');
+      // Slow network (10s timeout, CHESSEVER-15M) or a stale/deleted game link
+      // ("No rows found", CHESSEVER-162) are expected and recovered by routing
+      // home — record a breadcrumb instead of alarming as a Sentry error.
+      final msg = e.toString().toLowerCase();
+      final expected =
+          _isTransientNetworkError(e) ||
+          msg.contains('no rows found') ||
+          msg.contains('notfoundexception');
       _captureDeepLinkException(
         e,
         stackTrace,
         stage: 'navigate_to_game',
         extras: {'gameId': gameId},
+        captureAsException: !expected,
       );
       _addBreadcrumb(
         'game deep link failed; routing home',
@@ -1403,6 +1412,13 @@ class DeepLinkService {
     Map<String, dynamic>? extras,
     SentryLevel level = SentryLevel.info,
   }) async {
+    // Info-level deep-link telemetry belongs in breadcrumbs, not as standalone
+    // Sentry issues. captureMessage made "deep link game loaded" the #1 noisy
+    // "issue" by user count (CHESSEVER-15Z). Only warning+ is worth a message.
+    if (level == SentryLevel.info) {
+      _addBreadcrumb(message, data: {'stage': stage, ...?extras});
+      return;
+    }
     try {
       final mergedExtras = <String, dynamic>{'stage': stage, ...?extras};
       final sentryExtras = mergedExtras.map(
