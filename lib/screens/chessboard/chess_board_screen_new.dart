@@ -10050,6 +10050,7 @@ class _FenPositionPlayerCell extends StatelessWidget {
                 child: BackfilledFederationFlag(
                   federation: federation,
                   fideId: player.fideId,
+                  playerName: player.name,
                   width: 12.w,
                   height: 8.h,
                   borderRadius: BorderRadius.circular(1.5.br),
