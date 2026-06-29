@@ -5,6 +5,7 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
@@ -151,6 +152,21 @@ class _StandingsList extends ConsumerWidget {
                   skipLoadingOnRefresh: true,
                   skipLoadingOnReload: true,
                 );
+            // `playerTourScreenProvider.build` synchronously returns `[]`
+            // while `tourDetailScreenProvider` is still loading (e.g. on a
+            // deep-linked cold-start into the Standings tab), which would
+            // otherwise paint "No data available" for the few hundred ms
+            // before the tour detail resolves. Treat that window as still
+            // loading and render the skeleton instead.
+            final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+            final standingsHaventResolvedYet =
+                data.isEmpty &&
+                !isSearching &&
+                tourDetailAsync.valueOrNull == null &&
+                !tourDetailAsync.hasError;
+            if (standingsHaventResolvedYet) {
+              return const _StandingScreenLoading();
+            }
             return ListView.builder(
               key: const PageStorageKey<String>('standings_list'),
               controller: controller,
