@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/widgets/search/gameSearch/game_result_search.dart';
 
 class EnhancedGameSearchResult {
   final List<GameSearchResult> results;
@@ -89,6 +90,13 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
             hasMatch = true;
             matchedText = game.openingName!;
           }
+        }
+
+        // Check exact PGN result tokens. Keep this intentionally literal:
+        // no draw/white-won/black-won aliases, only standard PGN results.
+        if (!hasMatch && gameResultMatchesSearchQuery(game, normalizedQuery)) {
+          hasMatch = true;
+          matchedText = gameResultSearchText(game);
         }
 
         if (hasMatch) {

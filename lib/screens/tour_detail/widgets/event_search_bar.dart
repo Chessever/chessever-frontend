@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_placeholder.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +24,7 @@ class EventSearchBar extends ConsumerStatefulWidget {
 class _EventSearchBarState extends ConsumerState<EventSearchBar> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+  late final int _placeholderIndex;
   Timer? _debounce;
 
   @override
@@ -31,6 +34,7 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       text: ref.read(standingsSearchQueryProvider),
     );
     _focusNode = FocusNode();
+    _placeholderIndex = math.Random().nextInt(eventSearchPlaceholderCount);
   }
 
   @override
@@ -78,6 +82,13 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    final countryCode =
+        ref.watch(countryDropdownProvider).valueOrNull?.countryCode;
+    final hintText = eventSearchPlaceholderForIndex(
+      _placeholderIndex,
+      countryCode: countryCode,
+    );
+
     ref.listen<String>(standingsSearchQueryProvider, (_, next) {
       _syncControllerText(next);
     });
@@ -96,8 +107,7 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
         child: SimpleSearchBar(
           controller: _controller,
           focusNode: _focusNode,
-          hintText: 'Search',
-          // No rotating hints: keep the field static, no word-swap animation.
+          hintText: hintText,
           onChanged: _handleChanged,
           onCloseTap: _handleCleared,
           onOpenFilter: null,
