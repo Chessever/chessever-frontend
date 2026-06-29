@@ -112,6 +112,12 @@ bool _shouldDropSentryEvent(SentryEvent event) {
     'network is unreachable',
     'no internet connection', // NetworkException
     'no active stream to cancel', // benign EventChannel cancel race
+    // Self-healing Stockfish engine lifecycle resets: the singleton already
+    // retries up to 7x with native quit + back-off and reinitialises on the
+    // next request, so these are non-fatal degradations rather than bugs.
+    'multiple instances are not supported', // CHESSEVER-108
+    'force recovery', // CHESSEVER-103
+    'stockfish did not become ready', // CHESSEVER-158 engine init timeout
   ];
   for (final needle in dropContains) {
     if (hay.contains(needle)) return true;
