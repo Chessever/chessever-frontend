@@ -864,7 +864,21 @@ class ScoreCardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverToBoxAdapter(child: SizedBox(height: 12.h)),
-                  if (isLoadingGames)
+                  if (isLoadingGames ||
+                      // On a deep-linked cold-start the games-tour provider
+                      // can briefly emit AsyncData([]) before tourDetail
+                      // resolves; treat that window as still loading so we
+                      // don't flash "No games in this tournament" between the
+                      // push and the real data arriving.
+                      (hasEventContext &&
+                          playerGames.isEmpty &&
+                          ref
+                                  .watch(tourDetailScreenProvider)
+                                  .valueOrNull
+                                  ?.aboutTourModel
+                                  .id
+                                  .isNotEmpty !=
+                              true))
                     const SliverFillRemaining(
                       child: Center(child: CircularProgressIndicator()),
                     )

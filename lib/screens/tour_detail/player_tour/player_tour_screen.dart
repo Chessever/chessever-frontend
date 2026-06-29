@@ -153,17 +153,21 @@ class _StandingsList extends ConsumerWidget {
                   skipLoadingOnReload: true,
                 );
             // `playerTourScreenProvider.build` synchronously returns `[]`
-            // while `tourDetailScreenProvider` is still loading (e.g. on a
+            // while `tourDetailScreenProvider` is still loading OR has only
+            // emitted a transient empty `aboutTourModel.id` (e.g. on a
             // deep-linked cold-start into the Standings tab), which would
             // otherwise paint "No data available" for the few hundred ms
             // before the tour detail resolves. Treat that window as still
             // loading and render the skeleton instead.
             final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+            final tourDetailReady =
+                tourDetailAsync.valueOrNull?.aboutTourModel.id.isNotEmpty ==
+                true;
             final standingsHaventResolvedYet =
                 data.isEmpty &&
                 !isSearching &&
-                tourDetailAsync.valueOrNull == null &&
-                !tourDetailAsync.hasError;
+                !tourDetailAsync.hasError &&
+                !tourDetailReady;
             if (standingsHaventResolvedYet) {
               return const _StandingScreenLoading();
             }
