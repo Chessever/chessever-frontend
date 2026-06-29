@@ -171,6 +171,7 @@ dev_dependencies:
   riverpod_annotation: ^2.6.1
   patrol: ^4.3.0
   patrol_finders: ^3.1.0
+  sentry_dart_plugin: ^3.0.0
 
 
 dependency_overrides:
@@ -294,3 +295,19 @@ icons_launcher:
       notification_image: "assets/pngs/notification_icon.png"
     ios:
       enable: true
+
+# Sentry debug-symbol upload. Enables symbolication of native (Android .so /
+# iOS) and Dart-AOT crashes so unsymbolicated SIGABRTs like CHESSEVER-Q2/1B7
+# become diagnosable. This is NOT part of `flutter build` — it only runs when
+# explicitly invoked AFTER a build:
+#   flutter build apk --obfuscate --split-debug-info=build/symbols
+#   SENTRY_AUTH_TOKEN=<org token> dart run sentry_dart_plugin
+# Skips silently when SENTRY_AUTH_TOKEN is unset, so it never breaks CI.
+sentry:
+  org: algorithm-squad-fze
+  project: chessever
+  url: https://de.sentry.io/
+  upload_debug_symbols: true
+  upload_sources: false
+  upload_source_maps: false
+  # auth_token is read from the SENTRY_AUTH_TOKEN environment variable.
