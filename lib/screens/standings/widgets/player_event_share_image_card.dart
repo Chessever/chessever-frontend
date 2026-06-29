@@ -91,6 +91,9 @@ class PlayerEventShareImageCard extends StatelessWidget {
   static const _textLo = Color(0xFF868C97); // ≥4.5:1 on the dark surfaces
 
   static const _padH = 22.0;
+  static const footerSlogan = 'Follow Chess Better';
+
+  static String formatHeaderRating(int rating) => rating.toString();
 
   @override
   Widget build(BuildContext context) {
@@ -290,7 +293,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
                   ],
                   if (standardRating != null)
                     Text(
-                      '$standardRating FIDE',
+                      formatHeaderRating(standardRating!),
                       style: AppTypography.textSmMedium.copyWith(
                         color: _textMid,
                         fontSize: 13,
@@ -464,7 +467,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
               ),
               const SizedBox(height: 1),
               Text(
-                'Follow live chess',
+                PlayerEventShareImageCard.footerSlogan,
                 style: AppTypography.textXxsMedium.copyWith(
                   color: _textLo,
                   fontSize: 11,
