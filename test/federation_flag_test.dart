@@ -20,15 +20,17 @@ void main() {
     expect(find.byType(fcf.FlutterCountryFlags), findsOneWidget);
   });
 
+  testWidgets('renders FIDE flag for explicit FIDE federation', (tester) async {
+    await pumpFlag(tester, 'FIDE');
+
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byType(fcf.FlutterCountryFlags), findsNothing);
+  });
+
   testWidgets('renders no placeholder for missing or sentinel federation', (
     tester,
   ) async {
     await pumpFlag(tester, '');
-    expect(find.byType(Icon), findsNothing);
-    expect(find.byType(Image), findsNothing);
-    expect(find.byType(fcf.FlutterCountryFlags), findsNothing);
-
-    await pumpFlag(tester, 'FIDE');
     expect(find.byType(Icon), findsNothing);
     expect(find.byType(Image), findsNothing);
     expect(find.byType(fcf.FlutterCountryFlags), findsNothing);

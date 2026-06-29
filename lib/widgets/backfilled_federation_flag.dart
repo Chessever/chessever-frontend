@@ -7,9 +7,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// `chess_players` table when the supplied federation is missing.
 ///
 /// Imported PGNs frequently carry `[WhiteFideId]`/`[BlackFideId]` but omit
-/// `[WhiteFed]`/`[BlackFed]`, which would otherwise leave the card showing the
-/// generic FIDE logo. When [fideId] is present we look up the player's
-/// country and render the real flag once it loads.
+/// `[WhiteFed]`/`[BlackFed]`, which would otherwise leave the card without a
+/// flag. When [fideId] is present we look up the player's country and render the
+/// real flag once it loads. Explicit `FID`/`FIDE` federations are preserved so
+/// official FIDE-event rows show the FIDE flag instead of being backfilled to a
+/// country or hidden.
 class BackfilledFederationFlag extends ConsumerWidget {
   const BackfilledFederationFlag({
     super.key,
@@ -29,9 +31,7 @@ class BackfilledFederationFlag extends ConsumerWidget {
   bool _needsBackfill(String value) {
     if (value.isEmpty) return true;
     final upper = value.toUpperCase();
-    // Lichess returns the literal "FIDE" for sanctioned RU/BY players; treat
-    // it as missing so we backfill from chess_players.country.
-    return upper == 'FID' || upper == 'FIDE' || upper == '?';
+    return upper == '?';
   }
 
   @override
