@@ -47,6 +47,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const int kGamesPerEvent = 4;
 const int _kPageSize = 20;
 const Duration _kForYouStaleThreshold = Duration(minutes: 5);
+const Duration _kForYouUpcomingPreviewWindow = Duration(hours: 2);
+const Duration _kForYouStartingPreviewGrace = Duration(minutes: 30);
 
 @visibleForTesting
 List<GroupBroadcast> mergeMissingFavoriteCurrentBroadcasts({
@@ -210,19 +212,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       final appliedFilters = ref.read(forYouAppliedFilterProvider);
 
       // Parse filters
-      final formatFilters =
-          appliedFilters.formatsAndStates
-              .where(
-                (f) => ['blitz', 'rapid', 'standard'].contains(f.toLowerCase()),
-              )
-              .map((f) => f.toLowerCase())
-              .toList();
+      final formatFilters = appliedFilters.formatsAndStates
+          .where(
+            (f) => ['blitz', 'rapid', 'standard'].contains(f.toLowerCase()),
+          )
+          .map((f) => f.toLowerCase())
+          .toList();
 
-      final statusFilters =
-          appliedFilters.formatsAndStates
-              .where((f) => ['live', 'completed'].contains(f.toLowerCase()))
-              .map((f) => f.toLowerCase())
-              .toSet();
+      final statusFilters = appliedFilters.formatsAndStates
+          .where((f) => ['live', 'completed'].contains(f.toLowerCase()))
+          .map((f) => f.toLowerCase())
+          .toSet();
 
       final minElo = appliedFilters.minElo;
       final maxElo = appliedFilters.maxElo;
@@ -253,10 +253,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       final liveIds = await _getLiveIdsSnapshot();
 
       // Convert to models
-      final models =
-          filteredBroadcasts
-              .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
-              .toList();
+      final models = filteredBroadcasts
+          .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
+          .toList();
 
       await _prefetchTopGames(models, replace: isInitial);
 
@@ -276,8 +275,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         _maybeFinalizePendingFavoritePlayerOrder();
       } else {
         final existingIds = state.events.map((event) => event.id).toSet();
-        final newModels =
-            models.where((event) => !existingIds.contains(event.id)).toList();
+        final newModels = models
+            .where((event) => !existingIds.contains(event.id))
+            .toList();
         final sortedNewModels = _sortPageOnceForSession(newModels);
         state = state.copyWith(
           events: [...state.events, ...sortedNewModels],
@@ -408,13 +408,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         ),
     };
 
-    notifier.state =
-        replace
-            ? snapshots
-            : <String, ForYouEventGamesSnapshot>{
-              ...notifier.state,
-              ...snapshots,
-            };
+    notifier.state = replace
+        ? snapshots
+        : <String, ForYouEventGamesSnapshot>{...notifier.state, ...snapshots};
   }
 
   Future<void> _refreshVisibleFavoritePlayerCounts({
@@ -703,8 +699,9 @@ class _ForYouPinActionController implements ForYouPinAction {
     required String tourId,
   }) async {
     final storage = _ref.read(forYouPinStorageProvider);
-    final snapshot =
-        _ref.read(forYouEventSnapshotProvider(eventId)).valueOrNull;
+    final snapshot = _ref
+        .read(forYouEventSnapshotProvider(eventId))
+        .valueOrNull;
     final mode = resolvePinToggleMode(
       isManualPinned:
           snapshot?.manualPinnedIds.contains(gameId) ??
@@ -734,8 +731,11 @@ class _ForYouPinActionController implements ForYouPinAction {
     }
 
     final selectedBroadcast = _ref.read(selectedBroadcastModelProvider);
-    final selectedTourId =
-        _ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel.id;
+    final selectedTourId = _ref
+        .read(tourDetailScreenProvider)
+        .valueOrNull
+        ?.aboutTourModel
+        .id;
 
     if (selectedBroadcast?.id == eventId &&
         selectedTourId != null &&
@@ -754,33 +754,37 @@ class _ForYouPinActionController implements ForYouPinAction {
 // then lets the UI render only the first 4 visible games.
 // ============================================================================
 
-final eventGamesProvider = StateNotifierProvider.autoDispose.family<
-  _ForYouEventGamesController,
-  AsyncValue<ForYouEventGamesSnapshot>,
-  String
->((ref, eventId) {
-  final controller = _ForYouEventGamesController(ref: ref, eventId: eventId);
+final eventGamesProvider = StateNotifierProvider.autoDispose
+    .family<
+      _ForYouEventGamesController,
+      AsyncValue<ForYouEventGamesSnapshot>,
+      String
+    >((ref, eventId) {
+      final controller = _ForYouEventGamesController(
+        ref: ref,
+        eventId: eventId,
+      );
 
-  ref.onCancel(controller.handleCancel);
-  ref.onResume(controller.handleResume);
+      ref.onCancel(controller.handleCancel);
+      ref.onResume(controller.handleResume);
 
-  // Per-event listeners only. Global signals (favorites version, country
-  // dropdown, auto-pin prefs, current user, live tour id, live rounds id) are
-  // funneled through `forYouEventsRefreshProvider` by `ForYouNotifier` — that
-  // collapses N×6 family listens into 6 single listens + N event listens, a
-  // ~6× reduction at typical list sizes.
-  ref.listen(eventPinRefreshProvider(eventId), (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(forYouEventsRefreshProvider, (_, __) {
-    controller.requestRefresh();
-  });
-  ref.listen(currentSelectedTourIdForEventProvider(eventId), (_, __) {
-    controller.requestRefresh();
-  });
+      // Per-event listeners only. Global signals (favorites version, country
+      // dropdown, auto-pin prefs, current user, live tour id, live rounds id) are
+      // funneled through `forYouEventsRefreshProvider` by `ForYouNotifier` — that
+      // collapses N×6 family listens into 6 single listens + N event listens, a
+      // ~6× reduction at typical list sizes.
+      ref.listen(eventPinRefreshProvider(eventId), (_, __) {
+        controller.requestRefresh();
+      });
+      ref.listen(forYouEventsRefreshProvider, (_, __) {
+        controller.requestRefresh();
+      });
+      ref.listen(currentSelectedTourIdForEventProvider(eventId), (_, __) {
+        controller.requestRefresh();
+      });
 
-  return controller;
-});
+      return controller;
+    });
 
 class _ForYouEventGamesController
     extends StateNotifier<AsyncValue<ForYouEventGamesSnapshot>> {
@@ -961,27 +965,25 @@ Future<ForYouEventGamesSnapshot> _computeForYouEventGamesSnapshot({
     games: selectedTourGames,
   );
 
-  final gamesForAutoPin =
-      isKnockout
-          ? gamesByTourId.values
-              .expand((games) => games)
-              .map((game) {
-                try {
-                  return GamesTourModel.fromGame(game);
-                } catch (_) {
-                  return null;
-                }
-              })
-              .whereType<GamesTourModel>()
-              .toList()
-          : sortGamesForGamesTab(games: selectedTourGames, pinnedIds: const []);
+  final gamesForAutoPin = isKnockout
+      ? gamesByTourId.values
+            .expand((games) => games)
+            .map((game) {
+              try {
+                return GamesTourModel.fromGame(game);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<GamesTourModel>()
+            .toList()
+      : sortGamesForGamesTab(games: selectedTourGames, pinnedIds: const []);
 
   final pinState = await _loadPinnedStateForEvent(
     ref: ref,
-    relatedTourIds:
-        isKnockout
-            ? eventTours.map((tour) => tour.id).toList(growable: false)
-            : [selectedTour.id],
+    relatedTourIds: isKnockout
+        ? eventTours.map((tour) => tour.id).toList(growable: false)
+        : [selectedTour.id],
     autoPinTourId: selectedTour.id,
     allRelevantGames: gamesForAutoPin,
   );
@@ -1140,6 +1142,48 @@ ForYouEventGamesSnapshot _emptyForYouEventGamesSnapshot(String eventId) {
   );
 }
 
+@visibleForTesting
+bool isForYouPreviewGameAllowed(Games game, {DateTime? now}) {
+  if (!_hasResolvedForYouPlayers(game)) return false;
+  if (_hasStartedOrFinished(game)) return true;
+
+  final roundStartsAt = game.roundStartsAt;
+  if (roundStartsAt == null) return false;
+
+  final referenceNow = now ?? DateTime.now().toUtc();
+  final startsAtUtc = roundStartsAt.toUtc();
+  final earliestAllowed = referenceNow.subtract(_kForYouStartingPreviewGrace);
+  final latestAllowed = referenceNow.add(_kForYouUpcomingPreviewWindow);
+
+  return !startsAtUtc.isBefore(earliestAllowed) &&
+      !startsAtUtc.isAfter(latestAllowed);
+}
+
+bool _hasResolvedForYouPlayers(Games game) {
+  final players = game.players;
+  if (players == null || players.length < 2) return false;
+  return _isResolvedForYouPlayerName(players[0].name) &&
+      _isResolvedForYouPlayerName(players[1].name);
+}
+
+bool _isResolvedForYouPlayerName(String name) {
+  final normalized = name.trim().toLowerCase();
+  if (normalized.isEmpty) return false;
+  return normalized != '?' &&
+      normalized != '??' &&
+      normalized != 'unknown' &&
+      normalized != 'tbd' &&
+      normalized != 'tba';
+}
+
+bool _hasStartedOrFinished(Games game) {
+  if (game.lastMove?.trim().isNotEmpty == true) return true;
+  if (game.lastMoveTime != null) return true;
+
+  final status = game.status?.trim();
+  return status != null && status.isNotEmpty && status != '*';
+}
+
 ForYouEventGamesSnapshot _buildForYouTopGamesSnapshot({
   required String eventId,
   required List<Games> games,
@@ -1147,7 +1191,8 @@ ForYouEventGamesSnapshot _buildForYouTopGamesSnapshot({
   if (games.isEmpty) return _emptyForYouEventGamesSnapshot(eventId);
 
   final visibleGames = <GamesTourModel>[];
-  for (final game in games.take(kGamesPerEvent)) {
+  for (final game
+      in games.where(isForYouPreviewGameAllowed).take(kGamesPerEvent)) {
     try {
       visibleGames.add(GamesTourModel.fromGame(game));
     } catch (error) {
@@ -1174,10 +1219,9 @@ List<TourModel> _buildEventTourModels(
 
   for (final tour in tours) {
     if (tour.dates.isEmpty) {
-      final status =
-          liveTourIds.contains(tour.id)
-              ? RoundStatus.live
-              : RoundStatus.completed;
+      final status = liveTourIds.contains(tour.id)
+          ? RoundStatus.live
+          : RoundStatus.completed;
       models.add(TourModel(tour: tour, roundStatus: status));
       continue;
     }
@@ -1443,20 +1487,19 @@ Future<List<String>> _loadAutoPins({
 
   if (prefs.countrymenAutoPinEnabled) {
     if (countryCode != null && countryCode.isNotEmpty) {
-      final countryGames =
-          allRelevantGames
-              .where((game) {
-                return CountryCodeMatcher.matches(
-                      game.whitePlayer.countryCode,
-                      countryCode,
-                    ) ||
-                    CountryCodeMatcher.matches(
-                      game.blackPlayer.countryCode,
-                      countryCode,
-                    );
-              })
-              .map((game) => game.gameId)
-              .toList();
+      final countryGames = allRelevantGames
+          .where((game) {
+            return CountryCodeMatcher.matches(
+                  game.whitePlayer.countryCode,
+                  countryCode,
+                ) ||
+                CountryCodeMatcher.matches(
+                  game.blackPlayer.countryCode,
+                  countryCode,
+                );
+          })
+          .map((game) => game.gameId)
+          .toList();
 
       if (countryGames.length < allRelevantGames.length) {
         pinnedIds.addAll(countryGames);
@@ -1510,19 +1553,19 @@ bool shouldLoadDeferredActivityTourId({
     return false;
   }
 
-  final selectableModels =
-      hasStartedTours
-          ? tourModels
-              .where((model) => model.roundStatus != RoundStatus.upcoming)
-              .toList()
-          : List<TourModel>.from(tourModels);
+  final selectableModels = hasStartedTours
+      ? tourModels
+            .where((model) => model.roundStatus != RoundStatus.upcoming)
+            .toList()
+      : List<TourModel>.from(tourModels);
 
   if (selectableModels.isEmpty) {
     return true;
   }
 
-  final toursWithDates =
-      selectableModels.where((model) => model.tour.dates.isNotEmpty).toList();
+  final toursWithDates = selectableModels
+      .where((model) => model.tour.dates.isNotEmpty)
+      .toList();
 
   if (toursWithDates.isNotEmpty) {
     final firstStart = toursWithDates.first.tour.dates.first;
@@ -1576,74 +1619,72 @@ Future<String?> _resolveAutoPinCountryCode(Ref ref) async {
 /// The card widgets consume their own live row data, but this wrapper keeps the
 /// section subscribed to the same rendered live rows and refreshes the snapshot
 /// as soon as a displayed game finishes.
-final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
-  AsyncValue<ForYouEventGamesSnapshot>,
-  String
->((ref, eventId) {
-  final snapshotAsync = ref.watch(eventGamesProvider(eventId));
+final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
+    .family<AsyncValue<ForYouEventGamesSnapshot>, String>((ref, eventId) {
+      final snapshotAsync = ref.watch(eventGamesProvider(eventId));
 
-  return snapshotAsync.when(
-    data: (snapshot) {
-      final liveGames =
-          snapshot.visibleGames
+      return snapshotAsync.when(
+        data: (snapshot) {
+          final liveGames = snapshot.visibleGames
               .take(kGamesPerEvent)
               .where((game) => game.gameStatus == GameStatus.ongoing)
               .toList();
 
-      if (liveGames.isNotEmpty) {
-        final shouldWatchLiveFinishes =
-            ref.watch(shouldStreamProvider) &&
-            !ref.watch(liveGameCardsPausedProvider);
-        if (!shouldWatchLiveFinishes) {
-          return AsyncValue.data(snapshot);
-        }
-
-        final displayedGames = snapshot.visibleGames.take(kGamesPerEvent);
-        final watchedGameIds = liveGames
-            .map((game) => game.gameId)
-            .toList(growable: false);
-        final updatesAsync = ref.watch(
-          gameUpdatesBatchStreamProvider(
-            LiveGamesBatchKey(
-              scopeId: 'for_you:$eventId:${snapshot.tourId}',
-              gameIds: displayedGames.map((game) => game.gameId),
-            ),
-          ).select(
-            (async) => async.whenData(
-              (updates) => _LiveGameStatusProjection.fromUpdates(
-                watchedGameIds,
-                updates,
-              ),
-            ),
-          ),
-        );
-
-        updatesAsync.whenData((updates) {
-          for (final status in updates.statuses) {
-            if (status.status != null && _isFinishedStatus(status.status!)) {
-              Future.microtask(() {
-                try {
-                  ref
-                      .read(eventGamesProvider(eventId).notifier)
-                      .requestRefreshForFinishedGame(
-                        gameId: status.gameId,
-                        status: status.status!,
-                      );
-                } on StateError {
-                  // The section can be disposed while a stream event is queued.
-                }
-              });
+          if (liveGames.isNotEmpty) {
+            final shouldWatchLiveFinishes =
+                ref.watch(shouldStreamProvider) &&
+                !ref.watch(liveGameCardsPausedProvider);
+            if (!shouldWatchLiveFinishes) {
+              return AsyncValue.data(snapshot);
             }
-          }
-        });
-      }
 
-      return AsyncValue.data(snapshot);
-    },
-    loading: () => const AsyncValue.loading(),
-    error: (e, st) => AsyncValue.error(e, st),
-  );
-});
+            final displayedGames = snapshot.visibleGames.take(kGamesPerEvent);
+            final watchedGameIds = liveGames
+                .map((game) => game.gameId)
+                .toList(growable: false);
+            final updatesAsync = ref.watch(
+              gameUpdatesBatchStreamProvider(
+                LiveGamesBatchKey(
+                  scopeId: 'for_you:$eventId:${snapshot.tourId}',
+                  gameIds: displayedGames.map((game) => game.gameId),
+                ),
+              ).select(
+                (async) => async.whenData(
+                  (updates) => _LiveGameStatusProjection.fromUpdates(
+                    watchedGameIds,
+                    updates,
+                  ),
+                ),
+              ),
+            );
+
+            updatesAsync.whenData((updates) {
+              for (final status in updates.statuses) {
+                if (status.status != null &&
+                    _isFinishedStatus(status.status!)) {
+                  Future.microtask(() {
+                    try {
+                      ref
+                          .read(eventGamesProvider(eventId).notifier)
+                          .requestRefreshForFinishedGame(
+                            gameId: status.gameId,
+                            status: status.status!,
+                          );
+                    } on StateError {
+                      // The section can be disposed while a stream event is queued.
+                    }
+                  });
+                }
+              }
+            });
+          }
+
+          return AsyncValue.data(snapshot);
+        },
+        loading: () => const AsyncValue.loading(),
+        error: (e, st) => AsyncValue.error(e, st),
+      );
+    });
 
 @immutable
 class _LiveGameStatusProjection {

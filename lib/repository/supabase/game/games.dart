@@ -18,6 +18,7 @@ class Games {
   final int? boardNr;
   final DateTime? lastMoveTime;
   final DateTime? gameDay;
+  final DateTime? roundStartsAt;
   final int? lastClockWhite;
   final int? lastClockBlack;
   final DateTime? dateStart;
@@ -45,6 +46,7 @@ class Games {
     this.boardNr,
     this.lastMoveTime,
     this.gameDay,
+    this.roundStartsAt,
     this.lastClockWhite,
     this.lastClockBlack,
     this.dateStart,
@@ -72,6 +74,7 @@ class Games {
     int? boardNr,
     DateTime? lastMoveTime,
     DateTime? gameDay,
+    DateTime? roundStartsAt,
     int? lastClockWhite,
     int? lastClockBlack,
     DateTime? dateStart,
@@ -98,6 +101,7 @@ class Games {
       boardNr: boardNr ?? this.boardNr,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
       gameDay: gameDay ?? this.gameDay,
+      roundStartsAt: roundStartsAt ?? this.roundStartsAt,
       lastClockWhite: lastClockWhite ?? this.lastClockWhite,
       lastClockBlack: lastClockBlack ?? this.lastClockBlack,
       dateStart: dateStart ?? this.dateStart,
@@ -115,8 +119,9 @@ class Games {
       int? avgElo;
       final tours = json['tours'];
       if (tours is Map<String, dynamic>) {
-        avgElo =
-            tours['avg_elo'] != null ? (tours['avg_elo'] as num).toInt() : null;
+        avgElo = tours['avg_elo'] != null
+            ? (tours['avg_elo'] as num).toInt()
+            : null;
         final groupBroadcasts = tours['group_broadcasts'];
         if (groupBroadcasts is Map<String, dynamic>) {
           timeControl = groupBroadcasts['time_control'] as String?;
@@ -124,8 +129,9 @@ class Games {
       }
       // Also check direct fields (for backwards compatibility)
       timeControl ??= json['time_control'] as String?;
-      avgElo ??=
-          json['avg_elo'] != null ? (json['avg_elo'] as num).toInt() : null;
+      avgElo ??= json['avg_elo'] != null
+          ? (json['avg_elo'] as num).toInt()
+          : null;
 
       return Games(
         id: json['id'] as String,
@@ -135,49 +141,44 @@ class Games {
         tourSlug: json['tour_slug'] as String,
         name: json['name'] as String?,
         fen: json['fen'] as String?,
-        players:
-            json['players'] != null
-                ? (json['players'] as List)
-                    .map(
-                      (player) =>
-                          Player.fromJson(player as Map<String, dynamic>),
-                    )
-                    .toList()
-                : null,
+        players: json['players'] != null
+            ? (json['players'] as List)
+                  .map(
+                    (player) => Player.fromJson(player as Map<String, dynamic>),
+                  )
+                  .toList()
+            : null,
         lastMove: json['last_move'] as String?,
-        thinkTime:
-            json['think_time'] != null
-                ? (json['think_time'] as num).toInt()
-                : null,
+        thinkTime: json['think_time'] != null
+            ? (json['think_time'] as num).toInt()
+            : null,
         status: json['status'] as String?,
         pgn: json['pgn'] as String?,
-        search:
-            json['search'] != null
-                ? (json['search'] as List).map((e) => e as String).toList()
-                : null,
+        search: json['search'] != null
+            ? (json['search'] as List).map((e) => e as String).toList()
+            : null,
         lichessId: json['lichess_id'] as String?,
-        boardNr:
-            json['board_nr'] != null ? (json['board_nr'] as num).toInt() : null,
-        lastMoveTime:
-            json['last_move_time'] != null
-                ? DateTime.parse(json['last_move_time'] as String)
-                : null,
-        gameDay:
-            json['game_day'] != null
-                ? DateTime.parse(json['game_day'] as String)
-                : null,
-        lastClockWhite:
-            json['last_clock_white'] != null
-                ? (json['last_clock_white'] as num).toInt()
-                : null,
-        lastClockBlack:
-            json['last_clock_black'] != null
-                ? (json['last_clock_black'] as num).toInt()
-                : null,
-        dateStart:
-            json['date_start'] != null
-                ? DateTime.parse(json['date_start'] as String)
-                : null,
+        boardNr: json['board_nr'] != null
+            ? (json['board_nr'] as num).toInt()
+            : null,
+        lastMoveTime: json['last_move_time'] != null
+            ? DateTime.parse(json['last_move_time'] as String)
+            : null,
+        gameDay: json['game_day'] != null
+            ? DateTime.parse(json['game_day'] as String)
+            : null,
+        roundStartsAt: json['round_starts_at'] != null
+            ? DateTime.parse(json['round_starts_at'] as String)
+            : null,
+        lastClockWhite: json['last_clock_white'] != null
+            ? (json['last_clock_white'] as num).toInt()
+            : null,
+        lastClockBlack: json['last_clock_black'] != null
+            ? (json['last_clock_black'] as num).toInt()
+            : null,
+        dateStart: json['date_start'] != null
+            ? DateTime.parse(json['date_start'] as String)
+            : null,
         eco: json['eco'] as String?,
         openingName: json['opening_name'] as String?,
         timeControl: timeControl,
@@ -209,6 +210,8 @@ class Games {
         'last_move_time': lastMoveTime!.toIso8601String(),
       if (gameDay != null)
         'game_day': gameDay!.toIso8601String().split('T').first,
+      if (roundStartsAt != null)
+        'round_starts_at': roundStartsAt!.toIso8601String(),
       if (lastClockWhite != null) 'last_clock_white': lastClockWhite,
       if (lastClockBlack != null) 'last_clock_black': lastClockBlack,
       if (dateStart != null)
@@ -396,14 +399,12 @@ class SearchPlayer {
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       title: json['title']?.toString(),
-      rating:
-          json['rating'] != null
-              ? int.tryParse(json['rating'].toString())
-              : null,
-      fideId:
-          json['fideId'] != null
-              ? int.tryParse(json['fideId'].toString())
-              : null,
+      rating: json['rating'] != null
+          ? int.tryParse(json['rating'].toString())
+          : null,
+      fideId: json['fideId'] != null
+          ? int.tryParse(json['fideId'].toString())
+          : null,
       fed: json['fed']?.toString(),
       tournamentId: tournamentId,
       tournamentName: tournamentName,

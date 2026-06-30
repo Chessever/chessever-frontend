@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
@@ -81,7 +82,6 @@ class _FakeForYouPinStorage implements ForYouPinStorage {
   }
 }
 
-
 PlayerCard _player(String name) {
   return PlayerCard(
     name: name,
@@ -118,8 +118,11 @@ ForYouEventGamesSnapshot _snapshot(
   List<String> unpinnedOverrideIds = const <String>[],
   bool hasGames = true,
 }) {
-  final games = visibleGames ??
-      (hasGames ? [_game('mock-game', tourId: tourId)] : const <GamesTourModel>[]);
+  final games =
+      visibleGames ??
+      (hasGames
+          ? [_game('mock-game', tourId: tourId)]
+          : const <GamesTourModel>[]);
   return ForYouEventGamesSnapshot(
     eventId: eventId,
     tourId: tourId,
@@ -183,6 +186,49 @@ GroupBroadcast _broadcast(String id) {
   );
 }
 
+Games _topGame({
+  String id = 'game-1',
+  String whiteName = 'White Player',
+  String blackName = 'Black Player',
+  String? lastMove,
+  DateTime? lastMoveTime,
+  DateTime? roundStartsAt,
+  String status = '*',
+}) {
+  return Games(
+    id: id,
+    roundId: 'round-1',
+    roundSlug: 'round-1',
+    tourId: 'tour-1',
+    tourSlug: 'tour-1',
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    players: [
+      Player(
+        name: whiteName,
+        title: 'GM',
+        rating: 2700,
+        fideId: 1,
+        fed: 'USA',
+        clock: 0,
+        team: '',
+      ),
+      Player(
+        name: blackName,
+        title: 'GM',
+        rating: 2700,
+        fideId: 2,
+        fed: 'USA',
+        clock: 0,
+        team: '',
+      ),
+    ],
+    lastMove: lastMove,
+    lastMoveTime: lastMoveTime,
+    roundStartsAt: roundStartsAt,
+    status: status,
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final triggerPinRefreshProvider = Provider.family<void Function(), String?>((
@@ -190,6 +236,43 @@ void main() {
     eventId,
   ) {
     return () => bumpEventPinRefreshSignal(ref, eventId);
+  });
+
+  group('isForYouPreviewGameAllowed', () {
+    final now = DateTime.utc(2026, 6, 30, 12);
+
+    test('rejects unresolved placeholder players even near round start', () {
+      final game = _topGame(
+        whiteName: '?',
+        blackName: 'Named Player',
+        roundStartsAt: now.add(const Duration(minutes: 30)),
+      );
+
+      expect(isForYouPreviewGameAllowed(game, now: now), isFalse);
+    });
+
+    test('allows named upcoming pairings inside the two-hour window', () {
+      final game = _topGame(roundStartsAt: now.add(const Duration(hours: 2)));
+
+      expect(isForYouPreviewGameAllowed(game, now: now), isTrue);
+    });
+
+    test('rejects named unstarted pairings too early for For You previews', () {
+      final game = _topGame(
+        roundStartsAt: now.add(const Duration(hours: 2, minutes: 1)),
+      );
+
+      expect(isForYouPreviewGameAllowed(game, now: now), isFalse);
+    });
+
+    test('allows named games that already have moves', () {
+      final game = _topGame(
+        lastMove: 'e2e4',
+        roundStartsAt: now.add(const Duration(hours: 8)),
+      );
+
+      expect(isForYouPreviewGameAllowed(game, now: now), isTrue);
+    });
   });
 
   group('mergeMissingFavoriteCurrentBroadcasts', () {
@@ -271,9 +354,8 @@ void main() {
 
         expect(values, [null]);
 
-        container
-            .read(selectedBroadcastModelProvider.notifier)
-            .state = _broadcast('event-x');
+        container.read(selectedBroadcastModelProvider.notifier).state =
+            _broadcast('event-x');
 
         expect(subscription.read(), isNull);
         expect(values, [null]);
@@ -306,9 +388,8 @@ void main() {
 
       expect(values, [null]);
 
-      container
-          .read(selectedBroadcastModelProvider.notifier)
-          .state = _broadcast('event-x');
+      container.read(selectedBroadcastModelProvider.notifier).state =
+          _broadcast('event-x');
 
       expect(subscription.read(), 'tour-a');
       expect(values, [null, 'tour-a']);
@@ -318,9 +399,8 @@ void main() {
       expect(subscription.read(), 'tour-b');
       expect(values, [null, 'tour-a', 'tour-b']);
 
-      container
-          .read(selectedBroadcastModelProvider.notifier)
-          .state = _broadcast('event-y');
+      container.read(selectedBroadcastModelProvider.notifier).state =
+          _broadcast('event-y');
 
       expect(subscription.read(), isNull);
       expect(values, [null, 'tour-a', 'tour-b', null]);
