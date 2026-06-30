@@ -170,10 +170,10 @@ class GameStreamRepository {
   /// One Realtime stream for a small set of visible games.
   ///
   /// Supabase's stream API performs the initial select and then merges
-  /// Realtime row changes by primary key. Batching the first four rendered
-  /// games per For You event replaces N per-card channels with one scoped
-  /// channel while preserving atomic PGN/FEN/clock/status updates from the
-  /// same `games` row.
+  /// Realtime row changes by primary key. Batching the live games rendered in a
+  /// visible context replaces N per-card channels with a few scoped channels
+  /// while preserving atomic PGN/FEN/clock/status updates from the same `games`
+  /// row.
   Stream<Map<String, LiveGameUpdate>> subscribeToLiveGameUpdatesBatch(
     List<String> gameIds,
   ) {
