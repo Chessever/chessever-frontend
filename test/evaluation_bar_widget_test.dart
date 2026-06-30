@@ -4,6 +4,8 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +20,34 @@ CloudEval _cloudEval(int cp) {
     depth: 12,
     pvs: [Pv(moves: 'e7e5', cp: cp)],
     requestedMultiPv: 1,
+  );
+}
+
+PlayerCard _player(String name) {
+  return PlayerCard(
+    name: name,
+    federation: 'USA',
+    title: 'GM',
+    rating: 2700,
+    countryCode: 'USA',
+    team: null,
+  );
+}
+
+GamesTourModel _game() {
+  return GamesTourModel(
+    gameId: 'game-1',
+    whitePlayer: _player('White'),
+    blackPlayer: _player('Black'),
+    whiteTimeDisplay: '--:--',
+    blackTimeDisplay: '--:--',
+    whiteClockCentiseconds: 0,
+    blackClockCentiseconds: 0,
+    gameStatus: GameStatus.ongoing,
+    roundId: 'round-1',
+    tourId: 'tour-1',
+    fen: _fen,
+    lastMove: 'e2e4',
   );
 }
 
@@ -56,6 +86,39 @@ Future<void> _pumpEvalBar(
   );
 }
 
+Future<void> _pumpChessProgressBar(
+  WidgetTester tester, {
+  required bool allowStockfishFallback,
+  required Future<CloudEval> Function(String fen) fallbackEval,
+  required Future<CloudEval> Function(String fen) cacheOnlyEval,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        gameCardEvalWithStockfishFallbackProvider.overrideWith(
+          (ref, fen) => fallbackEval(fen),
+        ),
+        gameCardEvalCacheOnlyProvider.overrideWith(
+          (ref, fen) => cacheOnlyEval(fen),
+        ),
+      ],
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) {
+            ResponsiveHelper.init(context);
+            return Scaffold(
+              body: ChessProgressBar(
+                gamesTourModel: _game(),
+                allowStockfishFallback: allowStockfishFallback,
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+}
+
 void main() {
   testWidgets('retains previous eval while scroll cache-only eval is loading', (
     tester,
@@ -80,5 +143,55 @@ void main() {
 
     expect(find.text('+1.2'), findsOneWidget);
     expect(find.text('...'), findsNothing);
+  });
+
+  testWidgets('compact game progress bar uses game-card fallback provider', (
+    tester,
+  ) async {
+    var fallbackRead = false;
+    var cacheOnlyRead = false;
+
+    await _pumpChessProgressBar(
+      tester,
+      allowStockfishFallback: true,
+      fallbackEval: (fen) async {
+        fallbackRead = true;
+        expect(fen, _fen);
+        return _cloudEval(120);
+      },
+      cacheOnlyEval: (fen) async {
+        cacheOnlyRead = true;
+        return _cloudEval(-50);
+      },
+    );
+    await tester.pump();
+
+    expect(fallbackRead, isTrue);
+    expect(cacheOnlyRead, isFalse);
+  });
+
+  testWidgets('compact game progress bar can stay cache-only while scrolling', (
+    tester,
+  ) async {
+    var fallbackRead = false;
+    var cacheOnlyRead = false;
+
+    await _pumpChessProgressBar(
+      tester,
+      allowStockfishFallback: false,
+      fallbackEval: (fen) async {
+        fallbackRead = true;
+        return _cloudEval(120);
+      },
+      cacheOnlyEval: (fen) async {
+        cacheOnlyRead = true;
+        expect(fen, _fen);
+        return _cloudEval(-50);
+      },
+    );
+    await tester.pump();
+
+    expect(fallbackRead, isFalse);
+    expect(cacheOnlyRead, isTrue);
   });
 }

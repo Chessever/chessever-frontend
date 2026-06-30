@@ -48,13 +48,13 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
 
   @override
   Widget build(BuildContext context) {
-    // Chess progress bar only needs 1 PV for evaluation
+    // Chess progress bar only needs 1 PV for evaluation.
+    // Use the game-card cascade so card surfaces hit local/Gamebase first and
+    // only fall back to low-priority Stockfish when allowed.
     final fen = widget.gamesTourModel.fen ?? '';
     final evalAsync =
         widget.allowStockfishFallback
-            ? ref.watch(
-              cascadeEvalProvider(CascadeEvalParams(fen: fen, multiPV: 1)),
-            )
+            ? ref.watch(gameCardEvalWithStockfishFallbackProvider(fen))
             : ref.watch(gameCardEvalCacheOnlyProvider(fen));
 
     final evaluation = evalAsync.when(
@@ -78,12 +78,10 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
     // shows white advantage as a dark pixel block. Force literal piece
     // colours in light theme; dark theme keeps the original tokens so its
     // appearance is unchanged.
-    final barBg = context.isLightTheme
-        ? kMoveStatBlackColor
-        : context.colors.surface;
-    final barFg = context.isLightTheme
-        ? kMoveStatWhiteColor
-        : context.colors.textPrimary;
+    final barBg =
+        context.isLightTheme ? kMoveStatBlackColor : context.colors.surface;
+    final barFg =
+        context.isLightTheme ? kMoveStatWhiteColor : context.colors.textPrimary;
 
     return SizedBox(
       width: 48.w,
