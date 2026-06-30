@@ -52,11 +52,13 @@ class GifExportWindow {
   });
 }
 
-/// Selects the full game used for GIF generation.
+/// Selects the moves used for GIF generation.
 ///
-/// [currentMoveIndex] is intentionally ignored: Share GIF always replays the
-/// entire game from the beginning position to avoid ambiguity with the board's
-/// currently selected move. Use static image sharing for the current position.
+/// Share GIF animates from the starting position up to and including the
+/// currently focused move ([currentMoveIndex]). Sharing from a mid-game move
+/// yields a partial GIF that ends on that move; sharing from the final move
+/// yields the whole game. When no move is focused (`currentMoveIndex < 0`, i.e.
+/// the start position) the full move list is used so the export is never empty.
 GifExportWindow? computeGifExportWindow({
   required List<String> moveSans,
   required int currentMoveIndex,
@@ -64,8 +66,17 @@ GifExportWindow? computeGifExportWindow({
 }) {
   if (moveSans.isEmpty) return null;
 
+  // Clamp the focused move into range. Out-of-range or "no move focused"
+  // (currentMoveIndex < 0, the start position) falls back to the full list.
+  final lastIndex =
+      (currentMoveIndex >= 0 && currentMoveIndex < moveSans.length)
+          ? currentMoveIndex
+          : moveSans.length - 1;
+
   return GifExportWindow(
-    movesToAnimate: List<String>.unmodifiable(moveSans),
+    movesToAnimate: List<String>.unmodifiable(
+      moveSans.sublist(0, lastIndex + 1),
+    ),
     globalMoveOffset: 0,
     captureStartFen: startingFen,
   );
@@ -128,12 +139,13 @@ class GifWorkerError extends GifWorkerResponse {
 // Frame planner
 // ---------------------------------------------------------------------------
 
-/// Builds an export profile for the given game length.
+/// Builds an export profile for the given window length.
 ///
-/// [moveCount] is the number of moves to animate. [currentMoveIndex] should be
-/// `moveCount - 1` for normal Share GIF exports, because
-/// [computeGifExportWindow] now returns the full game. Every move is captured
-/// so the GIF reaches the final board position without dropping plies.
+/// [moveCount] is the number of moves to animate (the slice returned by
+/// [computeGifExportWindow], from the start up to the focused move).
+/// [currentMoveIndex] should be `moveCount - 1` for Share GIF exports. Every
+/// move in the window is captured so the GIF reaches the focused position
+/// without dropping plies.
 GifExportProfile planGifExport({
   required int moveCount,
   required int currentMoveIndex,

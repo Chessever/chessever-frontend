@@ -402,8 +402,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
   /// Computes the export window for GIF generation.
   ///
-  /// Share GIF always uses the full game, independent of the currently selected
-  /// board move. Returns `null` if no moves are available to animate.
+  /// Share GIF animates from the start up to and including the currently
+  /// focused board move ([widget.currentMoveIndex]). Returns `null` if no moves
+  /// are available to animate.
   GifExportWindow? _computeExportWindow() {
     return computeGifExportWindow(
       moveSans: widget.moveSans,

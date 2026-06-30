@@ -8,7 +8,7 @@ import 'package:image/image.dart' as img;
 
 void main() {
   group('computeGifExportWindow', () {
-    test('uses the full game even when an earlier move is selected', () {
+    test('animates only up to the focused move', () {
       final moves = List.generate(20, (i) => 'move$i');
 
       final window = computeGifExportWindow(
@@ -18,12 +18,14 @@ void main() {
       );
 
       expect(window, isNotNull);
-      expect(window!.movesToAnimate, moves);
+      // moves move0..move5 inclusive (6 moves).
+      expect(window!.movesToAnimate, moves.sublist(0, 6));
+      expect(window.movesToAnimate.last, 'move5');
       expect(window.globalMoveOffset, 0);
       expect(window.captureStartFen, 'custom start');
     });
 
-    test('keeps the full game for long games', () {
+    test('stops at the focused move for long games', () {
       final moves = List.generate(80, (i) => 'move$i');
 
       final window = computeGifExportWindow(
@@ -32,12 +34,25 @@ void main() {
       );
 
       expect(window, isNotNull);
-      expect(window!.movesToAnimate.length, 80);
+      expect(window!.movesToAnimate.length, 6);
       expect(window.movesToAnimate.first, 'move0');
-      expect(window.movesToAnimate.last, 'move79');
+      expect(window.movesToAnimate.last, 'move5');
     });
 
-    test('still shares the full game from the initial selected position', () {
+    test('exports the whole game when the final move is focused', () {
+      final moves = List.generate(20, (i) => 'move$i');
+
+      final window = computeGifExportWindow(
+        moveSans: moves,
+        currentMoveIndex: moves.length - 1,
+      );
+
+      expect(window, isNotNull);
+      expect(window!.movesToAnimate, moves);
+      expect(window.movesToAnimate.last, 'move19');
+    });
+
+    test('falls back to the full game when no move is focused', () {
       final window = computeGifExportWindow(
         moveSans: const ['e4', 'e5'],
         currentMoveIndex: -1,
@@ -45,6 +60,27 @@ void main() {
 
       expect(window, isNotNull);
       expect(window!.movesToAnimate, ['e4', 'e5']);
+    });
+
+    test('clamps an out-of-range focused index to the full game', () {
+      final moves = List.generate(10, (i) => 'move$i');
+
+      final window = computeGifExportWindow(
+        moveSans: moves,
+        currentMoveIndex: 999,
+      );
+
+      expect(window, isNotNull);
+      expect(window!.movesToAnimate, moves);
+    });
+
+    test('returns null when there are no moves', () {
+      final window = computeGifExportWindow(
+        moveSans: const <String>[],
+        currentMoveIndex: 0,
+      );
+
+      expect(window, isNull);
     });
   });
 
