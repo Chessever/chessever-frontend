@@ -232,9 +232,15 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
               final baseGame = data.gamesTourModels[index];
               return Consumer(
                 builder: (context, ref, _) {
+                  final liveBatchKey = liveContextBatchKeyForGame(
+                    game: baseGame,
+                    contextGames: data.gamesTourModels,
+                    scopePrefix: 'countryman_screen',
+                  );
                   final game = watchLiveGame(
                     ref,
                     baseGame,
+                    batchKey: liveBatchKey,
                     streamEnabled: streamEnabled,
                   );
                   final allowStockfishFallback =

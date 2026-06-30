@@ -44,6 +44,13 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final effectiveLiveBatchKey =
+        liveBatchKey ??
+        liveContextBatchKeyForGame(
+          game: game,
+          contextGames: gamesData.gamesTourModels,
+          scopePrefix: 'mobile_card_context',
+        );
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
     final liveGame =
@@ -51,13 +58,13 @@ class GameCardWrapperWidget extends ConsumerWidget {
             ? watchLiveGamePosition(
               ref,
               game,
-              batchKey: liveBatchKey,
+              batchKey: effectiveLiveBatchKey,
               streamEnabled: streamEnabled,
             )
             : watchLiveGame(
               ref,
               game,
-              batchKey: liveBatchKey,
+              batchKey: effectiveLiveBatchKey,
               streamEnabled: streamEnabled,
             );
     final effectiveAllowStockfishFallback =
@@ -116,7 +123,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 onPinToggle: handlePinToggle,
                 fixedBottomSide: fixedBottomSide,
                 allowStockfishFallback: effectiveAllowStockfishFallback,
-                liveBatchKey: liveBatchKey,
+                liveBatchKey: effectiveLiveBatchKey,
               )
               : GameCard(
                 key: ValueKey(keyValue),

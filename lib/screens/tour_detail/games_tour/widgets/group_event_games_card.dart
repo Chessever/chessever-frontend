@@ -82,10 +82,17 @@ class _GroupEventGameCardTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final effectiveLiveBatchKey =
+        liveBatchKey ??
+        liveContextBatchKeyForGame(
+          game: match.game,
+          contextGames: gamesData.gamesTourModels,
+          scopePrefix: 'group_event_games_card',
+        );
     final liveGame = watchLiveGame(
       ref,
       match.game,
-      batchKey: liveBatchKey,
+      batchKey: effectiveLiveBatchKey,
       streamEnabled: streamEnabled,
     );
     final liveMatch = MatchWithComparison(

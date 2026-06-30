@@ -52,7 +52,17 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
-    final liveGame = watchLiveGame(ref, game, streamEnabled: streamEnabled);
+    final liveBatchKey = liveContextBatchKeyForGame(
+      game: game,
+      contextGames: allGames,
+      scopePrefix: 'live_gamebase_search',
+    );
+    final liveGame = watchLiveGame(
+      ref,
+      game,
+      batchKey: liveBatchKey,
+      streamEnabled: streamEnabled,
+    );
 
     // Build updated games list with live data for navigation
     final updatedGames = List<GamesTourModel>.from(allGames);

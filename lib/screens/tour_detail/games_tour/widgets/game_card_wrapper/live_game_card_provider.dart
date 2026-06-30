@@ -19,9 +19,10 @@ final baseGameProvider = StateProvider.autoDispose
 /// Keyed by gameId only (not baseGame) so that polling-triggered rebuilds of the
 /// parent widget don't recreate the provider and disrupt the Supabase stream.
 ///
-/// Multi-game surfaces should pass a shared batch key. If they do not, the
-/// helpers below fall back to a shared round/tour stream, not a per-game
-/// channel, so fast community rounds do not trip Realtime channel limits.
+/// Multi-game surfaces should pass a shared game-id batch key for the
+/// currently rendered context. Focused board views keep their single-game
+/// stream; cards without an explicit/context key do not open hidden round-wide
+/// subscriptions.
 final liveGameCardProvider =
     AutoDisposeProvider.family<GamesTourModel?, String>((ref, gameId) {
       return _watchMergedLiveGame(
@@ -93,6 +94,43 @@ final liveGameClockProvider =
     });
 
 enum _LiveGameMergeMode { full, position, clock }
+
+const int kLiveContextBatchSize = 25;
+
+LiveGamesBatchKey? liveContextBatchKeyForGame({
+  required GamesTourModel game,
+  required List<GamesTourModel> contextGames,
+  required String scopePrefix,
+  int batchSize = kLiveContextBatchSize,
+}) {
+  if (game.source != GameSource.supabase || game.gameId.isEmpty) return null;
+  if (batchSize <= 0) return null;
+
+  final scopedGames = contextGames
+      .where(
+        (candidate) =>
+            candidate.source == GameSource.supabase &&
+            candidate.gameId.isNotEmpty,
+      )
+      .toList(growable: false);
+  final index = scopedGames.indexWhere(
+    (candidate) => candidate.gameId == game.gameId,
+  );
+  if (index < 0) return null;
+
+  final chunkIndex = index ~/ batchSize;
+  final start = chunkIndex * batchSize;
+  final rawEnd = start + batchSize;
+  final end = rawEnd > scopedGames.length ? scopedGames.length : rawEnd;
+  final chunkGames = scopedGames.sublist(start, end);
+  if (chunkGames.isEmpty) return null;
+
+  return LiveGamesBatchKey(
+    scopeId:
+        '$scopePrefix:$chunkIndex:${chunkGames.first.gameId}:${chunkGames.last.gameId}',
+    gameIds: chunkGames.map((candidate) => candidate.gameId),
+  );
+}
 
 GamesTourModel? _watchMergedLiveGame({
   required Ref ref,
@@ -430,26 +468,6 @@ LiveGamesBatchKey? _resolveLiveBatchKey(
   LiveGamesBatchKey? batchKey,
 ) {
   if (batchKey != null) return batchKey;
-  if (game.source != GameSource.supabase) return null;
-
-  final roundId = game.roundId.trim();
-  if (roundId.isNotEmpty) {
-    return LiveGamesBatchKey(
-      scopeId: 'implicit_round:$roundId',
-      gameIds: const <String>[],
-      roundId: roundId,
-    );
-  }
-
-  final tourId = game.tourId.trim();
-  if (tourId.isNotEmpty) {
-    return LiveGamesBatchKey(
-      scopeId: 'implicit_tour:$tourId',
-      gameIds: const <String>[],
-      tourId: tourId,
-    );
-  }
-
   return null;
 }
 

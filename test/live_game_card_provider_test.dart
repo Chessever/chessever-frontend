@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
@@ -121,10 +122,17 @@ class _LiveGameProbe extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final liveGame = watchLiveGame(ref, game);
+    final liveGame = watchLiveGame(ref, game, batchKey: _batchKey());
     onBuild(liveGame);
     return const SizedBox.shrink();
   }
+}
+
+LiveGamesBatchKey _batchKey([List<String> gameIds = const ['game-1']]) {
+  return LiveGamesBatchKey(
+    scopeId: 'test:${gameIds.join(',')}',
+    gameIds: gameIds,
+  );
 }
 
 void main() {
@@ -160,7 +168,9 @@ void main() {
       );
 
       final sub = container.listen(
-        liveGameCardProvider('game-1'),
+        scopedLiveGameCardProvider(
+          LiveGameWatchParams(gameId: 'game-1', batchKey: _batchKey()),
+        ),
         (_, __) {},
         fireImmediately: true,
       );
@@ -277,7 +287,9 @@ void main() {
       );
 
       final sub = container.listen(
-        liveGameCardProvider('game-1'),
+        scopedLiveGameCardProvider(
+          LiveGameWatchParams(gameId: 'game-1', batchKey: _batchKey()),
+        ),
         (_, __) {},
         fireImmediately: true,
       );
@@ -293,7 +305,7 @@ void main() {
       container.read(shouldStreamProvider.notifier).state = true;
       await Future<void>.delayed(Duration.zero);
       expect(repository.individualSubscriptions, 0);
-      expect(repository.roundSubscriptions, 1);
+      expect(repository.batchSubscriptions, 1);
 
       controller.add({
         'fen': afterE4,
@@ -327,14 +339,16 @@ void main() {
       );
 
       final sub = container.listen(
-        liveGamePositionProvider(const LiveGameWatchParams(gameId: 'game-1')),
+        liveGamePositionProvider(
+          LiveGameWatchParams(gameId: 'game-1', batchKey: _batchKey()),
+        ),
         (_, __) {},
         fireImmediately: true,
       );
       addTearDown(sub.close);
 
       expect(repository.individualSubscriptions, 0);
-      expect(repository.roundSubscriptions, 1);
+      expect(repository.batchSubscriptions, 1);
       expect(sub.read()?.fen, afterE4);
       expect(sub.read()?.activePlayer, Side.black);
 
@@ -375,7 +389,9 @@ void main() {
       );
 
       final sub = container.listen(
-        liveGameClockProvider(const LiveGameWatchParams(gameId: 'game-1')),
+        liveGameClockProvider(
+          LiveGameWatchParams(gameId: 'game-1', batchKey: _batchKey()),
+        ),
         (_, __) {},
         fireImmediately: true,
       );
@@ -461,6 +477,36 @@ void main() {
         scopedLiveGameCardProvider(
           const LiveGameWatchParams(gameId: 'gamebase-1'),
         ),
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(sub.close);
+
+      expect(repository.individualSubscriptions, 0);
+      expect(repository.batchSubscriptions, 0);
+      expect(repository.roundSubscriptions, 0);
+      expect(repository.tourSubscriptions, 0);
+      expect(sub.read()?.fen, afterE4);
+    });
+
+    test('supabase cards without context do not open round-wide channels', () {
+      final repository = _FakeGameStreamRepository(
+        const Stream<Map<String, dynamic>?>.empty(),
+      );
+
+      final container = ProviderContainer(
+        overrides: [gameStreamRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+
+      container.read(baseGameProvider('game-1').notifier).state = _game(
+        id: 'game-1',
+        status: GameStatus.ongoing,
+        fen: afterE4,
+      );
+
+      final sub = container.listen(
+        scopedLiveGameCardProvider(const LiveGameWatchParams(gameId: 'game-1')),
         (_, __) {},
         fireImmediately: true,
       );

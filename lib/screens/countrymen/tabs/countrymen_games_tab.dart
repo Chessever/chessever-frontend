@@ -1368,9 +1368,15 @@ class _CountrymenLiveBoardGameCardState
   Widget build(BuildContext context) {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
+    final liveBatchKey = liveContextBatchKeyForGame(
+      game: widget.game,
+      contextGames: widget.allGames,
+      scopePrefix: 'countrymen_tab_board',
+    );
     final liveGame = watchLiveGame(
       ref,
       widget.game,
+      batchKey: liveBatchKey,
       streamEnabled: widget.streamEnabled,
     );
     final gameId = liveGame.gameId;
