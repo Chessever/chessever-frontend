@@ -103,15 +103,11 @@ LiveGamesBatchKey? liveContextBatchKeyForGame({
   required String scopePrefix,
   int batchSize = kLiveContextBatchSize,
 }) {
-  if (game.source != GameSource.supabase || game.gameId.isEmpty) return null;
+  if (!shouldSubscribeToLiveGame(game)) return null;
   if (batchSize <= 0) return null;
 
   final scopedGames = contextGames
-      .where(
-        (candidate) =>
-            candidate.source == GameSource.supabase &&
-            candidate.gameId.isNotEmpty,
-      )
+      .where(shouldSubscribeToLiveGame)
       .toList(growable: false);
   final index = scopedGames.indexWhere(
     (candidate) => candidate.gameId == game.gameId,
@@ -318,6 +314,12 @@ bool _fieldsEqual(List<Object?> a, List<Object?> b) {
   return true;
 }
 
+bool shouldSubscribeToLiveGame(GamesTourModel game) {
+  return game.source == GameSource.supabase &&
+      game.gameId.isNotEmpty &&
+      !game.gameStatus.isFinished;
+}
+
 GamesTourModel _mergeLiveUpdate({
   required GamesTourModel baseGame,
   required LiveGameUpdate update,
@@ -455,11 +457,13 @@ LiveGameWatchParams _liveWatchParamsForGame({
   required LiveGamesBatchKey? batchKey,
   required bool streamEnabled,
 }) {
-  final resolvedBatchKey = _resolveLiveBatchKey(game, batchKey);
+  final canStream = shouldSubscribeToLiveGame(game);
+  final resolvedBatchKey =
+      canStream ? _resolveLiveBatchKey(game, batchKey) : null;
   return LiveGameWatchParams(
     gameId: game.gameId,
     batchKey: resolvedBatchKey,
-    streamEnabled: streamEnabled && resolvedBatchKey != null,
+    streamEnabled: streamEnabled && canStream && resolvedBatchKey != null,
   );
 }
 
@@ -475,6 +479,9 @@ LiveGameWatchParams _resolveLiveWatchParams(
   GamesTourModel baseGame,
   LiveGameWatchParams params,
 ) {
+  if (!shouldSubscribeToLiveGame(baseGame)) {
+    return LiveGameWatchParams(gameId: params.gameId, streamEnabled: false);
+  }
   if (params.batchKey != null) return params;
   final resolvedBatchKey = _resolveLiveBatchKey(baseGame, null);
   return LiveGameWatchParams(

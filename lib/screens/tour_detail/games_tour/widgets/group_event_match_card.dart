@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
@@ -411,12 +412,13 @@ Map<String, LiveGamesBatchKey> buildGroupEventLiveBatchKeys(
 ) {
   const chunkSize = 25;
   final result = <String, LiveGamesBatchKey>{};
-  if (games.isEmpty) return result;
-  final chunkCount = (games.length / chunkSize).ceil();
+  final liveGames = games.where(shouldSubscribeToLiveGame).toList();
+  if (liveGames.isEmpty) return result;
+  final chunkCount = (liveGames.length / chunkSize).ceil();
   for (var chunk = 0; chunk < chunkCount; chunk++) {
     final start = chunk * chunkSize;
-    final end = math.min(start + chunkSize, games.length);
-    final chunkGames = games.sublist(start, end);
+    final end = math.min(start + chunkSize, liveGames.length);
+    final chunkGames = liveGames.sublist(start, end);
     final key = LiveGamesBatchKey(
       scopeId: 'group_event_match:$chunk',
       gameIds: chunkGames.map((game) => game.gameId),

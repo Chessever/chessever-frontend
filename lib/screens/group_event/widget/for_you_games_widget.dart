@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -48,14 +49,16 @@ ScrollCacheExtent _forYouCacheExtentForMode(GamesListViewMode mode) {
       : _kForYouBoardCacheExtent;
 }
 
-LiveGamesBatchKey _forYouLiveBatchKey({
+LiveGamesBatchKey? _forYouLiveBatchKey({
   required String eventId,
   required String tourId,
   required List<GamesTourModel> games,
 }) {
+  final liveGames = games.where(shouldSubscribeToLiveGame).toList();
+  if (liveGames.isEmpty) return null;
   return LiveGamesBatchKey(
     scopeId: 'for_you:$eventId:$tourId',
-    gameIds: games.map((game) => game.gameId),
+    gameIds: liveGames.map((game) => game.gameId),
   );
 }
 
@@ -1010,7 +1013,7 @@ class _TabletGameCard extends ConsumerWidget {
   final int index;
   final String eventId;
   final List<String> pinnedIds;
-  final LiveGamesBatchKey liveBatchKey;
+  final LiveGamesBatchKey? liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1134,7 +1137,7 @@ class _ForYouEventGames extends ConsumerWidget {
     List<GamesTourModel> displayedGames,
     List<GamesTourModel> orderedGames,
     List<String> pinnedIds,
-    LiveGamesBatchKey liveBatchKey,
+    LiveGamesBatchKey? liveBatchKey,
   ) {
     final rows = <Widget>[];
 
@@ -1288,7 +1291,7 @@ class _ForYouGameCard extends ConsumerWidget {
   final int gameIndex;
   final String eventId;
   final GamesListViewMode viewMode;
-  final LiveGamesBatchKey liveBatchKey;
+  final LiveGamesBatchKey? liveBatchKey;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

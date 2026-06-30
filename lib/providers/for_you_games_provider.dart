@@ -32,6 +32,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
@@ -1599,6 +1600,12 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
         }
 
         final displayedGames = snapshot.visibleGames.take(kGamesPerEvent);
+        final displayedLiveGames = displayedGames
+            .where(shouldSubscribeToLiveGame)
+            .toList(growable: false);
+        if (displayedLiveGames.isEmpty) {
+          return AsyncValue.data(snapshot);
+        }
         final watchedGameIds = liveGames
             .map((game) => game.gameId)
             .toList(growable: false);
@@ -1606,7 +1613,7 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
           gameUpdatesBatchStreamProvider(
             LiveGamesBatchKey(
               scopeId: 'for_you:$eventId:${snapshot.tourId}',
-              gameIds: displayedGames.map((game) => game.gameId),
+              gameIds: displayedLiveGames.map((game) => game.gameId),
             ),
           ).select(
             (async) => async.whenData(

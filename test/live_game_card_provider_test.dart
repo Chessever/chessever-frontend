@@ -147,16 +147,13 @@ void main() {
 1. e4 e5 *
 ''';
 
-    test('finished base games still consume the live row stream', () async {
-      final controller = StreamController<Map<String, dynamic>?>();
-      addTearDown(controller.close);
+    test('finished base games do not consume the live row stream', () async {
+      final repository = _FakeGameStreamRepository(
+        const Stream<Map<String, dynamic>?>.empty(),
+      );
 
       final container = ProviderContainer(
-        overrides: [
-          gameStreamRepositoryProvider.overrideWithValue(
-            _FakeGameStreamRepository(controller.stream),
-          ),
-        ],
+        overrides: [gameStreamRepositoryProvider.overrideWithValue(repository)],
       );
       addTearDown(container.dispose);
 
@@ -177,21 +174,36 @@ void main() {
       addTearDown(sub.close);
 
       expect(sub.read()?.fen, afterE4);
-
-      controller.add({
-        'fen': afterE4,
-        'pgn': pgnAfterE4E5,
-        'last_move': 'e7e5',
-        'status': '1-0',
-      });
-      await Future<void>.delayed(Duration.zero);
+      expect(repository.batchSubscriptions, 0);
 
       final liveGame = sub.read();
       expect(liveGame?.gameStatus, GameStatus.whiteWins);
-      expect(liveGame?.lastMove, 'e7e5');
-      expect(liveGame?.fen, afterE4E5);
+      expect(liveGame?.lastMove, 'e2e4');
+      expect(liveGame?.fen, afterE4);
       await Future<void>.delayed(Duration.zero);
-      expect(container.read(baseGameProvider('game-1'))?.fen, afterE4E5);
+      expect(container.read(baseGameProvider('game-1'))?.fen, afterE4);
+    });
+
+    test('context batch keys exclude finished games', () {
+      final liveGame = _game(id: 'game-1', status: GameStatus.ongoing);
+      final finishedGame = _game(id: 'game-2', status: GameStatus.draw);
+
+      final key = liveContextBatchKeyForGame(
+        game: liveGame,
+        contextGames: [liveGame, finishedGame],
+        scopePrefix: 'test_context',
+      );
+
+      expect(key, isNotNull);
+      expect(key!.gameIds, ['game-1']);
+      expect(
+        liveContextBatchKeyForGame(
+          game: finishedGame,
+          contextGames: [liveGame, finishedGame],
+          scopePrefix: 'test_context',
+        ),
+        isNull,
+      );
     });
 
     testWidgets(
