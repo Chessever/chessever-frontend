@@ -103,6 +103,57 @@ void main() {
       expect(deduped.single.tournament.title.contains('|'), isFalse);
     });
 
+    test('collapses DC International parent and Open suffix rows', () {
+      final results = [
+        _eventResult(
+          id: '4th_annual_dc_international',
+          title: '4th annual DC International',
+          start: DateTime.utc(2026, 6, 25, 23, 15),
+          end: DateTime.utc(2026, 6, 29, 20, 15),
+          maxAvgElo: 2430,
+        ),
+        _eventResult(
+          id: '4th_annual_dc_international_open',
+          title: '4th annual DC International Open',
+          start: DateTime.utc(2026, 6, 25, 23, 15),
+          end: DateTime.utc(2026, 6, 29, 20, 15),
+          maxAvgElo: 0,
+        ),
+      ];
+
+      final deduped = dedupeTournamentSearchResultsByLogicalEvent(results);
+
+      expect(deduped.map((result) => result.tournament.id), [
+        '4th_annual_dc_international',
+      ]);
+    });
+
+    test('does not collapse short Open event names by suffix alone', () {
+      final results = [
+        _eventResult(
+          id: 'world_open',
+          title: 'World Open',
+          start: DateTime.utc(2026, 7, 1),
+          end: DateTime.utc(2026, 7, 5),
+          maxAvgElo: 2600,
+        ),
+        _eventResult(
+          id: 'world',
+          title: 'World',
+          start: DateTime.utc(2026, 7, 1),
+          end: DateTime.utc(2026, 7, 5),
+          maxAvgElo: 0,
+        ),
+      ];
+
+      final deduped = dedupeTournamentSearchResultsByLogicalEvent(results);
+
+      expect(deduped.map((result) => result.tournament.id), [
+        'world_open',
+        'world',
+      ]);
+    });
+
     test('keeps same-title undated events separate', () {
       final results = [
         _eventResult(id: 'undated-1', title: 'Mystery Open', maxAvgElo: 2500),

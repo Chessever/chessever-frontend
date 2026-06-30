@@ -82,6 +82,11 @@ String _canonicalEventTitle(String title, DateTime? eventDate) {
             .replaceFirst(RegExp(r'\b' + year.toString() + r'\s*$'), '')
             .trim();
   }
+  final withoutOpenSuffix =
+      normalized.replaceFirst(RegExp(r'\b(?:open)\s*$'), '').trim();
+  if (withoutOpenSuffix.split(RegExp(r'\s+')).length >= 3) {
+    normalized = withoutOpenSuffix;
+  }
   return normalized
       .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')

@@ -70,8 +70,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
   String get _liveCardsPauseReason => 'countrymen_games_scroll_$hashCode';
-  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
-  // blank. Route coverage still removes the tab from active provider work.
+  // Keep the scrollable subtree mounted while a game route covers this tab so
+  // the ScrollController and provider state survive returning from the board.
   bool get _isActiveOnScreen => _routeIsCurrent;
 
   /// Track expanded state for date sections
@@ -348,12 +348,13 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     });
 
     final selectedMode = ref.watch(selectedCountrymenModeProvider);
-    if (selectedMode != CountrymenScreenMode.games || !_isActiveOnScreen) {
+    if (selectedMode != CountrymenScreenMode.games) {
       return const SizedBox.shrink();
     }
 
     final state = ref.watch(countrymenCombinedGamesProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final streamEnabled = _isActiveOnScreen && _appIsResumed;
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
@@ -388,7 +389,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
 
           // Content
-          _buildContentSliver(state, viewMode),
+          _buildContentSliver(state, viewMode, streamEnabled),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -587,6 +588,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   Widget _buildContentSliver(
     CountrymenCombinedGamesState state,
     GamesListViewMode viewMode,
+    bool streamEnabled,
   ) {
     if (state.isLoading && state.games.isEmpty) {
       return SliverFillRemaining(
@@ -753,6 +755,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             gamesData: gamesData,
             gameIdToIndex: gameIdToIndex,
             viewMode: viewMode,
+            streamEnabled: streamEnabled,
           ),
           childCount: listEntries.length,
           addAutomaticKeepAlives: false,
@@ -767,6 +770,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     required GamesScreenModel gamesData,
     required Map<String, int> gameIdToIndex,
     required GamesListViewMode viewMode,
+    required bool streamEnabled,
   }) {
     if (entry is _CountrymenDateHeaderEntry) {
       return Padding(
@@ -795,6 +799,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                           gameIdToIndex[entry.games[j].gameId] ?? 0,
                           games,
                           entry.listIndex,
+                          streamEnabled,
                         )
                         : const SizedBox.shrink(),
               ),
@@ -814,7 +819,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         allGames: games,
         isChessBoardVisible: true,
         isLast: entry.isLast,
-        streamEnabled: true,
+        streamEnabled: streamEnabled,
       );
     }
 
@@ -829,7 +834,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           showRound: true,
           showSwipeHint: entry.showHint,
           showGamebaseButton: false,
-          streamEnabled: true,
+          streamEnabled: streamEnabled,
           onAdd: () => _showAddToFolderSheet(context, entry.game),
           onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
           onLiveTap: (liveGame, updatedGames, liveIndex) async {
@@ -882,6 +887,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     int gameIndex,
     List<GamesTourModel> allGames,
     int listIndex,
+    bool streamEnabled,
   ) {
     return GridGameCardWrapperWidget(
       key: ValueKey('cmen_grid_game_${game.gameId}'),
@@ -889,7 +895,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       orderedGames: allGames,
       gameIndex: gameIndex,
       allowStockfishFallback: true,
-      streamEnabled: true,
+      streamEnabled: streamEnabled,
       onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);
@@ -1225,11 +1231,9 @@ class _CountrymenCardGameEntry extends _CountrymenGamesListEntry {
 enum _CountrymenFooterType { loading, spacer, end }
 
 class _CountrymenFooterEntry extends _CountrymenGamesListEntry {
-  const _CountrymenFooterEntry.loading()
-    : type = _CountrymenFooterType.loading;
+  const _CountrymenFooterEntry.loading() : type = _CountrymenFooterType.loading;
 
-  const _CountrymenFooterEntry.spacer()
-    : type = _CountrymenFooterType.spacer;
+  const _CountrymenFooterEntry.spacer() : type = _CountrymenFooterType.spacer;
 
   const _CountrymenFooterEntry.end() : type = _CountrymenFooterType.end;
 

@@ -56,7 +56,7 @@ final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
 /// **Architecture (Post-Revert):**
 /// - This provider holds ALL games in memory as a list
 /// - It does NOT maintain individual Supabase Realtime streams per game
-/// - Instead, it uses periodic polling (every 10 seconds) to fetch updates
+/// - Instead, it uses periodic polling (every 5 seconds) to fetch updates
 /// - Individual game cards use `liveGameCardProvider` with `.autoDispose`
 ///   to get realtime updates only for VISIBLE games
 /// - When a game card scrolls out of view, its stream is disposed
@@ -140,9 +140,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   // This timer is only a slow safety net for set-level changes the per-game
   // streams don't cover: newly added games, round rollovers, completions that
   // arrive while a card is off-screen. Keep the selected tour responsive, but
-  // avoid starting a synchronized 10s network loop for every sibling stage in
+  // avoid starting a synchronized network loop for every sibling stage in
   // multi-stage events.
-  static const Duration _primarySafetyNetInterval = Duration(seconds: 10);
+  static const Duration _primarySafetyNetInterval = Duration(seconds: 5);
   static const Duration _siblingSafetyNetInterval = Duration(seconds: 45);
   static const Duration _primaryFirstSafetyNetDelay = Duration(seconds: 2);
   static const Duration _siblingFirstSafetyNetDelayBase = Duration(seconds: 24);

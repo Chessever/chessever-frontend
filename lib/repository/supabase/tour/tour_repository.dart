@@ -35,7 +35,28 @@ class TourRepository extends BaseRepository {
           .select()
           .eq('id', groupId);
 
-      return (byIdResponse as List).map((json) => Tour.fromJson(json)).toList();
+      final byIdTours =
+          (byIdResponse as List).map((json) => Tour.fromJson(json)).toList();
+      if (byIdTours.isEmpty) {
+        return byIdTours;
+      }
+
+      final siblingGroupId = byIdTours.first.groupBroadcastId?.trim();
+      if (siblingGroupId == null ||
+          siblingGroupId.isEmpty ||
+          siblingGroupId == groupId) {
+        return byIdTours;
+      }
+
+      final siblingResponse = await supabase
+          .from('tours')
+          .select()
+          .eq('group_broadcast_id', siblingGroupId)
+          .order('avg_elo', ascending: false);
+
+      final siblingTours =
+          (siblingResponse as List).map((json) => Tour.fromJson(json)).toList();
+      return siblingTours.isNotEmpty ? siblingTours : byIdTours;
     });
   }
 

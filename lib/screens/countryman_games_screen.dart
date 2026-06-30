@@ -69,8 +69,8 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
   late final StateController<Set<String>> _liveGameCardsPauseReasons;
 
   String get _liveCardsPauseReason => 'countryman_games_scroll_$hashCode';
-  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
-  // blank. Route coverage still removes the list from active provider work.
+  // Keep the scrollable subtree mounted while a game route covers this screen
+  // so returning from the board preserves list state.
   bool get _isActiveOnScreen => _routeIsCurrent;
 
   @override
@@ -206,13 +206,9 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
 
   @override
   Widget build(BuildContext context) {
-    if (!_isActiveOnScreen) {
-      return const SizedBox.shrink();
-    }
-
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);
     final shouldStream = ref.watch(shouldStreamProvider);
-    final streamEnabled = shouldStream;
+    final streamEnabled = shouldStream && _isActiveOnScreen && _appIsResumed;
 
     return ref
         .watch(countrymanGamesTourScreenProvider)

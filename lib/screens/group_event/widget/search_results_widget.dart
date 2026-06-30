@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
@@ -112,9 +113,9 @@ class SearchResultsWidget extends HookConsumerWidget {
                   'No events match "$query"',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                fontSize: 14.sp,
-                color: context.colors.textSecondary,
-              ),
+                    fontSize: 14.sp,
+                    color: context.colors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -378,8 +379,12 @@ class _SearchEventCardState extends ConsumerState<_SearchEventCard>
         heroTagSuffix: 'search-${widget.tournament.id}',
         onTap:
             () => ref
-                .read(groupEventScreenProvider.notifier)
-                .onSelectTournament(context: context, id: widget.tournament.id),
+                .read(tournamentNavigationProvider)
+                .openTournament(
+                  context: context,
+                  id: widget.tournament.id,
+                  category: GroupEventCategory.search,
+                ),
       ),
     );
 

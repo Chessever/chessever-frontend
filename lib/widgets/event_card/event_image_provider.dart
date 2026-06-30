@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -31,10 +32,11 @@ final eventImageProvider = FutureProvider.autoDispose
         }
 
         final tour = tours.first;
+        final imageUrl = _firstImageUrl(tours);
 
-        // If tour has an image, return it
-        if (tour.image != null && tour.image!.isNotEmpty) {
-          return EventImageData(imageUrl: tour.image);
+        // If any sibling tour has an image, use it for the whole event.
+        if (imageUrl != null) {
+          return EventImageData(imageUrl: imageUrl);
         }
 
         // No image - try to get country from location or player federations
@@ -53,6 +55,16 @@ final eventImageProvider = FutureProvider.autoDispose
         return const EventImageData();
       }
     });
+
+String? _firstImageUrl(List<Tour> tours) {
+  for (final tour in tours) {
+    final image = tour.image?.trim();
+    if (image != null && image.isNotEmpty) {
+      return image;
+    }
+  }
+  return null;
+}
 
 /// Extracts a 2-letter country code from location string
 String? _extractCountryFromLocation(String? location) {

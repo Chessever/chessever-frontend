@@ -73,6 +73,55 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
   );
 });
 
+final tournamentNavigationProvider = Provider<TournamentNavigationController>(
+  (ref) => TournamentNavigationController(ref),
+);
+
+class TournamentNavigationController {
+  TournamentNavigationController(this.ref);
+
+  final Ref ref;
+
+  Future<void> openTournament({
+    required BuildContext context,
+    required String id,
+    required GroupEventCategory category,
+    Iterable<GroupBroadcast> knownBroadcasts = const <GroupBroadcast>[],
+  }) async {
+    GroupBroadcast? selectedBroadcast;
+    for (final broadcast in knownBroadcasts) {
+      if (broadcast.id == id) {
+        selectedBroadcast = broadcast;
+        break;
+      }
+    }
+
+    selectedBroadcast ??= await ref
+        .read(groupBroadcastRepositoryProvider)
+        .getGroupBroadcastById(id);
+
+    if (!context.mounted) return;
+
+    ref.read(selectedBroadcastModelProvider.notifier).state = selectedBroadcast;
+    ref.read(selectedTourModeProvider.notifier).state =
+        TournamentDetailScreenMode.games;
+
+    unawaited(
+      AnalyticsService.instance.trackEvent(
+        'Tournament Opened',
+        properties: {
+          'tournament_id': id,
+          'tournament_name': selectedBroadcast.name,
+          'category': category.name,
+          'is_live': ref.read(liveBroadcastIdsProvider).contains(id),
+          'time_control': selectedBroadcast.timeControl,
+        },
+      ),
+    );
+    Navigator.pushNamed(context, '/tournament_detail_screen');
+  }
+}
+
 class _GroupEventScreenController
     extends StateNotifier<AsyncValue<List<GroupEventCardModel>>>
     implements IGroupEventScreenController {
@@ -440,43 +489,16 @@ class _GroupEventScreenController
     required String id,
   }) async {
     try {
-      // First try to find in current list
-      GroupBroadcast? selectedBroadcast;
-      for (final broadcast in _groupBroadcastList) {
-        if (broadcast.id == id) {
-          selectedBroadcast = broadcast;
-          break;
-        }
-      }
-
-      // If not found in current list, fetch directly from repository
-      selectedBroadcast ??= await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastById(id);
-
-      ref.read(selectedBroadcastModelProvider.notifier).state =
-          selectedBroadcast;
-
-      if (context.mounted && ref.read(selectedBroadcastModelProvider) != null) {
-        // Navigate to games tab instead of about tab
-        ref.read(selectedTourModeProvider.notifier).state =
-            TournamentDetailScreenMode.games;
-
-        unawaited(
-          AnalyticsService.instance.trackEvent(
-            'Tournament Opened',
-            properties: {
-              'tournament_id': id,
-              'tournament_name': selectedBroadcast.name,
-              'category': tourEventCategory.name,
-              'is_live': ref.read(liveBroadcastIdsProvider).contains(id),
-              'time_control': selectedBroadcast.timeControl,
-            },
-          ),
-        );
-        Navigator.pushNamed(context, '/tournament_detail_screen');
-      }
+      await ref
+          .read(tournamentNavigationProvider)
+          .openTournament(
+            context: context,
+            id: id,
+            category: tourEventCategory,
+            knownBroadcasts: _groupBroadcastList,
+          );
     } catch (e, st) {
+      if (!mounted) return;
       state = AsyncValue.error('Tournament not found: $id', st);
     }
   }
