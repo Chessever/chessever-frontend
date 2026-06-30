@@ -66,6 +66,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _liveCardsPausedForScroll = false;
+  double? _pendingScrollOffsetRestore;
   late final StateController<Set<String>> _liveGameCardsPauseReasons;
   static const Duration _scrollIdleDelay = Duration(milliseconds: 180);
 
@@ -126,10 +127,12 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   @override
   void didPopNext() {
     _setRouteActive(true);
+    _restoreScrollOffsetAfterReturn();
   }
 
   @override
   void didPushNext() {
+    _rememberScrollOffsetBeforeHiding();
     _setRouteActive(false);
   }
 
@@ -179,6 +182,25 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       ForegroundTaskScheduler.cancel('countrymen_games_resume_$hashCode');
       _stopLiveCardsForHiddenTab();
     }
+  }
+
+  void _rememberScrollOffsetBeforeHiding() {
+    if (!_scrollController.hasClients) return;
+    _pendingScrollOffsetRestore = _scrollController.position.pixels;
+  }
+
+  void _restoreScrollOffsetAfterReturn() {
+    final offset = _pendingScrollOffsetRestore;
+    if (offset == null || offset <= 0) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final clampedOffset = offset.clamp(0.0, position.maxScrollExtent);
+      if ((position.pixels - clampedOffset).abs() > 0.5) {
+        _scrollController.jumpTo(clampedOffset);
+      }
+    });
   }
 
   void _setAppResumed(bool isResumed) {
@@ -348,12 +370,19 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     });
 
     final selectedMode = ref.watch(selectedCountrymenModeProvider);
-    if (selectedMode != CountrymenScreenMode.games || !_isActiveOnScreen) {
+    if (selectedMode != CountrymenScreenMode.games) {
       return const SizedBox.shrink();
     }
 
+    // Keep the autoDispose games provider alive while a pushed chessboard route
+    // temporarily covers this tab. Otherwise returning from a game recreates the
+    // Countrymen list from scratch and drops the user's scroll position.
     final state = ref.watch(countrymenCombinedGamesProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
+
+    if (!_isActiveOnScreen) {
+      return const SizedBox.shrink();
+    }
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
@@ -1225,11 +1254,9 @@ class _CountrymenCardGameEntry extends _CountrymenGamesListEntry {
 enum _CountrymenFooterType { loading, spacer, end }
 
 class _CountrymenFooterEntry extends _CountrymenGamesListEntry {
-  const _CountrymenFooterEntry.loading()
-    : type = _CountrymenFooterType.loading;
+  const _CountrymenFooterEntry.loading() : type = _CountrymenFooterType.loading;
 
-  const _CountrymenFooterEntry.spacer()
-    : type = _CountrymenFooterType.spacer;
+  const _CountrymenFooterEntry.spacer() : type = _CountrymenFooterType.spacer;
 
   const _CountrymenFooterEntry.end() : type = _CountrymenFooterType.end;
 
