@@ -1613,7 +1613,7 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
           gameUpdatesBatchStreamProvider(
             LiveGamesBatchKey(
               scopeId: 'for_you:$eventId:${snapshot.tourId}',
-              gameIds: displayedLiveGames.map((game) => game.gameId),
+              gameIds: displayedGames.map((game) => game.gameId),
             ),
           ).select(
             (async) => async.whenData(

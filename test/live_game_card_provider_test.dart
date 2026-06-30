@@ -184,7 +184,7 @@ void main() {
       expect(container.read(baseGameProvider('game-1'))?.fen, afterE4);
     });
 
-    test('context batch keys exclude finished games', () {
+    test('context batch keys keep mixed visible game ids stable', () {
       final liveGame = _game(id: 'game-1', status: GameStatus.ongoing);
       final finishedGame = _game(id: 'game-2', status: GameStatus.draw);
 
@@ -195,7 +195,7 @@ void main() {
       );
 
       expect(key, isNotNull);
-      expect(key!.gameIds, ['game-1']);
+      expect(key!.gameIds, ['game-1', 'game-2']);
       expect(
         liveContextBatchKeyForGame(
           game: finishedGame,

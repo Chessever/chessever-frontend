@@ -107,7 +107,11 @@ LiveGamesBatchKey? liveContextBatchKeyForGame({
   if (batchSize <= 0) return null;
 
   final scopedGames = contextGames
-      .where(shouldSubscribeToLiveGame)
+      .where(
+        (candidate) =>
+            candidate.source == GameSource.supabase &&
+            candidate.gameId.isNotEmpty,
+      )
       .toList(growable: false);
   final index = scopedGames.indexWhere(
     (candidate) => candidate.gameId == game.gameId,

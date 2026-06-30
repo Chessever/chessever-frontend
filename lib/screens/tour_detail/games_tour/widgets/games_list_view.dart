@@ -9,7 +9,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expans
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
@@ -495,7 +494,7 @@ Map<String, LiveGamesBatchKey> _buildLiveBatchKeys(
   final result = <String, LiveGamesBatchKey>{};
   for (final entry in gamesByRound.entries) {
     final roundId = entry.key;
-    final games = entry.value.where(shouldSubscribeToLiveGame).toList();
+    final games = entry.value;
     if (games.isEmpty) continue;
     final chunkCount = (games.length / _kLiveBatchChunkSize).ceil();
     for (var chunk = 0; chunk < chunkCount; chunk++) {
