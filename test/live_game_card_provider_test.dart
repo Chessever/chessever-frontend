@@ -84,6 +84,7 @@ PlayerCard _player(String name) {
 GamesTourModel _game({
   required String id,
   required GameStatus status,
+  GameSource source = GameSource.supabase,
   String? fen,
   String? pgn,
   String? lastMove,
@@ -93,6 +94,7 @@ GamesTourModel _game({
 }) {
   return GamesTourModel(
     gameId: id,
+    source: source,
     whitePlayer: _player('White'),
     blackPlayer: _player('Black'),
     whiteTimeDisplay: '--:--',
@@ -437,5 +439,38 @@ void main() {
         expect(sub.read()?.fen, afterE4);
       },
     );
+
+    test('cards without a realtime context do not open per-game channels', () {
+      final repository = _FakeGameStreamRepository(
+        const Stream<Map<String, dynamic>?>.empty(),
+      );
+
+      final container = ProviderContainer(
+        overrides: [gameStreamRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+
+      container.read(baseGameProvider('gamebase-1').notifier).state = _game(
+        id: 'gamebase-1',
+        source: GameSource.gamebase,
+        status: GameStatus.ongoing,
+        fen: afterE4,
+      );
+
+      final sub = container.listen(
+        scopedLiveGameCardProvider(
+          const LiveGameWatchParams(gameId: 'gamebase-1'),
+        ),
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(sub.close);
+
+      expect(repository.individualSubscriptions, 0);
+      expect(repository.batchSubscriptions, 0);
+      expect(repository.roundSubscriptions, 0);
+      expect(repository.tourSubscriptions, 0);
+      expect(sub.read()?.fen, afterE4);
+    });
   });
 }

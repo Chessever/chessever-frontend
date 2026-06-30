@@ -143,7 +143,8 @@ LiveGameUpdate? _watchLiveUpdate(
   }
 
   final batchKey = params.batchKey;
-  if (batchKey != null && batchKey.contains(params.gameId)) {
+  if (batchKey != null) {
+    if (!batchKey.contains(params.gameId)) return null;
     final projectedUpdateAsync = ref.watch(
       gameUpdatesBatchStreamProvider(batchKey).select((async) {
         return async.whenData(
@@ -154,15 +155,7 @@ LiveGameUpdate? _watchLiveUpdate(
     );
     return projectedUpdateAsync.valueOrNull?.update;
   }
-
-  final projectedUpdateAsync = ref.watch(
-    liveGameUpdateStreamProvider(params.gameId).select((async) {
-      return async.whenData(
-        (update) => _ProjectedLiveGameUpdate.forMode(update, mode),
-      );
-    }),
-  );
-  return projectedUpdateAsync.valueOrNull?.update;
+  return null;
 }
 
 @immutable
@@ -381,9 +374,9 @@ GamesTourModel watchLiveGame(
       }
     });
   }
-  final params = LiveGameWatchParams(
-    gameId: game.gameId,
-    batchKey: _resolveLiveBatchKey(game, batchKey),
+  final params = _liveWatchParamsForGame(
+    game: game,
+    batchKey: batchKey,
     streamEnabled: streamEnabled,
   );
   return ref.watch(scopedLiveGameCardProvider(params)) ?? game;
@@ -396,9 +389,9 @@ GamesTourModel watchLiveGamePosition(
   bool streamEnabled = true,
 }) {
   _ensureBaseGame(ref, game);
-  final params = LiveGameWatchParams(
-    gameId: game.gameId,
-    batchKey: _resolveLiveBatchKey(game, batchKey),
+  final params = _liveWatchParamsForGame(
+    game: game,
+    batchKey: batchKey,
     streamEnabled: streamEnabled,
   );
   return ref.watch(liveGamePositionProvider(params)) ?? game;
@@ -411,12 +404,25 @@ GamesTourModel watchLiveGameClock(
   bool streamEnabled = true,
 }) {
   _ensureBaseGame(ref, game);
-  final params = LiveGameWatchParams(
-    gameId: game.gameId,
-    batchKey: _resolveLiveBatchKey(game, batchKey),
+  final params = _liveWatchParamsForGame(
+    game: game,
+    batchKey: batchKey,
     streamEnabled: streamEnabled,
   );
   return ref.watch(liveGameClockProvider(params)) ?? game;
+}
+
+LiveGameWatchParams _liveWatchParamsForGame({
+  required GamesTourModel game,
+  required LiveGamesBatchKey? batchKey,
+  required bool streamEnabled,
+}) {
+  final resolvedBatchKey = _resolveLiveBatchKey(game, batchKey);
+  return LiveGameWatchParams(
+    gameId: game.gameId,
+    batchKey: resolvedBatchKey,
+    streamEnabled: streamEnabled && resolvedBatchKey != null,
+  );
 }
 
 LiveGamesBatchKey? _resolveLiveBatchKey(
@@ -452,10 +458,11 @@ LiveGameWatchParams _resolveLiveWatchParams(
   LiveGameWatchParams params,
 ) {
   if (params.batchKey != null) return params;
+  final resolvedBatchKey = _resolveLiveBatchKey(baseGame, null);
   return LiveGameWatchParams(
     gameId: params.gameId,
-    batchKey: _resolveLiveBatchKey(baseGame, null),
-    streamEnabled: params.streamEnabled,
+    batchKey: resolvedBatchKey,
+    streamEnabled: params.streamEnabled && resolvedBatchKey != null,
   );
 }
 
