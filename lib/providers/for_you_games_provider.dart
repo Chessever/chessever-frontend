@@ -1585,35 +1585,25 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
 
   return snapshotAsync.when(
     data: (snapshot) {
-      final liveGames =
-          snapshot.visibleGames
-              .take(kGamesPerEvent)
-              .where((game) => game.gameStatus == GameStatus.ongoing)
-              .toList();
+      final displayedGames = snapshot.visibleGames.take(kGamesPerEvent);
+      final displayedLiveGames = displayedGames
+          .where(shouldSubscribeToLiveGame)
+          .toList(growable: false);
 
-      if (liveGames.isNotEmpty) {
-        final shouldWatchLiveFinishes =
-            ref.watch(shouldStreamProvider) &&
-            !ref.watch(liveGameCardsPausedProvider);
+      if (displayedLiveGames.isNotEmpty) {
+        final shouldWatchLiveFinishes = ref.watch(shouldStreamProvider);
         if (!shouldWatchLiveFinishes) {
           return AsyncValue.data(snapshot);
         }
 
-        final displayedGames = snapshot.visibleGames.take(kGamesPerEvent);
-        final displayedLiveGames = displayedGames
-            .where(shouldSubscribeToLiveGame)
-            .toList(growable: false);
-        if (displayedLiveGames.isEmpty) {
-          return AsyncValue.data(snapshot);
-        }
-        final watchedGameIds = liveGames
+        final watchedGameIds = displayedLiveGames
             .map((game) => game.gameId)
             .toList(growable: false);
         final updatesAsync = ref.watch(
           gameUpdatesBatchStreamProvider(
             LiveGamesBatchKey(
               scopeId: 'for_you:$eventId:${snapshot.tourId}',
-              gameIds: displayedGames.map((game) => game.gameId),
+              gameIds: displayedLiveGames.map((game) => game.gameId),
             ),
           ).select(
             (async) => async.whenData(

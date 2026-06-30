@@ -184,26 +184,69 @@ void main() {
       expect(container.read(baseGameProvider('game-1'))?.fen, afterE4);
     });
 
-    test('context batch keys keep mixed visible game ids stable', () {
+    test('context batch keys include only subscribable live game ids', () {
       final liveGame = _game(id: 'game-1', status: GameStatus.ongoing);
       final finishedGame = _game(id: 'game-2', status: GameStatus.draw);
+      final databaseGame = _game(
+        id: 'gamebase-1',
+        status: GameStatus.ongoing,
+        source: GameSource.gamebase,
+      );
 
       final key = liveContextBatchKeyForGame(
         game: liveGame,
-        contextGames: [liveGame, finishedGame],
+        contextGames: [liveGame, finishedGame, databaseGame],
         scopePrefix: 'test_context',
       );
 
       expect(key, isNotNull);
-      expect(key!.gameIds, ['game-1', 'game-2']);
+      expect(key!.gameIds, ['game-1']);
       expect(
         liveContextBatchKeyForGame(
           game: finishedGame,
-          contextGames: [liveGame, finishedGame],
+          contextGames: [liveGame, finishedGame, databaseGame],
           scopePrefix: 'test_context',
         ),
         isNull,
       );
+      expect(
+        liveContextBatchKeyForGame(
+          game: databaseGame,
+          contextGames: [liveGame, finishedGame, databaseGame],
+          scopePrefix: 'test_context',
+        ),
+        isNull,
+      );
+    });
+
+    test('live batch key map chunks only subscribable games', () {
+      final liveGames = [
+        for (var i = 0; i < 26; i++)
+          _game(
+            id: 'live-${i.toString().padLeft(2, '0')}',
+            status: GameStatus.ongoing,
+          ),
+      ];
+      final finishedGame = _game(id: 'finished-1', status: GameStatus.draw);
+      final databaseGame = _game(
+        id: 'database-1',
+        status: GameStatus.ongoing,
+        source: GameSource.gamebase,
+      );
+
+      final keys = liveBatchKeysForGames(
+        games: [...liveGames, finishedGame, databaseGame],
+        scopePrefix: 'test_chunk',
+        batchSize: 25,
+      );
+
+      expect(keys.length, 26);
+      expect(keys.containsKey(finishedGame.gameId), isFalse);
+      expect(keys.containsKey(databaseGame.gameId), isFalse);
+      expect(keys['live-00'], same(keys['live-24']));
+      expect(keys['live-00'], isNot(same(keys['live-25'])));
+      expect(keys['live-00']!.gameIds.length, 25);
+      expect(keys['live-25']!.gameIds, ['live-25']);
     });
 
     testWidgets(

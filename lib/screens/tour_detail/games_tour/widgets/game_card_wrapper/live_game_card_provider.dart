@@ -104,32 +104,45 @@ LiveGamesBatchKey? liveContextBatchKeyForGame({
   int batchSize = kLiveContextBatchSize,
 }) {
   if (!shouldSubscribeToLiveGame(game)) return null;
-  if (batchSize <= 0) return null;
+  return liveBatchKeysForGames(
+    games: contextGames,
+    scopePrefix: scopePrefix,
+    batchSize: batchSize,
+  )[game.gameId];
+}
 
-  final scopedGames = contextGames
-      .where(
-        (candidate) =>
-            candidate.source == GameSource.supabase &&
-            candidate.gameId.isNotEmpty,
-      )
+Map<String, LiveGamesBatchKey> liveBatchKeysForGames({
+  required Iterable<GamesTourModel> games,
+  required String scopePrefix,
+  int batchSize = kLiveContextBatchSize,
+}) {
+  final result = <String, LiveGamesBatchKey>{};
+  if (batchSize <= 0) return result;
+
+  final liveGames = games
+      .where(shouldSubscribeToLiveGame)
       .toList(growable: false);
-  final index = scopedGames.indexWhere(
-    (candidate) => candidate.gameId == game.gameId,
-  );
-  if (index < 0) return null;
+  for (
+    var chunkIndex = 0;
+    chunkIndex * batchSize < liveGames.length;
+    chunkIndex++
+  ) {
+    final start = chunkIndex * batchSize;
+    final rawEnd = start + batchSize;
+    final end = rawEnd > liveGames.length ? liveGames.length : rawEnd;
+    final chunkGames = liveGames.sublist(start, end);
+    if (chunkGames.isEmpty) continue;
 
-  final chunkIndex = index ~/ batchSize;
-  final start = chunkIndex * batchSize;
-  final rawEnd = start + batchSize;
-  final end = rawEnd > scopedGames.length ? scopedGames.length : rawEnd;
-  final chunkGames = scopedGames.sublist(start, end);
-  if (chunkGames.isEmpty) return null;
-
-  return LiveGamesBatchKey(
-    scopeId:
-        '$scopePrefix:$chunkIndex:${chunkGames.first.gameId}:${chunkGames.last.gameId}',
-    gameIds: chunkGames.map((candidate) => candidate.gameId),
-  );
+    final key = LiveGamesBatchKey(
+      scopeId:
+          '$scopePrefix:$chunkIndex:${chunkGames.first.gameId}:${chunkGames.last.gameId}',
+      gameIds: chunkGames.map((candidate) => candidate.gameId),
+    );
+    for (final game in chunkGames) {
+      result[game.gameId] = key;
+    }
+  }
+  return result;
 }
 
 GamesTourModel? _watchMergedLiveGame({

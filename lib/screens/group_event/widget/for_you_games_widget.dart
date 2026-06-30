@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -55,7 +56,7 @@ LiveGamesBatchKey _forYouLiveBatchKey({
 }) {
   return LiveGamesBatchKey(
     scopeId: 'for_you:$eventId:$tourId',
-    gameIds: games.map((game) => game.gameId),
+    gameIds: games.where(shouldSubscribeToLiveGame).map((game) => game.gameId),
   );
 }
 

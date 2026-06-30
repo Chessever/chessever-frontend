@@ -23,6 +23,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -718,8 +719,9 @@ class _AppBar extends ConsumerWidget {
                 extraMetadata: {
                   ...request.toFavoriteMetadata(),
                   if (sessionHidden.isNotEmpty)
-                    smartEventHiddenMetadataKey:
-                        sessionHidden.toList(growable: false),
+                    smartEventHiddenMetadataKey: sessionHidden.toList(
+                      growable: false,
+                    ),
                 },
               );
               // Config now lives on the saved row; clear the transient copy so
@@ -1511,17 +1513,10 @@ class _GamesTabState extends ConsumerState<_GamesTab>
         gamesTourModels: games,
         pinnedGamedIs: event.pinnedGameIds,
       );
-      final liveGameIds = games
-          .where((game) => game.effectiveGameStatus.isOngoing)
-          .map((game) => game.gameId)
-          .toList(growable: false);
-      final liveBatchKey =
-          liveGameIds.isEmpty
-              ? null
-              : LiveGamesBatchKey(
-                scopeId: 'smart_event:${request.scopeId}',
-                gameIds: liveGameIds,
-              );
+      final liveBatchKeyByGameId = liveBatchKeysForGames(
+        games: games,
+        scopePrefix: 'smart_event:${request.scopeId}',
+      );
 
       final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
       // Tablet landscape: 4 columns; tablet portrait / phone: 2 — mirrors
@@ -1605,7 +1600,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                                     rowGames[j],
                                     games,
                                     gamesData,
-                                    liveBatchKey,
+                                    liveBatchKeyByGameId[rowGames[j].gameId],
                                     allowStockfishFallback,
                                   )
                                   : const SizedBox.shrink(),
@@ -1631,7 +1626,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                   isChessBoardVisible: viewMode == GamesListViewMode.chessBoard,
                   viewSource: ChessboardView.tour,
                   onReturnFromChessboard: (_) {},
-                  liveBatchKey: liveBatchKey,
+                  liveBatchKey: liveBatchKeyByGameId[game.gameId],
                   allowStockfishFallback: allowStockfishFallback,
                   onBeforeOpen: () => _guardGameOpen(context),
                 ),
@@ -2180,7 +2175,10 @@ class _AboutTabState extends ConsumerState<_AboutTab>
             ),
           ),
         ),
-        if (hiddenCount > 0) ...[SizedBox(height: 12.h), buildShowHiddenButton()],
+        if (hiddenCount > 0) ...[
+          SizedBox(height: 12.h),
+          buildShowHiddenButton(),
+        ],
       ],
     );
   }
