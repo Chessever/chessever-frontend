@@ -3,11 +3,10 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/location_service_provider.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart' as skel;
@@ -64,9 +63,8 @@ class FigmaPlayerCard extends ConsumerWidget {
     final photoAsync = ref.watch(playerPhotoProvider(player.fideId));
     final avatarSize = 56.w;
     final initials = _getInitials(player.name);
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(player.countryCode);
+    final federationForFlag = player.countryCode.trim();
+    final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
 
     return GestureDetector(
       onTap: onTap,
@@ -164,19 +162,17 @@ class FigmaPlayerCard extends ConsumerWidget {
                   Row(
                     children: [
                       // Country flag
-                      if (validCountryCode.isNotEmpty)
+                      if (showFlag)
                         Padding(
                           padding: EdgeInsets.only(right: 6.w),
                           child: SizedBox(
                             width: 18.w,
                             height: 12.h,
-                            child: CountryFlag.fromCountryCode(
-                              validCountryCode,
-                              theme: ImageTheme(
-                                height: 12.h,
-                                width: 18.w,
-                                shape: RoundedRectangle(2.br),
-                              ),
+                            child: FederationFlag(
+                              federation: federationForFlag,
+                              height: 12.h,
+                              width: 18.w,
+                              borderRadius: BorderRadius.circular(2.br),
                             ),
                           ),
                         ),

@@ -4,7 +4,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 
 /// List displaying recent opponents with game results.
@@ -52,6 +52,9 @@ class RecentOpponentsList extends StatelessWidget {
     required bool isFirst,
     required bool isLast,
   }) {
+    final federationForFlag = opponent.countryCode.trim();
+    final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
       decoration: BoxDecoration(
@@ -78,16 +81,15 @@ class RecentOpponentsList extends StatelessWidget {
 
           SizedBox(width: 10.w),
 
-          // Country flag: leave blank for unknown/FID placeholder values.
-          opponent.countryCode.trim().isNotEmpty &&
-                  opponent.countryCode.toUpperCase() != 'FID'
-              ? CountryFlag.fromCountryCode(
-                opponent.countryCode,
-                theme: ImageTheme(height: 14.h, width: 20.w),
-              )
-              : SizedBox(width: 20.w, height: 14.h),
-
-          SizedBox(width: 8.w),
+          if (showFlag) ...[
+            FederationFlag(
+              federation: federationForFlag,
+              height: 14.h,
+              width: 20.w,
+              borderRadius: BorderRadius.circular(2.br),
+            ),
+            SizedBox(width: 8.w),
+          ],
 
           // Title and Name
           Expanded(

@@ -41,6 +41,39 @@ class FederationFlag extends StatelessWidget {
     '-',
   };
 
+  /// True when [federation] resolves to a visible country or FIDE flag.
+  ///
+  /// Use this before adding surrounding spacing so missing/unknown values do not
+  /// leave an empty flag slot.
+  static bool hasVisibleFlag(String? federation) {
+    final raw = (federation ?? '').trim();
+    final normalized = raw.toUpperCase();
+
+    if (raw.isEmpty) return false;
+    final lowerRaw = raw.toLowerCase();
+    if (_unknownSentinels.contains(lowerRaw)) return false;
+    if (normalized == 'FID' || normalized == 'FIDE') return true;
+    if (_ukSubdivisions.containsKey(normalized)) return true;
+    if (lowerRaw == 'england' ||
+        lowerRaw == 'scotland' ||
+        lowerRaw == 'wales') {
+      return true;
+    }
+
+    String? iso2;
+    if (normalized.length == 2) {
+      iso2 = CountryService().findByCode(normalized)?.countryCode;
+    } else if (normalized.length == 3) {
+      final mapped = CountryUtils.toIso2Code(normalized);
+      iso2 = CountryService().findByCode(mapped)?.countryCode;
+    } else {
+      final manual = CountryUtils.countryNameToIso2(raw);
+      iso2 = manual.isNotEmpty ? manual : CountryUtils.getCountryCode(raw);
+    }
+
+    return iso2 != null && iso2.length == 2;
+  }
+
   @override
   Widget build(BuildContext context) {
     final raw = (federation ?? '').trim();

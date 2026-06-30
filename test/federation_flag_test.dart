@@ -20,6 +20,15 @@ void main() {
     expect(find.byType(fcf.FlutterCountryFlags), findsOneWidget);
   });
 
+  test('visibility helper distinguishes FIDE from missing federations', () {
+    expect(FederationFlag.hasVisibleFlag('FIDE'), isTrue);
+    expect(FederationFlag.hasVisibleFlag('FID'), isTrue);
+    expect(FederationFlag.hasVisibleFlag('CHN'), isTrue);
+    expect(FederationFlag.hasVisibleFlag(''), isFalse);
+    expect(FederationFlag.hasVisibleFlag('?'), isFalse);
+    expect(FederationFlag.hasVisibleFlag('Unknown'), isFalse);
+  });
+
   testWidgets('renders FIDE flag for explicit FIDE federation', (tester) async {
     await pumpFlag(tester, 'FIDE');
 

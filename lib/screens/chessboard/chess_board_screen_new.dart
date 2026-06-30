@@ -77,6 +77,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -15817,10 +15818,10 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 12.h),
         // White player
-        _buildPlayerRow(context, game.whitePlayer, 'White', locationService),
+        _buildPlayerRow(context, game.whitePlayer, 'White'),
         SizedBox(height: 8.h),
         // Black player
-        _buildPlayerRow(context, game.blackPlayer, 'Black', locationService),
+        _buildPlayerRow(context, game.blackPlayer, 'Black'),
         SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 16.h),
       ],
     );
@@ -15860,16 +15861,12 @@ class _EventInfoSheet extends ConsumerWidget {
     return rows;
   }
 
-  Widget _buildPlayerRow(
-    BuildContext context,
-    PlayerCard player,
-    String side,
-    LocationService locationService,
-  ) {
-    // Use the same validation as PlayerFirstRowDetailWidget
-    final validCountryCode = locationService.getValidCountryCode(
-      player.countryCode,
-    );
+  Widget _buildPlayerRow(BuildContext context, PlayerCard player, String side) {
+    final federationForFlag =
+        player.countryCode.trim().isNotEmpty
+            ? player.countryCode.trim()
+            : player.federation.trim();
+    final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
@@ -15895,11 +15892,12 @@ class _EventInfoSheet extends ConsumerWidget {
             ),
           ),
           SizedBox(width: 10.w),
-          // Show a real country flag only when the country is known.
-          if (validCountryCode.isNotEmpty) ...[
-            CountryFlag.fromCountryCode(
-              validCountryCode,
-              theme: ImageTheme(width: 20.w, height: 14.h),
+          if (showFlag) ...[
+            FederationFlag(
+              federation: federationForFlag,
+              width: 20.w,
+              height: 14.h,
+              borderRadius: BorderRadius.circular(2.br),
             ),
             SizedBox(width: 8.w),
           ],
@@ -16060,10 +16058,10 @@ class _EventInfoSheet extends ConsumerWidget {
         ),
         SizedBox(height: 8.h),
         // White player
-        _buildPlayerRow(context, game.whitePlayer, 'White', locationService),
+        _buildPlayerRow(context, game.whitePlayer, 'White'),
         SizedBox(height: 8.h),
         // Black player
-        _buildPlayerRow(context, game.blackPlayer, 'Black', locationService),
+        _buildPlayerRow(context, game.blackPlayer, 'Black'),
         // Top players from tournament
         if (aboutModel.players.isNotEmpty) ...[
           SizedBox(height: 16.h),

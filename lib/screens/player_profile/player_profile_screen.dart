@@ -14,7 +14,6 @@ import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 
@@ -28,11 +27,11 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -500,10 +499,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 : ((fallbackChessPlayer?.country?.trim().isNotEmpty ?? false)
                     ? fallbackChessPlayer!.country
                     : widget.federation));
-    final countryCode =
-        effectiveFederation != null
-            ? CountryUtils.toIso2Code(effectiveFederation)
-            : '';
     final twicLookupKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
@@ -584,7 +579,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               // App bar
               _buildAppBar(
                 context,
-                countryCode,
                 isFavorite,
                 effectiveFederation: effectiveFederation,
                 effectiveName: effectiveName,
@@ -653,7 +647,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   Widget _buildAppBar(
     BuildContext context,
-    String countryCode,
     bool isFavorite, {
     required String? effectiveFederation,
     required String effectiveName,
@@ -663,6 +656,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       phone: 16.w,
       tablet: 24.w,
     );
+    final federationForFlag = effectiveFederation?.trim() ?? '';
+    final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
@@ -685,17 +680,15 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Country flag
-                  if (countryCode.isNotEmpty)
-                    ClipRRect(
+                  if (showFlag)
+                    FederationFlag(
+                      federation: federationForFlag,
+                      height: 16.h,
+                      width: 22.w,
                       borderRadius: BorderRadius.circular(2.br),
-                      child: CountryFlag.fromCountryCode(
-                        countryCode,
-                        theme: ImageTheme(height: 16.h, width: 22.w),
-                      ),
                     ),
 
-                  if (countryCode.isNotEmpty) SizedBox(width: 8.w),
+                  if (showFlag) SizedBox(width: 8.w),
 
                   // Title and name
                   Flexible(

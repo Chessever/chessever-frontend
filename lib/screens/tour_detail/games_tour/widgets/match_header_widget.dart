@@ -3,10 +3,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_d
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/location_service_provider.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -28,8 +27,8 @@ class MatchHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final player1Card = _matchPlayerCard(match, match.player1);
     final player2Card = _matchPlayerCard(match, match.player2);
-    final player1Flag = _playerFlag(ref, player1Card);
-    final player2Flag = _playerFlag(ref, player2Card);
+    final player1Flag = _playerFlag(player1Card);
+    final player2Flag = _playerFlag(player2Card);
 
     return Container(
       margin: EdgeInsets.zero,
@@ -215,8 +214,8 @@ class CompactMatchHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final player1Card = _matchPlayerCard(match, match.player1);
     final player2Card = _matchPlayerCard(match, match.player2);
-    final player1Flag = _playerFlag(ref, player1Card);
-    final player2Flag = _playerFlag(ref, player2Card);
+    final player1Flag = _playerFlag(player1Card);
+    final player2Flag = _playerFlag(player2Card);
 
     return Container(
       margin: EdgeInsets.zero,
@@ -301,21 +300,20 @@ PlayerCard? _matchPlayerCard(MatchHeaderModel match, String playerName) {
   return null;
 }
 
-Widget? _playerFlag(WidgetRef ref, PlayerCard? player) {
+Widget? _playerFlag(PlayerCard? player) {
   if (player == null) return null;
 
-  final countryCode = player.countryCode.trim();
-  if (countryCode.isEmpty) return null;
+  final federationForFlag =
+      player.countryCode.trim().isNotEmpty
+          ? player.countryCode.trim()
+          : player.federation.trim();
 
-  // Validate country code using the location service
-  final validCountryCode = ref
-      .read(locationServiceProvider)
-      .getValidCountryCode(countryCode);
+  if (!FederationFlag.hasVisibleFlag(federationForFlag)) return null;
 
-  if (validCountryCode.isEmpty) return null;
-
-  return CountryFlag.fromCountryCode(
-    validCountryCode,
-    theme: ImageTheme(height: 12.h, width: 16.w),
+  return FederationFlag(
+    federation: federationForFlag,
+    height: 12.h,
+    width: 16.w,
+    borderRadius: BorderRadius.circular(2.br),
   );
 }

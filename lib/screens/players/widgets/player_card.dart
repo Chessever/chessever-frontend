@@ -1,9 +1,9 @@
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
 import '../../../utils/svg_asset.dart';
+import '../../../widgets/federation_flag.dart';
 import '../../../widgets/svg_widget.dart';
 
 class PlayerCard extends StatefulWidget {
@@ -103,6 +103,8 @@ class _PlayerCardState extends State<PlayerCard>
 
   @override
   Widget build(BuildContext context) {
+    final federationForFlag = widget.countryCode.trim();
+    final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
     final Color backgroundColor =
         widget.index.isOdd ? context.colors.surface : context.colors.surface;
     BorderRadius? borderRadius;
@@ -142,18 +144,16 @@ class _PlayerCardState extends State<PlayerCard>
               ),
             ),
 
-            // Country flag
-            Container(
-              margin: EdgeInsets.only(right: 8.sp),
-              child:
-                  widget.countryCode.trim().isNotEmpty &&
-                          widget.countryCode.toUpperCase() != 'FID'
-                      ? CountryFlag.fromCountryCode(
-                        widget.countryCode,
-                        theme: ImageTheme(height: 14.h, width: 20.w),
-                      )
-                      : SizedBox(width: 20.w, height: 14.h),
-            ),
+            if (showFlag)
+              Container(
+                margin: EdgeInsets.only(right: 8.sp),
+                child: FederationFlag(
+                  federation: federationForFlag,
+                  height: 14.h,
+                  width: 20.w,
+                  borderRadius: BorderRadius.circular(2.br),
+                ),
+              ),
 
             // GM prefix and player name
             Expanded(

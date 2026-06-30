@@ -18,7 +18,6 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
-import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
@@ -206,9 +205,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     );
     final enrichedPlayerSnapshot = useFuture(enrichedPlayerFuture);
     final effectivePlayerCard = enrichedPlayerSnapshot.data ?? playerCard;
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(effectivePlayerCard.countryCode);
+    final federationForFlag = effectivePlayerCard.countryCode.trim();
+    final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
 
     // Calculate move time from state if available, otherwise use game model's time
     final moveTime = useMemoized(() {
@@ -722,9 +720,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         ? 5.w
                         : 6.w,
               ),
-            if (validCountryCode.isNotEmpty) ...[
+            if (showFlag) ...[
               FederationFlag(
-                federation: validCountryCode,
+                federation: federationForFlag,
                 height: flagHeight,
                 width: flagWidth,
                 borderRadius: BorderRadius.circular(2.br),

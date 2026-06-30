@@ -20,7 +20,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -1505,15 +1505,15 @@ class _ShareCard extends ConsumerWidget {
             ),
           ),
           SizedBox(width: elementSpacing.w),
-          // Show a real country flag only when the country is known.
-          if (playerCountry.isNotEmpty) ...[
-            CountryFlag.fromCountryCode(
-              playerCountry,
-              theme: ImageTheme(height: flagHeight.h, width: flagWidth.w),
+          if (FederationFlag.hasVisibleFlag(playerCountry)) ...[
+            FederationFlag(
+              federation: playerCountry,
+              height: flagHeight.h,
+              width: flagWidth.w,
+              borderRadius: BorderRadius.circular(2.br),
             ),
             SizedBox(width: elementSpacing.w),
-          ] else
-            SizedBox(width: elementSpacing.w),
+          ],
           // Name + Rating with smart truncation (matching PlayerFirstRowDetailWidget)
           Expanded(
             child: LayoutBuilder(
