@@ -19,8 +19,9 @@ final baseGameProvider = StateProvider.autoDispose
 /// Keyed by gameId only (not baseGame) so that polling-triggered rebuilds of the
 /// parent widget don't recreate the provider and disrupt the Supabase stream.
 ///
-/// Auto-disposes when the widget is scrolled out of view, which automatically
-/// cleans up the Supabase Realtime subscription for this game.
+/// Multi-game surfaces should pass a shared batch key. If they do not, the
+/// helpers below fall back to a shared round/tour stream, not a per-game
+/// channel, so fast community rounds do not trip Realtime channel limits.
 final liveGameCardProvider =
     AutoDisposeProvider.family<GamesTourModel?, String>((ref, gameId) {
       return _watchMergedLiveGame(
@@ -98,9 +99,13 @@ GamesTourModel? _watchMergedLiveGame({
   required LiveGameWatchParams params,
   required _LiveGameMergeMode mode,
 }) {
-  final update = _watchLiveUpdate(ref, params, mode);
   final baseGame = _watchBaseGame(ref, params.gameId, mode);
   if (baseGame == null) return null;
+  final update = _watchLiveUpdate(
+    ref,
+    _resolveLiveWatchParams(baseGame, params),
+    mode,
+  );
   if (update == null) return baseGame;
 
   final mergedGame = _mergeLiveUpdate(
@@ -133,9 +138,7 @@ LiveGameUpdate? _watchLiveUpdate(
   LiveGameWatchParams params,
   _LiveGameMergeMode mode,
 ) {
-  if (!params.streamEnabled ||
-      !ref.watch(shouldStreamProvider) ||
-      ref.watch(liveGameCardsPausedProvider)) {
+  if (!params.streamEnabled || !ref.watch(shouldStreamProvider)) {
     return null;
   }
 
@@ -380,7 +383,7 @@ GamesTourModel watchLiveGame(
   }
   final params = LiveGameWatchParams(
     gameId: game.gameId,
-    batchKey: batchKey,
+    batchKey: _resolveLiveBatchKey(game, batchKey),
     streamEnabled: streamEnabled,
   );
   return ref.watch(scopedLiveGameCardProvider(params)) ?? game;
@@ -395,7 +398,7 @@ GamesTourModel watchLiveGamePosition(
   _ensureBaseGame(ref, game);
   final params = LiveGameWatchParams(
     gameId: game.gameId,
-    batchKey: batchKey,
+    batchKey: _resolveLiveBatchKey(game, batchKey),
     streamEnabled: streamEnabled,
   );
   return ref.watch(liveGamePositionProvider(params)) ?? game;
@@ -410,10 +413,50 @@ GamesTourModel watchLiveGameClock(
   _ensureBaseGame(ref, game);
   final params = LiveGameWatchParams(
     gameId: game.gameId,
-    batchKey: batchKey,
+    batchKey: _resolveLiveBatchKey(game, batchKey),
     streamEnabled: streamEnabled,
   );
   return ref.watch(liveGameClockProvider(params)) ?? game;
+}
+
+LiveGamesBatchKey? _resolveLiveBatchKey(
+  GamesTourModel game,
+  LiveGamesBatchKey? batchKey,
+) {
+  if (batchKey != null) return batchKey;
+  if (game.source != GameSource.supabase) return null;
+
+  final roundId = game.roundId.trim();
+  if (roundId.isNotEmpty) {
+    return LiveGamesBatchKey(
+      scopeId: 'implicit_round:$roundId',
+      gameIds: const <String>[],
+      roundId: roundId,
+    );
+  }
+
+  final tourId = game.tourId.trim();
+  if (tourId.isNotEmpty) {
+    return LiveGamesBatchKey(
+      scopeId: 'implicit_tour:$tourId',
+      gameIds: const <String>[],
+      tourId: tourId,
+    );
+  }
+
+  return null;
+}
+
+LiveGameWatchParams _resolveLiveWatchParams(
+  GamesTourModel baseGame,
+  LiveGameWatchParams params,
+) {
+  if (params.batchKey != null) return params;
+  return LiveGameWatchParams(
+    gameId: params.gameId,
+    batchKey: _resolveLiveBatchKey(baseGame, null),
+    streamEnabled: params.streamEnabled,
+  );
 }
 
 void _ensureBaseGame(WidgetRef ref, GamesTourModel game) {

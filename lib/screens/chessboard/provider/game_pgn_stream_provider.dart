@@ -12,9 +12,9 @@ final gamePgnStreamProvider = AutoDisposeStreamProvider.family<String?, String>(
 
 /// Comprehensive game updates stream for live data (FEN, PGN, clocks, status).
 ///
-/// Each game gets its own individual Realtime channel.
-/// Auto-disposes when the widget is scrolled out of view, which automatically
-/// cleans up the Supabase Realtime subscription.
+/// Focused board views may use a single-game stream. Multi-game broadcast
+/// surfaces must use [gameUpdatesBatchStreamProvider] so they do not exceed
+/// Supabase's channel limits.
 final gameUpdatesStreamProvider = AutoDisposeStreamProvider.family<
   Map<String, dynamic>?,
   String
@@ -31,21 +31,36 @@ final liveGameUpdateStreamProvider =
 
 @immutable
 class LiveGamesBatchKey {
-  LiveGamesBatchKey({required this.scopeId, required Iterable<String> gameIds})
-    : gameIds = List.unmodifiable(
-        gameIds.where((id) => id.isNotEmpty).toSet().toList()..sort(),
-      );
+  LiveGamesBatchKey({
+    required this.scopeId,
+    required Iterable<String> gameIds,
+    this.roundId,
+    this.tourId,
+  }) : gameIds = List.unmodifiable(
+         gameIds.where((id) => id.isNotEmpty).toSet().toList()..sort(),
+       );
 
   final String scopeId;
   final List<String> gameIds;
+  final String? roundId;
+  final String? tourId;
 
-  bool contains(String gameId) => gameIds.contains(gameId);
+  bool get isScopedFilter =>
+      (roundId != null && roundId!.isNotEmpty) ||
+      (tourId != null && tourId!.isNotEmpty);
+
+  bool contains(String gameId) {
+    return gameIds.contains(gameId) || (isScopedFilter && gameId.isNotEmpty);
+  }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! LiveGamesBatchKey) return false;
-    if (other.scopeId != scopeId || other.gameIds.length != gameIds.length) {
+    if (other.scopeId != scopeId ||
+        other.roundId != roundId ||
+        other.tourId != tourId ||
+        other.gameIds.length != gameIds.length) {
       return false;
     }
     for (var i = 0; i < gameIds.length; i++) {
@@ -55,14 +70,22 @@ class LiveGamesBatchKey {
   }
 
   @override
-  int get hashCode => Object.hash(scopeId, Object.hashAll(gameIds));
+  int get hashCode =>
+      Object.hash(scopeId, roundId, tourId, Object.hashAll(gameIds));
 }
 
 final gameUpdatesBatchStreamProvider = AutoDisposeStreamProvider.family<
   Map<String, LiveGameUpdate>,
   LiveGamesBatchKey
 >((ref, key) {
-  return ref
-      .read(gameStreamRepositoryProvider)
-      .subscribeToLiveGameUpdatesBatch(key.gameIds);
+  final repository = ref.read(gameStreamRepositoryProvider);
+  final roundId = key.roundId?.trim();
+  if (roundId != null && roundId.isNotEmpty) {
+    return repository.subscribeToLiveGameUpdatesForRound(roundId);
+  }
+  final tourId = key.tourId?.trim();
+  if (tourId != null && tourId.isNotEmpty) {
+    return repository.subscribeToLiveGameUpdatesForTour(tourId);
+  }
+  return repository.subscribeToLiveGameUpdatesBatch(key.gameIds);
 });

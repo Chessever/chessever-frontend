@@ -146,9 +146,9 @@ So on a single "Performing hot restart..." event, the VM must unwind: **~20 para
 | [`lib/screens/group_event/providers/live_group_broadcast_id_provider.dart`](../lib/screens/group_event/providers/live_group_broadcast_id_provider.dart) | Custom `StreamController` + 2 Supabase streams + `Timer.periodic(1 min)` |
 | [`lib/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart`](../lib/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart) | `AutoDisposeStreamProvider` |
 | [`lib/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart`](../lib/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart) | `AutoDisposeStreamProvider` |
-| [`lib/repository/supabase/game/game_stream_repository.dart`](../lib/repository/supabase/game/game_stream_repository.dart) | `subscribeToPgn`, `subscribeToLastMove`, `subscribeToFen`, `subscribeToStatus`, `subscribeToGameUpdates` — one channel per game |
-| [`lib/screens/chessboard/provider/game_pgn_stream_provider.dart`](../lib/screens/chessboard/provider/game_pgn_stream_provider.dart) | `gamePgnStreamProvider`, `gameUpdatesStreamProvider` families |
-| [`lib/screens/tour_detail/games_tour/providers/game_clock_stream_provider.dart`](../lib/screens/tour_detail/games_tour/providers/game_clock_stream_provider.dart) | Per-game clock streams |
+| [`lib/repository/supabase/game/game_stream_repository.dart`](../lib/repository/supabase/game/game_stream_repository.dart) | Single-game streams for focused board views plus shared game batch, round, and tour streams for broadcast lists |
+| [`lib/screens/chessboard/provider/game_pgn_stream_provider.dart`](../lib/screens/chessboard/provider/game_pgn_stream_provider.dart) | `gamePgnStreamProvider`, `gameUpdatesStreamProvider`, and `gameUpdatesBatchStreamProvider` families |
+| [`lib/screens/tour_detail/games_tour/providers/game_clock_stream_provider.dart`](../lib/screens/tour_detail/games_tour/providers/game_clock_stream_provider.dart) | Per-game clock streams; do not use these for multi-board broadcast lists |
 | [`lib/repository/library/library_repository.dart`](../lib/repository/library/library_repository.dart) | `subscribeFolders`, `subscribeAnalyses` — library streams |
 
 ### 4.3 FFI / native engine

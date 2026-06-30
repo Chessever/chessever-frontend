@@ -102,17 +102,13 @@ class LiveGameUpdate {
 }
 
 /// Repository provider for game streaming.
-/// Each subscription creates its own Realtime channel that auto-disposes when the widget
-/// is scrolled out of view (via Riverpod's autoDispose).
 final gameStreamRepositoryProvider = AutoDisposeProvider<GameStreamRepository>((
   ref,
 ) {
   return GameStreamRepository();
 });
 
-/// Repository for streaming individual game updates from Supabase Realtime.
-/// Uses Supabase's .stream() which creates individual channels per game.
-/// Riverpod's autoDispose handles cleanup when widgets are disposed.
+/// Repository for streaming game updates from Supabase Realtime.
 class GameStreamRepository {
   /// Subscribe to PGN updates for a specific game
   Stream<String?> subscribeToPgn(String gameId) {
@@ -152,9 +148,7 @@ class GameStreamRepository {
         .map((data) => data.isEmpty ? null : data.first['status'] as String?);
   }
 
-  /// Comprehensive game streaming - includes ALL game data in one stream.
-  /// This is the primary method used by game cards for live updates.
-  /// Each call creates an individual Realtime channel for this game.
+  /// Comprehensive single-game streaming for focused board views.
   Stream<Map<String, dynamic>?> subscribeToGameUpdates(String gameId) {
     return subscribeToLiveGameUpdate(
       gameId,
@@ -200,6 +194,46 @@ class GameStreamRepository {
         })
         .distinct(_sameLiveGameUpdateBatch);
   }
+
+  Stream<Map<String, LiveGameUpdate>> subscribeToLiveGameUpdatesForRound(
+    String roundId,
+  ) {
+    final id = roundId.trim();
+    if (id.isEmpty) {
+      return Stream.value(const <String, LiveGameUpdate>{});
+    }
+
+    return Supabase.instance.client
+        .from('games')
+        .stream(primaryKey: ['id'])
+        .eq('round_id', id)
+        .map(_rowsToLiveGameUpdateMap)
+        .distinct(_sameLiveGameUpdateBatch);
+  }
+
+  Stream<Map<String, LiveGameUpdate>> subscribeToLiveGameUpdatesForTour(
+    String tourId,
+  ) {
+    final id = tourId.trim();
+    if (id.isEmpty) {
+      return Stream.value(const <String, LiveGameUpdate>{});
+    }
+
+    return Supabase.instance.client
+        .from('games')
+        .stream(primaryKey: ['id'])
+        .eq('tour_id', id)
+        .map(_rowsToLiveGameUpdateMap)
+        .distinct(_sameLiveGameUpdateBatch);
+  }
+}
+
+Map<String, LiveGameUpdate> _rowsToLiveGameUpdateMap(
+  List<Map<String, dynamic>> rows,
+) {
+  return {
+    for (final row in rows) row['id'] as String: LiveGameUpdate.fromRow(row),
+  };
 }
 
 bool _sameLegacyUpdate(

@@ -15,6 +15,8 @@ class _FakeGameStreamRepository extends GameStreamRepository {
   final Stream<Map<String, dynamic>?> stream;
   int individualSubscriptions = 0;
   int batchSubscriptions = 0;
+  int roundSubscriptions = 0;
+  int tourSubscriptions = 0;
 
   @override
   Stream<Map<String, dynamic>?> subscribeToGameUpdates(String gameId) {
@@ -36,6 +38,28 @@ class _FakeGameStreamRepository extends GameStreamRepository {
     List<String> gameIds,
   ) {
     batchSubscriptions++;
+    return _liveGameUpdatesForIds(gameIds);
+  }
+
+  @override
+  Stream<Map<String, LiveGameUpdate>> subscribeToLiveGameUpdatesForRound(
+    String roundId,
+  ) {
+    roundSubscriptions++;
+    return _liveGameUpdatesForIds(const ['game-1']);
+  }
+
+  @override
+  Stream<Map<String, LiveGameUpdate>> subscribeToLiveGameUpdatesForTour(
+    String tourId,
+  ) {
+    tourSubscriptions++;
+    return _liveGameUpdatesForIds(const ['game-1']);
+  }
+
+  Stream<Map<String, LiveGameUpdate>> _liveGameUpdatesForIds(
+    List<String> gameIds,
+  ) {
     return stream.map((update) {
       if (update == null) return const <String, LiveGameUpdate>{};
       return {
@@ -266,7 +290,8 @@ void main() {
 
       container.read(shouldStreamProvider.notifier).state = true;
       await Future<void>.delayed(Duration.zero);
-      expect(repository.individualSubscriptions, 1);
+      expect(repository.individualSubscriptions, 0);
+      expect(repository.roundSubscriptions, 1);
 
       controller.add({
         'fen': afterE4,
@@ -306,7 +331,8 @@ void main() {
       );
       addTearDown(sub.close);
 
-      expect(repository.individualSubscriptions, 1);
+      expect(repository.individualSubscriptions, 0);
+      expect(repository.roundSubscriptions, 1);
       expect(sub.read()?.fen, afterE4);
       expect(sub.read()?.activePlayer, Side.black);
 
