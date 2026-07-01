@@ -35,6 +35,7 @@ import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -737,7 +738,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
     final isTwicLoading = gamesState.isLoading || isTwicStatsLoading;
 
-    return Scaffold(
+    final scaffold = Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
       backgroundColor: context.colors.background,
       body: Center(
@@ -818,6 +819,18 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           ),
         ),
       ),
+    );
+
+    // Screenshot → open the branded profile share preview (same flow as the
+    // share button in the top bar).
+    return ScreenshotShareNudge(
+      onShare:
+          () => _shareProfile(
+            effectiveName: effectiveName,
+            effectiveTitle: effectiveTitle,
+            effectiveFederation: effectiveFederation,
+          ),
+      child: scaffold,
     );
   }
 
