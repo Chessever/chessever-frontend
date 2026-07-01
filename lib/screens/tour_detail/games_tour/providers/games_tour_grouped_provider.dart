@@ -212,13 +212,9 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   } else if (isRoundSlugDerivedStages) {
     for (final game in allGamesScreenModel) {
-      final match = RegExp(r'(stage-[^/]+)').firstMatch(game.roundSlug ?? '');
-      if (match != null) {
-        final stageName = match.group(1)!;
-        final roundId = 'knockout-stage-$tourId-$stageName';
-        if (gamesByRound.containsKey(roundId)) {
-          addGameToRound(roundId, game);
-        }
+      final roundId = roundSlugStageRoundId(tourId, game.roundSlug);
+      if (roundId != null && gamesByRound.containsKey(roundId)) {
+        addGameToRound(roundId, game);
       }
     }
   } else {
@@ -281,6 +277,24 @@ bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
     case GameDisplayMode.all:
       return true;
   }
+}
+
+/// Maps a game's round slug to the synthetic stage round id that
+/// gamesAppBarProvider builds for round-slug derived knockout stages
+/// (`knockout-stage-<tourId>-<stage>`). The stage part is the slug segment
+/// before "--" (or the whole slug), normalized the same way the app bar
+/// normalizes its stage names.
+@visibleForTesting
+String? roundSlugStageRoundId(String tourId, String? roundSlug) {
+  final slug = roundSlug?.trim().toLowerCase();
+  if (slug == null || slug.isEmpty) return null;
+  final stagePart = slug.contains('--') ? slug.split('--').first : slug;
+  final normalized = stagePart
+      .split(RegExp(r'[-_\s]'))
+      .where((s) => s.isNotEmpty)
+      .join('-');
+  if (normalized.isEmpty) return null;
+  return '$kKnockoutStagePrefix-$tourId-$normalized';
 }
 
 @visibleForTesting
