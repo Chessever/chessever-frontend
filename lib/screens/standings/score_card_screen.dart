@@ -1417,14 +1417,11 @@ class _PlayerHeaderRow extends StatelessWidget {
   final String rawCountryCode;
   final String? title;
   final String name;
-  final bool hasTournamentContext;
-
   const _PlayerHeaderRow({
     required this.countryCode,
     required this.rawCountryCode,
     required this.title,
     required this.name,
-    required this.hasTournamentContext,
   });
 
   @override
@@ -1469,12 +1466,6 @@ class _PlayerHeaderRow extends StatelessWidget {
             ),
           ),
         ),
-        if (hasTournamentContext)
-          Icon(
-            Icons.more_horiz,
-            color: context.colors.textPrimaryMuted,
-            size: 20.ic,
-          ),
       ],
     );
   }
@@ -1690,7 +1681,6 @@ class _SliverScoreboardAppBarState
       rawCountryCode: player.countryCode,
       title: player.title,
       name: player.name,
-      hasTournamentContext: hasTournamentContext,
     );
 
     return SliverAppBar(
