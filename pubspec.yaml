@@ -210,6 +210,7 @@ flutter:
     - assets/pngs/
     - assets/lottie/
     - assets/sfx/
+    - assets/sounds/
     - assets/launch.webp
     - assets/app_icon.png
     # - .env
