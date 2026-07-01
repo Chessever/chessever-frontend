@@ -79,6 +79,7 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
+import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -3530,11 +3531,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
   }
 
-  void shareGameBtnClicked() async {
+  Future<void> shareGameBtnClicked() async {
     try {
       final resolved = await _resolveAppBarShareData();
       if (!mounted) return;
-      Navigator.of(context).push(
+      await Navigator.of(context).push(
         PageRouteBuilder(
           opaque: false,
           barrierDismissible: true,
@@ -3786,12 +3787,18 @@ class _AppBarState extends ConsumerState<_AppBar> {
       );
     }
 
-    return AppBar(
-      elevation: 0,
-      backgroundColor: context.colors.background,
-      surfaceTintColor: context.colors.background,
-      leadingWidth: 44.sp,
-      titleSpacing: 4.sp,
+    // Screenshot -> open the branded game-share preview (same flow as the
+    // 3-dots "Share Game" action). Only the active PageView page listens;
+    // adjacent pre-built pages and the loading skeleton stay inert.
+    return ScreenshotShareNudge(
+      enabled: widget.isActivePage && !widget.isLoading,
+      onShare: shareGameBtnClicked,
+      child: AppBar(
+        elevation: 0,
+        backgroundColor: context.colors.background,
+        surfaceTintColor: context.colors.background,
+        leadingWidth: 44.sp,
+        titleSpacing: 4.sp,
       leading: IconButton(
         icon: Icon(
           Icons.arrow_back_ios_new,
@@ -4089,6 +4096,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
           ],
         ),
       ],
+      ),
     );
   }
 }
