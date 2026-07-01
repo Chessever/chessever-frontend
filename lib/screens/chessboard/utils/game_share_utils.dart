@@ -21,6 +21,21 @@ final _uuidPattern = RegExp(
 );
 final _lichessShortIdPattern = RegExp(r'^[A-Za-z0-9]{8}$');
 
+/// Broadcast game URLs keep the game id as the last segment:
+/// `lichess.org/broadcast/{tourSlug}/{roundSlug}/{roundId}/{gameId}`.
+/// Also match `chessever.com` — [rebrandPgnLinks] swaps only the host and
+/// keeps the Lichess path structure intact.
+final _broadcastGameUrlPattern = RegExp(
+  r'(?:lichess\.(?:org|dev)|chessever\.com)/broadcast/[^/\s"]+/[^/\s"]+/[A-Za-z0-9]{8}/([A-Za-z0-9]{8})',
+  caseSensitive: false,
+);
+
+/// Direct game URLs: `lichess.org/{gameId}` (optionally `/white`, `?...`).
+final _directGameUrlPattern = RegExp(
+  r'(?:lichess\.(?:org|dev)|chessever\.com)/([A-Za-z0-9]{8})(?=[/?#\s"]|$)',
+  caseSensitive: false,
+);
+
 class GameShareSnapshot {
   final String positionFen;
   final Move? lastMove;
@@ -75,20 +90,41 @@ bool isGamebaseBackedSource(GameSource source) {
   return source == GameSource.gamebase || source == GameSource.twic;
 }
 
+/// Recover the Lichess game id from a PGN's link headers (`Site`,
+/// `GameURL`, ...). Broadcast-imported gamebase/TWIC games keep their
+/// original Lichess game URL there, and the shared-game deep link resolves
+/// 8-char Lichess ids via `getGameByLichessId`.
+String? lichessGameIdFromPgn(String? pgn) {
+  if (!_hasText(pgn)) return null;
+  final broadcastMatch = _broadcastGameUrlPattern.firstMatch(pgn!);
+  if (broadcastMatch != null) return broadcastMatch.group(1);
+  return _directGameUrlPattern.firstMatch(pgn)?.group(1);
+}
+
 String? buildGameShareUrl({
   required GamesTourModel game,
   SavedAnalysisData? savedAnalysisData,
 }) {
   String? linkableId;
+  var includeTourContext = false;
   switch (game.source) {
     case GameSource.supabase:
       linkableId = _trimmedOrNull(game.gameId);
+      includeTourContext = true;
       break;
     case GameSource.savedAnalysis:
       linkableId = _trimmedOrNull(savedAnalysisData?.sourceGameId);
+      includeTourContext = true;
       break;
     case GameSource.gamebase:
     case GameSource.twic:
+      // Gamebase/TWIC ids are internal and not resolvable by the shared-game
+      // deep link. Broadcast-imported games still carry their Lichess game
+      // URL in the PGN Site header, so recover the linkable id from there.
+      // Their tourSlug/roundSlug are display labels (event name, ECO), not
+      // real slugs, so leave them out of the URL.
+      linkableId = lichessGameIdFromPgn(game.pgn);
+      break;
     case GameSource.openingExplorer:
     case GameSource.boardEditor:
     case GameSource.localAnalysis:
@@ -102,8 +138,10 @@ String? buildGameShareUrl({
 
   final uri = Uri.parse('https://chessever.com/games/$linkableId');
   final queryParams = <String, String>{};
-  if (_hasText(game.tourSlug)) queryParams['tour'] = game.tourSlug!;
-  if (_hasText(game.roundSlug)) queryParams['round'] = game.roundSlug!;
+  if (includeTourContext) {
+    if (_hasText(game.tourSlug)) queryParams['tour'] = game.tourSlug!;
+    if (_hasText(game.roundSlug)) queryParams['round'] = game.roundSlug!;
+  }
 
   if (queryParams.isEmpty) {
     return uri.toString();

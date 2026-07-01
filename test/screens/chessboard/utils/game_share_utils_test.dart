@@ -82,7 +82,10 @@ void main() {
     test('returns a deep link for canonical Supabase games', () {
       final url = buildGameShareUrl(game: _game());
 
-      expect(url, 'https://chessever.com/games/$_canonicalGameId');
+      expect(
+        url,
+        'https://chessever.com/games/$_canonicalGameId?tour=tour-slug&round=A00',
+      );
     });
 
     test(
@@ -96,9 +99,80 @@ void main() {
           savedAnalysisData: _savedAnalysisData(sourceGameId: _canonicalGameId),
         );
 
-        expect(url, 'https://chessever.com/games/$_canonicalGameId');
+        expect(
+          url,
+          'https://chessever.com/games/$_canonicalGameId?tour=tour-slug&round=A00',
+        );
       },
     );
+
+    test(
+      'derives a link from the Lichess broadcast Site header for TWIC games',
+      () {
+        const broadcastPgn = '''
+[Event "Norway Chess 2026"]
+[Site "https://lichess.org/broadcast/norway-chess-2026/round-6/AbCd1234/xYz45678"]
+[White "White"]
+[Black "Black"]
+[Result "1-0"]
+
+*
+''';
+        final url = buildGameShareUrl(
+          game: _game(
+            gameId: 'twic-1',
+            source: GameSource.twic,
+            pgn: broadcastPgn,
+          ),
+        );
+
+        // TWIC tourSlug/roundSlug are display labels, not slugs — no query.
+        expect(url, 'https://chessever.com/games/xYz45678');
+      },
+    );
+
+    test('derives a link from a rebranded direct game URL for gamebase', () {
+      const rebrandedPgn = '''
+[Event "Some Event"]
+[Site "https://chessever.com/aBcDeF12"]
+[White "White"]
+[Black "Black"]
+[Result "1/2-1/2"]
+
+*
+''';
+      final url = buildGameShareUrl(
+        game: _game(
+          gameId: 'gamebase-1',
+          source: GameSource.gamebase,
+          pgn: rebrandedPgn,
+        ),
+      );
+
+      expect(url, 'https://chessever.com/games/aBcDeF12');
+    });
+
+    test('returns null for TWIC games whose Site has no game id', () {
+      const roundOnlyPgn = '''
+[Event "Norway Chess 2026"]
+[Site "https://lichess.org/broadcast/norway-chess-2026/round-6/AbCd1234"]
+[White "White"]
+[Black "Black"]
+[Result "1-0"]
+
+*
+''';
+      expect(
+        buildGameShareUrl(
+          game: _game(
+            gameId: 'twic-1',
+            source: GameSource.twic,
+            pgn: roundOnlyPgn,
+          ),
+        ),
+        isNull,
+      );
+    });
 
     test(
       'returns null for non-canonical sources and unresolved saved analyses',
