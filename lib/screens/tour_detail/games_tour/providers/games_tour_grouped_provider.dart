@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GroupedGamesData {
@@ -146,6 +147,9 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   }
 
   bool addGameToRound(String roundId, GamesTourModel game) {
+    if (!isEventBoardGameVisible(game)) {
+      return false;
+    }
     ensureRoundEntry(roundId);
     if (seenGameIdsPerRound[roundId]!.add(game.gameId)) {
       gamesByRound[roundId]!.add(game);
@@ -184,7 +188,10 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         final stageAsync = ref.read(gamesTourProvider(stageTourId));
         final rawStageGames = stageAsync.valueOrNull ?? [];
         stageTourGames[stageTourId] =
-            rawStageGames.map((g) => GamesTourModel.fromGame(g)).toList();
+            rawStageGames
+                .map((g) => GamesTourModel.fromGame(g))
+                .where(isEventBoardGameVisible)
+                .toList();
       }
 
       for (final round in rounds) {
@@ -274,4 +281,60 @@ bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
     case GameDisplayMode.all:
       return true;
   }
+}
+
+@visibleForTesting
+bool isEventBoardGameVisible(GamesTourModel game) {
+  if (!_hasResolvedPlayer(game.whitePlayer) ||
+      !_hasResolvedPlayer(game.blackPlayer)) {
+    return false;
+  }
+
+  if (_hasPlayedPosition(game)) {
+    return true;
+  }
+
+  // Do not turn unstarted pairings/placeholders into playable event boards.
+  // Round start times still live on the round models/schedule; empty rounds are
+  // removed from the Games dropdown by filteredRounds.
+  return false;
+}
+
+bool _hasResolvedPlayer(PlayerCard player) {
+  final normalized = player.name.trim().toLowerCase();
+  if (normalized.isEmpty) return false;
+  return normalized != '?' &&
+      normalized != '??' &&
+      normalized != 'tbd' &&
+      normalized != 'tba' &&
+      normalized != 'unknown';
+}
+
+bool _hasPlayedPosition(GamesTourModel game) {
+  if (game.lastMove?.trim().isNotEmpty == true) return true;
+  if (_pgnContainsMoves(game.pgn)) return true;
+  final fen = game.fen?.trim();
+  if (fen == null || fen.isEmpty) return false;
+  return !_isInitialFen(fen);
+}
+
+bool _pgnContainsMoves(String? pgn) {
+  final text = pgn?.trim();
+  if (text == null || text.isEmpty) return false;
+  final withoutHeaders =
+      text
+          .split('\n')
+          .where((line) => !line.trimLeft().startsWith('['))
+          .join(' ')
+          .trim();
+  return RegExp(r'\b\d+\s*\.').hasMatch(withoutHeaders) ||
+      RegExp(
+        r'\b[a-h][1-8][a-h][1-8][qrbn]?\b',
+        caseSensitive: false,
+      ).hasMatch(withoutHeaders);
+}
+
+bool _isInitialFen(String fen) {
+  final board = fen.split(RegExp(r'\s+')).first;
+  return board == 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
 }
