@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io' as io;
+import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -11,9 +14,16 @@ import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/standings/widgets/player_event_share_image_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
+import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 
@@ -27,7 +37,6 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
-import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
@@ -35,6 +44,8 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Enum for player profile screen tabs
 enum PlayerProfileTab { about, games, events }
@@ -451,6 +462,171 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
   }
 
+  /// Recent completed games shown on the shareable profile card. The card's
+  /// height is intrinsic, so cap the list to keep the image social-friendly.
+  static const _maxShareGames = 12;
+
+  PlayerEventGameOutcome _shareOutcomeFor(GameStatus status, bool isWhite) {
+    switch (status) {
+      case GameStatus.whiteWins:
+        return isWhite
+            ? PlayerEventGameOutcome.win
+            : PlayerEventGameOutcome.loss;
+      case GameStatus.blackWins:
+        return isWhite
+            ? PlayerEventGameOutcome.loss
+            : PlayerEventGameOutcome.win;
+      case GameStatus.draw:
+        return PlayerEventGameOutcome.draw;
+      default:
+        return PlayerEventGameOutcome.other;
+    }
+  }
+
+  PlayerEventShareGameRow _shareRowFor(GamesTourModel game, dynamic playerUtils) {
+    final bool isWhite = playerUtils.isSamePlayerWithFideId(
+      game.whitePlayer.name,
+      widget.playerName,
+      fideId1: game.whitePlayer.fideId,
+      fideId2: widget.fideId,
+    );
+    final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
+    return PlayerEventShareGameRow(
+      roundLabel: null,
+      countryCode: opponent.countryCode,
+      title: opponent.title,
+      name: opponent.name,
+      rating: opponent.rating,
+      ratingChange: null,
+      result: boardResultLabelForSide(game, isWhite: isWhite) ?? '-',
+      outcome: _shareOutcomeFor(game.gameStatus, isWhite),
+      isWhite: isWhite,
+    );
+  }
+
+  Future<void> _shareProfile({
+    required String effectiveName,
+    required String? effectiveTitle,
+    required String? effectiveFederation,
+  }) async {
+    HapticFeedbackService.buttonPress();
+
+    final playerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: _source,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
+    final activeProfile =
+        ref.read(playerProfileDataKeyProvider(playerKey)).valueOrNull;
+    final playerUtils = ref.read(playerUtilsProvider);
+
+    final completedGames =
+        gamesState.allGames
+            .where(
+              (game) =>
+                  game.gameStatus == GameStatus.whiteWins ||
+                  game.gameStatus == GameStatus.blackWins ||
+                  game.gameStatus == GameStatus.draw,
+            )
+            .take(_maxShareGames)
+            .toList(growable: false);
+    final rows = [
+      for (final game in completedGames) _shareRowFor(game, playerUtils),
+    ];
+
+    final nameParts = effectiveName.split(',');
+    final initials =
+        nameParts.length > 1
+            ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
+                '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
+            : effectiveName.trim().isNotEmpty
+            ? effectiveName.trim().substring(
+              0,
+              math.min(2, effectiveName.trim().length),
+            )
+            : '';
+
+    final standardRating = activeProfile?.classicalRating ?? widget.rating;
+    final playerModel = PlayerStandingModel(
+      countryCode: effectiveFederation ?? '',
+      title: effectiveTitle,
+      name: effectiveName,
+      score: standardRating ?? 0,
+      scoreChange: 0,
+      matchScore: null,
+      fideId: widget.fideId,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    final photoFuture = FidePhotoService.getPhotoUrlOrNull(
+      widget.fideId?.toString(),
+    );
+
+    try {
+      final logicalWidth = math.min(MediaQuery.of(context).size.width, 430.0);
+
+      // Warm the player photo into the image cache before the snapshot so the
+      // avatar paints on the first captured frame instead of falling back to
+      // initials. A missing/failed photo must never block the share.
+      try {
+        final photoUrl = await photoFuture;
+        if (photoUrl != null && photoUrl.isNotEmpty && mounted) {
+          await precacheImage(CachedNetworkImageProvider(photoUrl), context);
+        }
+      } catch (_) {}
+      if (!mounted) return;
+
+      final imageBytes = await captureCardPng(
+        context,
+        width: logicalWidth,
+        pixelRatio: 3.0,
+        child: PlayerEventShareImageCard(
+          width: logicalWidth,
+          player: playerModel,
+          photoFuture: photoFuture,
+          initials: initials,
+          eventName: null,
+          performanceRating: null,
+          eventScore: null,
+          eventTotalGames: null,
+          ratingDiff: null,
+          standardRating: standardRating,
+          rapidRating: activeProfile?.rapidRating,
+          blitzRating: activeProfile?.blitzRating,
+          rows: rows,
+        ),
+      );
+      if (imageBytes == null) {
+        throw StateError('Share card render produced no image');
+      }
+      if (!mounted) return;
+
+      final tempDir = await getTemporaryDirectory();
+      final file = io.File('${tempDir.path}/chessever_player_profile.png');
+      await file.writeAsBytes(imageBytes);
+      if (!mounted) return;
+
+      await showShareImagePreview(
+        context,
+        imageBytes: imageBytes,
+        onShareImage: () async {
+          await Share.shareXFiles(
+            [XFile(file.path, mimeType: 'image/png')],
+            subject: effectiveName,
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          );
+        },
+      );
+    } catch (error) {
+      debugPrint('Failed to share player profile: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to share player profile')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
@@ -656,8 +832,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       phone: 16.w,
       tablet: 24.w,
     );
-    final federationForFlag = effectiveFederation?.trim() ?? '';
-    final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
@@ -674,37 +848,39 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             ),
           ),
 
-          // Player name and flag
+          // Title and name — no flag, compact style so the share + favorite
+          // actions fit without crowding the header.
           Expanded(
             child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showFlag)
-                    FederationFlag(
-                      federation: federationForFlag,
-                      height: 16.h,
-                      width: 22.w,
-                      borderRadius: BorderRadius.circular(2.br),
-                    ),
+              child: Text(
+                _formatDisplayName(name: effectiveName, title: effectiveTitle),
+                style: AppTypography.textMdBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
 
-                  if (showFlag) SizedBox(width: 8.w),
-
-                  // Title and name
-                  Flexible(
-                    child: Text(
-                      _formatDisplayName(
-                        name: effectiveName,
-                        title: effectiveTitle,
-                      ),
-                      style: AppTypography.textLgBold.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+          // Share button
+          GestureDetector(
+            onTap:
+                () => _shareProfile(
+                  effectiveName: effectiveName,
+                  effectiveTitle: effectiveTitle,
+                  effectiveFederation: effectiveFederation,
+                ),
+            child: Container(
+              width: 38.w,
+              height: 44.h,
+              padding: EdgeInsets.all(6.sp),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.ios_share,
+                color: context.colors.textPrimary,
+                size: 20.ic,
+                semanticLabel: 'Share Profile',
               ),
             ),
           ),
@@ -713,9 +889,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           GestureDetector(
             onTap: _toggleFavorite,
             child: Container(
-              width: 48.w,
-              height: 48.h,
-              padding: EdgeInsets.all(8.sp),
+              width: 38.w,
+              height: 44.h,
+              padding: EdgeInsets.all(6.sp),
               child: ScaleTransition(
                 scale: _favoriteScaleAnimation,
                 child: SvgWidget(
@@ -723,8 +899,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       ? SvgAsset.favouriteRedIcon
                       : SvgAsset.favouriteIcon2,
                   semanticsLabel: 'Favorite',
-                  height: 22.h,
-                  width: 22.w,
+                  height: 20.h,
+                  width: 20.w,
                   preserveOriginalColors: isFavorite,
                 ),
               ),
