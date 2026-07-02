@@ -10982,7 +10982,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                     ),
                                   ),
                                   SizedBox(height: 12.sp),
-                                  // Promote main variant button
+                                  // Promote button
                                   Material(
                                     color: Colors.transparent,
                                     child: InkWell(
@@ -11046,7 +11046,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                             ),
                                             SizedBox(width: 8.sp),
                                             Text(
-                                              'Promote main variant',
+                                              'Promote',
                                               style: AppTypography.textSmMedium
                                                   .copyWith(
                                                     color:
