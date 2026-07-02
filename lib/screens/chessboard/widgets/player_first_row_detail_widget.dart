@@ -241,7 +241,14 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       return calculatedMoveTime;
     }, [chessBoardState, isWhitePlayer, effectiveGameModel]);
 
+    // Game-level check: does this game have ANY clock data? Must be stable
+    // across move navigation — keying visibility off the currently navigated
+    // move made the clock mount/unmount (e.g. before a player's first move),
+    // resizing the row and shaking the board. When the game has clocks but the
+    // current move doesn't, AtomicCountdownText renders a '--:--' placeholder
+    // in the same slot instead.
     final hasClockData =
+        (chessBoardState?.moveTimes.any(hasUsableClockDisplay) ?? false) ||
         hasUsableClockDisplay(moveTime) ||
         (isWhitePlayer
             ? effectiveGameModel.whiteClockSeconds != null ||
@@ -903,13 +910,16 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   borderRadius: BorderRadius.circular(
                     playerView == PlayerView.gridView ? 3.br : 4.br,
                   ),
-                  border:
-                      visibleIsCurrentPlayer
-                          ? Border.all(
-                            color: kPrimaryColor.withValues(alpha: 0.4),
-                            width: 0.7,
-                          )
-                          : null,
+                  // Border always occupies space (transparent when inactive) so
+                  // the row's height never changes as the active player flips
+                  // during move navigation — otherwise the board shifts.
+                  border: Border.all(
+                    color:
+                        visibleIsCurrentPlayer
+                            ? kPrimaryColor.withValues(alpha: 0.4)
+                            : Colors.transparent,
+                    width: 0.7,
+                  ),
                 ),
                 child: _PlayerClock(
                   isWhitePlayer: isWhitePlayer,
