@@ -3,6 +3,7 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
@@ -230,7 +231,10 @@ List<GamesTourModel> sortGamesForGamesTab({
   final parsedGames = <GamesTourModel>[];
   for (final game in games) {
     try {
-      parsedGames.add(GamesTourModel.fromGame(game));
+      final model = GamesTourModel.fromGame(game);
+      if (isEventBoardGameVisible(model)) {
+        parsedGames.add(model);
+      }
     } catch (_) {
       // Ignore malformed game rows to match tournament detail resiliency.
     }
@@ -314,7 +318,12 @@ List<GamesTourModel> _mapGames(List<Games> games) {
   final models = <GamesTourModel>[];
   for (final game in games) {
     try {
-      models.add(GamesTourModel.fromGame(game));
+      final model = GamesTourModel.fromGame(game);
+      // Placeholder rows (start position, no moves, "?" names) must never
+      // surface as For You boards — same rule as the event Games tab.
+      if (isEventBoardGameVisible(model)) {
+        models.add(model);
+      }
     } catch (_) {
       // Ignore invalid display rows.
     }

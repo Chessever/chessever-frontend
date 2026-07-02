@@ -297,7 +297,9 @@ String? roundSlugStageRoundId(String tourId, String? roundSlug) {
   return '$kKnockoutStagePrefix-$tourId-$normalized';
 }
 
-@visibleForTesting
+/// Whether a game row is renderable as an event board. Shared by the event
+/// Games tab and the For You feed: placeholder rows (unresolved "?" players
+/// or an unstarted position) must never surface as boards on either screen.
 bool isEventBoardGameVisible(GamesTourModel game) {
   if (!_hasResolvedPlayer(game.whitePlayer) ||
       !_hasResolvedPlayer(game.blackPlayer)) {

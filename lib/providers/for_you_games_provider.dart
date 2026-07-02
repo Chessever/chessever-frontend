@@ -5,6 +5,8 @@ import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart'
+    show isEventBoardGameVisible;
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
@@ -1150,7 +1152,12 @@ ForYouEventGamesSnapshot _buildForYouTopGamesSnapshot({
   final visibleGames = <GamesTourModel>[];
   for (final game in games.take(kGamesPerEvent)) {
     try {
-      visibleGames.add(GamesTourModel.fromGame(game));
+      final model = GamesTourModel.fromGame(game);
+      // Guard against placeholder rows (start position, no moves, "?" names)
+      // leaking onto For You boards from cached/stale RPC payloads.
+      if (isEventBoardGameVisible(model)) {
+        visibleGames.add(model);
+      }
     } catch (error) {
       debugPrint('[ForYou] Skipping malformed top game ${game.id}: $error');
     }
