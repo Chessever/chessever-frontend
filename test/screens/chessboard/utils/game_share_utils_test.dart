@@ -152,8 +152,11 @@ void main() {
       expect(url, 'https://chessever.com/games/aBcDeF12');
     });
 
-    test('returns null for TWIC games whose Site has no game id', () {
-      const roundOnlyPgn = '''
+    test(
+      'falls back to a gamebase deep link for TWIC games whose Site has no '
+      'game id',
+      () {
+        const roundOnlyPgn = '''
 [Event "Norway Chess 2026"]
 [Site "https://lichess.org/broadcast/norway-chess-2026/round-6/AbCd1234"]
 [White "White"]
@@ -162,13 +165,60 @@ void main() {
 
 *
 ''';
+        expect(
+          buildGameShareUrl(
+            game: _game(source: GameSource.twic, pgn: roundOnlyPgn),
+          ),
+          'https://chessever.com/games/$_canonicalGameId?src=gamebase',
+        );
+      },
+    );
+
+    test(
+      'falls back to a gamebase deep link for TWIC/gamebase games with a '
+      'plain-text Site',
+      () {
+        const chessComPgn = '''
+[Event "Titled Tuesday"]
+[Site "chess.com INT"]
+[White "White"]
+[Black "Black"]
+[Result "1-0"]
+
+*
+''';
+        for (final source in [GameSource.twic, GameSource.gamebase]) {
+          expect(
+            buildGameShareUrl(game: _game(source: source, pgn: chessComPgn)),
+            'https://chessever.com/games/$_canonicalGameId?src=gamebase',
+          );
+        }
+      },
+    );
+
+    test('prefers the Lichess game id over the gamebase uuid', () {
+      const broadcastPgn = '''
+[Event "Norway Chess 2026"]
+[Site "https://lichess.org/broadcast/norway-chess-2026/round-6/AbCd1234/xYz45678"]
+[White "White"]
+[Black "Black"]
+[Result "1-0"]
+
+*
+''';
       expect(
         buildGameShareUrl(
-          game: _game(
-            gameId: 'twic-1',
-            source: GameSource.twic,
-            pgn: roundOnlyPgn,
-          ),
+          game: _game(source: GameSource.twic, pgn: broadcastPgn),
+        ),
+        'https://chessever.com/games/xYz45678',
+      );
+    });
+
+    test('returns null for TWIC games with no Lichess id and a non-uuid game '
+        'id', () {
+      expect(
+        buildGameShareUrl(
+          game: _game(gameId: 'twic-1', source: GameSource.twic),
         ),
         isNull,
       );

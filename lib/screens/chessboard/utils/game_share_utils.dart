@@ -15,6 +15,12 @@ typedef SharePgnParser = PgnParseResult Function(String pgn);
 const _defaultStartingFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+/// Query param marking a `/games/<uuid>` share link whose id lives in the
+/// gamebase (TWIC archive) rather than the app's Supabase games table. The
+/// deep link resolves these through the gamebase API.
+const kGamebaseShareSourceParam = 'src';
+const kGamebaseShareSourceValue = 'gamebase';
+
 final _uuidPattern = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
   caseSensitive: false,
@@ -107,6 +113,7 @@ String? buildGameShareUrl({
 }) {
   String? linkableId;
   var includeTourContext = false;
+  var isGamebaseDeepLink = false;
   switch (game.source) {
     case GameSource.supabase:
       linkableId = _trimmedOrNull(game.gameId);
@@ -118,12 +125,21 @@ String? buildGameShareUrl({
       break;
     case GameSource.gamebase:
     case GameSource.twic:
-      // Gamebase/TWIC ids are internal and not resolvable by the shared-game
-      // deep link. Broadcast-imported games still carry their Lichess game
-      // URL in the PGN Site header, so recover the linkable id from there.
+      // Broadcast-imported games carry their Lichess game URL in the PGN
+      // Site header, and that id resolves against the app's own games table —
+      // prefer it. Everything else in the TWIC/gamebase archive (chess.com
+      // imports, OTB events) only has the gamebase uuid, which the deep link
+      // resolves through the gamebase API when tagged with `src=gamebase`.
       // Their tourSlug/roundSlug are display labels (event name, ECO), not
       // real slugs, so leave them out of the URL.
       linkableId = lichessGameIdFromPgn(game.pgn);
+      if (linkableId == null) {
+        final gamebaseId = _trimmedOrNull(game.gameId);
+        if (gamebaseId != null && _uuidPattern.hasMatch(gamebaseId)) {
+          linkableId = gamebaseId;
+          isGamebaseDeepLink = true;
+        }
+      }
       break;
     case GameSource.openingExplorer:
     case GameSource.boardEditor:
@@ -138,6 +154,9 @@ String? buildGameShareUrl({
 
   final uri = Uri.parse('https://chessever.com/games/$linkableId');
   final queryParams = <String, String>{};
+  if (isGamebaseDeepLink) {
+    queryParams[kGamebaseShareSourceParam] = kGamebaseShareSourceValue;
+  }
   if (includeTourContext) {
     if (_hasText(game.tourSlug)) queryParams['tour'] = game.tourSlug!;
     if (_hasText(game.roundSlug)) queryParams['round'] = game.roundSlug!;

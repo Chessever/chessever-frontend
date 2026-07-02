@@ -10,13 +10,17 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
+    show kGamebaseShareSourceParam, kGamebaseShareSourceValue;
 import 'package:chessever2/screens/library/book_preview_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
+import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -40,6 +44,14 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Gamebase archive ids are uuids; Supabase-native share links use uuids too,
+/// but Lichess short ids are 8 alphanumerics — this only gates the gamebase
+/// fallback lookup after a failed Supabase resolution.
+final _sharedGameUuidPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  caseSensitive: false,
+);
 
 List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
   final gameList = roundGames
@@ -269,15 +281,29 @@ class DeepLinkService {
         // Live Activity / pinned-game taps carry the focused move's FEN so the
         // board opens on that exact move (not the live tail).
         final initialFen = uri.queryParameters['fen'];
-        _addBreadcrumb('routing to game', data: {'gameId': gameId});
+        // `src=gamebase` marks a TWIC/gamebase archive game whose uuid lives
+        // in the gamebase, not the app's games table.
+        final preferGamebase =
+            uri.queryParameters[kGamebaseShareSourceParam] ==
+            kGamebaseShareSourceValue;
+        _addBreadcrumb(
+          'routing to game',
+          data: {'gameId': gameId, 'preferGamebase': preferGamebase},
+        );
         unawaited(
           _captureDeepLinkMessage(
             'deep link routing to game',
             stage: 'route_to_game',
-            extras: {'gameId': gameId},
+            extras: {'gameId': gameId, 'preferGamebase': preferGamebase},
           ),
         );
-        _navigateToGame(gameId, navigatorKey, ref, initialFen: initialFen);
+        _navigateToGame(
+          gameId,
+          navigatorKey,
+          ref,
+          initialFen: initialFen,
+          preferGamebase: preferGamebase,
+        );
       } else if (bookShareToken != null && bookShareToken.isNotEmpty) {
         _addBreadcrumb(
           'routing to shared book',
@@ -515,11 +541,16 @@ class DeepLinkService {
 
   /// Fetch game by ID, load full tournament context for swiping,
   /// and navigate to chess board screen.
+  ///
+  /// [preferGamebase] marks `src=gamebase` links: the id is a gamebase
+  /// (TWIC archive) uuid, so skip the Supabase lookup and resolve through
+  /// the gamebase API instead.
   Future<void> _navigateToGame(
     String gameId,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref, {
     String? initialFen,
+    bool preferGamebase = false,
   }) async {
     // Guard: Prevent concurrent navigation
     if (_isNavigating) {
@@ -582,8 +613,35 @@ class DeepLinkService {
         return;
       }
 
+      if (preferGamebase) {
+        await _openGamebaseGame(
+          gameId,
+          navigatorKey,
+          ref,
+          initialFen: initialFen,
+          appReadyFuture: appReadyFuture,
+        );
+        return;
+      }
+
       final gameRepo = ref.read(gameRepositoryProvider);
-      final game = await gameRepo.getGameByAnyId(gameId).timeout(_fetchTimeout);
+      Games game;
+      try {
+        game = await gameRepo.getGameByAnyId(gameId).timeout(_fetchTimeout);
+      } catch (e) {
+        // Older gamebase share links (or ones with a stripped `src` param)
+        // carry a gamebase uuid that isn't in the app's games table — fall
+        // back to the gamebase API before giving up.
+        if (!_sharedGameUuidPattern.hasMatch(gameId.trim())) rethrow;
+        await _openGamebaseGame(
+          gameId,
+          navigatorKey,
+          ref,
+          initialFen: initialFen,
+          appReadyFuture: appReadyFuture,
+        );
+        return;
+      }
       final resolvedGameId = game.id;
       final gameTourModel = GamesTourModel.fromGame(game);
 
@@ -700,7 +758,8 @@ class DeepLinkService {
       final expected =
           _isTransientNetworkError(e) ||
           msg.contains('no rows found') ||
-          msg.contains('notfoundexception');
+          msg.contains('notfoundexception') ||
+          msg.contains('gamebase game not found');
       _captureDeepLinkException(
         e,
         stackTrace,
@@ -719,6 +778,61 @@ class DeepLinkService {
     } finally {
       _isNavigating = false;
     }
+  }
+
+  /// Resolve a TWIC/gamebase archive game by its gamebase uuid and open it
+  /// on the board. Archive games have no round/tournament context in the
+  /// app database, so the board opens as a single game without swipe context.
+  Future<void> _openGamebaseGame(
+    String gameId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    String? initialFen,
+    required Future<void> appReadyFuture,
+  }) async {
+    final gamebaseGame = await ref
+        .read(gamebaseRepositoryProvider)
+        .getGameById(gameId)
+        .timeout(_fetchTimeout);
+    if (gamebaseGame == null) {
+      // Message intentionally contains "not found" so the outer handler
+      // treats a stale/deleted link as expected instead of a Sentry error.
+      throw Exception('Gamebase game not found: $gameId');
+    }
+
+    final gameTourModel = mapGamebaseGameToGamesTourModel(gamebaseGame);
+
+    await appReadyFuture;
+
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.forYou;
+    ref.read(shouldStreamProvider.notifier).state = false;
+
+    _addBreadcrumb(
+      'navigating to gamebase game',
+      data: {'gameId': gameId},
+    );
+    unawaited(
+      _captureDeepLinkMessage(
+        'deep link gamebase game loaded',
+        stage: 'navigate_to_gamebase_game_success',
+        extras: {'gameId': gameId},
+      ),
+    );
+
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder:
+            (_) => ChessBoardScreenNew(
+              key: ValueKey('deep-link-gamebase-$gameId'),
+              games: [gameTourModel],
+              currentIndex: 0,
+              initialFen: initialFen,
+              showGamebaseButton: false,
+            ),
+      ),
+      (route) => route.isFirst,
+    );
   }
 
   Future<bool> _waitForAuthenticatedSession(WidgetRef ref) async {
