@@ -50,7 +50,11 @@ class GamesTourContentBody extends ConsumerWidget {
     // 2. If only completed rounds exist → show next upcoming round
     // 3. If all rounds are upcoming → show all upcoming rounds
 
-    final sourceRounds = isSearchMode ? effectiveRounds : rounds;
+    final upcomingPairingIds = groupedData.upcomingPairingRoundIds;
+    final sourceRounds =
+        (isSearchMode ? effectiveRounds : rounds)
+            .where((round) => !upcomingPairingIds.contains(round.id))
+            .toList();
 
     // Debug: Log rounds with empty games to help diagnose timing issues
     if (!isSearchMode && !isMultiStageKnockout) {
@@ -174,9 +178,18 @@ class GamesTourContentBody extends ConsumerWidget {
       }
     }
 
+    // Future rounds with published pairings render below everything else,
+    // soonest first (effectiveRounds already carries them pre-sorted at the
+    // tail).
+    final upcomingPairingRounds =
+        effectiveRounds
+            .where((round) => upcomingPairingIds.contains(round.id))
+            .toList();
+    final displayRounds = [...visibleRounds, ...upcomingPairingRounds];
+
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
-    for (final round in visibleRounds) {
+    for (final round in displayRounds) {
       final roundGames = gamesByRound[round.id] ?? [];
       orderedGamesForChessBoard.addAll(roundGames);
     }
@@ -195,7 +208,7 @@ class GamesTourContentBody extends ConsumerWidget {
       key: ValueKey(
         'games_list_${gamesListViewMode.name}_search_$isSearchMode',
       ),
-      rounds: visibleRounds,
+      rounds: displayRounds,
       gamesByRound: gamesByRound,
       gamesData: orderedGamesData,
       isKnockoutTournament: isKnockoutTournament,

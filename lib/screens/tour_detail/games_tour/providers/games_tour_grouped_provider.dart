@@ -22,6 +22,11 @@ class GroupedGamesData {
   final List<GamesTourModel> allGames;
   final int providerGameCount;
 
+  /// Upcoming rounds whose only content is future pairings (resolved player
+  /// names, no moves yet). They render as collapsible cards pinned to the
+  /// BOTTOM of the Games tab, below every played round.
+  final Set<String> upcomingPairingRoundIds;
+
   GroupedGamesData({
     required this.filteredRounds,
     required this.gamesByRound,
@@ -32,6 +37,7 @@ class GroupedGamesData {
     required this.rounds,
     required this.allGames,
     required this.providerGameCount,
+    this.upcomingPairingRoundIds = const {},
   });
 }
 
@@ -250,10 +256,75 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   }
 
-  final filteredRounds =
+  // Future rounds: Lichess publishes pairings for upcoming rounds ahead of
+  // time. Those games never pass isEventBoardGameVisible (no played position),
+  // so their rounds would be dropped entirely. Surface them as pairing-only
+  // round cards instead — but only with resolved player names ("?" placeholder
+  // pairings stay hidden) and never for multi-stage knockouts, whose rounds
+  // are synthetic stage ids.
+  final upcomingPairingRoundIds = <String>{};
+  if (!isMultiStageKnockout) {
+    for (final round in rounds) {
+      if (gamesByRound[round.id]?.isNotEmpty ?? false) continue;
+      if (round.roundStatus != RoundStatus.upcoming) continue;
+
+      final pairings =
+          allGamesScreenModel
+              .where(
+                (game) =>
+                    game.roundId == round.id &&
+                    (isKnockoutTournament ||
+                        _shouldIncludeGame(displayMode, game)) &&
+                    _hasResolvedPlayer(game.whitePlayer) &&
+                    _hasResolvedPlayer(game.blackPlayer),
+              )
+              .toList()
+            ..sort((a, b) {
+              final aBoard = a.boardNr;
+              final bBoard = b.boardNr;
+              if (aBoard != null && bBoard != null) {
+                return aBoard.compareTo(bBoard);
+              }
+              if (aBoard != null) return -1;
+              if (bBoard != null) return 1;
+              return a.gameId.compareTo(b.gameId);
+            });
+      if (pairings.isEmpty) continue;
+
+      ensureRoundEntry(round.id);
+      for (final game in pairings) {
+        if (seenGameIdsPerRound[round.id]!.add(game.gameId)) {
+          gamesByRound[round.id]!.add(game);
+        }
+      }
+      upcomingPairingRoundIds.add(round.id);
+    }
+  }
+
+  final playedRounds =
       rounds
-          .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+          .where(
+            (round) =>
+                !upcomingPairingRoundIds.contains(round.id) &&
+                (gamesByRound[round.id]?.isNotEmpty ?? false),
+          )
           .toList();
+  final upcomingPairingRounds =
+      rounds
+          .where((round) => upcomingPairingRoundIds.contains(round.id))
+          .toList()
+        ..sort((a, b) {
+          final aStart = a.startsAt;
+          final bStart = b.startsAt;
+          if (aStart == null && bStart == null) return a.name.compareTo(b.name);
+          if (aStart == null) return 1;
+          if (bStart == null) return -1;
+          final cmp = aStart.compareTo(bStart);
+          return cmp != 0 ? cmp : a.name.compareTo(b.name);
+        });
+
+  // Pairing-only rounds always come last, soonest first.
+  final filteredRounds = [...playedRounds, ...upcomingPairingRounds];
 
   return GroupedGamesData(
     filteredRounds: filteredRounds,
@@ -265,6 +336,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     rounds: rounds,
     allGames: allGamesScreenModel,
     providerGameCount: providerGameCount,
+    upcomingPairingRoundIds: upcomingPairingRoundIds,
   );
 });
 
