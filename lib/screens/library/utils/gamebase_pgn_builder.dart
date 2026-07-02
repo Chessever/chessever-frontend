@@ -79,6 +79,7 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
   }
 
   final sans = <String>[];
+  final clocks = <String?>[];
   try {
     final setup = Setup.parseFen(effectiveFen);
     Position position = Chess.fromSetup(setup);
@@ -91,10 +92,12 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
       // 4. Plain string SAN: "e4"
       String? uci;
       String? san;
+      String? clock;
 
       if (item is Map) {
         uci = (item['u'] ?? item['uci'])?.toString();
-        san = item['san']?.toString();
+        san = (item['s'] ?? item['san'])?.toString();
+        clock = _sanitizePgnClock((item['ct'] ?? item['clk'])?.toString());
       } else if (item is String) {
         // Could be UCI or SAN - UCI is 4+ chars with square names
         final trimmed = item.trim();
@@ -111,6 +114,7 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
         if (move != null) {
           position = position.play(move);
           sans.add(san);
+          clocks.add(clock);
           continue;
         }
       }
@@ -131,6 +135,7 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
       final result = position.makeSan(move);
       position = result.$1;
       sans.add(result.$2);
+      clocks.add(clock);
     }
   } catch (e) {
     if (kDebugMode) {
@@ -161,12 +166,27 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
       final moveNo = (i ~/ 2) + 1;
       sb.write('$moveNo. ');
     }
-    sb.write('${sans[i]} ');
+    sb.write(sans[i]);
+    final clock = i < clocks.length ? clocks[i] : null;
+    if (clock != null) {
+      sb.write(' {[%clk $clock]}');
+    }
+    sb.write(' ');
   }
 
   sb.write(headers['Result'] ?? '*');
 
   return sb.toString().trim();
+}
+
+/// Gamebase move payloads carry the raw PGN clock capture under `ct`
+/// (e.g. "1:23:45" or "3:01.5"). Only values the app's pgnClockRegex can read
+/// back are re-emitted, so a malformed value cannot corrupt the movetext.
+String? _sanitizePgnClock(String? raw) {
+  final trimmed = raw?.trim();
+  if (trimmed == null || trimmed.isEmpty) return null;
+  final isValid = RegExp(r'^(\d+:)?\d+:\d+(\.\d+)?$').hasMatch(trimmed);
+  return isValid ? trimmed : null;
 }
 
 /// Checks if a string looks like a UCI move (e.g., "e2e4", "e7e8q")
