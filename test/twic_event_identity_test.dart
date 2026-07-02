@@ -169,10 +169,41 @@ void main() {
         twicCanonicalEventKeyForGame(game2),
       );
     });
+
+    test(
+      'canonical Event header wins over per-section broadcast Site slug',
+      () {
+        // Section tours of one event (Group A / Group B / Rapid) have
+        // different Site slugs but share the canonical event name in their
+        // Event header — they must land in one event group, not three.
+        final groupA = _twicGame(
+          id: 'g1',
+          event: 'Lankaran Open 2026',
+          site:
+              'https://lichess.org/broadcast/lankaran-open-2026-group-a/round-1/aaaa/bbbb',
+        );
+        final groupB = _twicGame(
+          id: 'g2',
+          event: 'Lankaran Open 2026',
+          site:
+              'https://lichess.org/broadcast/lankaran-open-2026-group-b/round-3/cccc/dddd',
+        );
+
+        expect(twicCanonicalEventTitleForGame(groupA), 'Lankaran Open 2026');
+        expect(
+          twicCanonicalEventKeyForGame(groupA),
+          twicCanonicalEventKeyForGame(groupB),
+        );
+      },
+    );
   });
 }
 
-GamesTourModel _twicGame({required String id, required String event}) {
+GamesTourModel _twicGame({
+  required String id,
+  required String event,
+  String site = 'https://lichess.org/broadcast/norway-chess-2026/round-1/abcd/efgh',
+}) {
   final player = PlayerCard(
     name: 'Player',
     federation: '',
@@ -183,7 +214,7 @@ GamesTourModel _twicGame({required String id, required String event}) {
   );
   final pgn =
       '[Event "$event"]\n'
-      '[Site "https://lichess.org/broadcast/norway-chess-2026/round-1/abcd/efgh"]\n';
+      '[Site "$site"]\n';
 
   return GamesTourModel(
     gameId: id,

@@ -187,6 +187,10 @@ bool _isUsefulEventTitle(String? value) {
   return !isTwicRoundDisplayTitle(text);
 }
 
+/// True when [value] is a real event title (not empty/placeholder/round or
+/// pairing label) and can be trusted as a canonical grouping key.
+bool isUsefulTwicEventTitle(String? value) => _isUsefulEventTitle(value);
+
 /// Prefer the canonical event carried by the game list over a PGN/Event value
 /// that is only a round/pairing label (e.g. `Round 13: Yilmaz, Mustafa ...`).
 String preferredTwicEventTitle({
@@ -223,8 +227,16 @@ String twicCanonicalEventKeyForGame(GamesTourModel game) {
 }
 
 String twicCanonicalEventTitleForGame(GamesTourModel game) {
+  // Player-profile TWIC games carry the gamebase canonical event name
+  // (group-broadcast level, e.g. "Lankaran Open 2026") in their Event header.
+  // It must win over the Site URL: the Site slug is per-tour/section
+  // (`lankaran-open-2026-group-a`, `...-group-b`, `...-rapid`), which splits
+  // one event into several cards that all resolve to the same display name.
+  final pgnEvent = eventFromPgn(game.pgn);
+  if (_isUsefulEventTitle(pgnEvent)) return pgnEvent!;
+
   return preferredTwicEventTitle(
-    pgnEvent: eventFromPgn(game.pgn),
+    pgnEvent: pgnEvent,
     tourSlug: game.tourSlug,
     tourId: game.tourId,
     site: siteFromPgn(game.pgn),

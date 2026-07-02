@@ -1329,15 +1329,19 @@ Future<List<PlayerEventData>> _getTwicPlayerEvents(
 
 PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
   final rawEvent = item.event.trim();
-  // The /events endpoint groups by raw `g.event`, which for broadcast-ingested
-  // games is a per-pairing label ("Round 10: A - B"). Recover the canonical
-  // parent event (from the Lichess `Site` slug) so pairings collapse into one
-  // event, matching what the Games tab does.
-  final title = preferredTwicEventTitle(
-    pgnEvent: rawEvent,
-    site: item.site,
-    fallback: rawEvent.isNotEmpty ? rawEvent : 'Gamebase',
-  );
+  // The /events endpoint returns the canonical (group-broadcast level) event
+  // name when the game rows carry one; prefer it so section tours of one
+  // event ("... | Group A", "... | Rapid") collapse into a single event,
+  // matching the Games tab grouping. Only when the label is a per-pairing
+  // round title ("Round 10: A - B") fall back to the Lichess `Site` slug.
+  final title =
+      isUsefulTwicEventTitle(rawEvent)
+          ? rawEvent
+          : preferredTwicEventTitle(
+            pgnEvent: rawEvent,
+            site: item.site,
+            fallback: rawEvent.isNotEmpty ? rawEvent : 'Gamebase',
+          );
   return PlayerEventData(
     tourId: title,
     tourName: title,
@@ -1457,13 +1461,9 @@ List<PlayerEventData> _buildTwicPlayerEventsFromGames(
     });
 
     final first = eventGames.first;
-    final title = preferredTwicEventTitle(
-      pgnEvent: eventFromPgn(first.pgn),
-      tourSlug: first.tourSlug,
-      tourId: first.tourId,
-      site: siteFromPgn(first.pgn),
-      fallback: 'Gamebase',
-    );
+    // Same canonical derivation as the grouping key above, so the event title
+    // stays in lockstep with how the games were bucketed.
+    final title = twicCanonicalEventTitleForGame(first);
     final ratings = <int>[];
     for (final game in eventGames) {
       if (game.whitePlayer.rating > 0) ratings.add(game.whitePlayer.rating);
