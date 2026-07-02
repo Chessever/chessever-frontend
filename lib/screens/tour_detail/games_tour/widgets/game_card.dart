@@ -587,21 +587,38 @@ class _TimerWidget extends StatelessWidget {
             : gamesTourModel.blackClockSeconds;
 
     return Center(
-      child: AtomicCountdownText(
-        clockSeconds:
-            clockSeconds, // Primary source: time in seconds from last_clock fields
-        clockCentiseconds:
-            clockCentiseconds, // Fallback source: raw database clock
-        lastMoveTime: gamesTourModel.lastMoveTime,
-        isActive:
-            isClockRunning, // Clock frozen if game is effectively finished
-        style: AppTypography.textXsMedium.copyWith(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+        decoration: BoxDecoration(
           color:
-              isGameFinished
-                  ? context.colors.textPrimary
-                  : (shouldHighlightClock
-                      ? kPrimaryColor
-                      : context.colors.textPrimary),
+              shouldHighlightClock
+                  ? kPrimaryColor.withValues(alpha: 0.1)
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(4.br),
+          border:
+              shouldHighlightClock
+                  ? Border.all(
+                    color: kPrimaryColor.withValues(alpha: 0.4),
+                    width: 0.7,
+                  )
+                  : null,
+        ),
+        child: AtomicCountdownText(
+          clockSeconds:
+              clockSeconds, // Primary source: time in seconds from last_clock fields
+          clockCentiseconds:
+              clockCentiseconds, // Fallback source: raw database clock
+          lastMoveTime: gamesTourModel.lastMoveTime,
+          isActive:
+              isClockRunning, // Clock frozen if game is effectively finished
+          style: AppTypography.textXsMedium.copyWith(
+            color:
+                isGameFinished
+                    ? context.colors.textPrimary
+                    : (shouldHighlightClock
+                        ? kPrimaryColor
+                        : context.colors.textPrimaryMuted),
+          ),
         ),
       ),
     );

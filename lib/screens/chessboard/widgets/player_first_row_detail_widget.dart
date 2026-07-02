@@ -343,8 +343,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontWeight: FontWeight.w500,
               color:
                   visibleIsCurrentPlayer
-                      ? context.colors.textPrimaryMuted
-                      : context.colors.textPrimary,
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimaryMuted,
               height: 1.15,
               letterSpacing: 0,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -355,8 +355,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               fontWeight: FontWeight.w600,
               color:
                   visibleIsCurrentPlayer
-                      ? context.colors.textPrimaryMuted
-                      : context.colors.textPrimary,
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimaryMuted,
               height: 1.15,
               letterSpacing: -0.2,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -364,8 +364,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             : AppTypography.textXsMedium.copyWith(
               color:
                   visibleIsCurrentPlayer
-                      ? context.colors.textPrimaryMuted
-                      : context.colors.textPrimary,
+                      ? context.colors.textPrimary
+                      : context.colors.textPrimaryMuted,
               fontSize: 14.f,
               fontWeight: FontWeight.w500,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -893,14 +893,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: clockPadding,
-                  vertical: playerView == PlayerView.gridView ? 1.sp : 0,
+                  vertical: 1.sp,
                 ),
                 decoration: BoxDecoration(
                   color:
-                      visibleIsCurrentPlayer ? kDarkBlue : Colors.transparent,
-                  borderRadius:
-                      playerView == PlayerView.gridView
-                          ? BorderRadius.circular(2)
+                      visibleIsCurrentPlayer
+                          ? kPrimaryColor.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                  borderRadius: BorderRadius.circular(
+                    playerView == PlayerView.gridView ? 3.br : 4.br,
+                  ),
+                  border:
+                      visibleIsCurrentPlayer
+                          ? Border.all(
+                            color: kPrimaryColor.withValues(alpha: 0.4),
+                            width: 0.7,
+                          )
                           : null,
                 ),
                 child: _PlayerClock(
