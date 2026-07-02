@@ -4,6 +4,7 @@ import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:chessever2/utils/sound_preferences.dart';
 
 /// Sound effect types used by the SoLoud audio path.
 enum SfxType { move, castling, check, checkmate, draw, promotion, takeover }
@@ -45,6 +46,40 @@ class AudioPlayerService with WidgetsBindingObserver {
   int? _lastPlayAtMicros;
   SfxType? _lastPlayedType;
   bool _audioSessionConfigured = false;
+  SoundTheme _soundTheme = SoundTheme.standard;
+  double _soundVolume = kDefaultSoundVolume;
+
+  /// Applies the user's move-sound theme and volume.
+  Future<void> applySoundPreferences({
+    required SoundTheme theme,
+    required double volume,
+    bool preview = false,
+  }) async {
+    final nextVolume = volume.clamp(0.0, 1.0).toDouble();
+    final themeChanged = _soundTheme != theme;
+    _soundTheme = theme;
+    _soundVolume = nextVolume;
+
+    if (themeChanged) {
+      _assetsLoaded = false;
+      if (player.isInitialized) {
+        try {
+          await player.disposeAllSources();
+        } catch (err, st) {
+          debugPrint(
+            '⚠️ Audio source disposal during theme switch failed: $err\n$st',
+          );
+        }
+      }
+    }
+
+    if (preview && !_isBackgrounded) {
+      await initializeAndLoadAllAssets(force: themeChanged);
+      if (player.isInitialized && _assetsLoaded) {
+        _playResolved(SfxType.move);
+      }
+    }
+  }
 
   /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
   Future<void> _configureAudioSession() async {
@@ -278,12 +313,71 @@ class AudioPlayerService with WidgetsBindingObserver {
   void _playResolved(SfxType type) {
     if (_isBackgrounded) return;
 
-    final handle = player.play(_resolve(type));
+    final handle = player.play(_resolve(type), volume: _soundVolume);
     if (handle.isError || handle.id <= 0) {
       throw StateError('SoLoud returned an invalid handle for $type');
     }
     if (!player.getIsValidVoiceHandle(handle)) {
       throw StateError('SoLoud returned an inactive handle for $type');
+    }
+  }
+
+  Future<String> _assetPathFor(SfxType type) async {
+    if (_soundTheme == SoundTheme.standard) {
+      return _chesseverAssetPathFor(type);
+    }
+
+    final themedPath =
+        'assets/sounds/${_soundTheme.assetDirectory}/${_lichessSoundNameFor(type)}.mp3';
+    try {
+      await rootBundle.load(themedPath);
+      return themedPath;
+    } catch (_) {
+      // Lichess themes intentionally omit some event sounds; fall back to the
+      // imported Lichess standard bank before falling back to ChessEver's bank.
+      final fallbackPath =
+          'assets/sounds/standard/${_lichessSoundNameFor(type)}.mp3';
+      try {
+        await rootBundle.load(fallbackPath);
+        return fallbackPath;
+      } catch (_) {
+        return _chesseverAssetPathFor(type);
+      }
+    }
+  }
+
+  String _lichessSoundNameFor(SfxType type) {
+    switch (type) {
+      case SfxType.takeover:
+        return 'capture';
+      case SfxType.checkmate:
+        return 'dong';
+      case SfxType.draw:
+        return 'confirmation';
+      case SfxType.move:
+      case SfxType.castling:
+      case SfxType.check:
+      case SfxType.promotion:
+        return 'move';
+    }
+  }
+
+  String _chesseverAssetPathFor(SfxType type) {
+    switch (type) {
+      case SfxType.move:
+        return 'assets/sfx/piece_move.wav';
+      case SfxType.castling:
+        return 'assets/sfx/piece_castling.wav';
+      case SfxType.check:
+        return 'assets/sfx/piece_check.wav';
+      case SfxType.checkmate:
+        return 'assets/sfx/piece_checkmate.wav';
+      case SfxType.draw:
+        return 'assets/sfx/piece_draw.wav';
+      case SfxType.promotion:
+        return 'assets/sfx/piece_promotion.wav';
+      case SfxType.takeover:
+        return 'assets/sfx/piece_takeover.wav';
     }
   }
 
@@ -335,15 +429,7 @@ class AudioPlayerService with WidgetsBindingObserver {
     }
 
     if (!_assetsLoaded) {
-      final List<String> paths = [
-        "assets/sfx/piece_move.wav",
-        "assets/sfx/piece_castling.wav",
-        "assets/sfx/piece_check.wav",
-        "assets/sfx/piece_checkmate.wav",
-        "assets/sfx/piece_draw.wav",
-        "assets/sfx/piece_promotion.wav",
-        "assets/sfx/piece_takeover.wav",
-      ];
+      final paths = await Future.wait(SfxType.values.map(_assetPathFor));
 
       // Load all SFX into memory in PARALLEL. The previous version loaded them
       // serially with a 200ms delay between each (~1.4s of dead time), which
