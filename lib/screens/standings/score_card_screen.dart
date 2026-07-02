@@ -1082,6 +1082,9 @@ class ScoreCardScreen extends ConsumerWidget {
   String? _parseRoundLabel(String? source) {
     if (source == null || source.isEmpty) return null;
 
+    final knockoutLabel = _knockoutRoundLabel(source);
+    if (knockoutLabel != null) return knockoutLabel;
+
     final patterns = [
       RegExp(r'round[-\s]?(\d+)', caseSensitive: false),
       RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false),
@@ -1313,10 +1316,70 @@ class ScoreCardScreen extends ConsumerWidget {
     );
   }
 
+  /// Knockout stage rank from a round slug: number of players remaining in
+  /// that stage, so larger = earlier (round-of-16 -> 16, quarterfinals -> 8,
+  /// semifinals -> 4, third place -> 3, finals -> 2). Null for non-KO slugs.
+  /// "quarterfinals"/"semifinals" contain "final", so those tokens are
+  /// checked first.
+  int? _knockoutStageRank(String source) {
+    final s = source.toLowerCase();
+    final roundOf = RegExp(r'round[-\s_]?of[-\s_]?(\d+)').firstMatch(s);
+    if (roundOf != null) return int.tryParse(roundOf.group(1)!);
+    if (s.contains('quarter')) return 8;
+    if (s.contains('semi')) return 4;
+    if (s.contains('third') || s.contains('3rd')) return 3;
+    if (s.contains('final')) return 2;
+    return null;
+  }
+
+  /// Order key for knockout round slugs like "quarterfinals-game-2" or
+  /// "finals-tiebreaks": progresses by stage first, then game number within
+  /// the stage, tiebreaks after regular games. Keys are negative so they
+  /// never mix with plain "round-N" numbers (an event's slugs are homogeneous
+  /// anyway). Null when the slug carries no knockout stage token.
+  int? _knockoutRoundOrderKey(String source) {
+    final stage = _knockoutStageRank(source);
+    if (stage == null) return null;
+    final s = source.toLowerCase();
+    var gameNr =
+        int.tryParse(
+          RegExp(r'game[-\s_]?(\d+)').firstMatch(s)?.group(1) ?? '',
+        ) ??
+        0;
+    if (s.contains('tiebreak')) gameNr += 900;
+    return -stage * 1000 + gameNr;
+  }
+
+  /// Compact label for knockout rounds, e.g. "QF1.", "SF2.", "F1.", "F·TB.".
+  String? _knockoutRoundLabel(String source) {
+    final stage = _knockoutStageRank(source);
+    if (stage == null) return null;
+    final String prefix;
+    switch (stage) {
+      case 2:
+        prefix = 'F';
+      case 3:
+        prefix = '3P';
+      case 4:
+        prefix = 'SF';
+      case 8:
+        prefix = 'QF';
+      default:
+        prefix = 'R$stage';
+    }
+    final s = source.toLowerCase();
+    if (s.contains('tiebreak')) return '$prefix·TB.';
+    final gameNr = RegExp(r'game[-\s_]?(\d+)').firstMatch(s)?.group(1);
+    return gameNr == null ? '$prefix.' : '$prefix$gameNr.';
+  }
+
   /// Extract round number from a round slug or round id string
   /// e.g., "round-2" -> 2, "round7" -> 7, "r3" -> 3
   int? _extractRoundNumber(String? source) {
     if (source == null || source.isEmpty) return null;
+
+    final knockoutKey = _knockoutRoundOrderKey(source);
+    if (knockoutKey != null) return knockoutKey;
 
     final patterns = [
       RegExp(r'round[-\s]?(\d+)', caseSensitive: false),
