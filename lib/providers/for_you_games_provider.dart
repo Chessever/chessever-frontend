@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/error_logger_provider.dart';
 import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
@@ -122,6 +123,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   final Map<String, int> _sessionEventOrder = <String, int>{};
   int _nextSessionEventOrder = 0;
   bool _pendingFavoritePlayerOrderHydration = false;
+  final Set<String> _handledUnknownLiveEventIds = <String>{};
 
   ForYouNotifier(this.ref) : super(const ForYouState(isLoading: true)) {
     _setupListeners();
@@ -137,7 +139,16 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       _,
       next,
     ) {
-      next.whenData(_refreshLiveCategories);
+      next.whenData((liveIds) {
+        _refreshLiveCategories(liveIds);
+        _maybeRefreshForUnknownLiveEvents(liveIds);
+      });
+    });
+
+    // Catch up on events that started while the app was backgrounded; the
+    // 5-minute staleness gate keeps quick app switches cheap.
+    ref.listen<int>(appResumedSignalProvider, (_, __) {
+      unawaited(refreshIfStale());
     });
 
     ref.listen(favoritePlayersProviderNew, (_, next) {
@@ -157,6 +168,27 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         ),
       );
     });
+  }
+
+  /// A live event id we've never rendered usually means a brand-new event
+  /// started while this feed was sitting on already-fetched pages — refetch
+  /// page 0 so it can enter the list. Guarded per-id so ids that legitimately
+  /// never enter the personalized feed (e.g. filtered out) don't refetch on
+  /// every live-ids emission.
+  void _maybeRefreshForUnknownLiveEvents(List<String> liveIds) {
+    if (state.isLoading || state.events.isEmpty) return;
+
+    final knownIds = state.events.map((event) => event.id).toSet();
+    var hasNewUnknownId = false;
+    for (final id in liveIds) {
+      if (knownIds.contains(id)) continue;
+      if (_handledUnknownLiveEventIds.add(id)) {
+        hasNewUnknownId = true;
+      }
+    }
+    if (!hasNewUnknownId) return;
+
+    unawaited(refresh());
   }
 
   void _refreshLiveCategories(List<String> liveIds) {

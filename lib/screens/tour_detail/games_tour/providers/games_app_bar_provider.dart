@@ -1,5 +1,7 @@
 // ignore_for_file: avoid_print, empty_catches, unused_element
 
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -114,6 +116,39 @@ class _GamesAppBarNotifier
   final Map<String, _RoundSortMeta> _roundSortMeta;
   String? _lastRoundCountSignature;
   bool _selectionRefreshScheduled = false;
+  final Set<String> _checkedUnknownLiveRoundIds = <String>{};
+
+  Future<void> _maybeReloadForUnknownLiveRounds(
+    List<String> liveRoundIds,
+  ) async {
+    final currentTourId = tourId;
+    if (currentTourId == null || isVirtualGamebaseId(currentTourId)) return;
+
+    // _roundSortMeta holds every real round id fetched by _load; ids outside
+    // it are either other tours' rounds or rounds added after our last load.
+    // Check each id only once — getRoundsByIds resolves which case it is.
+    final unknownIds = <String>[];
+    for (final id in liveRoundIds) {
+      if (_roundSortMeta.containsKey(id)) continue;
+      if (_checkedUnknownLiveRoundIds.add(id)) {
+        unknownIds.add(id);
+      }
+    }
+    if (unknownIds.isEmpty) return;
+
+    try {
+      final rounds = await ref
+          .read(roundRepositoryProvider)
+          .getRoundsByIds(unknownIds);
+      if (!mounted) return;
+      if (rounds.any((round) => round.tourId == currentTourId)) {
+        await _load(showLoading: false, scrollSelection: false);
+      }
+    } catch (_) {
+      // The games safety-net poll (unknown roundId on incoming games) remains
+      // the fallback path for surfacing new rounds.
+    }
+  }
 
   Future<void> refresh() async {
     await _load();
@@ -1321,6 +1356,12 @@ class _GamesAppBarNotifier
       return;
     }
     _liveRounds = List.unmodifiable(newLive);
+
+    // A live round we've never fetched may be a round that was created after
+    // this notifier loaded (its games may not exist yet, so the games-change
+    // listener can't catch it either). Check whether it belongs to this tour
+    // and reload the round list if so.
+    unawaited(_maybeReloadForUnknownLiveRounds(newLive));
 
     final current = state.valueOrNull;
     if (current == null) return;

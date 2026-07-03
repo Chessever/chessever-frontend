@@ -63,6 +63,7 @@ import 'services/pgn_file_intake_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/notification_permission_prompt_provider.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
 
@@ -759,6 +760,16 @@ void _initializePostStartupServices(WidgetRef ref) {
             } else {
               unawaited(revenueCat.syncPurchases());
             }
+          },
+        );
+
+        // Let data owners (event lists, live-id snapshots) catch up on
+        // whatever changed server-side while the app was backgrounded.
+        ForegroundTaskScheduler.schedule(
+          key: 'root_app_resumed_signal',
+          delay: kForegroundHeavyRefreshDelay,
+          task: () {
+            ref.read(appResumedSignalProvider.notifier).state++;
           },
         );
       },

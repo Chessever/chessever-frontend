@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -162,6 +163,13 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
 
   final refreshTimer = Timer.periodic(_liveIndicatorRefreshInterval, (_) {
     unawaited(emitResolvedIds());
+  });
+
+  // The realtime settings stream can die silently while the app is
+  // backgrounded; re-pull the snapshot on resume so live ids (and everything
+  // derived from them) reflect events/rounds that started in the meantime.
+  ref.listen<int>(appResumedSignalProvider, (_, __) {
+    unawaited(refreshSettingsSnapshot('app resume'));
   });
 
   ref.onDispose(() {

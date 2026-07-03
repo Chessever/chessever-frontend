@@ -14,6 +14,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
@@ -133,6 +134,7 @@ class _GroupEventScreenController
     loadTours();
     _listenToLiveIds();
     _listenToFavorites();
+    _listenToAppResume();
   }
 
   @override
@@ -146,6 +148,8 @@ class _GroupEventScreenController
   final int _pastLimit = 50;
   bool _pastIsFetching = false;
   bool pastHasMore = true;
+  final Set<String> _handledUnknownLiveEventIds = <String>{};
+  bool _silentRefreshInFlight = false;
 
   var _groupBroadcastList = <GroupBroadcast>[];
 
@@ -220,8 +224,86 @@ class _GroupEventScreenController
           ref.read(liveBroadcastIdsProvider.notifier).state = liveIds;
           _updateLiveStatusInExistingModels();
         }
+        _maybeRefreshForUnknownLiveEvents(liveIds);
       });
     });
+  }
+
+  void _listenToAppResume() {
+    if (tourEventCategory != GroupEventCategory.current) return;
+    ref.listen<int>(appResumedSignalProvider, (_, __) {
+      unawaited(_refreshFromServerSilently());
+    });
+  }
+
+  /// A live event id we've never loaded usually means a brand-new event
+  /// started while this list was serving the local cache — refetch from the
+  /// server so it can appear. Guarded per-id so ids that stay outside this
+  /// list (e.g. filtered out) don't refetch on every live-ids emission.
+  void _maybeRefreshForUnknownLiveEvents(List<String> liveIds) {
+    if (tourEventCategory != GroupEventCategory.current) return;
+    if (liveIds.isEmpty || _groupBroadcastList.isEmpty) return;
+
+    final knownIds =
+        _groupBroadcastList.map((broadcast) => broadcast.id).toSet();
+    var hasNewUnknownId = false;
+    for (final id in liveIds) {
+      if (knownIds.contains(id)) continue;
+      if (_handledUnknownLiveEventIds.add(id)) {
+        hasNewUnknownId = true;
+      }
+    }
+    if (!hasNewUnknownId) return;
+
+    unawaited(_refreshFromServerSilently());
+  }
+
+  /// Refetches the event list from the server (bypassing the local-storage
+  /// TTL) without flashing the loading state, so newly started events appear
+  /// while the tab stays interactive.
+  Future<void> _refreshFromServerSilently() async {
+    if (_silentRefreshInFlight) return;
+    _silentRefreshInFlight = true;
+    try {
+      final refreshed =
+          await ref
+              .read(groupBroadcastLocalStorage(tourEventCategory))
+              .refresh();
+      // An empty result after a non-empty list is more likely a transient
+      // failure than a genuinely empty Current tab — keep what we have.
+      if (!mounted || refreshed.isEmpty) return;
+
+      _groupBroadcastList = refreshed;
+      final strictLiveIds = await _getLiveIdsSnapshot();
+
+      var toDisplay = refreshed;
+      if (_isFilterActive) {
+        toDisplay = _applyClientFilter(refreshed, liveIds: strictLiveIds);
+      }
+
+      final models =
+          toDisplay
+              .map(
+                (t) => GroupEventCardModel.fromGroupBroadcast(t, strictLiveIds),
+              )
+              .toList();
+
+      if (!mounted) return;
+      state = AsyncValue.data(
+        ref
+            .read(tournamentSortingServiceProvider)
+            .sortAllTours(
+              models,
+              eventFavoritePlayersMap: ref.read(
+                eventFavoritePlayersCacheProvider,
+              ),
+            ),
+      );
+    } catch (_) {
+      // Keep the current list; the next resume/live-ids signal retries.
+    } finally {
+      _silentRefreshInFlight = false;
+    }
   }
 
   void _listenToFavorites() {
@@ -338,6 +420,13 @@ class _GroupEventScreenController
       _groupBroadcastList = tour;
 
       final strictLiveIds = liveIds ?? await _getLiveIdsSnapshot();
+
+      // The local cache has a TTL, so a list served from it can predate an
+      // event that started while the app was backgrounded or on another tab.
+      // If a live event is missing from what we loaded, refetch silently.
+      if (inputBroadcast == null) {
+        _maybeRefreshForUnknownLiveEvents(strictLiveIds);
+      }
 
       // Apply client-side filter if active
       if (inputBroadcast == null && _isFilterActive) {
