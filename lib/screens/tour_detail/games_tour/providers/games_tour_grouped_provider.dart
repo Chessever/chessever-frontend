@@ -266,7 +266,11 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   if (!isMultiStageKnockout) {
     for (final round in rounds) {
       if (gamesByRound[round.id]?.isNotEmpty ?? false) continue;
-      if (round.roundStatus != RoundStatus.upcoming) continue;
+      // Keep pairing cards visible past starts_at too: a round flips
+      // upcoming -> ongoing/live at its scheduled time, but the broadcast
+      // (and its first moves) often lags minutes behind. Only rounds that
+      // are conclusively over (completed) are excluded.
+      if (round.roundStatus == RoundStatus.completed) continue;
 
       final pairings =
           allGamesScreenModel

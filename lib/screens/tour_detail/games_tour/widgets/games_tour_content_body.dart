@@ -178,14 +178,32 @@ class GamesTourContentBody extends ConsumerWidget {
       }
     }
 
-    // Future rounds with published pairings render below everything else,
-    // soonest first (effectiveRounds already carries them pre-sorted at the
-    // tail).
+    // Future rounds with published pairings (effectiveRounds carries them
+    // pre-sorted soonest-first at the tail). At most ONE of them may be
+    // pinned to the very TOP of the list (which reads newest-first), and only
+    // when ALL of these hold:
+    //   1. it is the one-and-only very next round of this tour,
+    //   2. its boards/matchups are already published (it IS a pairing round),
+    //   3. we are 100% sure it starts in less than an hour (known startsAt).
+    // Every other future pairing round keeps rendering below everything else.
     final upcomingPairingRounds =
         effectiveRounds
             .where((round) => upcomingPairingIds.contains(round.id))
             .toList();
-    final displayRounds = [...visibleRounds, ...upcomingPairingRounds];
+    GamesAppBarModel? topPairingRound;
+    if (upcomingPairingRounds.isNotEmpty) {
+      final next = upcomingPairingRounds.first;
+      final startsAt = next.startsAt;
+      if (startsAt != null &&
+          startsAt.difference(DateTime.now()) < const Duration(hours: 1)) {
+        topPairingRound = next;
+      }
+    }
+    final displayRounds = [
+      if (topPairingRound != null) topPairingRound,
+      ...visibleRounds,
+      ...upcomingPairingRounds.where((round) => round != topPairingRound),
+    ];
 
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
