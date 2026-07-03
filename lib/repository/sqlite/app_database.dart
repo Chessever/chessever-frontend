@@ -22,7 +22,9 @@ class AppDatabase {
 
   Database? _database;
   Completer<Database>? _initCompleter;
-  static const Duration _initTimeout = Duration(seconds: 4);
+  // 4s tripped on slow-storage Androids during cold start (CHESSEVER-166);
+  // give the first open more headroom and retry once before failing.
+  static const Duration _initTimeout = Duration(seconds: 8);
   static const String _dbFileName = 'chessever_app.db';
   String? _cachedDbPath;
 
@@ -47,12 +49,7 @@ class AppDatabase {
     _initCompleter = Completer<Database>();
 
     try {
-      final db = await _initDatabase().timeout(
-        _initTimeout,
-        onTimeout: () {
-          throw TimeoutException('SQLite init timed out after $_initTimeout');
-        },
-      );
+      final db = await _initWithRetry();
       _database = db;
       _initCompleter!.complete(db);
       return db;
@@ -60,6 +57,26 @@ class AppDatabase {
       _initCompleter!.completeError(e);
       _initCompleter = null;
       rethrow;
+    }
+  }
+
+  Future<Database> _initWithRetry() async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await _initDatabase().timeout(
+          _initTimeout,
+          onTimeout: () {
+            throw TimeoutException(
+              'SQLite init timed out after $_initTimeout (attempt $attempt)',
+            );
+          },
+        );
+      } on TimeoutException {
+        if (attempt >= 2) rethrow;
+        if (kDebugMode) {
+          print('⚠️ SQLite init attempt $attempt timed out, retrying');
+        }
+      }
     }
   }
 

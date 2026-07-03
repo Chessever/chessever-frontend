@@ -1115,8 +1115,14 @@ class DeepLinkService {
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load event: $e');
       // A slow/offline network makes the 10s fetch timeout (or socket failure)
-      // throw here. That is expected and already handled by routing home, so
-      // record it as a breadcrumb rather than a Sentry error (CHESSEVER-169).
+      // throw here (CHESSEVER-169), and a stale/deleted event link yields
+      // "No rows found" (CHESSEVER-1MF). Both are expected and recovered by
+      // routing home, so record a breadcrumb rather than a Sentry error.
+      final msg = e.toString().toLowerCase();
+      final expected =
+          _isTransientNetworkError(e) ||
+          msg.contains('no rows found') ||
+          msg.contains('notfoundexception');
       _captureDeepLinkException(
         e,
         stackTrace,
@@ -1126,7 +1132,7 @@ class DeepLinkService {
           'roundId': roundId,
           'tourId': tourId,
         },
-        captureAsException: !_isTransientNetworkError(e),
+        captureAsException: !expected,
       );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',

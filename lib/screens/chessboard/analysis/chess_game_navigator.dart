@@ -430,7 +430,13 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       if (nextMove.uci == uci) {
         debugPrint('🎯 NAVIGATOR makeOrGoToMove: Moving to next move in line');
         final pointer = List.of(state.movePointer);
-        pointer.last = currentIndex + 1;
+        // At the starting position the pointer is empty — assigning `.last`
+        // on an empty list throws StateError (CHESSEVER-S7).
+        if (pointer.isEmpty) {
+          pointer.add(currentIndex + 1);
+        } else {
+          pointer.last = currentIndex + 1;
+        }
         replaceState(
           ChessGameNavigatorState(game: state.game, movePointer: pointer),
         );

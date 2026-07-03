@@ -111,6 +111,10 @@ bool _shouldDropSentryEvent(SentryEvent event) {
     'connection closed before full header',
     'connection reset by peer',
     'network is unreachable',
+    'handshakeexception', // TLS handshake dropped mid-flight (CHESSEVER-15E)
+    'bad_decrypt', // corrupted TLS record on flaky network (CHESSEVER-12B)
+    'decryption_failed_or_bad_record_mac', // same TLS record corruption
+    'software caused connection abort', // OS killed the socket (CHESSEVER-1NK)
     'no internet connection', // NetworkException
     'connection timeout', // DioException slow network (CHESSEVER-12B)
     'receive timeout', // DioException slow network
