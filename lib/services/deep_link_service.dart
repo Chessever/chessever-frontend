@@ -5,6 +5,7 @@ import 'package:app_links/app_links.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -36,6 +37,8 @@ import 'package:chessever2/screens/standings/score_card_screen.dart'
         scoreCardPlayerProfileDataSourceProvider;
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart'
     show PlayerProfileDataSource;
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
+    show PlayerProfileScreen;
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
@@ -192,6 +195,7 @@ class DeepLinkService {
       String? folderId;
       String? broadcastId;
       int? playerFideId;
+      int? profileFideId;
 
       // Universal link: https://chessever.com/games/<id>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
@@ -224,11 +228,25 @@ class DeepLinkService {
         }
       }
 
+      // Player profile: https://chessever.com/player/<fideId>, plus the
+      // canonical SEO form https://chessever.com/player/<name-slug>/<fideId>.
+      // The FIDE id is always the last segment.
+      if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'player') {
+        profileFideId = int.tryParse(uri.pathSegments.last);
+      }
+
       // Custom scheme: com.chessever.app://games/<id>
       if (gameId == null &&
           uri.host == 'games' &&
           uri.pathSegments.isNotEmpty) {
         gameId = uri.pathSegments[0];
+      }
+
+      // Custom scheme: com.chessever.app://player/<fideId>
+      if (profileFideId == null &&
+          uri.host == 'player' &&
+          uri.pathSegments.isNotEmpty) {
+        profileFideId = int.tryParse(uri.pathSegments.last);
       }
 
       // Custom scheme: com.chessever.app://books/<shareToken>
@@ -341,6 +359,12 @@ class DeepLinkService {
           data: {'broadcastId': _maskedValue(broadcastId), 'tab': eventTab},
         );
         _navigateToEvent(broadcastId, navigatorKey, ref, tab: eventTab);
+      } else if (profileFideId != null) {
+        _addBreadcrumb(
+          'routing to player profile',
+          data: {'fideId': profileFideId.toString()},
+        );
+        _navigateToPlayerProfile(profileFideId, navigatorKey, ref);
       } else {
         _addBreadcrumb(
           'deep link ignored',
@@ -1261,6 +1285,92 @@ class DeepLinkService {
           'groupBroadcastId': groupBroadcastId,
           'fideId': fideId.toString(),
         },
+      );
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  /// Opens a player's overall profile from a shared link
+  /// `chessever.com/player/<fideId>` (or the canonical
+  /// `/player/<name-slug>/<fideId>` SEO form). Resolves the player's name,
+  /// title, federation and rating by FIDE id so the profile screen has its
+  /// required identity, then pushes the screen. Falls back to home if the
+  /// player can't be resolved.
+  Future<void> _navigateToPlayerProfile(
+    int fideId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) {
+      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
+      return;
+    }
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      AppAuthState? resolvedState = ref.read(authStateProvider).value;
+      if (resolvedState == null) {
+        try {
+          resolvedState = await ref.read(authStateProvider.future);
+        } catch (_) {
+          resolvedState = null;
+        }
+      }
+      if (!_isFullyAuthenticated(resolvedState)) {
+        debugPrint(
+          'DeepLinkService: User not authenticated, routing to auth screen',
+        );
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/auth_screen',
+          (route) => false,
+        );
+        return;
+      }
+
+      final player = await ref
+          .read(chessPlayerRepositoryProvider)
+          .getPlayerByFideId(fideId)
+          .timeout(_fetchTimeout);
+      if (player == null || player.name.trim().isEmpty) {
+        debugPrint(
+          'DeepLinkService: Player $fideId not found, routing to home',
+        );
+        _navigateToHome(navigatorKey);
+        return;
+      }
+
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder:
+              (_) => PlayerProfileScreen(
+                fideId: player.fideid,
+                playerName: player.name,
+                title: player.title,
+                federation: player.country,
+                rating: player.rating,
+              ),
+        ),
+      );
+    } catch (e, stackTrace) {
+      debugPrint('DeepLinkService: Failed to open player profile: $e');
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'navigate_to_player_profile',
+        extras: {'fideId': fideId.toString()},
       );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',

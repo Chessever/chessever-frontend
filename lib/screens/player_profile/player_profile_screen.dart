@@ -11,18 +11,15 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
+import 'package:chessever2/screens/player_profile/utils/player_profile_share_utils.dart';
+import 'package:chessever2/screens/player_profile/widgets/player_profile_share_image_card.dart';
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
-import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
-import 'package:chessever2/screens/standings/widgets/player_event_share_image_card.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -463,48 +460,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
   }
 
-  /// Recent completed games shown on the shareable profile card. The card's
-  /// height is intrinsic, so cap the list to keep the image social-friendly.
-  static const _maxShareGames = 12;
-
-  PlayerEventGameOutcome _shareOutcomeFor(GameStatus status, bool isWhite) {
-    switch (status) {
-      case GameStatus.whiteWins:
-        return isWhite
-            ? PlayerEventGameOutcome.win
-            : PlayerEventGameOutcome.loss;
-      case GameStatus.blackWins:
-        return isWhite
-            ? PlayerEventGameOutcome.loss
-            : PlayerEventGameOutcome.win;
-      case GameStatus.draw:
-        return PlayerEventGameOutcome.draw;
-      default:
-        return PlayerEventGameOutcome.other;
-    }
-  }
-
-  PlayerEventShareGameRow _shareRowFor(GamesTourModel game, dynamic playerUtils) {
-    final bool isWhite = playerUtils.isSamePlayerWithFideId(
-      game.whitePlayer.name,
-      widget.playerName,
-      fideId1: game.whitePlayer.fideId,
-      fideId2: widget.fideId,
-    );
-    final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
-    return PlayerEventShareGameRow(
-      roundLabel: null,
-      countryCode: opponent.countryCode,
-      title: opponent.title,
-      name: opponent.name,
-      rating: opponent.rating,
-      ratingChange: null,
-      result: boardResultLabelForSide(game, isWhite: isWhite) ?? '-',
-      outcome: _shareOutcomeFor(game.gameStatus, isWhite),
-      isWhite: isWhite,
-    );
-  }
-
   Future<void> _shareProfile({
     required String effectiveName,
     required String? effectiveTitle,
@@ -521,21 +476,28 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
     final activeProfile =
         ref.read(playerProfileDataKeyProvider(playerKey)).valueOrNull;
-    final playerUtils = ref.read(playerUtilsProvider);
 
-    final completedGames =
-        gamesState.allGames
-            .where(
-              (game) =>
-                  game.gameStatus == GameStatus.whiteWins ||
-                  game.gameStatus == GameStatus.blackWins ||
-                  game.gameStatus == GameStatus.draw,
+    // Overall analytics for the About-page-style card: prefer the backend
+    // all-games stats (same source as the About tab), fall back to computing
+    // from whatever games are already loaded locally.
+    final twicStats =
+        ref
+            .read(
+              twicPlayerStatsProvider(
+                TwicPlayerStatsRequest(
+                  playerKey: playerKey,
+                  scope: TwicStatsScope.allGames,
+                ),
+              ),
             )
-            .take(_maxShareGames)
-            .toList(growable: false);
-    final rows = [
-      for (final game in completedGames) _shareRowFor(game, playerUtils),
-    ];
+            .valueOrNull;
+    final analytics =
+        twicStats ??
+        PlayerAnalytics.fromGames(
+          gamesState.allGames,
+          widget.fideId,
+          widget.playerName,
+        );
 
     final nameParts = effectiveName.split(',');
     final initials =
@@ -550,16 +512,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             : '';
 
     final standardRating = activeProfile?.classicalRating ?? widget.rating;
-    final playerModel = PlayerStandingModel(
-      countryCode: effectiveFederation ?? '',
-      title: effectiveTitle,
-      name: effectiveName,
-      score: standardRating ?? 0,
-      scoreChange: 0,
-      matchScore: null,
-      fideId: widget.fideId,
-      gamebasePlayerId: _currentGamebasePlayerId,
-    );
     final photoFuture = FidePhotoService.getPhotoUrlOrNull(
       widget.fideId?.toString(),
     );
@@ -582,20 +534,18 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         context,
         width: logicalWidth,
         pixelRatio: 3.0,
-        child: PlayerEventShareImageCard(
+        child: PlayerProfileShareImageCard(
           width: logicalWidth,
-          player: playerModel,
+          playerName: effectiveName,
+          title: effectiveTitle,
+          countryCode: effectiveFederation ?? '',
+          fideId: widget.fideId,
           photoFuture: photoFuture,
           initials: initials,
-          eventName: null,
-          performanceRating: null,
-          eventScore: null,
-          eventTotalGames: null,
-          ratingDiff: null,
           standardRating: standardRating,
           rapidRating: activeProfile?.rapidRating,
           blitzRating: activeProfile?.blitzRating,
-          rows: rows,
+          analytics: analytics,
         ),
       );
       if (imageBytes == null) {
@@ -608,16 +558,28 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       await file.writeAsBytes(imageBytes);
       if (!mounted) return;
 
+      final shareUrl = buildPlayerProfileShareUrl(widget.fideId);
       await showShareImagePreview(
         context,
         imageBytes: imageBytes,
         onShareImage: () async {
           await Share.shareXFiles(
             [XFile(file.path, mimeType: 'image/png')],
+            text: shareUrl,
             subject: effectiveName,
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
+        onShareLink:
+            shareUrl == null
+                ? null
+                : () async {
+                  await Share.share(
+                    shareUrl,
+                    subject: effectiveName,
+                    sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                  );
+                },
       );
     } catch (error) {
       debugPrint('Failed to share player profile: $error');
@@ -889,10 +851,13 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               height: 44.h,
               padding: EdgeInsets.all(6.sp),
               alignment: Alignment.center,
+              // The heart SVG next door fills its whole 20px box while the
+              // Material ios_share glyph carries ~2px of built-in padding per
+              // side on its 24-grid — 24 here optically matches the 20px heart.
               child: Icon(
                 Icons.ios_share,
                 color: context.colors.textPrimary,
-                size: 20.ic,
+                size: 24.ic,
                 semanticLabel: 'Share Profile',
               ),
             ),
