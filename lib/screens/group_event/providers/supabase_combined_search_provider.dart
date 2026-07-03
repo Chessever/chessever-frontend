@@ -477,11 +477,15 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
     countryFedCode: fideCountryCode,
   );
 
-  // Cache the result
-  _searchCache[cacheKey] = _SearchCacheEntry(
-    result: searchResult,
-    cachedAt: DateTime.now(),
-  );
+  // Cache the result. Empty results are not cached: a transient network
+  // failure in any of the parallel fetches would otherwise pin "no results"
+  // for this exact query for 30s while a reordered query works fine.
+  if (searchResult.isNotEmpty) {
+    _searchCache[cacheKey] = _SearchCacheEntry(
+      result: searchResult,
+      cachedAt: DateTime.now(),
+    );
+  }
 
   return searchResult;
 });
@@ -613,8 +617,9 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
   }
 }
 
-/// Fetches players by name search directly from Supabase chess_players.
-/// Supports flexible word order: "guy gov", "gov guy", "gov, guy" all match "Gov, Guy"
+/// Fetches players by name search via the `search_chess_players` RPC.
+/// Word-order insensitive ("guy gov" == "gov, guy") with a server-side
+/// trigram fallback for typos/diacritics when no strict match exists.
 Future<List<SearchResult>> _fetchPlayersByName({
   required String query,
   int limit = 10,
@@ -625,32 +630,10 @@ Future<List<SearchResult>> _fetchPlayersByName({
     final supabase = Supabase.instance.client;
     final searchQuery = query.trim();
 
-    // Split query into words for flexible matching
-    // "guy gov" → ["guy", "gov"] → matches "Gov, Guy"
-    final words =
-        searchQuery
-            .replaceAll(',', ' ')
-            .split(RegExp(r'\s+'))
-            .where((w) => w.isNotEmpty && w.length >= 2)
-            .toList();
-
-    if (words.isEmpty) return [];
-
-    // Build query - each word must appear in name (any order)
-    var queryBuilder = supabase
-        .from('chess_players')
-        .select('fideid, name, title, rating, country');
-
-    // Apply ILIKE filter for each word (AND logic)
-    for (final word in words) {
-      queryBuilder = queryBuilder.ilike('name', '%$word%');
-    }
-
-    queryBuilder = queryBuilder.or('rating.lt.3300,rating.is.null');
-
-    final rows = await queryBuilder
-        .order('rating', ascending: false, nullsFirst: false)
-        .limit(limit);
+    final rows = await supabase.rpc(
+      'search_chess_players',
+      params: {'search_query': searchQuery, 'max_results': limit},
+    );
 
     final placeholderTournament = GroupEventCardModel(
       id: 'player_search',
