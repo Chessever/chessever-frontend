@@ -827,13 +827,27 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           // actions fit without crowding the header.
           Expanded(
             child: Center(
-              child: Text(
-                _formatDisplayName(name: effectiveName, title: effectiveTitle),
-                style: AppTypography.textMdBold.copyWith(
-                  color: context.colors.textPrimary,
-                ),
+              child: RichText(
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  children: [
+                    if (effectiveTitle != null &&
+                        effectiveTitle.trim().isNotEmpty)
+                      TextSpan(
+                        text: '${effectiveTitle.trim()} ',
+                        style: AppTypography.textMdBold.copyWith(
+                          color: kLightYellowColor,
+                        ),
+                      ),
+                    TextSpan(
+                      text: _formatDisplayName(name: effectiveName),
+                      style: AppTypography.textMdBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1146,7 +1160,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
   }
 
-  String _formatDisplayName({String? name, String? title}) {
+  String _formatDisplayName({String? name}) {
     String displayName = name ?? widget.playerName;
 
     // Handle "Lastname, Firstname" format
@@ -1155,11 +1169,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       if (parts.length >= 2) {
         displayName = '${parts[1].trim()} ${parts[0].trim()}';
       }
-    }
-
-    // Prepend title if present
-    if (title != null && title.isNotEmpty) {
-      return '$title $displayName';
     }
 
     return displayName;
