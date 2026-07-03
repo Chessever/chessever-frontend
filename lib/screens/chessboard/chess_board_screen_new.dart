@@ -17,6 +17,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
+import 'package:chessever2/screens/chessboard/notation/next_move_options.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_cache.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
@@ -10576,6 +10577,127 @@ class _ExplorerStyleFilterChip extends StatelessWidget {
   }
 }
 
+/// Fork picker shown under the notation when the current move has more than
+/// one playable next move (own continuation + variation heads). Options fill
+/// the width in equal divisions, wrapping to balanced extra rows when a
+/// single row would get too crowded.
+class _NextMoveOptionsPanel extends StatelessWidget {
+  final List<NextMoveOption> options;
+  final bool useFigurine;
+  final PieceAssets? pieceAssets;
+  final ValueChanged<NextMoveOption> onSelect;
+
+  const _NextMoveOptionsPanel({
+    required this.options,
+    required this.useFigurine,
+    required this.pieceAssets,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final maxPerRow = ResponsiveHelper.isTablet ? 6 : 4;
+    final rows = balanceIntoRows(options, maxPerRow);
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(10.sp, 8.sp, 10.sp, 10.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed.withValues(alpha: 0.55),
+        border: Border(
+          top: BorderSide(color: context.colors.divider, width: 0.5),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var r = 0; r < rows.length; r++) ...[
+            if (r > 0) SizedBox(height: 6.h),
+            Row(
+              children: [
+                for (var c = 0; c < rows[r].length; c++) ...[
+                  if (c > 0) SizedBox(width: 6.w),
+                  Expanded(child: _buildOptionChip(context, rows[r][c])),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOptionChip(BuildContext context, NextMoveOption option) {
+    final move = option.move;
+    // Side to move in the resulting FEN is the opponent of whoever played.
+    final fenParts = move.fen.split(' ');
+    final whiteMoved = fenParts.length > 1 && fenParts[1] == 'b';
+    final prefix = whiteMoved ? '${move.num}. ' : '${move.num}... ';
+    final isMain = option.isLineContinuation;
+
+    final textStyle = AppTypography.textXsMedium.copyWith(
+      color: isMain ? kPrimaryColor : context.colors.textPrimary,
+      fontSize: 12.f,
+      fontWeight: isMain ? FontWeight.w700 : FontWeight.w600,
+      height: 1.2,
+    );
+    final numberStyle = AppTypography.textXsMedium.copyWith(
+      color: context.colors.textPrimary.withValues(alpha: 0.55),
+      fontSize: 10.f,
+      fontWeight: FontWeight.w500,
+      fontFeatures: const [FontFeature.tabularFigures()],
+      height: 1.2,
+    );
+
+    final List<InlineSpan> spans;
+    if (useFigurine && pieceAssets != null) {
+      spans = buildFigurineSpans(
+        text: '$prefix${move.san}',
+        pieceAssets: pieceAssets!,
+        style: textStyle,
+        pieceSize: 13.sp,
+        numberStyle: numberStyle,
+      );
+    } else {
+      spans = [
+        TextSpan(text: prefix, style: numberStyle),
+        TextSpan(text: move.san, style: textStyle),
+      ];
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => onSelect(option),
+        borderRadius: BorderRadius.circular(8.br),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 7.h),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color:
+                isMain
+                    ? kPrimaryColor.withValues(alpha: 0.12)
+                    : context.colors.surface.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color:
+                  isMain
+                      ? kPrimaryColor.withValues(alpha: 0.5)
+                      : context.colors.divider,
+            ),
+          ),
+          child: Text.rich(
+            TextSpan(children: spans),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MovesDisplay extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -10735,6 +10857,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _schedulePointerScroll(pointerForScroll, pointerForHighlightId);
     }
 
+    // Fork picker: when the selected move has several playable next moves
+    // (own continuation + variation heads), surface them as tappable options
+    // pinned below the notation instead of silently following the main line.
+    final nextMoveOptions = nextMoveOptionsAt(
+      navigatorState.game,
+      pointerCandidate,
+    );
+    final showNextMovePanel =
+        nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive;
+
     final forcedOpenIds = <String>{};
     _collectVariationAncestors(
       pointerForHighlightId,
@@ -10871,7 +11003,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           topRight: Radius.circular(12.sp),
         ),
       ),
-      child: Stack(
+      child: Column(
+        children: [
+          Expanded(
+            child: Stack(
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(child: notationContent),
@@ -11071,6 +11206,19 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   ),
                 ),
               ),
+            ),
+        ],
+            ),
+          ),
+          if (showNextMovePanel)
+            _NextMoveOptionsPanel(
+              options: nextMoveOptions,
+              useFigurine: useFigurine,
+              pieceAssets: pieceAssets,
+              onSelect: (option) {
+                HapticFeedback.selectionClick();
+                notifier.goToMovePointer(option.pointer);
+              },
             ),
         ],
       ),
