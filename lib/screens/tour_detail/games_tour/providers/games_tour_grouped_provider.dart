@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/lichess_pairings_fallback_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -302,6 +303,75 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         }
       }
       upcomingPairingRoundIds.add(round.id);
+    }
+  }
+
+  // FALLBACK: during a round break the DB may not have the next round's
+  // pairings yet (backend pairing sync disabled or lagging) even though
+  // Lichess has already published them. Fetch that single round straight
+  // from the public Lichess API and surface it exactly like DB-backed
+  // pairings; the fetch provider auto-refreshes every 90s and this branch
+  // deactivates on its own once real rows exist in the DB.
+  if (!isMultiStageKnockout &&
+      !isVirtualGamebaseEvent &&
+      !isSearchMode &&
+      tourId != null) {
+    final now = DateTime.now();
+    GamesAppBarModel? fallbackRound;
+    for (final round in rounds) {
+      if (upcomingPairingRoundIds.contains(round.id)) continue;
+      if (gamesByRound[round.id]?.isNotEmpty ?? false) continue;
+      if (round.roundStatus == RoundStatus.completed) continue;
+      final startsAt = round.startsAt;
+      if (startsAt == null) continue;
+      final untilStart = startsAt.difference(now);
+      // Slightly wider than the 1h top-pin display gate, plus grace for
+      // late-starting broadcasts (same window the data hub sync uses).
+      if (untilStart > const Duration(minutes: 65) ||
+          untilStart < const Duration(minutes: -30)) {
+        continue;
+      }
+      if (fallbackRound == null ||
+          (fallbackRound.startsAt != null &&
+              startsAt.isBefore(fallbackRound.startsAt!))) {
+        fallbackRound = round;
+      }
+    }
+
+    if (fallbackRound != null) {
+      final fetched =
+          ref
+              .watch(
+                lichessPairingsFallbackProvider(
+                  LichessPairingsRequest(
+                    roundId: fallbackRound.id,
+                    tourId: tourId,
+                  ),
+                ),
+              )
+              .valueOrNull ??
+          const <Games>[];
+      final fallbackModels = <GamesTourModel>[];
+      for (final game in fetched) {
+        try {
+          final model = GamesTourModel.fromGame(game);
+          if (_hasResolvedPlayer(model.whitePlayer) &&
+              _hasResolvedPlayer(model.blackPlayer)) {
+            fallbackModels.add(model);
+          }
+        } catch (_) {
+          // Best-effort fallback: skip malformed boards.
+        }
+      }
+      if (fallbackModels.isNotEmpty) {
+        ensureRoundEntry(fallbackRound.id);
+        for (final model in fallbackModels) {
+          if (seenGameIdsPerRound[fallbackRound.id]!.add(model.gameId)) {
+            gamesByRound[fallbackRound.id]!.add(model);
+          }
+        }
+        upcomingPairingRoundIds.add(fallbackRound.id);
+      }
     }
   }
 
