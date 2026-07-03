@@ -22,17 +22,28 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Maximum number of player cards to display
 const int _maxPlayerCards = 4;
 
+/// Last non-empty player cards, held while the next debounced query loads so
+/// the cards don't blink out and shift the list on every keystroke batch.
+List<SearchPlayer> _lastTopPlayers = const [];
+
 /// Provider that extracts the top searched players from search results (up to 4)
 final topSearchedPlayersProvider = Provider.autoDispose<List<SearchPlayer>>((
   ref,
 ) {
   final searchQuery = ref.watch(searchTabQueryProvider);
-  if (searchQuery.isEmpty) return [];
+  if (searchQuery.isEmpty) {
+    _lastTopPlayers = const [];
+    return [];
+  }
 
   final searchResults = ref.watch(supabaseCombinedSearchProvider(searchQuery));
   return searchResults.maybeWhen(
+    loading: () => _lastTopPlayers,
     data: (results) {
-      if (results.playerResults.isEmpty) return [];
+      if (results.playerResults.isEmpty) {
+        _lastTopPlayers = const [];
+        return [];
+      }
       // Return top players from search results (already sorted by relevance + ELO)
       // Deduplicate by name to avoid showing same player multiple times
       final seen = <String>{};
@@ -46,6 +57,7 @@ final topSearchedPlayersProvider = Provider.autoDispose<List<SearchPlayer>>((
           if (uniquePlayers.length >= _maxPlayerCards) break;
         }
       }
+      _lastTopPlayers = uniquePlayers;
       return uniquePlayers;
     },
     orElse: () => [],

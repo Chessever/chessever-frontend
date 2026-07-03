@@ -47,6 +47,7 @@ class GroupBroadcastLocalStorage {
         intKey: _cacheTimeKey,
         intValue: DateTime.now().millisecondsSinceEpoch,
       );
+      _memoize(broadcasts);
     } catch (_) {
       // Local storage failure is not critical - Supabase is source of truth
     }
@@ -79,6 +80,7 @@ class GroupBroadcastLocalStorage {
       intKey: _cacheTimeKey,
       intValue: DateTime.now().millisecondsSinceEpoch,
     );
+    _memoize(broadcasts);
     return broadcasts;
   }
 
@@ -148,14 +150,35 @@ class GroupBroadcastLocalStorage {
     ];
   }
 
+  // Decoding the cached list is expensive (full jsonDecode + model parsing
+  // on the UI isolate) and search hits this on every debounced query.
+  // Memoize briefly; writers refresh the memo below.
+  List<GroupBroadcast>? _memoizedBroadcasts;
+  DateTime? _memoizedAt;
+  static const _memoTtl = Duration(seconds: 60);
+
+  void _memoize(List<GroupBroadcast> broadcasts) {
+    _memoizedBroadcasts = broadcasts;
+    _memoizedAt = DateTime.now();
+  }
+
   Future<List<GroupBroadcast>> getGroupBroadcasts() async {
+    final memo = _memoizedBroadcasts;
+    final memoAt = _memoizedAt;
+    if (memo != null &&
+        memoAt != null &&
+        DateTime.now().difference(memoAt) < _memoTtl) {
+      return memo;
+    }
     try {
       final db = ref.read(appDatabaseProvider);
       final entry = await db.getCache(key: _cacheKey);
       if (entry == null) return <GroupBroadcast>[];
 
       final jsonList = jsonDecode(entry.value) as List;
-      return _decodeGroupBroadcastsList(jsonList.cast<String>());
+      final decoded = _decodeGroupBroadcastsList(jsonList.cast<String>());
+      _memoize(decoded);
+      return decoded;
     } catch (_) {
       return <GroupBroadcast>[];
     }

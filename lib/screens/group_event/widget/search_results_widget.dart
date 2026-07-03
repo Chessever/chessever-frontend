@@ -10,6 +10,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
+import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,10 @@ class SearchResultsWidget extends HookConsumerWidget {
       return () => isMounted.value = false;
     }, []);
 
+    // Last delivered results: shown while the next (debounced) query loads,
+    // so typing never tears the list down into a skeleton and back.
+    final lastResults = useRef<EnhancedSearchResult?>(null);
+
     // Watch the combined search provider for tournaments
     final searchResultsAsync = ref.watch(
       supabaseCombinedSearchProvider(searchQuery.trim()),
@@ -59,27 +64,38 @@ class SearchResultsWidget extends HookConsumerWidget {
       return _buildInitialState(context);
     }
 
+    Widget buildResults(EnhancedSearchResult results) {
+      var tournaments =
+          results.tournamentResults.map((r) => r.tournament).toList();
+
+      // Apply client-side filter if active
+      if (searchFilter != defaultFilterPopupState) {
+        tournaments = _applySearchFilter(tournaments, searchFilter);
+      }
+
+      if (tournaments.isEmpty && results.playerResults.isEmpty) {
+        return _buildEmptyState(context, searchQuery);
+      }
+
+      return _SearchResultsListView(
+        scrollController: scrollController,
+        tournaments: tournaments,
+        searchQuery: searchQuery,
+      );
+    }
+
     return searchResultsAsync.when(
       data: (results) {
-        var tournaments =
-            results.tournamentResults.map((r) => r.tournament).toList();
-
-        // Apply client-side filter if active
-        if (searchFilter != defaultFilterPopupState) {
-          tournaments = _applySearchFilter(tournaments, searchFilter);
-        }
-
-        if (tournaments.isEmpty && results.playerResults.isEmpty) {
-          return _buildEmptyState(context, searchQuery);
-        }
-
-        return _SearchResultsListView(
-          scrollController: scrollController,
-          tournaments: tournaments,
-          searchQuery: searchQuery,
-        );
+        lastResults.value = results;
+        return buildResults(results);
       },
-      loading: () => _buildLoadingState(),
+      loading: () {
+        final previous = lastResults.value;
+        if (previous == null || previous.isEmpty) {
+          return _buildLoadingState();
+        }
+        return buildResults(previous);
+      },
       error: (error, stackTrace) {
         debugPrint('[SearchResultsWidget] Error: $error');
         return const GenericErrorWidget();

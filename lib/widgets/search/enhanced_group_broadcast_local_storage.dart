@@ -35,6 +35,52 @@ class EnhancedSearchResult {
 }
 
 extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
+  /// Tournament-only variant of [searchWithScoring]. The combined search
+  /// provider discards local player results (they lack FIDE data), so this
+  /// skips the per-player-term scoring sweep entirely — that sweep is
+  /// Levenshtein-heavy and runs on the UI isolate.
+  Future<EnhancedSearchResult> searchTournamentsWithScoring(
+    String query, [
+    List<String>? liveBroadcastId,
+  ]) async {
+    try {
+      if (query.isEmpty) return EnhancedSearchResult.empty();
+      final broadcasts = await getGroupBroadcasts();
+
+      final queryLower = query.toLowerCase().trim();
+      final tournamentResults = <SearchResult>[];
+
+      for (final gb in broadcasts) {
+        final tournamentMatch = SearchScorer.bestTournamentMatch(
+          query: queryLower,
+          name: gb.name,
+          aliases: gb.search,
+        );
+        if (tournamentMatch.score > 10.0) {
+          tournamentResults.add(
+            SearchResult(
+              tournament: GroupEventCardModel.fromGroupBroadcast(
+                gb,
+                liveBroadcastId ?? [],
+              ),
+              score: tournamentMatch.score,
+              matchedText: tournamentMatch.matchedText,
+              type: SearchResultType.tournament,
+            ),
+          );
+        }
+      }
+
+      return EnhancedSearchResult(
+        tournamentResults: tournamentResults,
+        playerResults: const [],
+        allPlayers: const [],
+      );
+    } catch (_) {
+      return EnhancedSearchResult.empty();
+    }
+  }
+
   Future<EnhancedSearchResult> searchWithScoring(
     String query, [
     List<String>? liveBroadcastId,

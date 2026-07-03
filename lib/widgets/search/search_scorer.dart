@@ -156,6 +156,12 @@ class SearchScorer {
       for (final textWord in text.split(' ')) {
         if (textWord.isEmpty) continue;
 
+        // Length bound: similarity <= (longer - lengthDiff) / longer, so
+        // pairs that cannot reach the 0.6 threshold skip Levenshtein.
+        final longerLen = math.max(word.length, textWord.length);
+        final lenDiff = (word.length - textWord.length).abs();
+        if ((longerLen - lenDiff) / longerLen <= 0.6) continue;
+
         // Calculate Levenshtein-based similarity
         final similarity = _stringSimilarity(word, textWord);
         if (similarity > 0.6) {

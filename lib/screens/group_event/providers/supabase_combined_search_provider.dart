@@ -178,14 +178,15 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
         : Future.value(<SearchResult>[]),
     // 3. Direct chess_players search
     _fetchPlayersByName(query: trimmedQuery, limit: 25),
-    // 4. Local cache searches
+    // 4. Local cache searches (tournaments only — local player results are
+    // discarded downstream, so don't pay for scoring them)
     ref
         .read(groupBroadcastLocalStorage(GroupEventCategory.current))
-        .searchWithScoring(trimmedQuery, liveIds)
+        .searchTournamentsWithScoring(trimmedQuery, liveIds)
         .catchError((_) => EnhancedSearchResult.empty()),
     ref
         .read(groupBroadcastLocalStorage(GroupEventCategory.past))
-        .searchWithScoring(trimmedQuery, liveIds)
+        .searchTournamentsWithScoring(trimmedQuery, liveIds)
         .catchError((_) => EnhancedSearchResult.empty()),
   ]);
 
@@ -630,10 +631,12 @@ Future<List<SearchResult>> _fetchPlayersByName({
     final supabase = Supabase.instance.client;
     final searchQuery = query.trim();
 
-    final rows = await supabase.rpc(
-      'search_chess_players',
-      params: {'search_query': searchQuery, 'max_results': limit},
-    );
+    final rows = await supabase
+        .rpc(
+          'search_chess_players',
+          params: {'search_query': searchQuery, 'max_results': limit},
+        )
+        .timeout(const Duration(seconds: 5));
 
     final placeholderTournament = GroupEventCardModel(
       id: 'player_search',

@@ -53,6 +53,8 @@ class GroupEventScreen extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
+    final searchTabDebounce = useRef<Timer?>(null);
+    useEffect(() => () => searchTabDebounce.value?.cancel(), const []);
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
@@ -252,28 +254,45 @@ class GroupEventScreen extends HookConsumerWidget {
                       showProfile: !isSearching.value,
                       filterBadgeCount: filterBadgeCount,
                       onChanged: (value) {
-                        ref
-                            .read(groupEventScreenProvider.notifier)
-                            .searchForTournament(value, selectedTourEvent);
-                        // Update search tab query
+                        // Tab switch is instant; the query that drives the
+                        // search fan-out (network + local scoring) is
+                        // debounced so keystrokes never trigger heavy work.
                         final trimmed = value.trim();
                         final previousQuery = ref.read(searchTabQueryProvider);
-                        ref.read(searchTabQueryProvider.notifier).state =
-                            trimmed;
+                        searchTabDebounce.value?.cancel();
                         if (trimmed.isNotEmpty) {
-                          // Switch to search tab immediately when typing
                           ref
                               .read(selectedGroupCategoryProvider.notifier)
                               .state = GroupEventCategory.search;
-                        } else if (previousQuery.isNotEmpty) {
-                          // Only switch tabs when user actively clears a non-empty search
-                          // (not when tapping on an already empty field)
-                          searchAnimatedEventIds.clear();
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = GroupEventCategory.current;
-                          // ignore: unused_result
-                          ref.refresh(groupEventScreenProvider);
+                          if (previousQuery.isEmpty) {
+                            // First keystroke must apply instantly: the search
+                            // tab is only rendered while the query is
+                            // non-empty (sub-2-char queries short-circuit in
+                            // the provider, so this is cheap).
+                            ref.read(searchTabQueryProvider.notifier).state =
+                                trimmed;
+                          } else {
+                            searchTabDebounce.value = Timer(
+                              const Duration(milliseconds: 300),
+                              () {
+                                ref
+                                    .read(searchTabQueryProvider.notifier)
+                                    .state = trimmed;
+                              },
+                            );
+                          }
+                        } else {
+                          ref.read(searchTabQueryProvider.notifier).state = '';
+                          if (previousQuery.isNotEmpty) {
+                            // Only switch tabs when user actively clears a
+                            // non-empty search (not on tapping an empty field)
+                            searchAnimatedEventIds.clear();
+                            ref
+                                .read(selectedGroupCategoryProvider.notifier)
+                                .state = GroupEventCategory.current;
+                            // ignore: unused_result
+                            ref.refresh(groupEventScreenProvider);
+                          }
                         }
                       },
                       onTournamentSelected:
