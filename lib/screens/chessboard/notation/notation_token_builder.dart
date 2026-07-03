@@ -250,8 +250,12 @@ List<NotationDisplayToken> buildNotationTokens(
       ),
     );
 
-    // Add PGN comments (skipped in raw PGN mode)
-    if (!rawPgnMode && node.move.comments != null) {
+    // Add PGN comments (skipped in raw PGN mode, or once the user has
+    // overridden this move's comment — the override replaces the original
+    // text rather than rendering beside it).
+    if (!rawPgnMode &&
+        node.move.comments != null &&
+        !variationComments.containsKey(pointerId)) {
       for (final comment in node.move.comments!) {
         // Strip out Lichess extension tags from the comment text
         String cleanText =

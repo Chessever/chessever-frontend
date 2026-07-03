@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
@@ -8,7 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 // Test helpers
 // ---------------------------------------------------------------------------
 
-ChessMove _move(String san, {List<ChessLine>? variations}) {
+ChessMove _move(
+  String san, {
+  List<ChessLine>? variations,
+  List<String>? comments,
+}) {
   return ChessMove(
     num: 1,
     fen: 'fen',
@@ -16,6 +21,7 @@ ChessMove _move(String san, {List<ChessLine>? variations}) {
     uci: san,
     turn: ChessColor.white,
     variations: variations,
+    comments: comments,
   );
 }
 
@@ -218,6 +224,57 @@ void main() {
         expect(comment.depth, 0);
       }
     });
+
+    test(
+      'user override replaces the original PGN comment instead of appending '
+      'a second one beside it',
+      () {
+        final tree = _treeFromSans(['e4', 'e5']);
+        final original = tree.mainline.first;
+        // Simulate importing a PGN whose e4 move already carries a comment,
+        // e.g. `1. e4 {Great move!} e5`.
+        final commentedNode = NotationMoveNode(
+          move: _move('e4', comments: ['Great move!']),
+          pointer: original.pointer,
+          ply: original.ply,
+          moveNumber: original.moveNumber,
+          isWhiteMove: original.isWhiteMove,
+          showMoveNumber: original.showMoveNumber,
+          showEllipsis: original.showEllipsis,
+          isMainline: original.isMainline,
+          depth: original.depth,
+          variations: original.variations,
+        );
+        final withComment = NotationTree(
+          startingPly: tree.startingPly,
+          mainline: [commentedNode, tree.mainline[1]],
+        );
+
+        final pointerId = NotationPointer.encode(commentedNode.pointer);
+
+        // Before any override: the original PGN comment renders.
+        final beforeOverride = _buildTokens(withComment);
+        final beforeComments =
+            beforeOverride
+                .where((t) => t.type == NotationTokenType.comment)
+                .toList();
+        expect(beforeComments, hasLength(1));
+        expect(beforeComments.first.text, 'Great move!');
+
+        // After the user overrides it via updateVariationComment: only the
+        // new text should render — not both, beside each other.
+        final afterOverride = _buildTokens(
+          withComment,
+          variationComments: {pointerId: 'Edited comment'},
+        );
+        final afterComments =
+            afterOverride
+                .where((t) => t.type == NotationTokenType.comment)
+                .toList();
+        expect(afterComments, hasLength(1));
+        expect(afterComments.first.text, 'Edited comment');
+      },
+    );
 
     test('move formatting preserves white/black number prefixes', () {
       final tree = _treeFromSans(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
