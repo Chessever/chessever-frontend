@@ -259,20 +259,41 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     ref.read(countrymenCombinedGamesProvider.notifier).clearSearch();
   }
 
-  /// Group games by date
+  static const String _unknownDateKey = '0000-00-00';
+
+  /// Group games by date.
+  ///
+  /// Games are bucketed by their **device-local** calendar day. `lastMoveTime`
+  /// is a UTC instant from Postgres; formatting it directly (without
+  /// `.toLocal()`) keyed games by their UTC date while the Today / Yesterday
+  /// headers below are derived from local `DateTime.now()`. For anyone east of
+  /// UTC (e.g. Türkiye, UTC+3) a game finished in the local small hours —
+  /// 01:00 local is still 22:00 UTC the previous day — was filed one day off,
+  /// so today and yesterday intermixed and the per-day counts were wrong.
+  /// Converting to local before extracting the day makes the buckets agree with
+  /// the header. Games with no timestamp go to an explicit unknown bucket
+  /// rather than silently defaulting to today.
   Map<String, List<GamesTourModel>> _groupGamesByDate(
     List<GamesTourModel> games,
   ) {
     final grouped = <String, List<GamesTourModel>>{};
 
     for (final game in games) {
-      final date = game.lastMoveTime ?? DateTime.now();
-      final dateKey = DateFormat('yyyy-MM-dd').format(date);
+      final raw = game.lastMoveTime;
+      final dateKey =
+          raw == null
+              ? _unknownDateKey
+              : DateFormat('yyyy-MM-dd').format(raw.toLocal());
       grouped.putIfAbsent(dateKey, () => []).add(game);
     }
 
-    // Sort keys by date descending (most recent first)
-    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+    // Sort keys by date descending (most recent first); unknown sinks to the end.
+    final sortedKeys =
+        grouped.keys.toList()..sort((a, b) {
+          if (a == _unknownDateKey) return 1;
+          if (b == _unknownDateKey) return -1;
+          return b.compareTo(a);
+        });
 
     return Map.fromEntries(
       sortedKeys.map((key) => MapEntry(key, grouped[key]!)),
@@ -280,6 +301,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   }
 
   String _formatDateHeader(String dateKey) {
+    if (dateKey == _unknownDateKey) return 'Unknown date';
     final date = DateTime.parse(dateKey);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

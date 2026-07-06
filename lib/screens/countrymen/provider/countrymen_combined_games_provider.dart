@@ -538,7 +538,9 @@ class CountrymenCombinedGamesNotifier
     if (date == null) {
       return '0000-00-00';
     }
-    return _formatDateKey(date);
+    // Local day, so the recency sort agrees with the local-day grouping/headers
+    // the Games tab renders (lastMoveTime is a UTC instant).
+    return _formatDateKey(date.toLocal());
   }
 
   String _formatDateKey(DateTime date) {
