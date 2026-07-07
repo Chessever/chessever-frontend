@@ -12,6 +12,7 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
@@ -88,6 +89,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshRealtimeGamesNow();
+    });
   }
 
   @override
@@ -199,7 +203,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     if (route?.isCurrent != true) return;
     final selected = ref.read(selectedGroupCategoryProvider);
     if (selected == GroupEventCategory.forYou) {
-      if (resetStreams) {
+      final wasStreaming = ref.read(shouldStreamProvider);
+      if (!wasStreaming) {
+        ref.read(shouldStreamProvider.notifier).state = true;
+      }
+      if (resetStreams || !wasStreaming) {
         ref.invalidate(gameUpdatesStreamProvider);
         ref.invalidate(liveGameUpdateStreamProvider);
         ref.invalidate(gameUpdatesBatchStreamProvider);
@@ -747,8 +755,15 @@ class _ForYouEventSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Single shared snapshot drives both visibility and content.
-    final snapshotAsync = ref.watch(forYouEventSnapshotProvider(event.id));
+    // Mount the live-aware event snapshot so visible For You boards share the
+    // same realtime row stream and finish refresh path. Keep the batched
+    // top-games cache as the first-paint fallback while that snapshot resolves.
+    final snapshotAsync = resolveForYouRenderableSnapshot(
+      liveSnapshot: ref.watch(
+        forYouEventGamesWithAutoRefreshProvider(event.id),
+      ),
+      cachedSnapshot: ref.watch(forYouEventSnapshotProvider(event.id)),
+    );
 
     // Hide section after snapshot resolves with no games.
     final shouldHide = snapshotAsync.maybeWhen(
@@ -798,8 +813,15 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Single shared snapshot drives both visibility and content.
-    final snapshotAsync = ref.watch(forYouEventSnapshotProvider(event.id));
+    // Mount the live-aware event snapshot so visible For You boards share the
+    // same realtime row stream and finish refresh path. Keep the batched
+    // top-games cache as the first-paint fallback while that snapshot resolves.
+    final snapshotAsync = resolveForYouRenderableSnapshot(
+      liveSnapshot: ref.watch(
+        forYouEventGamesWithAutoRefreshProvider(event.id),
+      ),
+      cachedSnapshot: ref.watch(forYouEventSnapshotProvider(event.id)),
+    );
 
     // Hide column after snapshot resolves with no games.
     final shouldHide = snapshotAsync.maybeWhen(

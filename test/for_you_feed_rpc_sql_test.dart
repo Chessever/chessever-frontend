@@ -18,6 +18,34 @@ void main() {
         reason: 'For You must not surface events whose rounds start later.',
       );
     });
+
+    test('latest get_for_you_top_games ranks round recency before rating', () {
+      final migration = _latestMigrationDefining(
+        'create or replace function public.get_for_you_top_games',
+      );
+      final sql = migration.readAsStringSync();
+
+      final eventRankingStart = sql.indexOf('partition by cg.event_id');
+      expect(eventRankingStart, isNonNegative);
+
+      final eventRankingSql = sql.substring(eventRankingStart);
+      final sourceRoundTimeOrder = eventRankingSql.indexOf(
+        'cg.source_round_time desc nulls last',
+      );
+      final categoryEloOrder = eventRankingSql.indexOf(
+        'cg.category_avg_elo desc nulls last',
+      );
+
+      expect(sourceRoundTimeOrder, isNonNegative);
+      expect(categoryEloOrder, isNonNegative);
+      expect(
+        sourceRoundTimeOrder,
+        lessThan(categoryEloOrder),
+        reason:
+            'For You card previews should show the freshest completed section '
+            'before falling back to stronger/older rating categories.',
+      );
+    });
   });
 }
 

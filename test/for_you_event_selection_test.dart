@@ -362,6 +362,82 @@ void main() {
       expect(snapshot.visibleGames.first.gameId, 'r11-g1');
     });
 
+    test('live round ids replace older boards with the new round', () {
+      final now = DateTime.now();
+      final tour = _makeTour(
+        id: 'tour-1',
+        name: 'Titled Tuesday',
+        dates: [now.subtract(const Duration(hours: 3)), now],
+      );
+      final rounds = [
+        _makeRound(
+          id: 'round-10',
+          tourId: 'tour-1',
+          name: 'Round 10',
+          startsAt: now.subtract(const Duration(hours: 1)),
+        ),
+        _makeRound(
+          id: 'round-11',
+          tourId: 'tour-1',
+          name: 'Round 11',
+          startsAt: now.subtract(const Duration(minutes: 2)),
+        ),
+      ];
+      final games = [
+        _makeGame(
+          id: 'r10-g1',
+          roundId: 'round-10',
+          roundSlug: 'round-10',
+          tourId: 'tour-1',
+          status: '1-0',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(hours: 1)),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+        _makeGame(
+          id: 'r11-g1',
+          roundId: 'round-11',
+          roundSlug: 'round-11',
+          tourId: 'tour-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(minutes: 1)),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+        _makeGame(
+          id: 'r11-g2',
+          roundId: 'round-11',
+          roundSlug: 'round-11',
+          tourId: 'tour-1',
+          boardNr: 2,
+          lastMoveTime: now.subtract(const Duration(minutes: 1)),
+          players: [
+            _player(name: 'E', fideId: 5),
+            _player(name: 'F', fideId: 6),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: rounds,
+        roundsByTourId: {'tour-1': rounds},
+        selectedTourGames: games,
+        gamesByTourId: {'tour-1': games},
+        liveRoundIds: const ['round-11'],
+        pinnedIds: const [],
+      );
+
+      expect(snapshot.visibleGames.map((game) => game.gameId).take(2), [
+        'r11-g1',
+        'r11-g2',
+      ]);
+    });
+
     test('preconfigured future placeholders do not override live games', () {
       final now = DateTime.now();
       final tour = _makeTour(

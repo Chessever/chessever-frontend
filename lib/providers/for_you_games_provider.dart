@@ -145,6 +145,14 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       });
     });
 
+    ref.listen<AsyncValue<List<String>>>(liveRoundsIdProvider, (_, next) {
+      next.whenData((_) => bumpForYouEventsRefreshSignal(ref));
+    });
+
+    ref.listen<AsyncValue<List<String>>>(liveTourIdProvider, (_, next) {
+      next.whenData((_) => bumpForYouEventsRefreshSignal(ref));
+    });
+
     // Catch up on events that started while the app was backgrounded; the
     // 5-minute staleness gate keeps quick app switches cheap.
     ref.listen<int>(appResumedSignalProvider, (_, __) {
@@ -1740,6 +1748,24 @@ final forYouEventSnapshotProvider = Provider.autoDispose
           ? const AsyncValue.loading()
           : AsyncValue.data(snapshot);
     });
+
+AsyncValue<ForYouEventGamesSnapshot> resolveForYouRenderableSnapshot({
+  required AsyncValue<ForYouEventGamesSnapshot> liveSnapshot,
+  required AsyncValue<ForYouEventGamesSnapshot> cachedSnapshot,
+}) {
+  final liveValue = liveSnapshot.valueOrNull;
+  final cachedValue = cachedSnapshot.valueOrNull;
+
+  if (liveValue != null && (liveValue.hasGames || cachedValue == null)) {
+    return AsyncValue.data(liveValue);
+  }
+
+  if (cachedValue != null) {
+    return AsyncValue.data(cachedValue);
+  }
+
+  return liveSnapshot;
+}
 
 bool _isFinishedStatus(String status) {
   return GameStatus.fromString(status).isFinished;

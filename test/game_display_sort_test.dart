@@ -27,7 +27,7 @@ void main() {
       ]);
     });
 
-    test('puts live games above completed games before round ordering', () {
+    test('keeps round ordering stable instead of promoting live games', () {
       final games = [
         _game(
           'completed-newer-round',
@@ -44,8 +44,30 @@ void main() {
       );
 
       expect(sorted.map((game) => game.gameId).toList(), [
-        'live-older-round',
         'completed-newer-round',
+        'live-older-round',
+      ]);
+    });
+
+    test('keeps board order stable when a board finishes', () {
+      final games = [
+        _game('live-board-2', boardNr: 2, roundSlug: 'round-8'),
+        _game(
+          'finished-board-1',
+          boardNr: 1,
+          roundSlug: 'round-8',
+          status: GameStatus.whiteWins,
+        ),
+      ];
+
+      final sorted = sortGameModelsForGamesTab(
+        games: games,
+        pinnedIds: const [],
+      );
+
+      expect(sorted.map((game) => game.gameId).toList(), [
+        'finished-board-1',
+        'live-board-2',
       ]);
     });
   });

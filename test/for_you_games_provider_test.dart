@@ -81,7 +81,6 @@ class _FakeForYouPinStorage implements ForYouPinStorage {
   }
 }
 
-
 PlayerCard _player(String name) {
   return PlayerCard(
     name: name,
@@ -118,8 +117,11 @@ ForYouEventGamesSnapshot _snapshot(
   List<String> unpinnedOverrideIds = const <String>[],
   bool hasGames = true,
 }) {
-  final games = visibleGames ??
-      (hasGames ? [_game('mock-game', tourId: tourId)] : const <GamesTourModel>[]);
+  final games =
+      visibleGames ??
+      (hasGames
+          ? [_game('mock-game', tourId: tourId)]
+          : const <GamesTourModel>[]);
   return ForYouEventGamesSnapshot(
     eventId: eventId,
     tourId: tourId,
@@ -598,6 +600,35 @@ void main() {
         orElse: () => false,
       );
       expect(shouldHide, false);
+    },
+  );
+
+  test(
+    'renderable For You snapshot keeps cached boards while live snapshot loads',
+    () {
+      final cached = _snapshot('event-1', visibleGames: [_game('cached-game')]);
+
+      final resolved = resolveForYouRenderableSnapshot(
+        liveSnapshot: const AsyncValue<ForYouEventGamesSnapshot>.loading(),
+        cachedSnapshot: AsyncValue.data(cached),
+      );
+
+      expect(resolved.valueOrNull?.visibleGames.single.gameId, 'cached-game');
+    },
+  );
+
+  test(
+    'renderable For You snapshot switches to live boards once available',
+    () {
+      final cached = _snapshot('event-1', visibleGames: [_game('cached-game')]);
+      final live = _snapshot('event-1', visibleGames: [_game('live-game')]);
+
+      final resolved = resolveForYouRenderableSnapshot(
+        liveSnapshot: AsyncValue.data(live),
+        cachedSnapshot: AsyncValue.data(cached),
+      );
+
+      expect(resolved.valueOrNull?.visibleGames.single.gameId, 'live-game');
     },
   );
 
