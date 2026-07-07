@@ -36,6 +36,7 @@ final eventImageProvider = FutureProvider.autoDispose
 
         // If any sibling tour has an image, use it for the whole event.
         if (imageUrl != null) {
+          ref.keepAlive();
           return EventImageData(imageUrl: imageUrl);
         }
 
@@ -47,7 +48,11 @@ final eventImageProvider = FutureProvider.autoDispose
           countryCode = _getDominantFederation(tour.players);
         }
 
-        return EventImageData(fallbackCountryCode: countryCode);
+        final fallback = EventImageData(fallbackCountryCode: countryCode);
+        if (fallback.hasVisual) {
+          ref.keepAlive();
+        }
+        return fallback;
       } catch (e) {
         debugPrint(
           '[EventImageProvider] Error fetching image for $groupBroadcastId: $e',

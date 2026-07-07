@@ -1,6 +1,6 @@
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -71,21 +71,17 @@ class TwicGameCard extends ConsumerWidget {
     if (!hasPremium) return;
     if (!context.mounted) return;
 
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              games: allGames,
-              currentIndex: gameIndex,
-              showGamebaseButton: true,
-              disableGamebaseOverlayByDefault: true,
-            ),
-      ),
-    );
+    ref
+        .read(gameCardWrapperProvider)
+        .navigateToChessBoard(
+          context: context,
+          orderedGames: allGames,
+          gameIndex: gameIndex,
+          onReturnFromChessboard: (_) {},
+          viewSource: ChessboardView.tour,
+          showGamebaseButton: true,
+          disableGamebaseOverlayByDefault: true,
+        );
   }
 }
 

@@ -1,6 +1,6 @@
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
@@ -13,6 +13,7 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/library/widgets/gamebase_search_player_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -604,18 +605,16 @@ class _LibraryGridGame extends ConsumerWidget {
         if (!hasPremium) return;
         if (!context.mounted) return;
 
-        // Navigate directly with Library-specific params (no gamebase button)
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder:
-                (_) => ChessBoardScreenNew(
-                  games: allGames,
-                  currentIndex: gameIndex,
-                  showGamebaseButton: false,
-                ),
-          ),
-        );
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
+              context: context,
+              orderedGames: allGames,
+              gameIndex: gameIndex,
+              onReturnFromChessboard: (_) {},
+              viewSource: ChessboardView.tour,
+              showGamebaseButton: false,
+            );
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
@@ -646,18 +645,16 @@ class _LibraryBoardGame extends ConsumerWidget {
         if (!hasPremium) return;
         if (!context.mounted) return;
 
-        // Navigate directly with Library-specific params (no gamebase button)
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder:
-                (_) => ChessBoardScreenNew(
-                  games: allGames,
-                  currentIndex: gameIndex,
-                  showGamebaseButton: false,
-                ),
-          ),
-        );
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
+              context: context,
+              orderedGames: allGames,
+              gameIndex: gameIndex,
+              onReturnFromChessboard: (_) {},
+              viewSource: ChessboardView.tour,
+              showGamebaseButton: false,
+            );
       },
       pinnedIds: const [],
       onPinToggle: (_) {},

@@ -35,8 +35,8 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -986,35 +986,24 @@ class ScoreCardScreen extends ConsumerWidget {
                             isFirst: index == 0,
                             isLast: index == playerGames.length - 1,
                             onTap: () {
-                              if (ref.read(selectedBroadcastModelProvider) ==
-                                  null) {
-                                ref
-                                    .read(
-                                      chessboardViewFromProviderNew.notifier,
-                                    )
-                                    .state = ChessboardView.favScorecard;
-                              } else {
-                                ref
-                                    .read(
-                                      chessboardViewFromProviderNew.notifier,
-                                    )
-                                    .state = ChessboardView.tour;
-                              }
+                              final viewSource =
+                                  ref.read(selectedBroadcastModelProvider) ==
+                                          null
+                                      ? ChessboardView.favScorecard
+                                      : ChessboardView.tour;
 
                               // Pass playerGames (filtered for this player) instead of allGames
                               // so swiping in chessboard only shows this player's games
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => ChessBoardScreenNew(
-                                        games: playerGames,
-                                        currentIndex: index,
-                                        playerProfileDataSource:
-                                            profileDataSource,
-                                      ),
-                                ),
-                              );
+                              ref
+                                  .read(gameCardWrapperProvider)
+                                  .navigateToChessBoard(
+                                    context: context,
+                                    orderedGames: playerGames,
+                                    gameIndex: index,
+                                    onReturnFromChessboard: (_) {},
+                                    viewSource: viewSource,
+                                    playerProfileDataSource: profileDataSource,
+                                  );
                             },
                           ),
                         );

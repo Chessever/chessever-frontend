@@ -1,12 +1,15 @@
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -94,6 +97,53 @@ class _GameCardWrapperProvider {
     }
   }
 
+  Future<_ResolvedNavigation> _resolveHydratedNavigationGames({
+    required List<GamesTourModel> orderedGames,
+    required int gameIndex,
+    required ChessboardView viewSource,
+  }) async {
+    final resolved = await _resolveNavigationGames(
+      orderedGames: orderedGames,
+      gameIndex: gameIndex,
+      viewSource: viewSource,
+    );
+    return _hydrateSelectedGameForNavigation(resolved);
+  }
+
+  Future<_ResolvedNavigation> _hydrateSelectedGameForNavigation(
+    _ResolvedNavigation resolved,
+  ) async {
+    if (resolved.games.isEmpty) {
+      return resolved;
+    }
+
+    final safeIndex = resolved.index.clamp(0, resolved.games.length - 1);
+    final current = resolved.games[safeIndex];
+    if (current.source != GameSource.supabase || current.gameId.isEmpty) {
+      return _ResolvedNavigation(games: resolved.games, index: safeIndex);
+    }
+
+    try {
+      final latestRaw = await _ref
+          .read(gameRepositoryProvider)
+          .getGameWithPGN(current.gameId);
+      final latest = GamesTourModel.fromGame(latestRaw);
+      final hydrated = selectFreshestNavigationGame(
+        current: current,
+        incoming: latest,
+      );
+      if (identical(hydrated, current)) {
+        return _ResolvedNavigation(games: resolved.games, index: safeIndex);
+      }
+
+      final hydratedGames = List<GamesTourModel>.from(resolved.games);
+      hydratedGames[safeIndex] = hydrated;
+      return _ResolvedNavigation(games: hydratedGames, index: safeIndex);
+    } catch (_) {
+      return _ResolvedNavigation(games: resolved.games, index: safeIndex);
+    }
+  }
+
   /// Test seam for the For You navigation resolution above. Returns the
   /// `(games, index)` that would be handed to `ChessBoardScreenNew` so tests can
   /// assert the board (and therefore its game-switcher dropdown) receives the
@@ -111,29 +161,50 @@ class _GameCardWrapperProvider {
     return (resolved.games, resolved.index);
   }
 
+  @visibleForTesting
+  Future<(List<GamesTourModel>, int)> debugResolveNavigation({
+    required List<GamesTourModel> orderedGames,
+    required int gameIndex,
+    ChessboardView viewSource = ChessboardView.tour,
+  }) async {
+    final resolved = await _resolveHydratedNavigationGames(
+      orderedGames: orderedGames,
+      gameIndex: gameIndex,
+      viewSource: viewSource,
+    );
+    return (resolved.games, resolved.index);
+  }
+
   void navigateToChessBoard({
     required BuildContext context,
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
     required void Function(int)? onReturnFromChessboard,
     ChessboardView viewSource = ChessboardView.tour,
+    bool hideEventInfo = false,
+    PlayerProfileDataSource playerProfileDataSource =
+        PlayerProfileDataSource.supabase,
+    bool showGamebaseButton = false,
+    bool disableGamebaseOverlayByDefault = false,
+    bool showClock = true,
+    SavedAnalysisData? savedAnalysisData,
   }) async {
     _ref.read(chessboardViewFromProviderNew.notifier).state = viewSource;
 
-    // Disable tournament streaming while inside the chessboard to avoid
-    // periodic refreshes and repeated fetch logs.
-    _ref.read(shouldStreamProvider.notifier).state = false;
-
-    final resolvedNavigation = await _resolveNavigationGames(
+    final resolvedNavigation = await _resolveHydratedNavigationGames(
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: viewSource,
     );
 
     if (!context.mounted) {
-      _ref.read(shouldStreamProvider.notifier).state = true;
       return;
     }
+
+    // Disable tournament streaming while inside the chessboard to avoid
+    // periodic refreshes and repeated fetch logs. Hydration happens first so a
+    // tap does not freeze a stale card model before the board opens.
+    _ref.read(shouldStreamProvider.notifier).state = false;
 
     final returnedIndex = await Navigator.push<int>(
       context,
@@ -142,6 +213,12 @@ class _GameCardWrapperProvider {
             (_) => ChessBoardScreenNew(
               games: resolvedNavigation.games,
               currentIndex: resolvedNavigation.index,
+              hideEventInfo: hideEventInfo,
+              playerProfileDataSource: playerProfileDataSource,
+              showGamebaseButton: showGamebaseButton,
+              disableGamebaseOverlayByDefault: disableGamebaseOverlayByDefault,
+              showClock: showClock,
+              savedAnalysisData: savedAnalysisData,
             ),
       ),
     );

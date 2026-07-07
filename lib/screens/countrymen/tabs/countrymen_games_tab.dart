@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
@@ -1168,25 +1167,16 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     List<GamesTourModel> allGames,
     int gameIndex,
   ) {
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.countryman;
-    ref.read(shouldStreamProvider.notifier).state = false;
-
-    Navigator.push<int>(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) =>
-                ChessBoardScreenNew(games: allGames, currentIndex: gameIndex),
-      ),
-    ).then((_) {
-      if (mounted) {
-        ref.read(shouldStreamProvider.notifier).state = true;
-        ref.invalidate(gameUpdatesStreamProvider);
-        ref.invalidate(liveGameUpdateStreamProvider);
-        ref.invalidate(gameUpdatesBatchStreamProvider);
-      }
-    });
+    if (!mounted) return;
+    ref
+        .read(gameCardWrapperProvider)
+        .navigateToChessBoard(
+          context: context,
+          orderedGames: allGames,
+          gameIndex: gameIndex,
+          onReturnFromChessboard: (_) {},
+          viewSource: ChessboardView.countryman,
+        );
   }
 }
 

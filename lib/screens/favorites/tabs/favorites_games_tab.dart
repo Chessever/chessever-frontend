@@ -8,13 +8,13 @@ import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.da
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -1338,29 +1338,16 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     List<GamesTourModel> allGames,
     int gameIndex,
   ) {
-    // Set view source to forYou (favorites is part of For You section)
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.forYou;
-
-    // Disable tournament streaming while inside the chessboard
-    ref.read(shouldStreamProvider.notifier).state = false;
-
-    Navigator.push<int>(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) =>
-                ChessBoardScreenNew(games: allGames, currentIndex: gameIndex),
-      ),
-    ).then((_) {
-      // Re-enable streaming when coming back
-      if (mounted) {
-        ref.read(shouldStreamProvider.notifier).state = true;
-        ref.invalidate(gameUpdatesStreamProvider);
-        ref.invalidate(liveGameUpdateStreamProvider);
-        ref.invalidate(gameUpdatesBatchStreamProvider);
-      }
-    });
+    if (!mounted) return;
+    ref
+        .read(gameCardWrapperProvider)
+        .navigateToChessBoard(
+          context: context,
+          orderedGames: allGames,
+          gameIndex: gameIndex,
+          onReturnFromChessboard: (_) {},
+          viewSource: ChessboardView.forYou,
+        );
   }
 }
 

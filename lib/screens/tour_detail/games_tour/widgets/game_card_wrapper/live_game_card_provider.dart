@@ -612,6 +612,44 @@ bool _hasLiveFieldChanges(GamesTourModel current, GamesTourModel incoming) {
       current.gameStatus != incoming.gameStatus;
 }
 
+GamesTourModel selectFreshestNavigationGame({
+  required GamesTourModel current,
+  required GamesTourModel incoming,
+}) {
+  if (current.gameId != incoming.gameId) return current;
+  if (_shouldUseIncomingGame(
+    current,
+    incoming,
+    allowEqualFreshnessUpdate: true,
+  )) {
+    return incoming;
+  }
+  return _incomingHasRicherPgn(current, incoming) ? incoming : current;
+}
+
+bool _incomingHasRicherPgn(GamesTourModel current, GamesTourModel incoming) {
+  final incomingPgnLength = incoming.pgn?.trim().length ?? 0;
+  final currentPgnLength = current.pgn?.trim().length ?? 0;
+  if (incomingPgnLength <= currentPgnLength) return false;
+
+  final currentTime = current.lastMoveTime;
+  final incomingTime = incoming.lastMoveTime;
+  if (currentTime != null &&
+      incomingTime != null &&
+      incomingTime.isBefore(currentTime)) {
+    return false;
+  }
+
+  final currentPly = _knownPly(current);
+  final incomingPly = _knownPly(incoming);
+  if (currentPly != null && incomingPly != null && incomingPly < currentPly) {
+    return false;
+  }
+  if (currentPly != null && incomingPly == null) return false;
+
+  return true;
+}
+
 int? _knownPly(GamesTourModel game) {
   final pgnPly = resolveFinalPositionFromPgn(game.pgn)?.moveCount;
   final fenPly = plyFromFen(game.fen);

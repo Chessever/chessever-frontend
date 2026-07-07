@@ -1,7 +1,6 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
@@ -9,6 +8,7 @@ import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -119,6 +119,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     if (hasMoves) {
       // Already have PGN with moves, navigate directly
       _navigateToChessboard(
+        ref,
         context,
         allGames,
         gameIndex,
@@ -221,6 +222,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       final patched = List<GamesTourModel>.from(allGames);
       patched[gameIndex] = game.copyWith(pgn: pgn);
       _navigateToChessboard(
+        ref,
         context,
         patched,
         gameIndex,
@@ -247,6 +249,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       );
       patched[gameIndex] = game.copyWith(pgn: pgn);
       _navigateToChessboard(
+        ref,
         context,
         patched,
         gameIndex,
@@ -273,28 +276,27 @@ class GamebaseSearchGameCard extends ConsumerWidget {
   }
 
   void _navigateToChessboard(
+    WidgetRef ref,
     BuildContext context,
     List<GamesTourModel> games,
     int index, {
     SavedAnalysisData? savedAnalysisData,
   }) {
     if (!context.mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              games: games,
-              currentIndex: index,
-              hideEventInfo: hideEventInfo,
-              playerProfileDataSource: playerProfileDataSource,
-              showGamebaseButton: showGamebaseButton,
-              disableGamebaseOverlayByDefault: true,
-              showClock:
-                  playerProfileDataSource != PlayerProfileDataSource.twic,
-              savedAnalysisData: savedAnalysisData,
-            ),
-      ),
-    );
+    ref
+        .read(gameCardWrapperProvider)
+        .navigateToChessBoard(
+          context: context,
+          orderedGames: games,
+          gameIndex: index,
+          onReturnFromChessboard: (_) {},
+          viewSource: ChessboardView.tour,
+          hideEventInfo: hideEventInfo,
+          playerProfileDataSource: playerProfileDataSource,
+          showGamebaseButton: showGamebaseButton,
+          disableGamebaseOverlayByDefault: true,
+          showClock: playerProfileDataSource != PlayerProfileDataSource.twic,
+          savedAnalysisData: savedAnalysisData,
+        );
   }
 }

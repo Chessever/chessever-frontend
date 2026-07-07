@@ -2,9 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -14,6 +12,7 @@ import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -150,6 +149,19 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
     }
   }
 
+  void _openChessBoard(List<GamesTourModel> updatedGames, int index) {
+    if (!mounted) return;
+    ref
+        .read(gameCardWrapperProvider)
+        .navigateToChessBoard(
+          context: context,
+          orderedGames: updatedGames,
+          gameIndex: index,
+          onReturnFromChessboard: (_) {},
+          viewSource: ChessboardView.countryman,
+        );
+  }
+
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
 
@@ -266,30 +278,7 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
                             ref,
                           );
                           if (!hasPremium) return;
-                          if (!context.mounted) return;
-
-                          ref
-                              .read(chessboardViewFromProviderNew.notifier)
-                              .state = ChessboardView.countryman;
-                          ref.read(shouldStreamProvider.notifier).state = false;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (_) => ChessBoardScreenNew(
-                                    games: updatedGames,
-                                    currentIndex: index,
-                                  ),
-                            ),
-                          ).then((_) {
-                            if (context.mounted) {
-                              ref.read(shouldStreamProvider.notifier).state =
-                                  true;
-                              ref.invalidate(gameUpdatesStreamProvider);
-                              ref.invalidate(liveGameUpdateStreamProvider);
-                              ref.invalidate(gameUpdatesBatchStreamProvider);
-                            }
-                          });
+                          _openChessBoard(updatedGames, index);
                         },
                         gamesTourModel: game,
                         allowStockfishFallback: allowStockfishFallback,
@@ -301,30 +290,7 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
                             ref,
                           );
                           if (!hasPremium) return;
-                          if (!context.mounted) return;
-
-                          ref
-                              .read(chessboardViewFromProviderNew.notifier)
-                              .state = ChessboardView.countryman;
-                          ref.read(shouldStreamProvider.notifier).state = false;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (_) => ChessBoardScreenNew(
-                                    games: updatedGames,
-                                    currentIndex: index,
-                                  ),
-                            ),
-                          ).then((_) {
-                            if (context.mounted) {
-                              ref.read(shouldStreamProvider.notifier).state =
-                                  true;
-                              ref.invalidate(gameUpdatesStreamProvider);
-                              ref.invalidate(liveGameUpdateStreamProvider);
-                              ref.invalidate(gameUpdatesBatchStreamProvider);
-                            }
-                          });
+                          _openChessBoard(updatedGames, index);
                         },
                         matchComparison: MatchWithComparison(
                           game: game,
