@@ -57,12 +57,14 @@ class TeamPlayerChip extends ConsumerWidget {
         ),
         child: Row(
           children: [
+            // Circular; no title badge — the title already prefixes the name,
+            // and a badge on a 26px avatar is cramped. isCircular makes the clip
+            // exactly size/2 so it's a clean circle regardless of .w/.br scaling.
             PlayerInitialsAvatar(
               photoUrl: photoAsync.valueOrNull,
               initials: initials,
               size: 26.w,
-              borderRadius: 13.br,
-              title: player.title,
+              isCircular: true,
             ),
             SizedBox(width: 7.w),
             Expanded(
