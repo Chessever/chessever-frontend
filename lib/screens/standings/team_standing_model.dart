@@ -35,13 +35,11 @@ class TeamStandingModel {
     required this.players,
   });
 
-  /// Board points formatted with a ½ glyph, e.g. 26.5 -> "26½", 31.0 -> "31".
-  String get gamePointsLabel {
-    final whole = gamePoints.floor();
-    final hasHalf = (gamePoints - whole) >= 0.25;
-    if (whole == 0 && hasHalf) return '½';
-    return hasHalf ? '$whole½' : '$whole';
-  }
+  /// Board points as a decimal, e.g. 26.5 -> "26.5", 31.0 -> "31".
+  String get gamePointsLabel =>
+      gamePoints % 1 == 0
+          ? gamePoints.toInt().toString()
+          : gamePoints.toStringAsFixed(1);
 
   /// "W-D-L" record over completed matches.
   String get recordLabel => '$matchesWon-$matchesDrawn-$matchesLost';
