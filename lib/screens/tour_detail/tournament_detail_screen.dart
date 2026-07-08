@@ -9,7 +9,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_ba
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/views/games_tour_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
@@ -218,6 +220,16 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           final selectedTourMode = scopedRef.watch(selectedTourModeProvider);
           final tourDetailAsync = scopedRef.watch(tourDetailScreenProvider);
 
+          // Team events get a 4th ("Players") tab and a horizontally
+          // scrollable tab strip. Detection keys off the format string, so it
+          // resolves before games load.
+          final tourId = tourDetailAsync.valueOrNull?.aboutTourModel.id;
+          final isTeam =
+              (tourId != null && tourId.isNotEmpty)
+                  ? scopedRef.watch(isTeamEventProvider(tourId))
+                  : false;
+          final visibleModes = _visibleModes(isTeam);
+
           return ScreenWrapper(
             child: Scaffold(
               key: e2eKey(E2eIds.tournamentDetailRoot),
@@ -236,8 +248,11 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                       ),
                       tourDetailAsync.when(
                         data:
-                            (data) =>
-                                _buildSuccessAppBar(data, selectedTourMode),
+                            (data) => _buildSuccessAppBar(
+                              data,
+                              selectedTourMode,
+                              isTeam,
+                            ),
                         error: (error, stackTrace) => _buildErrorAppBar(error),
                         loading:
                             () => const _LoadingAppBarWithTitle(
@@ -249,36 +264,49 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                           bus: _scrollToTopBus,
                           child: PageView.builder(
                             controller: pageController,
-                            itemCount: 3,
+                            itemCount: visibleModes.length,
                             onPageChanged: _handlePageChanged,
                             itemBuilder: (context, index) {
-                              if (index == 0) {
-                                return AboutTourScreen();
-                              } else if (index == 1) {
-                                return GamesTourScreen();
-                              } else if (index == 2) {
-                                // Screenshot of the standings tab → nudge to
-                                // share the branded standings image instead.
-                                return ScreenshotShareNudge(
-                                  enabled:
-                                      selectedTourMode ==
-                                      TournamentDetailScreenMode.standings,
-                                  onShare:
-                                      () => shareTournamentStandings(
-                                        context,
-                                        scopedRef,
-                                      ),
-                                  child: PlayerTourScreen(),
-                                );
-                              } else {
-                                return Center(
-                                  child: Text(
-                                    'Invalid page index: $index',
-                                    style: TextStyle(
-                                      color: context.colors.textPrimary,
-                                    ),
-                                  ),
-                                );
+                              if (index >= visibleModes.length) {
+                                return const SizedBox.shrink();
+                              }
+                              switch (visibleModes[index]) {
+                                case TournamentDetailScreenMode.about:
+                                  return AboutTourScreen();
+                                case TournamentDetailScreenMode.games:
+                                  return GamesTourScreen();
+                                case TournamentDetailScreenMode.standings:
+                                  // Team events: team table (no standings-image
+                                  // share nudge — the individual standings the
+                                  // nudge shares now live on the Players tab).
+                                  if (isTeam) {
+                                    return const TeamStandingsScreen();
+                                  }
+                                  return ScreenshotShareNudge(
+                                    enabled:
+                                        selectedTourMode ==
+                                        TournamentDetailScreenMode.standings,
+                                    onShare:
+                                        () => shareTournamentStandings(
+                                          context,
+                                          scopedRef,
+                                        ),
+                                    child: PlayerTourScreen(),
+                                  );
+                                case TournamentDetailScreenMode.players:
+                                  // Individual standings for team events; the
+                                  // share nudge follows them here.
+                                  return ScreenshotShareNudge(
+                                    enabled:
+                                        selectedTourMode ==
+                                        TournamentDetailScreenMode.players,
+                                    onShare:
+                                        () => shareTournamentStandings(
+                                          context,
+                                          scopedRef,
+                                        ),
+                                    child: PlayerTourScreen(),
+                                  );
                               }
                             },
                           ),
@@ -298,6 +326,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   Widget _buildSuccessAppBar(
     TourDetailViewModel data,
     TournamentDetailScreenMode selectedTourMode,
+    bool isTeam,
   ) {
     return Column(
       children: [
@@ -311,6 +340,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         ),
         _buildSegmentedSwitcher(
           selectedTourMode,
+          isTeam,
           (index) => _handleTabSelection(index),
         ),
       ],
@@ -322,31 +352,38 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       children: [
         _LoadingAppBarWithTitle(title: userFacingError(error)),
         SizedBox(height: 8.h),
-        _buildSegmentedSwitcher(TournamentDetailScreenMode.games, (index) {}),
+        _buildSegmentedSwitcher(
+          TournamentDetailScreenMode.games,
+          false,
+          (index) {},
+        ),
       ],
     );
   }
 
   Widget _buildSegmentedSwitcher(
     TournamentDetailScreenMode selectedTourMode,
+    bool isTeam,
     ValueChanged<int> onChanged,
   ) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
     );
+    final modes = _visibleModes(isTeam);
+    final options = modes.map((m) => _mappedName[m]!).toList();
+    final selectedIndex = modes.indexOf(selectedTourMode);
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         key: UniqueKey(),
         backgroundColor: context.colors.popup,
         selectedBackgroundColor: context.colors.popup,
-        options: _mappedName.values.toList(),
-        initialSelection: _mappedName.values.toList().indexOf(
-          _mappedName[selectedTourMode]!,
-        ),
+        options: options,
+        initialSelection: selectedIndex >= 0 ? selectedIndex : 0,
         onSelectionChanged: onChanged,
         notifyOnReselect: true,
+        isScrollable: isTeam,
       ),
     );
   }
@@ -505,7 +542,25 @@ const _mappedName = {
   TournamentDetailScreenMode.about: 'About',
   TournamentDetailScreenMode.games: 'Games',
   TournamentDetailScreenMode.standings: 'Standings',
+  TournamentDetailScreenMode.players: 'Players',
 };
+
+/// The tabs shown for the current event. Team events add a 4th ("Players")
+/// tab; every list is a prefix of [TournamentDetailScreenMode.values] so the
+/// existing `values[index]` index→mode mapping stays valid.
+List<TournamentDetailScreenMode> _visibleModes(bool isTeam) =>
+    isTeam
+        ? const [
+          TournamentDetailScreenMode.about,
+          TournamentDetailScreenMode.games,
+          TournamentDetailScreenMode.standings,
+          TournamentDetailScreenMode.players,
+        ]
+        : const [
+          TournamentDetailScreenMode.about,
+          TournamentDetailScreenMode.games,
+          TournamentDetailScreenMode.standings,
+        ];
 
 /// Search bar pinned above the About/Games/Standings tab switcher.
 ///
