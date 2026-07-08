@@ -99,7 +99,6 @@ class _TeamList extends ConsumerWidget {
                     )
                     .toList(growable: false);
         final isSearching = query.isNotEmpty;
-        final expanded = ref.watch(expandedTeamsProvider);
 
         if (allTeams.isEmpty) {
           return const _TeamStandingsLoading();
@@ -128,27 +127,37 @@ class _TeamList extends ConsumerWidget {
             }
 
             final team = data[index];
-            final isExpanded = expanded.contains(team.teamName);
-            return FigmaTeamCard(
-              key: ValueKey('team_standing_${team.teamName}'),
-              team: team,
-              rank: team.rank,
-              isExpanded: isExpanded,
-              onTeamTap: () {
-                ref.read(selectedTeamProvider.notifier).state = team;
-                Navigator.of(context).pushNamed('/team_scorecard_screen');
-              },
-              onToggle: () {
-                final next = Set<String>.from(
-                  ref.read(expandedTeamsProvider),
+            // Per-row selector: toggling one team only rebuilds that row, not
+            // the whole (crest-heavy) list.
+            return Consumer(
+              builder: (context, ref, _) {
+                final isExpanded = ref.watch(
+                  expandedTeamsProvider.select(
+                    (s) => s.contains(team.teamName),
+                  ),
                 );
-                if (!next.remove(team.teamName)) {
-                  next.add(team.teamName);
-                }
-                ref.read(expandedTeamsProvider.notifier).state = next;
+                return FigmaTeamCard(
+                  key: ValueKey('team_standing_${team.teamName}'),
+                  team: team,
+                  rank: team.rank,
+                  isExpanded: isExpanded,
+                  onTeamTap: () {
+                    ref.read(selectedTeamProvider.notifier).state = team;
+                    Navigator.of(context).pushNamed('/team_scorecard_screen');
+                  },
+                  onToggle: () {
+                    final next = Set<String>.from(
+                      ref.read(expandedTeamsProvider),
+                    );
+                    if (!next.remove(team.teamName)) {
+                      next.add(team.teamName);
+                    }
+                    ref.read(expandedTeamsProvider.notifier).state = next;
+                  },
+                  expandedChildren:
+                      isExpanded ? [_TeamExpansion(team: team)] : const [],
+                );
               },
-              expandedChildren:
-                  isExpanded ? [_TeamExpansion(team: team)] : const [],
             );
           },
         );

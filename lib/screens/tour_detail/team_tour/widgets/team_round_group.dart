@@ -48,9 +48,11 @@ class _TeamRoundGroupState extends State<TeamRoundGroup> {
     final match = widget.match;
     final resultColor = teamResultColor(context, match.result);
 
+    // RepaintBoundary so the height spring composites a cached layer of the
+    // (heavy) game cards each frame instead of repainting them.
     final body =
         _renderBody
-            ? _RoundGames(match: match)
+            ? RepaintBoundary(child: _RoundGames(match: match))
             : const SizedBox(width: double.infinity);
 
     return Column(
@@ -138,17 +140,19 @@ class _RoundGames extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var i = 0; i < orderedGames.length; i++)
-            Padding(
-              padding: EdgeInsets.only(bottom: 8.h),
-              child: GameCardWrapperWidget(
-                key: ValueKey('team_game_${orderedGames[i].gameId}'),
-                game: orderedGames[i],
-                gamesData: gamesData,
-                gameIndex: i,
-                isChessBoardVisible: false,
-                // Results refresh when the matches provider re-emits; avoid a
-                // live subscription per card across many rounds.
-                streamEnabled: false,
+            RepaintBoundary(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 8.h),
+                child: GameCardWrapperWidget(
+                  key: ValueKey('team_game_${orderedGames[i].gameId}'),
+                  game: orderedGames[i],
+                  gamesData: gamesData,
+                  gameIndex: i,
+                  isChessBoardVisible: false,
+                  // Results refresh when the matches provider re-emits; avoid a
+                  // live subscription per card across many rounds.
+                  streamEnabled: false,
+                ),
               ),
             ),
         ],
