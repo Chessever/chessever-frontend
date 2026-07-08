@@ -9,5 +9,7 @@ final selectedTourModeProvider = StateProvider<TournamentDetailScreenMode>(
   (ref) => TournamentDetailScreenMode.games,
 );
 
-/// For Tabs
-enum TournamentDetailScreenMode { about, games, standings }
+/// For Tabs. `players` is appended so the first three indices stay stable —
+/// each visible tab list (3-tab regular/knockout, 4-tab team) is a prefix of
+/// these values, keeping `values[index]` valid for both layouts.
+enum TournamentDetailScreenMode { about, games, standings, players }

@@ -19,6 +19,10 @@ class SegmentedSwitcher extends StatefulWidget {
   final List<Widget>? optionLabels;
   final bool notifyOnReselect;
 
+  /// When true, segments size to their content and scroll horizontally instead
+  /// of splitting the width into equal thirds. Used for the 4-tab team layout.
+  final bool isScrollable;
+
   const SegmentedSwitcher({
     super.key,
     required this.options,
@@ -34,6 +38,7 @@ class SegmentedSwitcher extends StatefulWidget {
     this.selectedTextStyle,
     this.optionLabels,
     this.notifyOnReselect = false,
+    this.isScrollable = false,
   }) : assert(
          initialSelection >= 0 && initialSelection < options.length,
          'initialSelection must be within options range',
@@ -96,6 +101,63 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
     final defaultSelectedTextStyle =
         widget.selectedTextStyle ??
         AppTypography.textSmMedium.copyWith(color: selectedTextColor);
+
+    if (widget.isScrollable) {
+      return Container(
+        height: 40.h,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(borderRadius),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: List.generate(widget.options.length, (index) {
+              final isSelected = index == _selectedIndex;
+              final textOpacity = isSelected ? 1.0 : 0.7;
+              final style = (isSelected
+                      ? defaultSelectedTextStyle
+                      : defaultTextStyle)
+                  .copyWith(
+                    color: (isSelected ? selectedTextColor : textColor)
+                        .withOpacity(textOpacity),
+                  );
+
+              return GestureDetector(
+                onTap: () => _onSelectionChanged(index),
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOutCubic,
+                  alignment: Alignment.center,
+                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color:
+                        isSelected
+                            ? selectedBackgroundColor
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(borderRadius),
+                  ),
+                  child:
+                      widget.optionLabels != null
+                          ? DefaultTextStyle.merge(
+                            style: style,
+                            child: widget.optionLabels![index],
+                          )
+                          : Text(
+                            widget.options[index],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: style,
+                          ),
+                ),
+              );
+            }),
+          ),
+        ),
+      );
+    }
 
     return Container(
       height: 40.h,
