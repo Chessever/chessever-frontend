@@ -31,7 +31,10 @@ class GamesTourScreen extends ConsumerStatefulWidget {
 }
 
 class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
-    with ScrollToTopListenerMixin {
+    with ScrollToTopListenerMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   void onScrollToTopRequested() {
     final scopeId = ref.read(gamesTourScrollScopeProvider);
@@ -47,6 +50,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final gamesListViewMode = ref.watch(gamesListViewModeProvider);
     final gamesTourMode = ref.watch(gamesTourScreenModeProvider);
 

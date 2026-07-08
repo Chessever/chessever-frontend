@@ -28,8 +28,11 @@ class AboutTourScreen extends ConsumerStatefulWidget {
 }
 
 class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
-    with ScrollToTopListenerMixin {
+    with ScrollToTopListenerMixin, AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void onScrollToTopRequested() {
@@ -108,6 +111,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
 
     tourDetailAsync.whenOrNull(
