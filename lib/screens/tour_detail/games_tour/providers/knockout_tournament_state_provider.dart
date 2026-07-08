@@ -11,17 +11,23 @@ const String kKnockoutStagePrefix = 'knockout-stage';
 
 class KnockoutTournamentState {
   final bool isKnockout;
+
+  /// True when this tour is a team event (`N-team` format or every player
+  /// teamed and not an explicit `N-player` knockout). Drives the 4-tab layout.
+  final bool isTeamEvent;
   final String? stageName;
   final List<GamesTourModel> allGames;
 
   const KnockoutTournamentState({
     required this.isKnockout,
+    required this.isTeamEvent,
     required this.stageName,
     required this.allGames,
   });
 
   const KnockoutTournamentState.empty()
     : isKnockout = false,
+      isTeamEvent = false,
       stageName = null,
       allGames = const <GamesTourModel>[];
 }
@@ -91,12 +97,20 @@ final knockoutTournamentStateProvider = Provider.autoDispose
       final isKnockout = explicitKnockout || inferredKnockout;
 
       if (models.isEmpty && !explicitKnockout) {
-        return const KnockoutTournamentState.empty();
+        // Team detection keys off the format string, so it is known even
+        // before games load — surface it so the 4-tab layout appears eagerly.
+        return KnockoutTournamentState(
+          isKnockout: false,
+          isTeamEvent: isTeamEvent,
+          stageName: null,
+          allGames: models,
+        );
       }
 
       if (!isKnockout) {
         return KnockoutTournamentState(
           isKnockout: false,
+          isTeamEvent: isTeamEvent,
           stageName: null,
           allGames: models,
         );
@@ -109,10 +123,20 @@ final knockoutTournamentStateProvider = Provider.autoDispose
 
       return KnockoutTournamentState(
         isKnockout: true,
+        isTeamEvent: false,
         stageName: stageName,
         allGames: models,
       );
     });
+
+/// True when the current tour is a team event (drives the 4-tab layout).
+final isTeamEventProvider = Provider.autoDispose.family<bool, String?>((
+  ref,
+  tourId,
+) {
+  if (tourId == null || tourId.isEmpty) return false;
+  return ref.watch(knockoutTournamentStateProvider(tourId)).isTeamEvent;
+});
 
 Tour? _findTourById(TourDetailViewModel? viewModel, String tourId) {
   if (viewModel == null) return null;
