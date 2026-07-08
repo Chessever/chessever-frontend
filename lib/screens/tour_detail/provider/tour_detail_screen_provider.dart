@@ -20,13 +20,24 @@ final tourDetailScreenProvider = StateNotifierProvider<
   _TourDetailScreenNotifier,
   AsyncValue<TourDetailViewModel>
 >((ref) {
-  final groupBroadcast = ref.watch(selectedBroadcastModelProvider);
+  // Key the notifier on the broadcast ID only — the notifier consumes just
+  // `groupBroadcast.id`. The selected broadcast can be re-set with an
+  // equal-id-but-new instance while the event view is live (e.g. the For You
+  // card's delayed background upgrade at for_you_tournament_card.dart, or a
+  // deep link), and `GroupBroadcast` has no value equality. Watching the whole
+  // object would recreate this StateNotifier — re-emitting AsyncLoading and
+  // wiping every tab's page/scroll state. Selecting the id makes those equal-id
+  // re-sets a no-op.
+  final broadcastId = ref.watch(
+    selectedBroadcastModelProvider.select((b) => b?.id),
+  );
 
   // Handle null case - return a notifier that will show loading/error state
-  if (groupBroadcast == null) {
+  if (broadcastId == null || broadcastId.isEmpty) {
     return _TourDetailScreenNotifier.loading(ref);
   }
 
+  final groupBroadcast = ref.read(selectedBroadcastModelProvider)!;
   return _TourDetailScreenNotifier(ref: ref, groupBroadcast: groupBroadcast);
 });
 
