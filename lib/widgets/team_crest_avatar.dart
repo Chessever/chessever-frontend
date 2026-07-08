@@ -40,19 +40,24 @@ class TeamCrestAvatar extends StatelessWidget {
     return '${words[0][0]}${words[1][0]}'.toUpperCase();
   }
 
-  /// Stable 0–360 hue from the team name (FNV-1a style rolling hash).
-  double _hue() {
+  /// Stable 0–360 hue from a team name (FNV-1a style rolling hash).
+  static double hueFor(String name) {
     var hash = 2166136261;
-    for (final unit in teamName.trim().toUpperCase().codeUnits) {
+    for (final unit in name.trim().toUpperCase().codeUnits) {
       hash = (hash ^ unit) * 16777619;
       hash &= 0xFFFFFFFF;
     }
     return (hash % 360).toDouble();
   }
 
+  /// The team's primary accent color, for cohesive tinting elsewhere (e.g. the
+  /// score-card hero). Matches the crest's dominant gradient stop.
+  static Color colorFor(String name) =>
+      HSLColor.fromAHSL(1, hueFor(name), 0.52, 0.46).toColor();
+
   @override
   Widget build(BuildContext context) {
-    final hue = _hue();
+    final hue = hueFor(teamName);
     final top = HSLColor.fromAHSL(1, hue, 0.52, 0.42).toColor();
     final bottom = HSLColor.fromAHSL(1, (hue + 24) % 360, 0.58, 0.28).toColor();
 

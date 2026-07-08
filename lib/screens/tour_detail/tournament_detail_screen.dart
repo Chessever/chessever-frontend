@@ -373,14 +373,19 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     final modes = _visibleModes(isTeam);
     final options = modes.map((m) => _mappedName[m]!).toList();
     final selectedIndex = modes.indexOf(selectedTourMode);
+    final safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        key: UniqueKey(),
+        // Team layouts scroll; keying by count keeps a stable element per
+        // layout while `currentSelection` drives the selected tab (and its
+        // auto-centering) without a per-frame UniqueKey rebuild.
+        key: ValueKey('tab_switcher_${options.length}'),
         backgroundColor: context.colors.popup,
         selectedBackgroundColor: context.colors.popup,
         options: options,
-        initialSelection: selectedIndex >= 0 ? selectedIndex : 0,
+        initialSelection: safeIndex,
+        currentSelection: safeIndex,
         onSelectionChanged: onChanged,
         notifyOnReselect: true,
         isScrollable: isTeam,

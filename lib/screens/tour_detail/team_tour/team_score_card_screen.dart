@@ -1,17 +1,34 @@
+import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart' show kGreenColor, kRedColor;
+import 'package:chessever2/theme/app_theme.dart' show kGreenColor2, kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Team score card — the team analogue of [ScoreCardScreen]. Shows the team's
-/// crest, its collected score (match points / board points / rank) and its
-/// round-by-round matches versus the other teams. Layout intentionally mirrors
-/// the player score card so the two feel familiar.
+const _drawColor = Color(0xFFEAB308); // amber
+
+Color _resultColor(BuildContext context, TeamMatchResult r) => switch (r) {
+  TeamMatchResult.win => kGreenColor2,
+  TeamMatchResult.draw => _drawColor,
+  TeamMatchResult.loss => kRedColor,
+  TeamMatchResult.ongoing => context.colors.textTertiary,
+};
+
+String _resultLetter(TeamMatchResult r) => switch (r) {
+  TeamMatchResult.win => 'W',
+  TeamMatchResult.draw => 'D',
+  TeamMatchResult.loss => 'L',
+  TeamMatchResult.ongoing => '·',
+};
+
+/// Team score card — the team analogue of the player [ScoreCardScreen]. A
+/// crest-tinted hero (rank, form guide, collected score) over the team's
+/// round-by-round matches, each expanded to its board games, with W/D/L
+/// color-coded throughout.
 class TeamScoreCardScreen extends ConsumerWidget {
   const TeamScoreCardScreen({super.key});
 
@@ -22,14 +39,11 @@ class TeamScoreCardScreen extends ConsumerWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final matches = ref.watch(teamMatchesProvider);
-
+    final accent = TeamCrestAvatar.colorFor(team.teamName);
     final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
+      phone: 16.sp,
       tablet: 24.sp,
     );
-    final avatarSize = ResponsiveHelper.isTablet ? 120.sp : 90.w;
-    final avatarGap = ResponsiveHelper.adaptive(phone: 10.w, tablet: 16.sp);
-    final boxGap = ResponsiveHelper.adaptive(phone: 6.w, tablet: 10.sp);
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -66,69 +80,29 @@ class TeamScoreCardScreen extends ConsumerWidget {
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(height: 10.h),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TeamCrestAvatar(
-                              teamName: team.teamName,
-                              size: avatarSize,
-                              borderRadius: 12.br,
-                            ),
-                            SizedBox(width: avatarGap),
-                            Expanded(
-                              child: IntrinsicHeight(
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: _TeamStatBox(
-                                        label: 'Match Pts',
-                                        value: '${team.matchPoints}',
-                                        height: avatarSize,
-                                      ),
-                                    ),
-                                    SizedBox(width: boxGap),
-                                    Expanded(
-                                      child: _TeamStatBox(
-                                        label: 'Board Pts',
-                                        value: team.gamePointsLabel,
-                                        height: avatarSize,
-                                      ),
-                                    ),
-                                    SizedBox(width: boxGap),
-                                    Expanded(
-                                      child: _TeamStatBox(
-                                        label: 'Rank',
-                                        value: '#${team.rank}',
-                                        height: avatarSize,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 12.h),
-                        Text(
-                          'Played ${team.matchesWon + team.matchesDrawn + team.matchesLost} · ${team.recordLabel} (W-D-L)',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: context.colors.textSecondary,
-                          ),
-                        ),
-                        SizedBox(height: 14.h),
-                        Text(
-                          'Matches',
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: context.colors.textTertiary,
-                          ),
-                        ),
-                        SizedBox(height: 8.h),
-                      ],
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      8.h,
+                      horizontalPadding,
+                      4.h,
+                    ),
+                    child: _TeamHero(team: team, matches: matches, accent: accent),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      18.h,
+                      horizontalPadding,
+                      10.h,
+                    ),
+                    child: Text(
+                      'MATCHES',
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: context.colors.textTertiary,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ),
                 ),
@@ -150,16 +124,16 @@ class TeamScoreCardScreen extends ConsumerWidget {
                 else
                   SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
-                      final match = matches[index];
                       return Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: horizontalPadding,
+                        padding: EdgeInsets.fromLTRB(
+                          horizontalPadding,
+                          0,
+                          horizontalPadding,
+                          10.h,
                         ),
-                        child: _TeamMatchCard(
-                          index: index,
-                          match: match,
-                          isFirst: index == 0,
-                          isLast: index == matches.length - 1,
+                        child: _MatchCard(
+                          match: matches[index],
+                          accent: accent,
                         ),
                       );
                     }, childCount: matches.length),
@@ -178,53 +152,121 @@ class TeamScoreCardScreen extends ConsumerWidget {
   }
 }
 
-class _TeamStatBox extends StatelessWidget {
-  final String label;
-  final String value;
-  final double height;
+class _TeamHero extends StatelessWidget {
+  final TeamStandingModel team;
+  final List<TeamMatch> matches;
+  final Color accent;
 
-  const _TeamStatBox({
-    required this.label,
-    required this.value,
-    required this.height,
+  const _TeamHero({
+    required this.team,
+    required this.matches,
+    required this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
+    final played = team.matchesWon + team.matchesDrawn + team.matchesLost;
+    // Form guide: completed results, oldest → newest, capped to the last 8.
+    final form =
+        matches
+            .where((m) => m.result != TeamMatchResult.ongoing)
+            .map((m) => m.result)
+            .toList();
+    final recent = form.length > 8 ? form.sublist(form.length - 8) : form;
+
     return Container(
-      height: height,
-      padding: EdgeInsets.symmetric(
-        horizontal: ResponsiveHelper.isTablet ? 6.sp : 3.sp,
-        vertical: ResponsiveHelper.isTablet ? 12.sp : 8.sp,
-      ),
+      padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(8.br),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accent.withValues(alpha: 0.24),
+            accent.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(color: accent.withValues(alpha: 0.30), width: 1),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.textXsMedium.copyWith(
-              color: context.colors.textPrimaryMuted,
-              fontSize: ResponsiveHelper.isTablet ? 12.sp : 10.sp,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: ResponsiveHelper.isTablet ? 6.h : 4.h),
-          Text(
-            value,
-            style:
-                ResponsiveHelper.isTablet
-                    ? AppTypography.textLgBold.copyWith(
-                      color: context.colors.textPrimary,
-                    )
-                    : AppTypography.textMdBold.copyWith(
-                      color: context.colors.textPrimary,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TeamCrestAvatar(
+                teamName: team.teamName,
+                size: 60.w,
+                borderRadius: 14.br,
+              ),
+              SizedBox(width: 14.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      team.teamName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: context.colors.textPrimary,
+                        height: 1.1,
+                      ),
                     ),
+                    SizedBox(height: 6.h),
+                    Row(
+                      children: [
+                        _RankChip(rank: team.rank, accent: accent),
+                        SizedBox(width: 8.w),
+                        Text(
+                          '$played ${played == 1 ? 'match' : 'matches'}',
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (recent.isNotEmpty) ...[
+            SizedBox(height: 14.h),
+            Row(
+              children: [
+                Text(
+                  'FORM',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: context.colors.textTertiary,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                for (final r in recent) ...[
+                  _FormDot(color: _resultColor(context, r)),
+                  SizedBox(width: 4.w),
+                ],
+              ],
+            ),
+          ],
+          SizedBox(height: 16.h),
+          Row(
+            children: [
+              _HeroStat(
+                label: 'Match Pts',
+                value: '${team.matchPoints}',
+                emphasis: accent,
+              ),
+              _HeroDivider(),
+              _HeroStat(label: 'Board Pts', value: team.gamePointsLabel),
+              _HeroDivider(),
+              _HeroRecord(
+                won: team.matchesWon,
+                drawn: team.matchesDrawn,
+                lost: team.matchesLost,
+              ),
+            ],
           ),
         ],
       ),
@@ -232,112 +274,390 @@ class _TeamStatBox extends StatelessWidget {
   }
 }
 
-/// A single opponent-team match row, styled like [ScoreboardCardWidget].
-class _TeamMatchCard extends StatelessWidget {
-  final int index;
-  final TeamMatch match;
-  final bool isFirst;
-  final bool isLast;
+class _RankChip extends StatelessWidget {
+  final int rank;
+  final Color accent;
 
-  const _TeamMatchCard({
-    required this.index,
-    required this.match,
-    required this.isFirst,
-    required this.isLast,
+  const _RankChip({required this.rank, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(6.br),
+        border: Border.all(color: accent.withValues(alpha: 0.45), width: 1),
+      ),
+      child: Text(
+        '#$rank',
+        style: AppTypography.textXsMedium.copyWith(
+          color: context.colors.textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _FormDot extends StatelessWidget {
+  final Color color;
+  const _FormDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 10.w,
+      height: 10.w,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+class _HeroDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 30.h,
+      margin: EdgeInsets.symmetric(horizontal: 12.w),
+      color: context.colors.textPrimary.withValues(alpha: 0.10),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? emphasis;
+
+  const _HeroStat({required this.label, required this.value, this.emphasis});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: AppTypography.textLgBold.copyWith(
+              color: emphasis ?? context.colors.textPrimary,
+            ),
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            label,
+            style: AppTypography.textXsMedium.copyWith(
+              color: context.colors.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroRecord extends StatelessWidget {
+  final int won;
+  final int drawn;
+  final int lost;
+
+  const _HeroRecord({
+    required this.won,
+    required this.drawn,
+    required this.lost,
   });
 
   @override
   Widget build(BuildContext context) {
-    BorderRadius? borderRadius;
-    if (isFirst) {
-      borderRadius = BorderRadius.only(
-        topLeft: Radius.circular(8.br),
-        topRight: Radius.circular(8.br),
-      );
-    } else if (isLast) {
-      borderRadius = BorderRadius.only(
-        bottomLeft: Radius.circular(8.br),
-        bottomRight: Radius.circular(8.br),
-      );
-    }
+    Widget cell(int v, Color color) => Column(
+      children: [
+        Text(
+          '$v',
+          style: AppTypography.textMdBold.copyWith(color: color),
+        ),
+      ],
+    );
 
-    return Container(
-      alignment: Alignment.center,
-      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: borderRadius,
-        border:
-            isLast
-                ? null
-                : Border(
-                  bottom: BorderSide(
-                    color: context.colors.textPrimary.withValues(alpha: 0.08),
-                    width: 0.7,
-                  ),
-                ),
-      ),
-      child: Row(
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              cell(won, kGreenColor2),
+              SizedBox(width: 6.w),
+              cell(drawn, _drawColor),
+              SizedBox(width: 6.w),
+              cell(lost, kRedColor),
+            ],
+          ),
+          SizedBox(height: 2.h),
           Text(
-            match.roundLabel,
-            style: AppTypography.textMdBold.copyWith(
-              color: context.colors.textPrimary,
+            'W · D · L',
+            style: AppTypography.textXsMedium.copyWith(
+              color: context.colors.textTertiary,
             ),
           ),
-          SizedBox(width: 10.w),
-          TeamCrestAvatar(
-            teamName: match.opponentTeam,
-            size: 28.w,
-            borderRadius: 6.br,
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Text(
-              match.opponentTeam,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textMdBold.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Text(
-            match.scoreLabel,
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          SizedBox(width: 12.w),
-          _ResultTag(result: match.result),
         ],
       ),
     );
   }
 }
 
-class _ResultTag extends StatelessWidget {
-  final TeamMatchResult result;
+class _MatchCard extends StatelessWidget {
+  final TeamMatch match;
+  final Color accent;
 
-  const _ResultTag({required this.result});
+  const _MatchCard({required this.match, required this.accent});
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (result) {
-      TeamMatchResult.win => ('W', kGreenColor),
-      TeamMatchResult.loss => ('L', kRedColor),
-      TeamMatchResult.draw => ('D', context.colors.textSecondary),
-      TeamMatchResult.ongoing => ('·', context.colors.textTertiary),
-    };
+    final resultColor = _resultColor(context, match.result);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12.br),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4.w, color: resultColor),
+            Expanded(
+              child: Container(
+                color: context.colors.surface,
+                padding: EdgeInsets.all(12.sp),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Round + opponent + result
+                    Row(
+                      children: [
+                        _RoundPill(label: 'Round ${_roundNumber(match)}'),
+                        SizedBox(width: 8.w),
+                        TeamCrestAvatar(
+                          teamName: match.opponentTeam,
+                          size: 24.w,
+                          borderRadius: 5.br,
+                        ),
+                        SizedBox(width: 8.w),
+                        Expanded(
+                          child: Text(
+                            match.opponentTeam,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.textSmBold.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        _ResultBadge(result: match.result),
+                      ],
+                    ),
+                    SizedBox(height: 10.h),
+                    // Board-point split + share bar
+                    Row(
+                      children: [
+                        Text(
+                          match.scoreLabel,
+                          style: AppTypography.textMdBold.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: _ShareBar(
+                            ourPoints: match.ourPoints,
+                            opponentPoints: match.opponentPoints,
+                            ourColor: resultColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (match.boardGames.isNotEmpty) ...[
+                      SizedBox(height: 10.h),
+                      Divider(
+                        height: 1,
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.06,
+                        ),
+                      ),
+                      SizedBox(height: 6.h),
+                      for (final b in match.boardGames)
+                        _BoardRow(board: b),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _roundNumber(TeamMatch m) => m.roundLabel.replaceAll('.', '');
+}
+
+class _RoundPill extends StatelessWidget {
+  final String label;
+  const _RoundPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        borderRadius: BorderRadius.circular(6.br),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.textXsMedium.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultBadge extends StatelessWidget {
+  final TeamMatchResult result;
+  const _ResultBadge({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _resultColor(context, result);
     return Container(
       width: 24.w,
       height: 24.w,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: color.withValues(alpha: 0.16),
         shape: BoxShape.circle,
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.55), width: 1),
+      ),
+      child: Text(
+        _resultLetter(result),
+        style: AppTypography.textXsMedium.copyWith(color: color),
+      ),
+    );
+  }
+}
+
+class _ShareBar extends StatelessWidget {
+  final double ourPoints;
+  final double opponentPoints;
+  final Color ourColor;
+
+  const _ShareBar({
+    required this.ourPoints,
+    required this.opponentPoints,
+    required this.ourColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = ourPoints + opponentPoints;
+    final ourFlex = total > 0 ? (ourPoints / total * 1000).round() : 500;
+    final oppFlex = 1000 - ourFlex;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3.br),
+      child: SizedBox(
+        height: 6.h,
+        child: Row(
+          children: [
+            if (ourFlex > 0)
+              Expanded(flex: ourFlex, child: ColoredBox(color: ourColor)),
+            if (oppFlex > 0)
+              Expanded(
+                flex: oppFlex,
+                child: ColoredBox(
+                  color: context.colors.textPrimary.withValues(alpha: 0.12),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BoardRow extends StatelessWidget {
+  final TeamBoardGame board;
+  const _BoardRow({required this.board});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _resultColor(context, board.result);
+    final oppLabel = [
+      if (board.opponentTitle != null) board.opponentTitle,
+      board.opponentName,
+    ].join(' ');
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 5.h),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20.w,
+            child: Text(
+              board.boardNr?.toString() ?? '',
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textTertiary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              board.ourName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
+          ),
+          SizedBox(width: 6.w),
+          _BoardResultGlyph(result: board.result, color: color),
+          SizedBox(width: 6.w),
+          Expanded(
+            child: Text(
+              oppLabel,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BoardResultGlyph extends StatelessWidget {
+  final TeamMatchResult result;
+  final Color color;
+
+  const _BoardResultGlyph({required this.result, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (result) {
+      TeamMatchResult.win => '1',
+      TeamMatchResult.draw => '½',
+      TeamMatchResult.loss => '0',
+      TeamMatchResult.ongoing => '·',
+    };
+    return Container(
+      width: 20.w,
+      height: 20.w,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(5.br),
       ),
       child: Text(
         label,

@@ -215,6 +215,10 @@ void main() {
       expect(m[1].opponentTeam, 'C');
       expect(m[1].result, TeamMatchResult.loss);
       expect(m[1].matchPoints, 0);
+      // Each match carries its individual board games.
+      expect(m[0].boardGames.length, 2);
+      expect(m[0].boardGames.first.result, TeamMatchResult.win);
+      expect(m[0].boardGames.first.ourIsWhite, isTrue);
     });
 
     test('unfinished board leaves the match ongoing', () {

@@ -54,10 +54,23 @@ class SegmentedSwitcher extends StatefulWidget {
 class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
   late int _selectedIndex;
 
+  // Scroll state for the scrollable (team) variant, so the selected tab is
+  // kept centered in the strip — revealing the tabs on either side.
+  final ScrollController _scrollController = ScrollController();
+  double _segmentWidth = 0;
+  double _viewportWidth = 0;
+  int? _lastCenteredIndex;
+
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.currentSelection ?? widget.initialSelection;
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -67,6 +80,30 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
         widget.currentSelection != _selectedIndex &&
         mounted) {
       _onSelectionChanged(widget.currentSelection!, fromExternal: true);
+    }
+  }
+
+  /// Scrolls so the selected segment sits centered in the strip. Jumps on the
+  /// first pass (avoids a 0→target flash), animates on later selections.
+  void _centerSelectedSegment() {
+    if (!_scrollController.hasClients || _segmentWidth <= 0) return;
+    if (_lastCenteredIndex == _selectedIndex) return;
+    final target = (_selectedIndex * _segmentWidth + _segmentWidth / 2) -
+        _viewportWidth / 2;
+    final clamped = target.clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    final first = _lastCenteredIndex == null;
+    _lastCenteredIndex = _selectedIndex;
+    if (first) {
+      _scrollController.jumpTo(clamped);
+    } else {
+      _scrollController.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOutCubic,
+      );
     }
   }
 
@@ -108,6 +145,11 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
       return LayoutBuilder(
         builder: (context, constraints) {
           final segmentWidth = constraints.maxWidth / 3;
+          _segmentWidth = segmentWidth;
+          _viewportWidth = constraints.maxWidth;
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _centerSelectedSegment(),
+          );
           return Container(
             height: 40.h,
             decoration: BoxDecoration(
@@ -116,6 +158,7 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
             ),
             clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
+              controller: _scrollController,
               scrollDirection: Axis.horizontal,
               physics: const ClampingScrollPhysics(),
               child: Row(
