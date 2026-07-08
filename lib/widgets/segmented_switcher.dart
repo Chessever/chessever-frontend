@@ -1,7 +1,6 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 import '../utils/app_typography.dart';
 
 class SegmentedSwitcher extends StatefulWidget {
