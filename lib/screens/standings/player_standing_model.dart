@@ -10,6 +10,10 @@ class PlayerStandingModel {
   final int? fideId;
   final String? gamebasePlayerId;
 
+  /// Team name for team events; null for individual events. Carried so team
+  /// standings can group individual rows under their club.
+  final String? team;
+
   /// 1-based position in the *unfiltered* sorted standings. Preserved across
   /// search so filtered results still display the player's overall standing
   /// (e.g. "#42") instead of re-numbering the filtered list from 1.
@@ -24,6 +28,7 @@ class PlayerStandingModel {
     required this.matchScore,
     this.fideId,
     this.gamebasePlayerId,
+    this.team,
     this.overallRank,
   });
 
@@ -37,6 +42,7 @@ class PlayerStandingModel {
       matchScore: _formatTournamentScore(player.score, player.played),
       fideId: player.fideId,
       gamebasePlayerId: null,
+      team: player.team,
     );
   }
 
@@ -62,6 +68,7 @@ class PlayerStandingModel {
     String? matchScore,
     int? fideId,
     String? gamebasePlayerId,
+    String? team,
     int? overallRank,
   }) {
     return PlayerStandingModel(
@@ -73,6 +80,7 @@ class PlayerStandingModel {
       matchScore: matchScore ?? this.matchScore,
       fideId: fideId ?? this.fideId,
       gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
+      team: team ?? this.team,
       overallRank: overallRank ?? this.overallRank,
     );
   }
@@ -87,6 +95,7 @@ class PlayerStandingModel {
       matchScore: json['matchScore'] as String?,
       fideId: json['fideId'] as int?,
       gamebasePlayerId: json['gamebasePlayerId'] as String?,
+      team: json['team'] as String?,
       overallRank: json['overallRank'] as int?,
     );
   }
@@ -102,6 +111,7 @@ class PlayerStandingModel {
       'matchScore': matchScore,
       'fideId': fideId,
       'gamebasePlayerId': gamebasePlayerId,
+      'team': team,
       'overallRank': overallRank,
     };
   }
@@ -118,6 +128,7 @@ class PlayerStandingModel {
         other.matchScore == matchScore &&
         other.fideId == fideId &&
         other.gamebasePlayerId == gamebasePlayerId &&
+        other.team == team &&
         other.overallRank == overallRank;
   }
 
@@ -132,6 +143,7 @@ class PlayerStandingModel {
       matchScore,
       fideId,
       gamebasePlayerId,
+      team,
       overallRank,
     );
   }

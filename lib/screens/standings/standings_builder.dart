@@ -88,6 +88,7 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
             fideId: card.fideId,
             rating: card.rating > 0 ? card.rating : null,
             played: 0,
+            team: card.team,
           ),
         );
       }
