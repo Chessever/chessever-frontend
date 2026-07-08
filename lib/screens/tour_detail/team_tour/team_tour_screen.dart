@@ -177,14 +177,7 @@ class _TeamExpansion extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (team.players.isNotEmpty) ...[
-            Wrap(
-              spacing: 6.w,
-              runSpacing: 6.h,
-              children: [
-                for (final player in team.players)
-                  TeamPlayerChip(player: player),
-              ],
-            ),
+            TeamPlayerChipsGrid(players: team.players),
             SizedBox(height: 8.h),
           ],
           if (matches.isEmpty)

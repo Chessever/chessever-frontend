@@ -90,14 +90,7 @@ class TeamScoreCardScreen extends ConsumerWidget {
                             ),
                           ),
                           SizedBox(height: 10.h),
-                          Wrap(
-                            spacing: 6.w,
-                            runSpacing: 6.h,
-                            children: [
-                              for (final player in team.players)
-                                TeamPlayerChip(player: player),
-                            ],
-                          ),
+                          TeamPlayerChipsGrid(players: team.players),
                         ],
                       ),
                     ),

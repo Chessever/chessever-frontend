@@ -46,17 +46,16 @@ class TeamPlayerChip extends ConsumerWidget {
       onTap: () => openPlayerScoreCard(context, ref, player),
       behavior: HitTestBehavior.opaque,
       child: Container(
-        constraints: BoxConstraints(maxWidth: 190.w),
+        width: double.infinity,
         padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
         decoration: BoxDecoration(
           color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(20.br),
+          borderRadius: BorderRadius.circular(10.br),
           border: Border.all(
             color: context.colors.textPrimary.withValues(alpha: 0.08),
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             PlayerInitialsAvatar(
               photoUrl: photoAsync.valueOrNull,
@@ -66,7 +65,7 @@ class TeamPlayerChip extends ConsumerWidget {
               title: player.title,
             ),
             SizedBox(width: 7.w),
-            Flexible(
+            Expanded(
               child: Text(
                 label,
                 maxLines: 1,
@@ -79,6 +78,45 @@ class TeamPlayerChip extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Lays team player chips out as a responsive grid: equal-width columns that
+/// fill each row as much as possible and wrap to the next line on overflow.
+class TeamPlayerChipsGrid extends StatelessWidget {
+  final List<PlayerStandingModel> players;
+
+  const TeamPlayerChipsGrid({super.key, required this.players});
+
+  @override
+  Widget build(BuildContext context) {
+    if (players.isEmpty) return const SizedBox.shrink();
+    final spacing = 6.w;
+    final minChipWidth = 150.w;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        // As many columns as fit (min chip width), 1–4.
+        final columns = (maxWidth / (minChipWidth + spacing))
+            .floor()
+            .clamp(1, 4);
+        final chipWidth =
+            (maxWidth - spacing * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: 6.h,
+          children: [
+            for (final player in players)
+              SizedBox(
+                width: chipWidth,
+                child: TeamPlayerChip(player: player),
+              ),
+          ],
+        );
+      },
     );
   }
 }
