@@ -102,59 +102,69 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
         AppTypography.textSmMedium.copyWith(color: selectedTextColor);
 
     if (widget.isScrollable) {
-      return Container(
-        height: 40.h,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List.generate(widget.options.length, (index) {
-              final isSelected = index == _selectedIndex;
-              final textOpacity = isSelected ? 1.0 : 0.7;
-              final style = (isSelected
-                      ? defaultSelectedTextStyle
-                      : defaultTextStyle)
-                  .copyWith(
-                    color: (isSelected ? selectedTextColor : textColor)
-                        .withOpacity(textOpacity),
-                  );
+      // Each segment is exactly one third of the strip width, so the visible
+      // area always shows 3 tabs — identical to the fixed layout — and any
+      // extra tab (the team "Players" tab) is revealed by horizontal scroll.
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final segmentWidth = constraints.maxWidth / 3;
+          return Container(
+            height: 40.h,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(borderRadius),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              child: Row(
+                children: List.generate(widget.options.length, (index) {
+                  final isSelected = index == _selectedIndex;
+                  final textOpacity = isSelected ? 1.0 : 0.7;
+                  final style = (isSelected
+                          ? defaultSelectedTextStyle
+                          : defaultTextStyle)
+                      .copyWith(
+                        color: (isSelected ? selectedTextColor : textColor)
+                            .withOpacity(textOpacity),
+                      );
 
-              return GestureDetector(
-                onTap: () => _onSelectionChanged(index),
-                behavior: HitTestBehavior.opaque,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeInOutCubic,
-                  alignment: Alignment.center,
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                  decoration: BoxDecoration(
-                    color:
-                        isSelected
-                            ? selectedBackgroundColor
-                            : Colors.transparent,
-                    borderRadius: BorderRadius.circular(borderRadius),
-                  ),
-                  child:
-                      widget.optionLabels != null
-                          ? DefaultTextStyle.merge(
-                            style: style,
-                            child: widget.optionLabels![index],
-                          )
-                          : Text(
-                            widget.options[index],
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: style,
-                          ),
-                ),
-              );
-            }),
-          ),
-        ),
+                  return GestureDetector(
+                    onTap: () => _onSelectionChanged(index),
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeInOutCubic,
+                      width: segmentWidth,
+                      alignment: Alignment.center,
+                      padding: EdgeInsets.symmetric(vertical: 8.h),
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? selectedBackgroundColor
+                                : Colors.transparent,
+                        borderRadius: BorderRadius.circular(borderRadius),
+                      ),
+                      child:
+                          widget.optionLabels != null
+                              ? DefaultTextStyle.merge(
+                                style: style,
+                                child: widget.optionLabels![index],
+                              )
+                              : Text(
+                                widget.options[index],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: style,
+                              ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          );
+        },
       );
     }
 

@@ -134,6 +134,10 @@ class _TeamList extends ConsumerWidget {
               team: team,
               rank: team.rank,
               isExpanded: isExpanded,
+              onTeamTap: () {
+                ref.read(selectedTeamProvider.notifier).state = team;
+                Navigator.of(context).pushNamed('/team_scorecard_screen');
+              },
               onToggle: () {
                 final next = Set<String>.from(
                   ref.read(expandedTeamsProvider),
@@ -216,6 +220,7 @@ class _TeamStandingsLoading extends StatelessWidget {
             rank: index + 1,
             isExpanded: false,
             onToggle: () {},
+            onTeamTap: () {},
             playerRows: const [],
           ),
         );

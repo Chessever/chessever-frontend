@@ -168,4 +168,77 @@ void main() {
     final t = buildTeamStandings(games: games, playerStandings: [p]);
     expect(t.firstWhere((e) => e.teamName == 'A').players.length, 1);
   });
+
+  group('buildTeamMatches', () {
+    test('per-round matches with opponent + score split + result', () {
+      final games = [
+        // round-1: A beats B 1.5-0.5
+        _game(
+          round: 'round-1',
+          whiteTeam: 'A',
+          blackTeam: 'B',
+          status: GameStatus.whiteWins,
+          board: 1,
+        ),
+        _game(
+          round: 'round-1',
+          whiteTeam: 'B',
+          blackTeam: 'A',
+          status: GameStatus.draw,
+          board: 2,
+        ),
+        // round-2: A loses to C 0-2
+        _game(
+          round: 'round-2',
+          whiteTeam: 'A',
+          blackTeam: 'C',
+          status: GameStatus.blackWins,
+          board: 1,
+        ),
+        _game(
+          round: 'round-2',
+          whiteTeam: 'C',
+          blackTeam: 'A',
+          status: GameStatus.whiteWins,
+          board: 2,
+        ),
+      ];
+      final m = buildTeamMatches(games: games, teamName: 'A');
+      expect(m.length, 2);
+      // Sorted by round number ascending.
+      expect(m[0].opponentTeam, 'B');
+      expect(m[0].ourPoints, 1.5);
+      expect(m[0].opponentPoints, 0.5);
+      expect(m[0].result, TeamMatchResult.win);
+      expect(m[0].matchPoints, 2);
+      expect(m[0].roundLabel, '1.');
+      expect(m[1].opponentTeam, 'C');
+      expect(m[1].result, TeamMatchResult.loss);
+      expect(m[1].matchPoints, 0);
+    });
+
+    test('unfinished board leaves the match ongoing', () {
+      final games = [
+        _game(
+          round: 'round-1',
+          whiteTeam: 'A',
+          blackTeam: 'B',
+          status: GameStatus.whiteWins,
+          board: 1,
+        ),
+        _game(
+          round: 'round-1',
+          whiteTeam: 'B',
+          blackTeam: 'A',
+          status: GameStatus.ongoing,
+          board: 2,
+        ),
+      ];
+      final m = buildTeamMatches(games: games, teamName: 'A');
+      expect(m.length, 1);
+      expect(m[0].complete, isFalse);
+      expect(m[0].result, TeamMatchResult.ongoing);
+      expect(m[0].ourPoints, 1.0);
+    });
+  });
 }
