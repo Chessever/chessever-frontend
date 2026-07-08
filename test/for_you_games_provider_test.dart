@@ -7,6 +7,7 @@ import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -602,6 +603,28 @@ void main() {
       expect(shouldHide, false);
     },
   );
+
+  test('live-aware For You snapshot renders cached RPC boards directly', () {
+    final cachedSnapshot = _snapshot(
+      'event-1',
+      visibleGames: [_game('rpc-board')],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        forYouTopGamesSnapshotCacheProvider.overrideWith(
+          (ref) => {'event-1': cachedSnapshot},
+        ),
+        shouldStreamProvider.overrideWith((ref) => false),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final snapshot = container.read(
+      forYouEventGamesWithAutoRefreshProvider('event-1'),
+    );
+
+    expect(snapshot.valueOrNull?.visibleGames.single.gameId, 'rpc-board');
+  });
 
   test(
     'renderable For You snapshot keeps cached boards while live snapshot loads',

@@ -124,6 +124,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   int _nextSessionEventOrder = 0;
   bool _pendingFavoritePlayerOrderHydration = false;
   final Set<String> _handledUnknownLiveEventIds = <String>{};
+  bool _isRefreshingTopGames = false;
+  bool _queuedTopGamesRefresh = false;
+  final Set<String> _handledFinishedTopGameRefreshes = <String>{};
 
   ForYouNotifier(this.ref) : super(const ForYouState(isLoading: true)) {
     _setupListeners();
@@ -140,17 +143,29 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       next,
     ) {
       next.whenData((liveIds) {
-        _refreshLiveCategories(liveIds);
+        final liveCategoryChanged = _refreshLiveCategories(liveIds);
         _maybeRefreshForUnknownLiveEvents(liveIds);
+        if (liveCategoryChanged) {
+          unawaited(refreshVisibleTopGames());
+        }
       });
     });
 
-    ref.listen<AsyncValue<List<String>>>(liveRoundsIdProvider, (_, next) {
-      next.whenData((_) => bumpForYouEventsRefreshSignal(ref));
+    ref.listen<AsyncValue<List<String>>>(liveRoundsIdProvider, (
+      previous,
+      next,
+    ) {
+      final liveRoundIds = next.valueOrNull;
+      if (liveRoundIds == null) return;
+      if (_sameStringSet(previous?.valueOrNull, liveRoundIds)) return;
+      _refreshTopGamesAfterLiveSelectionChange();
     });
 
-    ref.listen<AsyncValue<List<String>>>(liveTourIdProvider, (_, next) {
-      next.whenData((_) => bumpForYouEventsRefreshSignal(ref));
+    ref.listen<AsyncValue<List<String>>>(liveTourIdProvider, (previous, next) {
+      final liveTourIds = next.valueOrNull;
+      if (liveTourIds == null) return;
+      if (_sameStringSet(previous?.valueOrNull, liveTourIds)) return;
+      _refreshTopGamesAfterLiveSelectionChange();
     });
 
     // Catch up on events that started while the app was backgrounded; the
@@ -199,9 +214,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     unawaited(refresh());
   }
 
-  void _refreshLiveCategories(List<String> liveIds) {
+  bool _refreshLiveCategories(List<String> liveIds) {
     final current = state.events;
-    if (current.isEmpty) return;
+    if (current.isEmpty) return false;
 
     final updated = current.map((e) => e.withLiveIds(liveIds)).toList();
 
@@ -212,9 +227,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         break;
       }
     }
-    if (!changed) return;
+    if (!changed) return false;
 
     if (mounted) state = state.copyWith(events: updated);
+    return true;
   }
 
   Future<void> _loadInitial() async {
@@ -242,6 +258,88 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> loadMore() async {
     if (_isFetching || !state.hasMore || state.isLoading) return;
     await _fetchPage(isInitial: false);
+  }
+
+  void _refreshTopGamesAfterLiveSelectionChange() {
+    // Keep the legacy signal for non-feed consumers, but For You itself should
+    // only reselect preview boards through the batched backend RPC.
+    bumpForYouEventsRefreshSignal(ref);
+    unawaited(refreshVisibleTopGames());
+  }
+
+  Future<void> refreshVisibleTopGames() async {
+    if (state.events.isEmpty) return;
+
+    if (_isRefreshingTopGames) {
+      _queuedTopGamesRefresh = true;
+      return;
+    }
+
+    _isRefreshingTopGames = true;
+    try {
+      do {
+        _queuedTopGamesRefresh = false;
+        final visibleEvents = _topGamesRefreshCandidates(state.events);
+        if (visibleEvents.isNotEmpty) {
+          await _prefetchTopGames(visibleEvents, replace: false);
+        }
+      } while (mounted && _queuedTopGamesRefresh);
+    } finally {
+      _isRefreshingTopGames = false;
+    }
+  }
+
+  Future<void> refreshTopGamesForEvent(
+    String eventId, {
+    String? finishedGameId,
+    String? finishedStatus,
+  }) async {
+    if (eventId.isEmpty) return;
+
+    final normalizedFinishedStatus = finishedStatus?.trim();
+    if (finishedGameId != null &&
+        finishedGameId.isNotEmpty &&
+        normalizedFinishedStatus != null &&
+        normalizedFinishedStatus.isNotEmpty) {
+      final refreshKey = '$eventId:$finishedGameId:$normalizedFinishedStatus';
+      if (!_handledFinishedTopGameRefreshes.add(refreshKey)) {
+        return;
+      }
+    }
+
+    GroupEventCardModel? model;
+    for (final event in state.events) {
+      if (event.id == eventId) {
+        model = event;
+        break;
+      }
+    }
+    if (model == null) return;
+
+    await _prefetchTopGames([model], replace: false);
+  }
+
+  List<GroupEventCardModel> _topGamesRefreshCandidates(
+    List<GroupEventCardModel> events,
+  ) {
+    if (events.isEmpty) return const <GroupEventCardModel>[];
+
+    final cachedSnapshots = ref.read(forYouTopGamesSnapshotCacheProvider);
+    return events
+        .where((event) {
+          if (event.eventSource != EventSource.lichessBroadcast) {
+            return false;
+          }
+          if (event.tourEventCategory == TourEventCategory.completed) {
+            return false;
+          }
+          if (event.tourEventCategory == TourEventCategory.live ||
+              event.tourEventCategory == TourEventCategory.ongoing) {
+            return true;
+          }
+          return cachedSnapshots[event.id]?.hasGames ?? false;
+        })
+        .toList(growable: false);
   }
 
   Future<void> _fetchPage({required bool isInitial}) async {
@@ -594,6 +692,16 @@ List<int> _favoriteFideIdsFrom(Iterable<FavoritePlayer> favorites) {
     }
   }
   return fideIds.toList(growable: false);
+}
+
+bool _sameStringSet(List<String>? previous, List<String> next) {
+  if (previous == null || previous.length != next.length) return false;
+  final previousSet = previous.toSet();
+  if (previousSet.length != next.toSet().length) return false;
+  for (final id in next) {
+    if (!previousSet.contains(id)) return false;
+  }
+  return true;
 }
 
 final forYouEventsProvider =
@@ -1617,9 +1725,8 @@ Future<String?> _resolveAutoPinCountryCode(Ref ref) async {
 // LIVE GAME WATCHER - AUTO-REFRESH WHEN GAMES FINISH
 // ============================================================================
 
-/// Watches displayed live games so each visible For You section stays reactive
-/// to Supabase row updates, while still using [eventGamesProvider] for the
-/// cached/refreshed snapshot.
+/// Watches displayed live games so each visible For You section refreshes its
+/// RPC-selected preview boards when a rendered live game finishes.
 ///
 /// The card widgets consume their own live row data, but this wrapper keeps the
 /// section subscribed to the same rendered live rows and refreshes the snapshot
@@ -1628,7 +1735,7 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
   AsyncValue<ForYouEventGamesSnapshot>,
   String
 >((ref, eventId) {
-  final snapshotAsync = ref.watch(eventGamesProvider(eventId));
+  final snapshotAsync = ref.watch(forYouEventSnapshotProvider(eventId));
 
   return snapshotAsync.when(
     data: (snapshot) {
@@ -1668,10 +1775,11 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
               Future.microtask(() {
                 try {
                   ref
-                      .read(eventGamesProvider(eventId).notifier)
-                      .requestRefreshForFinishedGame(
-                        gameId: status.gameId,
-                        status: status.status!,
+                      .read(forYouEventsProvider.notifier)
+                      .refreshTopGamesForEvent(
+                        eventId,
+                        finishedGameId: status.gameId,
+                        finishedStatus: status.status!,
                       );
                 } on StateError {
                   // The section can be disposed while a stream event is queued.

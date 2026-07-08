@@ -755,14 +755,11 @@ class _ForYouEventSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Mount the live-aware event snapshot so visible For You boards share the
-    // same realtime row stream and finish refresh path. Keep the batched
-    // top-games cache as the first-paint fallback while that snapshot resolves.
-    final snapshotAsync = resolveForYouRenderableSnapshot(
-      liveSnapshot: ref.watch(
-        forYouEventGamesWithAutoRefreshProvider(event.id),
-      ),
-      cachedSnapshot: ref.watch(forYouEventSnapshotProvider(event.id)),
+    // For You board membership comes from the batched RPC cache. The cards
+    // themselves stream live positions; this provider only refreshes the RPC
+    // selection when a shown game finishes.
+    final snapshotAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(event.id),
     );
 
     // Hide section after snapshot resolves with no games.
@@ -813,14 +810,11 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Mount the live-aware event snapshot so visible For You boards share the
-    // same realtime row stream and finish refresh path. Keep the batched
-    // top-games cache as the first-paint fallback while that snapshot resolves.
-    final snapshotAsync = resolveForYouRenderableSnapshot(
-      liveSnapshot: ref.watch(
-        forYouEventGamesWithAutoRefreshProvider(event.id),
-      ),
-      cachedSnapshot: ref.watch(forYouEventSnapshotProvider(event.id)),
+    // For You board membership comes from the batched RPC cache. The cards
+    // themselves stream live positions; this provider only refreshes the RPC
+    // selection when a shown game finishes.
+    final snapshotAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(event.id),
     );
 
     // Hide column after snapshot resolves with no games.

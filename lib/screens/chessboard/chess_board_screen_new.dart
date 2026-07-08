@@ -2251,10 +2251,23 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       }
     }
 
+    Widget buildEmptyGamesLoading() {
+      return Scaffold(
+        backgroundColor: context.colors.background,
+        body: Center(
+          child: CircularProgressIndicator(color: context.colors.textPrimary),
+        ),
+      );
+    }
+
     if (gamesModel == null || gamesModel.gamesTourModels.isEmpty) {
+      if (widget.games.isEmpty) {
+        return withLikeFlightScope(buildEmptyGamesLoading());
+      }
+
       return withLikeFlightScope(
         _LoadingScreen(
-          games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
+          games: widget.games,
           currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
           onGameChanged: (index) {},
           lastViewedIndex: _lastViewedIndex,
@@ -2290,9 +2303,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     final syncedGames = List<GamesTourModel>.from(liveGames);
     if (syncedGames.isEmpty) {
+      if (widget.games.isEmpty) {
+        return withLikeFlightScope(buildEmptyGamesLoading());
+      }
+
       return withLikeFlightScope(
         _LoadingScreen(
-          games: widget.games.isNotEmpty ? widget.games : [widget.games.first],
+          games: widget.games,
           currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
           onGameChanged: (index) {},
           lastViewedIndex: _lastViewedIndex,
