@@ -1,9 +1,12 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/theme/app_theme.dart' show kGreenColor2, kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
+
+const Color _drawGrey = Color(0xFF9AA0A6);
 
 /// A team standings row that mirrors [FigmaPlayerCard]'s skeleton (rank →
 /// avatar → name/sub-row → score) so the team table feels identical to the
@@ -21,9 +24,8 @@ class FigmaTeamCard extends StatelessWidget {
   /// name, score).
   final VoidCallback onTeamTap;
 
-  /// The team's individual standings rows, built by the caller (typically
-  /// [FigmaPlayerCard]s) and revealed when [isExpanded].
-  final List<Widget> playerRows;
+  /// Content revealed when [isExpanded] — the team's round-by-round matchups.
+  final List<Widget> expandedChildren;
 
   const FigmaTeamCard({
     super.key,
@@ -32,7 +34,7 @@ class FigmaTeamCard extends StatelessWidget {
     required this.isExpanded,
     required this.onToggle,
     required this.onTeamTap,
-    required this.playerRows,
+    required this.expandedChildren,
   });
 
   @override
@@ -87,13 +89,37 @@ class FigmaTeamCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             SizedBox(height: 4.h),
-                            Text(
-                              '${team.gamePointsLabel} pts · ${team.recordLabel}',
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textSecondary,
-                              ),
+                            RichText(
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                              text: TextSpan(
+                                style: AppTypography.textSmRegular.copyWith(
+                                  color: context.colors.textSecondary,
+                                ),
+                                children: [
+                                  TextSpan(text: '${team.gamePointsLabel} pts · '),
+                                  TextSpan(
+                                    text: '${team.matchesWon}',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: kGreenColor2,
+                                    ),
+                                  ),
+                                  const TextSpan(text: '-'),
+                                  TextSpan(
+                                    text: '${team.matchesDrawn}',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: _drawGrey,
+                                    ),
+                                  ),
+                                  const TextSpan(text: '-'),
+                                  TextSpan(
+                                    text: '${team.matchesLost}',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: kRedColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -135,7 +161,10 @@ class FigmaTeamCard extends StatelessWidget {
           alignment: Alignment.topCenter,
           child:
               isExpanded
-                  ? Column(mainAxisSize: MainAxisSize.min, children: playerRows)
+                  ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: expandedChildren,
+                  )
                   : const SizedBox(width: double.infinity),
         ),
       ],

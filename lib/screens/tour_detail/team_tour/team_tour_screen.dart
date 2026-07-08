@@ -1,13 +1,10 @@
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
-import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_matchup_tile.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/figma_team_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -15,8 +12,9 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Team-event "Standings" tab: one expandable row per team (match points +
-/// board points), revealing that team's individual [FigmaPlayerCard] rows.
-/// Structurally mirrors [PlayerTourScreen].
+/// board points). Tapping the row opens the team score card; the chevron
+/// expands the team's round-by-round matchups. Structurally mirrors
+/// [PlayerTourScreen].
 class TeamStandingsScreen extends ConsumerStatefulWidget {
   const TeamStandingsScreen({super.key});
 
@@ -147,21 +145,10 @@ class _TeamList extends ConsumerWidget {
                 }
                 ref.read(expandedTeamsProvider.notifier).state = next;
               },
-              playerRows: [
-                for (final player in team.players)
-                  Padding(
-                    padding: EdgeInsets.only(left: 12.w),
-                    child: FigmaPlayerCard(
-                      key: ValueKey(
-                        'team_player_${player.fideId ?? player.gamebasePlayerId ?? player.name}',
-                      ),
-                      player: player,
-                      rank: player.overallRank,
-                      showFavoriteButton: false,
-                      onTap: () => _openScorecard(context, ref, player),
-                    ),
-                  ),
-              ],
+              expandedChildren:
+                  isExpanded
+                      ? [_TeamExpansion(teamName: team.teamName)]
+                      : const [],
             );
           },
         );
@@ -170,20 +157,44 @@ class _TeamList extends ConsumerWidget {
       loading: () => const _TeamStandingsLoading(),
     );
   }
+}
 
-  void _openScorecard(
-    BuildContext context,
-    WidgetRef ref,
-    PlayerStandingModel player,
-  ) {
-    ref.read(selectedPlayerProvider.notifier).state = player;
-    // Clear games context — tournament games come from gamesTourScreenProvider.
-    ref.read(scoreCardGamesContextProvider.notifier).state = null;
-    ref.read(scoreCardPlayerProfileDataSourceProvider.notifier).state =
-        PlayerProfileDataSource.supabase;
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
-    Navigator.of(context).pushNamed('/scorecard_screen');
+/// Round-by-round matchups revealed under an expanded team row.
+class _TeamExpansion extends ConsumerWidget {
+  const _TeamExpansion({required this.teamName});
+
+  final String teamName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final matches = ref.watch(teamMatchesFamilyProvider(teamName));
+    if (matches.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 12.h),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'No matches played yet',
+            style: AppTypography.textSmMedium.copyWith(
+              color: Theme.of(context).hintColor,
+            ),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 12.h),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < matches.length; i++)
+            Padding(
+              padding: EdgeInsets.only(bottom: 8.h),
+              child: TeamMatchupTile(match: matches[i], index: i),
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -221,7 +232,7 @@ class _TeamStandingsLoading extends StatelessWidget {
             isExpanded: false,
             onToggle: () {},
             onTeamTap: () {},
-            playerRows: const [],
+            expandedChildren: const [],
           ),
         );
       },

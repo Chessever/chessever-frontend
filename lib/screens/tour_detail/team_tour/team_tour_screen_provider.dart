@@ -33,12 +33,19 @@ List<GamesTourModel> _watchTeamGames(Ref ref) {
   return games;
 }
 
+/// Round-by-round matches for a given team (by name). Powers both the
+/// expandable team standings row and the team score card.
+final teamMatchesFamilyProvider =
+    AutoDisposeProvider.family<List<TeamMatch>, String>((ref, teamName) {
+      final games = _watchTeamGames(ref);
+      return buildTeamMatches(games: games, teamName: teamName);
+    });
+
 /// Round-by-round matches for the currently selected team (team score card).
 final teamMatchesProvider = AutoDisposeProvider<List<TeamMatch>>((ref) {
   final team = ref.watch(selectedTeamProvider);
   if (team == null) return const [];
-  final games = _watchTeamGames(ref);
-  return buildTeamMatches(games: games, teamName: team.teamName);
+  return ref.watch(teamMatchesFamilyProvider(team.teamName));
 });
 
 /// Team standings for the team-event "Standings" tab. Reuses the already-ranked
