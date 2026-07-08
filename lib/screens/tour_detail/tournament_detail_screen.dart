@@ -50,6 +50,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   late final String _scrollScopeId;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
+  /// Latched once a team event is detected. Team-ness is structural, so the
+  /// tab layout (3 vs 4 tabs) must NOT flip back when `tourDetailScreenProvider`
+  /// transiently re-emits loading (it recreates whenever the selected broadcast
+  /// re-emits). Without this latch, `itemCount` churns 4→3→4 and the PageView +
+  /// tab strip rebuild, losing page and scroll state in every tab.
+  bool _isTeamEvent = false;
+
   @override
   void didPush() {
     markGamesTourScrollScopeActive(_scrollScopeId);
@@ -222,12 +229,21 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
           // Team events get a 4th ("Players") tab and a horizontally
           // scrollable tab strip. Detection keys off the format string, so it
-          // resolves before games load.
+          // resolves before games load. Latch it (see [_isTeamEvent]) so a
+          // transient tourDetail reload can't collapse the layout back to 3
+          // tabs and wipe every tab's state.
           final tourId = tourDetailAsync.valueOrNull?.aboutTourModel.id;
-          final isTeam =
-              (tourId != null && tourId.isNotEmpty)
-                  ? scopedRef.watch(isTeamEventProvider(tourId))
-                  : false;
+          if (!_isTeamEvent && tourId != null && tourId.isNotEmpty) {
+            final detected = scopedRef.watch(isTeamEventProvider(tourId));
+            if (detected) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_isTeamEvent) {
+                  setState(() => _isTeamEvent = true);
+                }
+              });
+            }
+          }
+          final isTeam = _isTeamEvent;
           final visibleModes = _visibleModes(isTeam);
 
           return ScreenWrapper(
