@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_matchup_tile.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_round_group.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart' show kGreenColor2, kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
@@ -111,7 +111,7 @@ class TeamScoreCardScreen extends ConsumerWidget {
                           horizontalPadding,
                           10.h,
                         ),
-                        child: TeamMatchupTile(
+                        child: TeamRoundGroup(
                           match: matches[index],
                           index: index,
                         ),

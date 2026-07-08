@@ -21,11 +21,3 @@ String teamResultLetter(TeamMatchResult result) => switch (result) {
   TeamMatchResult.loss => 'L',
   TeamMatchResult.ongoing => '·',
 };
-
-/// Single-board glyph from our side: 1 / ½ / 0.
-String teamBoardGlyph(TeamMatchResult result) => switch (result) {
-  TeamMatchResult.win => '1',
-  TeamMatchResult.draw => '½',
-  TeamMatchResult.loss => '0',
-  TeamMatchResult.ongoing => '·',
-};

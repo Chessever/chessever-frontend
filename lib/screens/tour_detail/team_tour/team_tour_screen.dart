@@ -1,7 +1,7 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_matchup_tile.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_round_group.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -188,10 +188,7 @@ class _TeamExpansion extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = 0; i < matches.length; i++)
-            Padding(
-              padding: EdgeInsets.only(bottom: 8.h),
-              child: TeamMatchupTile(match: matches[i], index: i),
-            ),
+            TeamRoundGroup(match: matches[i], index: i),
         ],
       ),
     );

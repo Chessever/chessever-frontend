@@ -20,19 +20,6 @@ class ScoreboardCardWidget extends ConsumerWidget {
   final bool isLast;
   final VoidCallback onTap;
 
-  /// Team-mode extensions (all optional, individual scorecard unaffected):
-  /// - [resultColor]: when set, the trailing result circle is filled/bordered
-  ///   with this color instead of the white/black piece color (W/D/L induced).
-  /// - [showRating]: hide the opponent rating block (teams have no rating).
-  /// - [trailingLabel]: text shown in place of the rating block (e.g. "5 – 3½").
-  /// - [leadingLabel]: overrides the leading "N." number (e.g. a round label).
-  /// - [footer]: content rendered inside the card below the row (board circles).
-  final Color? resultColor;
-  final bool showRating;
-  final String? trailingLabel;
-  final String? leadingLabel;
-  final Widget? footer;
-
   const ScoreboardCardWidget({
     super.key,
     required this.countryCode,
@@ -47,11 +34,6 @@ class ScoreboardCardWidget extends ConsumerWidget {
     required this.isFirst,
     required this.isLast,
     required this.onTap,
-    this.resultColor,
-    this.showRating = true,
-    this.trailingLabel,
-    this.leadingLabel,
-    this.footer,
   });
 
   @override
@@ -87,14 +69,11 @@ class ScoreboardCardWidget extends ConsumerWidget {
                     ),
                   ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
-              leadingLabel ?? '${index + 1}.',
+              '${index + 1}.',
               style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(width: 10.w),
@@ -135,60 +114,30 @@ class ScoreboardCardWidget extends ConsumerWidget {
               ),
             ),
             SizedBox(width: 12.w),
-            if (showRating)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  score.toString(),
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+                if (scoreChange != null && scoreChange != 0.0) ...[
+                  SizedBox(width: 4.w),
                   Text(
-                    score.toString(),
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: context.colors.textPrimary,
+                    scoreChange! > 0
+                        ? '+${scoreChange!.toStringAsFixed(0)}'
+                        : scoreChange!.toStringAsFixed(0),
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: scoreChange! > 0 ? kGreenColor : kRedColor,
                     ),
                   ),
-                  if (scoreChange != null && scoreChange != 0.0) ...[
-                    SizedBox(width: 4.w),
-                    Text(
-                      scoreChange! > 0
-                          ? '+${scoreChange!.toStringAsFixed(0)}'
-                          : scoreChange!.toStringAsFixed(0),
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: scoreChange! > 0 ? kGreenColor : kRedColor,
-                      ),
-                    ),
-                  ],
                 ],
-              )
-            else if (trailingLabel != null)
-              Text(
-                trailingLabel!,
-                style: AppTypography.textMdBold.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
+              ],
+            ),
             SizedBox(width: 14.w),
-            if (resultColor != null && matchScore != null)
-              Container(
-                width: 28.w,
-                height: 28.h,
-                decoration: BoxDecoration(
-                  color: resultColor!.withValues(alpha: 0.16),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: resultColor!.withValues(alpha: 0.6),
-                    width: 1.2,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    matchScore!,
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textMdBold.copyWith(
-                      color: resultColor,
-                    ),
-                  ),
-                ),
-              )
-            else if (isWhite != null && matchScore != null)
+            if (isWhite != null && matchScore != null)
               Container(
                 width: 28.w,
                 height: 28.h,
@@ -221,9 +170,6 @@ class ScoreboardCardWidget extends ConsumerWidget {
                 textAlign: TextAlign.start,
                 style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
               ),
-          ],
-        ),
-            if (footer != null) footer!,
           ],
         ),
       ),
