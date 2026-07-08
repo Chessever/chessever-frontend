@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_player_chip.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_round_group.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart' show kGreenColor2, kRedColor;
@@ -69,6 +70,38 @@ class TeamScoreCardScreen extends ConsumerWidget {
                     child: _TeamHeader(team: team),
                   ),
                 ),
+                if (team.players.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        18.h,
+                        horizontalPadding,
+                        10.h,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'TEAM',
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: context.colors.textTertiary,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: 10.h),
+                          Wrap(
+                            spacing: 6.w,
+                            runSpacing: 6.h,
+                            children: [
+                              for (final player in team.players)
+                                TeamPlayerChip(player: player),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -162,7 +195,7 @@ class _TeamHeader extends StatelessWidget {
                   children: [
                     Expanded(
                       child: _StatBox(
-                        label: 'Match Pts',
+                        label: 'Team Pts',
                         value: '${team.matchPoints}',
                         height: avatarSize,
                       ),

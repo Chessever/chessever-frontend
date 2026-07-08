@@ -1,8 +1,10 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_player_chip.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_round_group.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_team_card.dart';
@@ -146,9 +148,7 @@ class _TeamList extends ConsumerWidget {
                 ref.read(expandedTeamsProvider.notifier).state = next;
               },
               expandedChildren:
-                  isExpanded
-                      ? [_TeamExpansion(teamName: team.teamName)]
-                      : const [],
+                  isExpanded ? [_TeamExpansion(team: team)] : const [],
             );
           },
         );
@@ -159,36 +159,47 @@ class _TeamList extends ConsumerWidget {
   }
 }
 
-/// Round-by-round matchups revealed under an expanded team row.
+/// Revealed under an expanded team row: the team's players as tappable chips,
+/// then its round-by-round matchups (each round collapsible, collapsed by
+/// default).
 class _TeamExpansion extends ConsumerWidget {
-  const _TeamExpansion({required this.teamName});
+  const _TeamExpansion({required this.team});
 
-  final String teamName;
+  final TeamStandingModel team;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final matches = ref.watch(teamMatchesFamilyProvider(teamName));
-    if (matches.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 12.h),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'No matches played yet',
-            style: AppTypography.textSmMedium.copyWith(
-              color: Theme.of(context).hintColor,
-            ),
-          ),
-        ),
-      );
-    }
+    final matches = ref.watch(teamMatchesFamilyProvider(team.teamName));
     return Padding(
-      padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 12.h),
+      padding: EdgeInsets.fromLTRB(12.w, 6.h, 12.w, 12.h),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (var i = 0; i < matches.length; i++)
-            TeamRoundGroup(match: matches[i], index: i),
+          if (team.players.isNotEmpty) ...[
+            Wrap(
+              spacing: 6.w,
+              runSpacing: 6.h,
+              children: [
+                for (final player in team.players)
+                  TeamPlayerChip(player: player),
+              ],
+            ),
+            SizedBox(height: 8.h),
+          ],
+          if (matches.isEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'No matches played yet',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textTertiary,
+                ),
+              ),
+            )
+          else
+            for (var i = 0; i < matches.length; i++)
+              TeamRoundGroup(match: matches[i], index: i),
         ],
       ),
     );

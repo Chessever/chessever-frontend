@@ -15,9 +15,3 @@ Color teamResultColor(BuildContext context, TeamMatchResult result) =>
       TeamMatchResult.ongoing => context.colors.textTertiary,
     };
 
-String teamResultLetter(TeamMatchResult result) => switch (result) {
-  TeamMatchResult.win => 'W',
-  TeamMatchResult.draw => 'D',
-  TeamMatchResult.loss => 'L',
-  TeamMatchResult.ongoing => '·',
-};
