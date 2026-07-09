@@ -31,5 +31,27 @@ void main() {
       expect(playerNameSearchMatchScore('Giri, Anish', 'Giri'), 95);
       expect(playerNameSearchMatchScore('Giri, Anish', 'Anish'), 95);
     });
+
+    test('keeps short Magnus Carlsen prefixes strong', () {
+      for (final query in ['mag', 'carl', 'carlsen']) {
+        expect(
+          playerNameSearchMatchScore('Carlsen, Magnus', query),
+          greaterThanOrEqualTo(90),
+          reason: query,
+        );
+      }
+    });
+
+    test('matches reordered short name fragments (Md Imran)', () {
+      expect(playerNameSearchMatchScore('Imran, Md', 'Md Imran'), 100);
+      expect(
+        playerNameSearchMatchScore('Imran, Md', 'Imran Md'),
+        greaterThanOrEqualTo(85),
+      );
+      expect(
+        playerNameSearchMatchScore('Md Imran', 'Imran Md'),
+        greaterThanOrEqualTo(85),
+      );
+    });
   });
 }

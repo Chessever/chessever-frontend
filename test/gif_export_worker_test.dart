@@ -8,7 +8,7 @@ import 'package:image/image.dart' as img;
 
 void main() {
   group('computeGifExportWindow', () {
-    test('animates only up to the focused move', () {
+    test('always exports the full game from a mid-game focus', () {
       final moves = List.generate(20, (i) => 'move$i');
 
       final window = computeGifExportWindow(
@@ -18,14 +18,13 @@ void main() {
       );
 
       expect(window, isNotNull);
-      // moves move0..move5 inclusive (6 moves).
-      expect(window!.movesToAnimate, moves.sublist(0, 6));
-      expect(window.movesToAnimate.last, 'move5');
+      expect(window!.movesToAnimate, moves);
+      expect(window.movesToAnimate.last, 'move19');
       expect(window.globalMoveOffset, 0);
       expect(window.captureStartFen, 'custom start');
     });
 
-    test('stops at the focused move for long games', () {
+    test('exports the whole game for long games regardless of focus', () {
       final moves = List.generate(80, (i) => 'move$i');
 
       final window = computeGifExportWindow(
@@ -34,9 +33,9 @@ void main() {
       );
 
       expect(window, isNotNull);
-      expect(window!.movesToAnimate.length, 6);
+      expect(window!.movesToAnimate.length, 80);
       expect(window.movesToAnimate.first, 'move0');
-      expect(window.movesToAnimate.last, 'move5');
+      expect(window.movesToAnimate.last, 'move79');
     });
 
     test('exports the whole game when the final move is focused', () {
@@ -52,7 +51,7 @@ void main() {
       expect(window.movesToAnimate.last, 'move19');
     });
 
-    test('falls back to the full game when no move is focused', () {
+    test('exports the full game when no move is focused', () {
       final window = computeGifExportWindow(
         moveSans: const ['e4', 'e5'],
         currentMoveIndex: -1,
@@ -62,7 +61,7 @@ void main() {
       expect(window!.movesToAnimate, ['e4', 'e5']);
     });
 
-    test('clamps an out-of-range focused index to the full game', () {
+    test('exports the full game for an out-of-range focused index', () {
       final moves = List.generate(10, (i) => 'move$i');
 
       final window = computeGifExportWindow(

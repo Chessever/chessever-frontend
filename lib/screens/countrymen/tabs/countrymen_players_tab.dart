@@ -8,7 +8,6 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -151,9 +150,10 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
     } catch (e) {
       debugPrint('[CountrymenPlayers] Error: $e');
       if (!mounted) return;
+      final error = userFacingError(e, fallback: 'Failed to load players.');
       state = state.copyWith(
         isLoading: false,
-        error: userFacingError(e, fallback: 'Failed to load players.'),
+        error: state.players.isEmpty ? error : null,
       );
     }
   }
@@ -173,9 +173,9 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
 
     state = state.copyWith(
       searchQuery: trimmed,
-      players: [],
       offset: 0,
       hasMore: true,
+      error: null,
     );
 
     await _fetchPlayers(isInitial: true);
@@ -186,9 +186,9 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
 
     state = state.copyWith(
       searchQuery: '',
-      players: [],
       offset: 0,
       hasMore: true,
+      error: null,
     );
 
     await _fetchPlayers(isInitial: true);
@@ -224,6 +224,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
   void onScrollToTopRequested() {
     animateScrollControllerToTop(_scrollController);
   }
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
@@ -482,6 +483,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     // Check auth first, then toggle without blocking
     requireFullAuthGuard(context).then((allowed) async {
       if (!allowed) return;
+      if (!mounted) return;
 
       // Check favorite limit before adding
       if (!currentlyFavorite) {
@@ -563,7 +565,9 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load players',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -581,7 +585,9 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             onPressed:
                 () => ref.read(countrymenPlayersProvider.notifier).refresh(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -589,7 +595,9 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -628,7 +636,9 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           SizedBox(height: 20.h),
           Text(
             'No players found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(

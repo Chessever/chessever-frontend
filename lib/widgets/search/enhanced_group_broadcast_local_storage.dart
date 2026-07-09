@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/utils/player_name_search.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/search_scorer.dart';
 
@@ -51,7 +52,7 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
       final tournamentResults = <SearchResult>[];
 
       for (final gb in broadcasts) {
-        final tournamentMatch = SearchScorer.bestTournamentMatch(
+        final tournamentMatch = bestFlexibleEventSearchMatch(
           query: queryLower,
           name: gb.name,
           aliases: gb.search,
@@ -111,7 +112,7 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
           liveBroadcastId ?? [],
         );
 
-        final tournamentMatch = SearchScorer.bestTournamentMatch(
+        final tournamentMatch = bestFlexibleEventSearchMatch(
           query: queryLower,
           name: gb.name,
           aliases: gb.search,
@@ -446,3 +447,179 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
     }
   }
 }
+
+SearchScoreMatch bestFlexibleEventSearchMatch({
+  required String query,
+  required String name,
+  Iterable<String> aliases = const [],
+}) {
+  final titleMatch = SearchScorer.bestTournamentMatch(
+    query: query,
+    name: name,
+    aliases: aliases,
+  );
+  final playerTermMatch = bestPlayerSearchTermMatch(
+    query: query,
+    searchTerms: aliases,
+  );
+  final namedTitleMatch = _bestNamedEventTitleTokenMatch(
+    query: query,
+    name: name,
+    aliases: aliases,
+  );
+
+  var bestMatch = titleMatch;
+  if (playerTermMatch.score > bestMatch.score) {
+    bestMatch = playerTermMatch;
+  }
+  if (namedTitleMatch.score > bestMatch.score) {
+    bestMatch = namedTitleMatch;
+  }
+
+  return bestMatch;
+}
+
+SearchScoreMatch bestPlayerSearchTermMatch({
+  required String query,
+  required Iterable<String> searchTerms,
+}) {
+  final normalizedQuery = normalizePlayerSearchText(query);
+  if (normalizedQuery.isEmpty) return SearchScorer.noMatch;
+
+  var bestScore = 0.0;
+  var bestMatch = '';
+
+  for (final term in searchTerms) {
+    if (!_looksLikeSearchPlayerName(term)) continue;
+
+    final playerScore = playerNameSearchMatchScore(term, normalizedQuery);
+    if (playerScore <= 0) continue;
+
+    // Keep player-term event hits strong enough to surface related events,
+    // but still below exact event-title matches.
+    final score = 30.0 + playerScore * 0.6;
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = term;
+    }
+  }
+
+  if (bestScore <= 0) return SearchScorer.noMatch;
+  return SearchScoreMatch(
+    score: bestScore.clamp(0.0, 90.0),
+    matchedText: bestMatch,
+  );
+}
+
+bool _looksLikeSearchPlayerName(String searchTerm) {
+  final lowerTokens =
+      searchTerm
+          .toLowerCase()
+          .split(RegExp(r'[^a-z0-9]+'))
+          .where((token) => token.isNotEmpty)
+          .toSet();
+
+  if (lowerTokens.any(_eventSearchStopWords.contains)) {
+    return false;
+  }
+
+  final words = searchTerm.trim().split(RegExp(r'\s+'));
+  if (words.length >= 2 && words.length <= 4) {
+    return words.every(
+      (word) =>
+          word.isNotEmpty &&
+          word[0] == word[0].toUpperCase() &&
+          word.length > 1,
+    );
+  }
+
+  return false;
+}
+
+SearchScoreMatch _bestNamedEventTitleTokenMatch({
+  required String query,
+  required String name,
+  required Iterable<String> aliases,
+}) {
+  final queryTokens =
+      _normalizedEventSearchTokens(
+        query,
+      ).where((token) => !_eventSearchStopWords.contains(token)).toList();
+  if (queryTokens.length < 2) return SearchScorer.noMatch;
+
+  final distinctiveTokens =
+      queryTokens.where((token) => token.length >= 6).toList()
+        ..sort((a, b) => b.length.compareTo(a.length));
+  if (distinctiveTokens.isEmpty) return SearchScorer.noMatch;
+
+  var bestScore = 0.0;
+  var bestMatch = '';
+
+  for (final title in [name, ...aliases]) {
+    if (_looksLikeSearchPlayerName(title)) continue;
+
+    final titleTokens = _normalizedEventSearchTokens(title);
+    if (titleTokens.isEmpty) continue;
+
+    for (final queryToken in distinctiveTokens) {
+      if (!_tokenMatchesAnyTitleToken(queryToken, titleTokens)) continue;
+
+      final tokenBoost = queryToken.length.clamp(0, 12).toDouble() * 2.0;
+      final score = 70.0 + tokenBoost;
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = title;
+      }
+      break;
+    }
+  }
+
+  if (bestScore <= 0) return SearchScorer.noMatch;
+  return SearchScoreMatch(
+    score: bestScore.clamp(0.0, 90.0),
+    matchedText: bestMatch,
+  );
+}
+
+bool _tokenMatchesAnyTitleToken(String queryToken, List<String> titleTokens) {
+  return titleTokens.any(
+    (titleToken) =>
+        titleToken == queryToken ||
+        titleToken.startsWith(queryToken) ||
+        queryToken.startsWith(titleToken) && titleToken.length >= 6,
+  );
+}
+
+List<String> _normalizedEventSearchTokens(String value) {
+  final normalized =
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+  if (normalized.isEmpty) return const [];
+  return normalized.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+}
+
+const _eventSearchStopWords = {
+  'arena',
+  'blitz',
+  'challenge',
+  'championship',
+  'chess',
+  'classic',
+  'cup',
+  'festival',
+  'final',
+  'finals',
+  'grand',
+  'invitational',
+  'league',
+  'master',
+  'masters',
+  'match',
+  'memorial',
+  'open',
+  'olympiad',
+  'qualifier',
+  'rapid',
+  'super',
+  'team',
+  'tournament',
+};

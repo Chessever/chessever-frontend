@@ -705,7 +705,9 @@ async function sendAndroidLiveNotification(
     },
   };
 
-  const fallback = payload.last_move_numbered ?? payload.last_move ?? "";
+  // Move SAN stays in live_notification data for the NSE/widget. Dashboard
+  // "Sent Messages" must not be named after raw moves like "41.Bc1+" or the
+  // audit log becomes unreadable.
   const body: Record<string, unknown> = {
     app_id: ONESIGNAL_APP_ID,
     target_channel: "push",
@@ -713,10 +715,11 @@ async function sendAndroidLiveNotification(
     include_aliases: { external_id: [row.user_id] },
     collapse_id: `live_${payload.game_id}`,
     priority: 10,
+    name: `live_game_update:${payload.game_id}`,
     // Benign fallback shown ONLY by a hypothetical build with no NSE (our shipping
     // builds suppress it). Never a stale "game over" alert.
     headings: { en: `${payload.player_white} vs ${payload.player_black}` },
-    contents: { en: fallback.length > 0 ? fallback : "Live game" },
+    contents: { en: "Live game update" },
     data: {
       type: "live_game_update_v2",
       game_id: payload.game_id,

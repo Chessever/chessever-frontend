@@ -9,7 +9,6 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
-import 'package:chessever2/widgets/search/search_scorer.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/utils/player_name_search.dart';
@@ -260,7 +259,7 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
 
   for (final gb in broadcasts) {
     final tourEventModel = GroupEventCardModel.fromGroupBroadcast(gb, liveIds);
-    final tournamentMatch = SearchScorer.bestTournamentMatch(
+    final tournamentMatch = bestFlexibleEventSearchMatch(
       query: trimmedQuery,
       name: gb.name,
       aliases: gb.search,
@@ -621,6 +620,9 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
 /// Fetches players by name search via the `search_chess_players` RPC.
 /// Word-order insensitive ("guy gov" == "gov, guy") with a server-side
 /// trigram fallback for typos/diacritics when no strict match exists.
+///
+/// Multi-word queries also run a word-wise `ilike` fallback so reordered
+/// fragments like "Imran Md" still surface "Md Imran" / "Imran, Md".
 Future<List<SearchResult>> _fetchPlayersByName({
   required String query,
   int limit = 10,
@@ -630,13 +632,63 @@ Future<List<SearchResult>> _fetchPlayersByName({
   try {
     final supabase = Supabase.instance.client;
     final searchQuery = query.trim();
+    final byFideId = <int, Map<String, dynamic>>{};
+    final byName = <String, Map<String, dynamic>>{};
 
-    final rows = await supabase
-        .rpc(
-          'search_chess_players',
-          params: {'search_query': searchQuery, 'max_results': limit},
-        )
-        .timeout(const Duration(seconds: 5));
+    void collectRows(dynamic rows) {
+      if (rows is! List) return;
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final map = Map<String, dynamic>.from(row);
+        final name = map['name'] as String?;
+        if (name == null || name.isEmpty) continue;
+        final fideId = map['fideid'] as int?;
+        if (fideId != null && fideId > 0) {
+          byFideId.putIfAbsent(fideId, () => map);
+        } else {
+          byName.putIfAbsent(name.toLowerCase(), () => map);
+        }
+      }
+    }
+
+    try {
+      final rows = await supabase
+          .rpc(
+            'search_chess_players',
+            params: {'search_query': searchQuery, 'max_results': limit},
+          )
+          .timeout(const Duration(seconds: 5));
+      collectRows(rows);
+    } catch (_) {
+      // RPC can fail or be missing in some envs; fall through to ilike.
+    }
+
+    final words =
+        searchQuery
+            .replaceAll(',', ' ')
+            .split(RegExp(r'\s+'))
+            .where((word) => word.length >= 2)
+            .toList();
+
+    // Word-order fallback when the RPC is sparse or order-sensitive.
+    if (words.length >= 2 && byFideId.length + byName.length < limit) {
+      try {
+        var builder = supabase
+            .from('chess_players')
+            .select('fideid, name, title, rating, country');
+        for (final word in words) {
+          builder = builder.ilike('name', '%$word%');
+        }
+        final fallbackRows = await builder
+            .or('rating.lt.3300,rating.is.null')
+            .order('rating', ascending: false, nullsFirst: false)
+            .limit(limit)
+            .timeout(const Duration(seconds: 5));
+        collectRows(fallbackRows);
+      } catch (_) {
+        // Ignore fallback failures; RPC results (if any) still apply.
+      }
+    }
 
     final placeholderTournament = GroupEventCardModel(
       id: 'player_search',
@@ -652,33 +704,47 @@ Future<List<SearchResult>> _fetchPlayersByName({
       searchTerms: const [],
     );
 
-    final results =
-        (rows as List)
-            .map((row) {
-              final fideId = row['fideid'] as int?;
-              final name = row['name'] as String?;
-              if (name == null || name.isEmpty) return null;
-              final player = SearchPlayer(
-                id: 'search_${fideId ?? name.hashCode}',
-                name: name,
-                title: row['title'] as String?,
-                rating: (row['rating'] as num?)?.toInt(),
-                fideId: fideId,
-                fed: row['country'] as String?,
-                tournamentId: placeholderTournament.id,
-                tournamentName: placeholderTournament.title,
-              );
-              return SearchResult(
-                tournament: placeholderTournament,
-                score: 95.0,
-                matchedText: name,
-                type: SearchResultType.player,
-                player: player,
-              );
-            })
-            .whereType<SearchResult>()
-            .toList();
+    final results = <SearchResult>[];
+    for (final row in [...byFideId.values, ...byName.values]) {
+      final fideId = row['fideid'] as int?;
+      final name = row['name'] as String?;
+      if (name == null || name.isEmpty) continue;
 
+      final matchScore = playerNameSearchMatchScore(name, searchQuery);
+      if (matchScore <= 0) continue;
+
+      final player = SearchPlayer(
+        id: 'search_${fideId ?? name.hashCode}',
+        name: name,
+        title: row['title'] as String?,
+        rating: (row['rating'] as num?)?.toInt(),
+        fideId: fideId,
+        fed: row['country'] as String?,
+        tournamentId: placeholderTournament.id,
+        tournamentName: placeholderTournament.title,
+      );
+      results.add(
+        SearchResult(
+          tournament: placeholderTournament,
+          score: matchScore.toDouble(),
+          matchedText: name,
+          type: SearchResultType.player,
+          player: player,
+        ),
+      );
+    }
+
+    results.sort((a, b) {
+      final scoreCompare = b.score.compareTo(a.score);
+      if (scoreCompare != 0) return scoreCompare;
+      final aElo = a.player?.rating ?? 0;
+      final bElo = b.player?.rating ?? 0;
+      return bElo.compareTo(aElo);
+    });
+
+    if (results.length > limit) {
+      return results.sublist(0, limit);
+    }
     return results;
   } catch (_) {
     return [];

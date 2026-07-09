@@ -1,6 +1,5 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
-import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -210,7 +209,6 @@ class CountrymenCombinedGamesNotifier
 
     state = state.copyWith(
       isLoading: true,
-      games: [],
       seenGameIds: {},
       loadedDates: [],
       dateOffset: 0,
@@ -232,7 +230,6 @@ class CountrymenCombinedGamesNotifier
 
     state = state.copyWith(
       isLoading: true,
-      games: [],
       seenGameIds: {},
       loadedDates: [],
       dateOffset: 0,
@@ -301,9 +298,10 @@ class CountrymenCombinedGamesNotifier
     } catch (e) {
       debugPrint('[CountrymenSearch] Error: $e');
       if (!mounted) return;
+      final error = userFacingError(e, fallback: 'Failed to load games.');
       state = state.copyWith(
         isLoading: false,
-        error: userFacingError(e, fallback: 'Failed to load games.'),
+        error: state.games.isEmpty ? error : null,
       );
     }
   }
@@ -393,9 +391,10 @@ class CountrymenCombinedGamesNotifier
     } catch (e) {
       debugPrint('[CountrymenGames] Fetch error: $e');
       if (!mounted) return;
+      final error = userFacingError(e, fallback: 'Failed to load games.');
       state = state.copyWith(
         isLoading: false,
-        error: userFacingError(e, fallback: 'Failed to load games.'),
+        error: state.games.isEmpty ? error : null,
       );
     }
   }
@@ -567,7 +566,6 @@ class CountrymenCombinedGamesNotifier
       _hasMoreDates = true;
       final wasSearching = _currentSearchQuery.isNotEmpty;
       state = state.copyWith(
-        games: [],
         seenGameIds: {},
         loadedDates: [],
         dateOffset: 0,

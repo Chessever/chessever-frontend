@@ -111,6 +111,71 @@ const String _gameListSelectColumnsInnerTc = '''
           )
         ''';
 
+/// Lightweight projection for list/search surfaces. The full PGN is intentionally
+/// excluded here; board navigation, save-to-folder, share, and GIF paths hydrate
+/// it on demand through getGameWithPGN/getGamePgn.
+const String _gameListPreviewSelectColumns = '''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          players,
+          last_move,
+          think_time,
+          status,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr,
+          last_move_time,
+          game_day,
+          last_clock_white,
+          last_clock_black,
+          eco,
+          opening_name,
+          tours!games_tour_id_fkey(
+            avg_elo,
+            group_broadcasts!tours_group_broadcast_id_fkey(time_control)
+          )
+        ''';
+
+/// Same projection as [_gameListPreviewSelectColumns], but with inner joins for
+/// time-control filters.
+const String _gameListPreviewSelectColumnsInnerTc = '''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          players,
+          last_move,
+          think_time,
+          status,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr,
+          last_move_time,
+          game_day,
+          last_clock_white,
+          last_clock_black,
+          eco,
+          opening_name,
+          tours!games_tour_id_fkey!inner(
+            avg_elo,
+            group_broadcasts!tours_group_broadcast_id_fkey!inner(time_control)
+          )
+        ''';
+
 const int _tourGamesFetchPageSize = 1000;
 
 @visibleForTesting
@@ -1056,7 +1121,9 @@ class GameRepository extends BaseRepository {
       );
 
       final selectCols =
-          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+          tcDb != null
+              ? _gameListPreviewSelectColumnsInnerTc
+              : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase.from('games').select(selectCols).contains(
         'player_feds',
@@ -1122,7 +1189,9 @@ class GameRepository extends BaseRepository {
         filter?.timeControl ?? GameTimeControlFilter.all,
       );
       final selectCols =
-          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+          tcDb != null
+              ? _gameListPreviewSelectColumnsInnerTc
+              : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase
           .from('games')
@@ -1702,7 +1771,9 @@ class GameRepository extends BaseRepository {
       // Switch to !inner embedding when filtering by time control so the
       // PostgREST query narrows on tours.group_broadcasts.time_control.
       final selectCols =
-          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+          tcDb != null
+              ? _gameListPreviewSelectColumnsInnerTc
+              : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase
           .from('games')
@@ -1842,7 +1913,9 @@ class GameRepository extends BaseRepository {
       );
 
       final selectCols =
-          tcDb != null ? _gameListSelectColumnsInnerTc : _gameListSelectColumns;
+          tcDb != null
+              ? _gameListPreviewSelectColumnsInnerTc
+              : _gameListPreviewSelectColumns;
 
       var dbQuery = supabase
           .from('games')

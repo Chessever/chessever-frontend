@@ -3817,303 +3817,316 @@ class _AppBarState extends ConsumerState<_AppBar> {
         surfaceTintColor: context.colors.background,
         leadingWidth: 44.sp,
         titleSpacing: 4.sp,
-      leading: IconButton(
-        icon: Icon(
-          Icons.arrow_back_ios_new,
-          color: context.colors.textPrimary,
-          size: 20.sp,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_ios_new,
+            color: context.colors.textPrimary,
+            size: 20.sp,
+          ),
+          onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
         ),
-        onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
-      ),
-      title:
-          widget.hideEventInfo
-              ? Text(
-                'Analysis Board',
-                style: TextStyle(
-                  color: context.colors.textPrimary,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
+        title:
+            widget.hideEventInfo
+                ? Text(
+                  'Analysis Board',
+                  style: TextStyle(
+                    color: context.colors.textPrimary,
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+                : _GameSelectionDropdown(
+                  key: e2eKey(E2eIds.boardGameSelector),
+                  games: widget.games,
+                  currentGameIndex: widget.currentGameIndex,
+                  onGameChanged: widget.onGameChanged,
+                  isLoading: widget.isLoading,
                 ),
-              )
-              : _GameSelectionDropdown(
-                key: e2eKey(E2eIds.boardGameSelector),
-                games: widget.games,
-                currentGameIndex: widget.currentGameIndex,
-                onGameChanged: widget.onGameChanged,
-                isLoading: widget.isLoading,
-              ),
-      actions: [
-        // Right after a fresh like, these action icons hand over to the tag
-        // chip (see [LikeTagChip] / tagChipOfferProvider) via a spring-driven
-        // width hand-off — icons peel away right→left while the chip grows in
-        // from the right — then run in reverse when the chip resolves/elapses.
-        _TagAwareAppBarActions(
-          isActivePage: widget.isActivePage,
-          actions: <Widget>[
-            // Event info button (hidden when navigating from library for position analysis)
-            // Uses delayed show on tablets to prevent phantom tap dismissals
-            if (!widget.hideEventInfo)
-              IconButton(
-                icon: Icon(
-                  Icons.info_outline_rounded,
-                  color: context.colors.textPrimary,
-                  size: 20.sp,
+        actions: [
+          // Right after a fresh like, these action icons hand over to the tag
+          // chip (see [LikeTagChip] / tagChipOfferProvider) via a spring-driven
+          // width hand-off — icons peel away right→left while the chip grows in
+          // from the right — then run in reverse when the chip resolves/elapses.
+          _TagAwareAppBarActions(
+            isActivePage: widget.isActivePage,
+            actions: <Widget>[
+              // Event info button (hidden when navigating from library for position analysis)
+              // Uses delayed show on tablets to prevent phantom tap dismissals
+              if (!widget.hideEventInfo)
+                IconButton(
+                  icon: Icon(
+                    Icons.info_outline_rounded,
+                    color: context.colors.textPrimary,
+                    size: 20.sp,
+                  ),
+                  tooltip: 'Event info',
+                  onPressed:
+                      widget.isLoading
+                          ? null
+                          : () =>
+                              _showEventInfoSheet(context, ref, infoSheetPgn),
                 ),
-                tooltip: 'Event info',
-                onPressed:
-                    widget.isLoading
-                        ? null
-                        : () => _showEventInfoSheet(context, ref, infoSheetPgn),
-              ),
-            // Save Analysis button — with auto-save status animation for library games
-            _buildSaveButton(),
-            // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
-            // phantom tap dismissals, use standard PopupMenuButton on mobile
-            if (ResponsiveHelper.isTablet)
-              _TabletSafePopupMenu<String>(
-                icon: Icon(
-                  Icons.more_vert,
-                  color: context.colors.textPrimary,
-                  size: 22.sp,
-                ),
-                enabled: !widget.isLoading,
-                onSelected: (value) async {
-                  if (value == 'share') {
-                    shareGameBtnClicked();
-                  } else if (value == 'board_settings') {
-                    final allowed = await requireFullAuthGuard(context);
-                    if (!allowed) return;
-                    if (!context.mounted) return;
-                    Navigator.of(context).push(
-                      SettingsPage.route(
-                        initiallyExpanded: SettingsSection.board,
-                      ),
-                    );
-                  } else if (value == 'clear_analysis') {
-                    final params = ChessBoardProviderParams(
-                      game: widget.game,
-                      index: widget.currentGameIndex,
-                    );
-                    final boardState = ref.read(
-                      chessBoardScreenProviderNew(params),
-                    );
-                    final analysisGame =
-                        boardState.valueOrNull?.analysisState.game;
-                    final hasCustomAnalysis = _gameHasCustomVariations(
-                      analysisGame,
-                    );
-
-                    if (!hasCustomAnalysis) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('No custom analysis to clear'),
-                          backgroundColor: Colors.orange,
-                          behavior: SnackBarBehavior.floating,
+              // Save Analysis button — with auto-save status animation for library games
+              _buildSaveButton(),
+              // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
+              // phantom tap dismissals, use standard PopupMenuButton on mobile
+              if (ResponsiveHelper.isTablet)
+                _TabletSafePopupMenu<String>(
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: context.colors.textPrimary,
+                    size: 22.sp,
+                  ),
+                  enabled: !widget.isLoading,
+                  onSelected: (value) async {
+                    if (value == 'share') {
+                      shareGameBtnClicked();
+                    } else if (value == 'board_settings') {
+                      final allowed = await requireFullAuthGuard(context);
+                      if (!allowed) return;
+                      if (!context.mounted) return;
+                      Navigator.of(context).push(
+                        SettingsPage.route(
+                          initiallyExpanded: SettingsSection.board,
                         ),
                       );
-                      return;
+                    } else if (value == 'clear_analysis') {
+                      final params = ChessBoardProviderParams(
+                        game: widget.game,
+                        index: widget.currentGameIndex,
+                      );
+                      final boardState = ref.read(
+                        chessBoardScreenProviderNew(params),
+                      );
+                      final analysisGame =
+                          boardState.valueOrNull?.analysisState.game;
+                      final hasCustomAnalysis = _gameHasCustomVariations(
+                        analysisGame,
+                      );
+
+                      if (!hasCustomAnalysis) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('No custom analysis to clear'),
+                            backgroundColor: Colors.orange,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
+
+                      HapticFeedback.selectionClick();
+                      final confirmed =
+                          await _showAnalysisConfirmationDialog(
+                            context: context,
+                            title: 'Clear analysis?',
+                            message:
+                                'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                            confirmLabel: 'Clear',
+                            confirmColor: kRedColor,
+                          ) ??
+                          false;
+                      if (!confirmed) return;
+                      HapticFeedback.heavyImpact();
+                      final notifier = ref.read(
+                        chessBoardScreenProviderNew(params).notifier,
+                      );
+                      await notifier.clearUserAnalysis();
                     }
-
-                    HapticFeedback.selectionClick();
-                    final confirmed =
-                        await _showAnalysisConfirmationDialog(
-                          context: context,
-                          title: 'Clear analysis?',
-                          message:
-                              'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                          confirmLabel: 'Clear',
-                          confirmColor: kRedColor,
-                        ) ??
-                        false;
-                    if (!confirmed) return;
-                    HapticFeedback.heavyImpact();
-                    final notifier = ref.read(
-                      chessBoardScreenProviderNew(params).notifier,
-                    );
-                    await notifier.clearUserAnalysis();
-                  }
-                },
-                itemBuilder:
-                    (context) => [
-                      PopupMenuItem(
-                        value: 'board_settings',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.settings,
-                              color: context.colors.textPrimary,
-                            ),
-                            SizedBox(width: 8.w),
-                            const Text('Board Settings'),
-                          ],
+                  },
+                  itemBuilder:
+                      (context) => [
+                        PopupMenuItem(
+                          value: 'board_settings',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.settings,
+                                color: context.colors.textPrimary,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text('Board Settings'),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: 'share',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.share,
-                              color: context.colors.textPrimary,
-                            ),
-                            SizedBox(width: 8.w),
-                            const Text('Share Game'),
-                          ],
+                        PopupMenuItem(
+                          value: 'share',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.share,
+                                color: context.colors.textPrimary,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text('Share Game'),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        onTap: () {
-                          copyPgnBtnClicked();
-                        },
-                        value: 'copy_pgn',
-                        child: Row(
-                          children: [
-                            Icon(Icons.copy, color: context.colors.textPrimary),
-                            SizedBox(width: 8.w),
-                            const Text('Copy PGN'),
-                          ],
+                        PopupMenuItem(
+                          onTap: () {
+                            copyPgnBtnClicked();
+                          },
+                          value: 'copy_pgn',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.copy,
+                                color: context.colors.textPrimary,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text('Copy PGN'),
+                            ],
+                          ),
                         ),
-                      ),
-                      const PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: 'clear_analysis',
-                        child: Row(
-                          children: [
-                            Icon(Icons.auto_delete_outlined, color: kRedColor),
-                            SizedBox(width: 8.w),
-                            const Text(
-                              'Clear Analysis',
-                              style: TextStyle(color: kRedColor),
-                            ),
-                          ],
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'clear_analysis',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.auto_delete_outlined,
+                                color: kRedColor,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text(
+                                'Clear Analysis',
+                                style: TextStyle(color: kRedColor),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-              )
-            else
-              PopupMenuButton<String>(
-                icon: Icon(
-                  Icons.more_vert,
-                  color: context.colors.textPrimary,
-                  size: 22.sp,
-                ),
-                enabled: !widget.isLoading,
-                onSelected: (value) async {
-                  if (value == 'share') {
-                    shareGameBtnClicked();
-                  } else if (value == 'board_settings') {
-                    final allowed = await requireFullAuthGuard(context);
-                    if (!allowed) return;
-                    if (!context.mounted) return;
-                    Navigator.of(context).push(
-                      SettingsPage.route(
-                        initiallyExpanded: SettingsSection.board,
-                      ),
-                    );
-                  } else if (value == 'clear_analysis') {
-                    final params = ChessBoardProviderParams(
-                      game: widget.game,
-                      index: widget.currentGameIndex,
-                    );
-                    final boardState = ref.read(
-                      chessBoardScreenProviderNew(params),
-                    );
-                    final analysisGame =
-                        boardState.valueOrNull?.analysisState.game;
-                    final hasCustomAnalysis = _gameHasCustomVariations(
-                      analysisGame,
-                    );
-
-                    if (!hasCustomAnalysis) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('No custom analysis to clear'),
-                          backgroundColor: Colors.orange,
-                          behavior: SnackBarBehavior.floating,
+                      ],
+                )
+              else
+                PopupMenuButton<String>(
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: context.colors.textPrimary,
+                    size: 22.sp,
+                  ),
+                  enabled: !widget.isLoading,
+                  onSelected: (value) async {
+                    if (value == 'share') {
+                      shareGameBtnClicked();
+                    } else if (value == 'board_settings') {
+                      final allowed = await requireFullAuthGuard(context);
+                      if (!allowed) return;
+                      if (!context.mounted) return;
+                      Navigator.of(context).push(
+                        SettingsPage.route(
+                          initiallyExpanded: SettingsSection.board,
                         ),
                       );
-                      return;
-                    }
+                    } else if (value == 'clear_analysis') {
+                      final params = ChessBoardProviderParams(
+                        game: widget.game,
+                        index: widget.currentGameIndex,
+                      );
+                      final boardState = ref.read(
+                        chessBoardScreenProviderNew(params),
+                      );
+                      final analysisGame =
+                          boardState.valueOrNull?.analysisState.game;
+                      final hasCustomAnalysis = _gameHasCustomVariations(
+                        analysisGame,
+                      );
 
-                    HapticFeedback.selectionClick();
-                    final confirmed =
-                        await _showAnalysisConfirmationDialog(
-                          context: context,
-                          title: 'Clear analysis?',
-                          message:
-                              'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                          confirmLabel: 'Clear',
-                          confirmColor: kRedColor,
-                        ) ??
-                        false;
-                    if (!confirmed) return;
-                    HapticFeedback.heavyImpact();
-                    final notifier = ref.read(
-                      chessBoardScreenProviderNew(params).notifier,
-                    );
-                    await notifier.clearUserAnalysis();
-                  }
-                },
-                itemBuilder:
-                    (context) => [
-                      PopupMenuItem(
-                        value: 'board_settings',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.settings,
-                              color: context.colors.textPrimary,
-                            ),
-                            SizedBox(width: 8.w),
-                            const Text('Board Settings'),
-                          ],
+                      if (!hasCustomAnalysis) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('No custom analysis to clear'),
+                            backgroundColor: Colors.orange,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
+
+                      HapticFeedback.selectionClick();
+                      final confirmed =
+                          await _showAnalysisConfirmationDialog(
+                            context: context,
+                            title: 'Clear analysis?',
+                            message:
+                                'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                            confirmLabel: 'Clear',
+                            confirmColor: kRedColor,
+                          ) ??
+                          false;
+                      if (!confirmed) return;
+                      HapticFeedback.heavyImpact();
+                      final notifier = ref.read(
+                        chessBoardScreenProviderNew(params).notifier,
+                      );
+                      await notifier.clearUserAnalysis();
+                    }
+                  },
+                  itemBuilder:
+                      (context) => [
+                        PopupMenuItem(
+                          value: 'board_settings',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.settings,
+                                color: context.colors.textPrimary,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text('Board Settings'),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: 'share',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.share,
-                              color: context.colors.textPrimary,
-                            ),
-                            SizedBox(width: 8.w),
-                            const Text('Share Game'),
-                          ],
+                        PopupMenuItem(
+                          value: 'share',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.share,
+                                color: context.colors.textPrimary,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text('Share Game'),
+                            ],
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        onTap: () {
-                          copyPgnBtnClicked();
-                        },
-                        value: 'copy_pgn',
-                        child: Row(
-                          children: [
-                            Icon(Icons.copy, color: context.colors.textPrimary),
-                            SizedBox(width: 8.w),
-                            const Text('Copy PGN'),
-                          ],
+                        PopupMenuItem(
+                          onTap: () {
+                            copyPgnBtnClicked();
+                          },
+                          value: 'copy_pgn',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.copy,
+                                color: context.colors.textPrimary,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text('Copy PGN'),
+                            ],
+                          ),
                         ),
-                      ),
-                      const PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: 'clear_analysis',
-                        child: Row(
-                          children: [
-                            Icon(Icons.auto_delete_outlined, color: kRedColor),
-                            SizedBox(width: 8.w),
-                            const Text(
-                              'Clear Analysis',
-                              style: TextStyle(color: kRedColor),
-                            ),
-                          ],
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'clear_analysis',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.auto_delete_outlined,
+                                color: kRedColor,
+                              ),
+                              SizedBox(width: 8.w),
+                              const Text(
+                                'Clear Analysis',
+                                style: TextStyle(color: kRedColor),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-              ),
-          ],
-        ),
-      ],
+                      ],
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -11024,207 +11037,216 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         children: [
           Expanded(
             child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(child: notationContent),
-          if (isPositionSearchFlow && !isTabletLandscape)
-            Positioned(
-              top: 4.h,
-              right: 4.w,
-              child: IconButton(
-                tooltip: 'Reset to pasted position',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints.tight(Size(28.sp, 28.sp)),
-                onPressed: () {
-                  HapticFeedback.mediumImpact();
-                  notifier.deleteContinuationFromPointer(const []);
-                },
-                icon: Icon(
-                  Icons.restart_alt_rounded,
-                  color: context.colors.textPrimaryMuted,
-                  size: 16.ic,
-                ),
-              ),
-            ),
-          // Subtle overlay when preview is active - only covers main variant area
-          if (widget.state.isPvPreviewActive)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0, // Will be covered by PV cards naturally
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  // Tap anywhere on overlay to exit preview
-                  ref
-                      .read(chessBoardScreenProviderNew(params).notifier)
-                      .clearPvPreview();
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(12.sp),
-                      topRight: Radius.circular(12.sp),
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(child: notationContent),
+                if (isPositionSearchFlow && !isTabletLandscape)
+                  Positioned(
+                    top: 4.h,
+                    right: 4.w,
+                    child: IconButton(
+                      tooltip: 'Reset to pasted position',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints.tight(Size(28.sp, 28.sp)),
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                        notifier.deleteContinuationFromPointer(const []);
+                      },
+                      icon: Icon(
+                        Icons.restart_alt_rounded,
+                        color: context.colors.textPrimaryMuted,
+                        size: 16.ic,
+                      ),
                     ),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(12.sp),
-                      topRight: Radius.circular(12.sp),
-                    ),
-                    child: Stack(
-                      children: [
-                        BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                          child: Container(
-                            color: Colors.black.withValues(alpha: 0.55),
+                // Subtle overlay when preview is active - only covers main variant area
+                if (widget.state.isPvPreviewActive)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0, // Will be covered by PV cards naturally
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        // Tap anywhere on overlay to exit preview
+                        ref
+                            .read(chessBoardScreenProviderNew(params).notifier)
+                            .clearPvPreview();
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(12.sp),
+                            topRight: Radius.circular(12.sp),
                           ),
                         ),
-                        Align(
-                          alignment: Alignment.center,
-                          child: TweenAnimationBuilder<double>(
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.elasticOut,
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            builder: (context, value, child) {
-                              final clampedValue = value.clamp(0.0, 1.0);
-                              return Transform.scale(
-                                scale: 0.8 + (clampedValue * 0.2),
-                                child: Opacity(
-                                  opacity: clampedValue,
-                                  child: child,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(12.sp),
+                            topRight: Radius.circular(12.sp),
+                          ),
+                          child: Stack(
+                            children: [
+                              BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                child: Container(
+                                  color: Colors.black.withValues(alpha: 0.55),
                                 ),
-                              );
-                            },
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 18.sp,
-                                vertical: 16.sp,
                               ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.visibility_outlined,
-                                    color: Colors.white.withValues(alpha: 0.95),
-                                    size: 20.sp,
-                                  ),
-                                  SizedBox(height: 8.sp),
-                                  Text(
-                                    'Preview mode',
-                                    textAlign: TextAlign.center,
-                                    style: AppTypography.textSmMedium.copyWith(
-                                      color: Colors.white,
-                                      letterSpacing: 0.4,
+                              Align(
+                                alignment: Alignment.center,
+                                child: TweenAnimationBuilder<double>(
+                                  duration: const Duration(milliseconds: 400),
+                                  curve: Curves.elasticOut,
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  builder: (context, value, child) {
+                                    final clampedValue = value.clamp(0.0, 1.0);
+                                    return Transform.scale(
+                                      scale: 0.8 + (clampedValue * 0.2),
+                                      child: Opacity(
+                                        opacity: clampedValue,
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 18.sp,
+                                      vertical: 16.sp,
                                     ),
-                                  ),
-                                  SizedBox(height: 4.sp),
-                                  Text(
-                                    'Tap anywhere to exit or swipe the hero card up to apply.',
-                                    textAlign: TextAlign.center,
-                                    style: AppTypography.textXsRegular.copyWith(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.85,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(height: 12.sp),
-                                  // Promote main variant button
-                                  Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () async {
-                                        // Prevent tap from propagating to parent GestureDetector
-                                        HapticFeedback.mediumImpact();
-
-                                        final lockedLine =
-                                            widget.state.lockedPvLine;
-                                        if (lockedLine == null) return;
-
-                                        // Confirm before promoting
-                                        final confirmed =
-                                            await showSmoothConfirmDialog(
-                                              context: context,
-                                              title: 'Promote to main variant?',
-                                              message:
-                                                  'This will replace the main variant with this preview line.',
-                                              confirmText: 'Promote',
-                                            ) ??
-                                            false;
-
-                                        if (!confirmed) return;
-                                        if (!context.mounted) return;
-
-                                        notifier.promotePreviewToMainVariant();
-                                      },
-                                      borderRadius: BorderRadius.circular(8.sp),
-                                      splashColor: kPrimaryColor.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      highlightColor: kPrimaryColor.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                      child: Container(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 20.sp,
-                                          vertical: 10.sp,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.visibility_outlined,
+                                          color: Colors.white.withValues(
+                                            alpha: 0.95,
+                                          ),
+                                          size: 20.sp,
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: kPrimaryColor.withValues(
-                                            alpha: 0.15,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            8.sp,
-                                          ),
-                                          border: Border.all(
-                                            color: kPrimaryColor.withValues(
-                                              alpha: 0.4,
-                                            ),
-                                            width: 1.5,
-                                          ),
+                                        SizedBox(height: 8.sp),
+                                        Text(
+                                          'Preview mode',
+                                          textAlign: TextAlign.center,
+                                          style: AppTypography.textSmMedium
+                                              .copyWith(
+                                                color: Colors.white,
+                                                letterSpacing: 0.4,
+                                              ),
                                         ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.upgrade_rounded,
-                                              color: context.colors.textPrimary,
-                                              size: 16.sp,
+                                        SizedBox(height: 4.sp),
+                                        Text(
+                                          'Tap anywhere to exit or swipe the hero card up to apply.',
+                                          textAlign: TextAlign.center,
+                                          style: AppTypography.textXsRegular
+                                              .copyWith(
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.85,
+                                                ),
+                                              ),
+                                        ),
+                                        SizedBox(height: 12.sp),
+                                        // Promote main variant button
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () async {
+                                              // Prevent tap from propagating to parent GestureDetector
+                                              HapticFeedback.mediumImpact();
+
+                                              final lockedLine =
+                                                  widget.state.lockedPvLine;
+                                              if (lockedLine == null) return;
+
+                                              // Confirm before promoting
+                                              final confirmed =
+                                                  await showSmoothConfirmDialog(
+                                                    context: context,
+                                                    title:
+                                                        'Promote to main variant?',
+                                                    message:
+                                                        'This will replace the main variant with this preview line.',
+                                                    confirmText: 'Promote',
+                                                  ) ??
+                                                  false;
+
+                                              if (!confirmed) return;
+                                              if (!context.mounted) return;
+
+                                              notifier
+                                                  .promotePreviewToMainVariant();
+                                            },
+                                            borderRadius: BorderRadius.circular(
+                                              8.sp,
                                             ),
-                                            SizedBox(width: 8.sp),
-                                            Text(
-                                              'Promote main variant',
-                                              style: AppTypography.textSmMedium
-                                                  .copyWith(
+                                            splashColor: kPrimaryColor
+                                                .withValues(alpha: 0.3),
+                                            highlightColor: kPrimaryColor
+                                                .withValues(alpha: 0.2),
+                                            child: Container(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 20.sp,
+                                                vertical: 10.sp,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: kPrimaryColor.withValues(
+                                                  alpha: 0.15,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8.sp),
+                                                border: Border.all(
+                                                  color: kPrimaryColor
+                                                      .withValues(alpha: 0.4),
+                                                  width: 1.5,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.upgrade_rounded,
                                                     color:
                                                         context
                                                             .colors
                                                             .textPrimary,
-                                                    letterSpacing: 0.2,
+                                                    size: 16.sp,
                                                   ),
+                                                  SizedBox(width: 8.sp),
+                                                  Text(
+                                                    'Promote main variant',
+                                                    style: AppTypography
+                                                        .textSmMedium
+                                                        .copyWith(
+                                                          color:
+                                                              context
+                                                                  .colors
+                                                                  .textPrimary,
+                                                          letterSpacing: 0.2,
+                                                        ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
+                                      ],
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-        ],
+              ],
             ),
           ),
           if (showNextMovePanel)
@@ -14388,6 +14410,11 @@ class _ShareGameScreen extends ConsumerWidget {
     // Fallback to game model's time display
     whiteTime ??= game.whiteTimeDisplay;
     blackTime ??= game.blackTimeDisplay;
+
+    // Games without real clocks store placeholders like "--:--" / "-:--:--".
+    // Hide those on the share card instead of painting ugly dashes.
+    if (!hasUsableClockDisplay(whiteTime)) whiteTime = null;
+    if (!hasUsableClockDisplay(blackTime)) blackTime = null;
 
     // Format tournament and round names for better display
     final tournamentName =

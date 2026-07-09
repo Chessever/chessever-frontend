@@ -18,6 +18,7 @@ import 'gif_export_worker.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
@@ -215,7 +216,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     // Find white's most recent clock (white moves are at even indices: 0, 2, 4...)
     for (int i = moveIndex; i >= 0; i--) {
       if (i % 2 == 0 && i < widget.moveTimes.length) {
-        whiteClock = widget.moveTimes[i];
+        final candidate = widget.moveTimes[i];
+        if (hasUsableClockDisplay(candidate)) {
+          whiteClock = candidate;
+        }
         break;
       }
     }
@@ -223,7 +227,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     // Find black's most recent clock (black moves are at odd indices: 1, 3, 5...)
     for (int i = moveIndex; i >= 0; i--) {
       if (i % 2 == 1 && i < widget.moveTimes.length) {
-        blackClock = widget.moveTimes[i];
+        final candidate = widget.moveTimes[i];
+        if (hasUsableClockDisplay(candidate)) {
+          blackClock = candidate;
+        }
         break;
       }
     }
@@ -402,9 +409,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
   /// Computes the export window for GIF generation.
   ///
-  /// Share GIF animates from the start up to and including the currently
-  /// focused board move ([widget.currentMoveIndex]). Returns `null` if no moves
-  /// are available to animate.
+  /// Share GIF always replays the full game (start → final), regardless of
+  /// the currently focused board move. Returns `null` if no moves are available.
   GifExportWindow? _computeExportWindow() {
     return computeGifExportWindow(
       moveSans: widget.moveSans,

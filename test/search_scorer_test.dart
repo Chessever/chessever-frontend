@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/search/search_result_model.dart';
+import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_scorer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -106,6 +107,86 @@ void main() {
 
       expect(match.score, greaterThan(10));
       expect(match.matchedText, '2026 Chess.com Open');
+    });
+
+    test('ignores calendar noise tokens in tournament identity matching', () {
+      final match = SearchScorer.bestTournamentMatch(
+        query: 'titled tuesday june 30',
+        name: 'Titled Tuesday Blitz',
+        aliases: const [],
+      );
+
+      expect(match.score, greaterThan(10));
+      expect(match.matchedText, 'Titled Tuesday Blitz');
+    });
+  });
+
+  group('flexible event search player terms', () {
+    test('surfaces a player event from common partial name searches', () {
+      const aliases = [
+        'Norway Chess 2026 | Open',
+        'Carlsen, Magnus',
+        'Nakamura, Hikaru',
+      ];
+
+      for (final query in ['mag', 'carl', 'carlsen', 'magnus carlsen']) {
+        final match = bestFlexibleEventSearchMatch(
+          query: query,
+          name: 'Norway Chess 2026',
+          aliases: aliases,
+        );
+
+        expect(match.score, greaterThan(10), reason: query);
+        expect(match.matchedText, 'Carlsen, Magnus', reason: query);
+      }
+    });
+
+    test('keeps event-name matches above player-term event hits', () {
+      final match = bestFlexibleEventSearchMatch(
+        query: 'norway chess',
+        name: 'Norway Chess 2026',
+        aliases: const ['Norway Chess 2026 | Open', 'Carlsen, Magnus'],
+      );
+
+      expect(match.score, greaterThan(90));
+      expect(match.matchedText, 'Norway Chess 2026');
+    });
+
+    test('surfaces surname-named memorials from full player searches', () {
+      final match = bestFlexibleEventSearchMatch(
+        query: 'daniel naroditsky',
+        name: '2026 Naroditsky Memorial',
+        aliases: const ['2026 Naroditsky Memorial Rapid & Blitz'],
+      );
+
+      expect(match.score, greaterThan(10));
+      expect(match.matchedText, '2026 Naroditsky Memorial');
+    });
+
+    test('does not surface generic event titles from country/team aliases', () {
+      final match = bestFlexibleEventSearchMatch(
+        query: 'norway chess',
+        name:
+            '5th FIDE Intercontinental Online Chess Championship for Prisoners',
+        aliases: const [
+          '5th FIDE Intercontinental Online Chess Championship for Prisoners',
+          '5th FIDE Intercontinental Online Chess Championship for Prisoners Men Group 6',
+          'Norway_AA',
+          'Norway_BB',
+          'Norway_CC',
+        ],
+      );
+
+      expect(match.score, 0);
+    });
+
+    test('does not treat country/team aliases as player event matches', () {
+      final match = bestPlayerSearchTermMatch(
+        query: 'norway',
+        searchTerms: const ['Norway_AA', 'Norway_BB', 'Norway_CC'],
+      );
+
+      expect(match.score, 0);
     });
   });
 }

@@ -425,33 +425,44 @@ class GroupBroadcastRepository extends BaseRepository {
       final resultsById = <String, GroupBroadcast>{};
 
       // Use full-text search with search_fts column (GIN indexed) for performance.
-      // Build tsquery: split words and join with & for AND matching.
+      // Prefer AND of prefix tokens; fall back to OR when AND is too sparse so
+      // multi-word queries (dates, extra descriptors) do not hide the event.
       final tokens = _extractSearchTokens(trimmedQuery);
       final searchTerms = tokens.isNotEmpty ? tokens : [trimmedQuery];
-      final ftsQuery = searchTerms.map((t) => '$t:*').join(' & ');
+      final ftsAndQuery = searchTerms.map((t) => '$t:*').join(' & ');
+      final ftsOrQuery = searchTerms.map((t) => '$t:*').join(' | ');
 
-      // Primary search: FTS on search_fts column, sorted by date_start descending (latest first).
-      final res = await supabase
-          .from('group_broadcasts')
-          .select(
-            'id, created_at, name, search, max_avg_elo, date_start, date_end, time_control',
-          )
-          .textSearch('search_fts', ftsQuery)
-          .order('date_start', ascending: false, nullsFirst: false)
-          .limit(80);
+      Future<void> runFts(String ftsQuery) async {
+        final res = await supabase
+            .from('group_broadcasts')
+            .select(
+              'id, created_at, name, search, max_avg_elo, date_start, date_end, time_control',
+            )
+            .textSearch('search_fts', ftsQuery)
+            .order('date_start', ascending: false, nullsFirst: false)
+            .limit(80);
 
-      final resList = res as List?;
-      debugPrint('[Search] FTS query results: ${resList?.length ?? 0}');
+        final resList = res as List?;
+        debugPrint('[Search] FTS "$ftsQuery" results: ${resList?.length ?? 0}');
 
-      if (resList != null) {
-        for (final row in resList) {
-          final broadcast = GroupBroadcast.fromJson(row);
-          resultsById[broadcast.id] = broadcast;
+        if (resList != null) {
+          for (final row in resList) {
+            final broadcast = GroupBroadcast.fromJson(row);
+            resultsById[broadcast.id] = broadcast;
+          }
         }
       }
 
-      // Fallback: if FTS returns few results, also try trigram search on name.
-      if (resultsById.length < 10) {
+      await runFts(ftsAndQuery);
+      if (resultsById.length < 20 &&
+          searchTerms.length > 1 &&
+          ftsOrQuery != ftsAndQuery) {
+        await runFts(ftsOrQuery);
+      }
+
+      // Fallback: if FTS returns few results, also try ilike on name (and
+      // word-order variants for multi-token queries).
+      if (resultsById.length < 20) {
         for (final nameQuery in _nameSearchVariants(trimmedQuery)) {
           final trigramRes = await supabase
               .from('group_broadcasts')
@@ -647,6 +658,9 @@ class GroupBroadcastRepository extends BaseRepository {
   }
 
   static const Set<String> _searchStopWords = {
+    'arena',
+    'blitz',
+    'challenge',
     'chess',
     'championship',
     'championships',
@@ -658,9 +672,11 @@ class GroupBroadcastRepository extends BaseRepository {
     'final',
     'finals',
     'men',
+    'memorial',
     'women',
     'girls',
     'boys',
+    'rapid',
     'team',
     'teams',
     'event',
@@ -689,6 +705,16 @@ class GroupBroadcastRepository extends BaseRepository {
       variants.add(trimmed.replaceAll(chessCom, 'chess.com'));
       variants.add(trimmed.replaceAll(chessCom, 'chess com'));
     }
+
+    final tokens = _extractSearchTokens(trimmed);
+    if (tokens.length >= 2) {
+      for (final token in tokens) {
+        if (token.length >= 6) {
+          variants.add(token);
+        }
+      }
+    }
+
     return variants.toList(growable: false);
   }
 

@@ -19,6 +19,12 @@ List<String> playerNameSearchVariants(String playerName) {
       final displayOrder = normalizePlayerSearchText('$firstNames $lastName');
       if (displayOrder.isNotEmpty) variants.add(displayOrder);
     }
+  } else {
+    // Natural-order names like "Md Imran" should also match "Imran Md".
+    final words = normalized.split(' ').where((w) => w.isNotEmpty).toList();
+    if (words.length == 2) {
+      variants.add('${words[1]} ${words[0]}');
+    }
   }
 
   return variants.toList(growable: false);

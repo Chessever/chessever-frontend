@@ -54,11 +54,10 @@ class GifExportWindow {
 
 /// Selects the moves used for GIF generation.
 ///
-/// Share GIF animates from the starting position up to and including the
-/// currently focused move ([currentMoveIndex]). Sharing from a mid-game move
-/// yields a partial GIF that ends on that move; sharing from the final move
-/// yields the whole game. When no move is focused (`currentMoveIndex < 0`, i.e.
-/// the start position) the full move list is used so the export is never empty.
+/// Share GIF always animates the **complete game** from the starting position
+/// through the final move, independent of the board's currently focused ply.
+/// Share Image remains the current-position export. [currentMoveIndex] is kept
+/// for API compatibility with callers/tests but is not used for slicing.
 GifExportWindow? computeGifExportWindow({
   required List<String> moveSans,
   required int currentMoveIndex,
@@ -66,17 +65,8 @@ GifExportWindow? computeGifExportWindow({
 }) {
   if (moveSans.isEmpty) return null;
 
-  // Clamp the focused move into range. Out-of-range or "no move focused"
-  // (currentMoveIndex < 0, the start position) falls back to the full list.
-  final lastIndex =
-      (currentMoveIndex >= 0 && currentMoveIndex < moveSans.length)
-          ? currentMoveIndex
-          : moveSans.length - 1;
-
   return GifExportWindow(
-    movesToAnimate: List<String>.unmodifiable(
-      moveSans.sublist(0, lastIndex + 1),
-    ),
+    movesToAnimate: List<String>.unmodifiable(moveSans),
     globalMoveOffset: 0,
     captureStartFen: startingFen,
   );

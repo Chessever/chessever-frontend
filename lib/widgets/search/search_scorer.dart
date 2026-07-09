@@ -84,10 +84,13 @@ class SearchScorer {
   }
 
   static bool _hasTournamentQueryIdentityMatch(String query, String text) {
+    // Drop year / calendar noise from the identity gate. Queries like
+    // "titled tuesday june 30" should still match "Titled Tuesday Blitz"
+    // when the date is only on the event record, not the title.
     final queryTokens =
         _normalizedTokens(
           query,
-        ).where((token) => !_isYearToken(token)).toList();
+        ).where((token) => !_isCalendarNoiseToken(token)).toList();
     final textTokens = _normalizedTokens(text);
     if (queryTokens.isEmpty || textTokens.isEmpty) return false;
 
@@ -136,6 +139,42 @@ class SearchScorer {
   static bool _isYearToken(String token) {
     final year = int.tryParse(token);
     return token.length == 4 && year != null && year >= 1800 && year <= 2200;
+  }
+
+  static bool _isCalendarNoiseToken(String token) {
+    if (_isYearToken(token)) return true;
+
+    final asInt = int.tryParse(token);
+    // Day-of-month / zero-padded month: "3", "03", "30".
+    if (asInt != null && token.length <= 2) return true;
+
+    const monthNames = {
+      'jan',
+      'january',
+      'feb',
+      'february',
+      'mar',
+      'march',
+      'apr',
+      'april',
+      'may',
+      'jun',
+      'june',
+      'jul',
+      'july',
+      'aug',
+      'august',
+      'sep',
+      'sept',
+      'september',
+      'oct',
+      'october',
+      'nov',
+      'november',
+      'dec',
+      'december',
+    };
+    return monthNames.contains(token);
   }
 
   static List<String> _normalizedTokens(String value) {

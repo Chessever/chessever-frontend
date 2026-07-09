@@ -8,7 +8,6 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -138,12 +137,13 @@ class WorldPlayersSearchNotifier
     } catch (e) {
       debugPrint('[WorldPlayersSearch] Error: $e');
       if (!mounted) return;
+      final error = userFacingError(
+        e,
+        fallback: 'Could not load players. Please try again.',
+      );
       state = state.copyWith(
         isLoading: false,
-        error: userFacingError(
-          e,
-          fallback: 'Could not load players. Please try again.',
-        ),
+        error: state.players.isEmpty ? error : null,
       );
     }
   }
@@ -163,9 +163,9 @@ class WorldPlayersSearchNotifier
 
     state = state.copyWith(
       searchQuery: trimmed,
-      players: [],
       offset: 0,
       hasMore: true,
+      error: null,
     );
 
     await _fetchPlayers(isInitial: true);
@@ -176,9 +176,9 @@ class WorldPlayersSearchNotifier
 
     state = state.copyWith(
       searchQuery: '',
-      players: [],
       offset: 0,
       hasMore: true,
+      error: null,
     );
 
     await _fetchPlayers(isInitial: true);
@@ -379,6 +379,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
   void onScrollToTopRequested() {
     animateScrollControllerToTop(_scrollController);
   }
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
@@ -623,6 +624,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     // Check auth first, then toggle without blocking
     requireFullAuthGuard(context).then((allowed) async {
       if (!allowed) return;
+      if (!mounted) return;
 
       // Check favorite limit before adding
       if (!currentlyFavorite) {
@@ -704,7 +706,9 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           SizedBox(height: 16.h),
           Text(
             'Failed to load players',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 8.h),
           Padding(
@@ -722,7 +726,9 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             onPressed:
                 () => ref.read(worldPlayersSearchProvider.notifier).refresh(),
             style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(alpha: 0.1),
+              backgroundColor: context.colors.textPrimary.withValues(
+                alpha: 0.1,
+              ),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.br),
@@ -730,7 +736,9 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             ),
             child: Text(
               'Retry',
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
         ],
@@ -766,7 +774,9 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           SizedBox(height: 20.h),
           Text(
             'No players found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
         ],
       ),

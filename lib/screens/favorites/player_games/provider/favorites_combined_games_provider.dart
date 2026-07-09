@@ -202,7 +202,6 @@ class FavoritesCombinedGamesNotifier
       _hasMoreDates = true;
       final wasSearching = _currentSearchQuery.isNotEmpty;
       state = state.copyWith(
-        games: [],
         seenGameIds: {},
         dateOffset: 0,
         hasMore: true,
@@ -231,7 +230,6 @@ class FavoritesCombinedGamesNotifier
 
     state = state.copyWith(
       isLoading: true,
-      games: [],
       seenGameIds: {},
       dateOffset: 0,
       hasMore: true,
@@ -256,7 +254,6 @@ class FavoritesCombinedGamesNotifier
 
     state = state.copyWith(
       isLoading: true,
-      games: [],
       seenGameIds: {},
       dateOffset: 0,
       hasMore: true,
@@ -326,12 +323,13 @@ class FavoritesCombinedGamesNotifier
     } catch (e) {
       debugPrint('[FavoritesSearch] Error: $e');
       if (!mounted) return;
+      final error = userFacingError(
+        e,
+        fallback: 'Could not load games. Please try again.',
+      );
       state = state.copyWith(
         isLoading: false,
-        error: userFacingError(
-          e,
-          fallback: 'Could not load games. Please try again.',
-        ),
+        error: state.games.isEmpty ? error : null,
       );
     }
   }
@@ -436,12 +434,13 @@ class FavoritesCombinedGamesNotifier
     } catch (e) {
       debugPrint('[FavoritesGames] Fetch error: $e');
       if (!mounted) return;
+      final error = userFacingError(
+        e,
+        fallback: 'Could not load games. Please try again.',
+      );
       state = state.copyWith(
         isLoading: false,
-        error: userFacingError(
-          e,
-          fallback: 'Could not load games. Please try again.',
-        ),
+        error: state.games.isEmpty ? error : null,
       );
     }
   }
