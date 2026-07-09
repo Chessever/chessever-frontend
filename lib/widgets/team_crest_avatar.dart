@@ -1,12 +1,14 @@
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/team_country_code.dart';
 import 'package:flutter/material.dart';
 
-/// A deterministic "club crest" avatar for a team. Clubs rarely have logos in
-/// our data and, within a league, everyone shares one federation flag — so a
-/// flag or generic icon can't tell teams apart. Instead we derive a stable,
-/// per-team color from the team name and stamp its monogram on a soft crest,
-/// giving every team a distinct, recognizable identity that works for any
-/// script (Greek, Cyrillic, Latin…) with zero assets.
+/// Team avatar: country flag when [teamName] resolves to a known country,
+/// otherwise a deterministic monogram crest.
+///
+/// Clubs rarely have logos and often share a federation flag within a league,
+/// so non-country teams keep the crest. National / olympiad-style squads
+/// (`USA`, `Norway`, `India`) show the flag in the same size/radius slot.
 class TeamCrestAvatar extends StatelessWidget {
   final String teamName;
   final double size;
@@ -55,9 +57,47 @@ class TeamCrestAvatar extends StatelessWidget {
   static Color colorFor(String name) =>
       HSLColor.fromAHSL(1, hueFor(name), 0.52, 0.46).toColor();
 
+  /// Whether [teamName] should render as a flag rather than a crest.
+  static bool showsFlagFor(String teamName) =>
+      resolveTeamCountryCode(teamName) != null;
+
   @override
   Widget build(BuildContext context) {
-    final hue = hueFor(teamName);
+    final countryCode = resolveTeamCountryCode(teamName);
+    if (countryCode != null) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: FederationFlag(
+          federation: countryCode,
+          width: size,
+          height: size,
+          borderRadius: BorderRadius.circular(borderRadius),
+        ),
+      );
+    }
+    return _CrestMonogram(
+      teamName: teamName,
+      size: size,
+      borderRadius: borderRadius,
+    );
+  }
+}
+
+class _CrestMonogram extends StatelessWidget {
+  const _CrestMonogram({
+    required this.teamName,
+    required this.size,
+    required this.borderRadius,
+  });
+
+  final String teamName;
+  final double size;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final hue = TeamCrestAvatar.hueFor(teamName);
     final top = HSLColor.fromAHSL(1, hue, 0.52, 0.42).toColor();
     final bottom = HSLColor.fromAHSL(1, (hue + 24) % 360, 0.58, 0.28).toColor();
 
@@ -78,7 +118,7 @@ class TeamCrestAvatar extends StatelessWidget {
         ),
       ),
       child: Text(
-        monogramFor(teamName),
+        TeamCrestAvatar.monogramFor(teamName),
         style: AppTypography.textMdBold.copyWith(
           color: Colors.white.withValues(alpha: 0.95),
           fontSize: size * 0.34,
