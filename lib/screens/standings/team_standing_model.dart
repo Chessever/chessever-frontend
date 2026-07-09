@@ -43,4 +43,19 @@ class TeamStandingModel {
 
   /// "W · D · L" record over completed matches.
   String get recordLabel => '$matchesWon · $matchesDrawn · $matchesLost';
+
+  /// Board points per finished board (GP / boards played). Null when the team
+  /// has no finished boards yet.
+  double? get averageBoardPoints =>
+      boardsPlayed > 0 ? gamePoints / boardsPlayed : null;
+
+  /// Compact average for app bars, e.g. "0.65" or "1" / "—".
+  String get averageBoardPointsLabel {
+    final avg = averageBoardPoints;
+    if (avg == null) return '—';
+    if (avg % 1 == 0) return avg.toInt().toString();
+    // Two decimals is enough for half-point board averages without noise.
+    final fixed = avg.toStringAsFixed(2);
+    return fixed.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  }
 }

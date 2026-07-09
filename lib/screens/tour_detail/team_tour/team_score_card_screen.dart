@@ -1,14 +1,24 @@
+import 'dart:io' as io;
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/standings/team_standing_model.dart';
+import 'package:chessever2/screens/standings/team_standings_builder.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_event_share_image_card.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_player_chip.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_round_group.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart' show kGreenColor2, kRedColor;
+import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 const Color _drawGrey = Color(0xFF9AA0A6);
 
@@ -30,6 +40,22 @@ class TeamScoreCardScreen extends ConsumerWidget {
       phone: 20.sp,
       tablet: 24.sp,
     );
+    final about = ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
+    final eventName = about?.name;
+    final eventShareId =
+        about?.groupBroadcastId?.isNotEmpty == true
+            ? about!.groupBroadcastId!
+            : about?.id;
+    final shareUrl =
+        (eventShareId != null && eventShareId.isNotEmpty)
+            ? buildEventShareUrl(
+              id: eventShareId,
+              title: eventName ?? team.teamName,
+              tourId: about?.id,
+              tourSlug: about?.slug,
+              teamName: team.teamName,
+            )
+            : null;
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -63,6 +89,55 @@ class TeamScoreCardScreen extends ConsumerWidget {
                       color: context.colors.textPrimary,
                     ),
                   ),
+                  actions: [
+                    // Avg board score — fills the trailing slot so the bar
+                    // isn't empty next to share.
+                    Padding(
+                      padding: EdgeInsets.only(right: 4.w),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'AVG',
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: context.colors.textTertiary,
+                              fontSize: 9.sp,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          Text(
+                            team.averageBoardPointsLabel,
+                            style: AppTypography.textSmBold.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (shareUrl != null)
+                      InkWell(
+                        onTap:
+                            () => _shareTeamScorecard(
+                              context: context,
+                              team: team,
+                              matches: matches,
+                              eventName: eventName,
+                              shareUrl: shareUrl,
+                            ),
+                        child: Container(
+                          width: 48.w,
+                          padding: EdgeInsets.all(8.sp),
+                          child: Icon(
+                            Icons.ios_share,
+                            color: context.colors.textPrimary,
+                            size: 20.ic,
+                            semanticLabel: 'Share team scorecard',
+                          ),
+                        ),
+                      ),
+                    SizedBox(width: 8.w),
+                  ],
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
@@ -302,13 +377,93 @@ class _RecordLine extends StatelessWidget {
       text: TextSpan(
         style: dim,
         children: [
-          seg('$won W', kGreenColor2),
+          seg('$won W', context.colors.brand),
           const TextSpan(text: '   ·   '),
           seg('$drawn D', _drawGrey),
           const TextSpan(text: '   ·   '),
           seg('$lost L', kRedColor),
         ],
       ),
+    );
+  }
+}
+
+Future<void> _shareTeamScorecard({
+  required BuildContext context,
+  required TeamStandingModel team,
+  required List<TeamMatch> matches,
+  required String? eventName,
+  required String shareUrl,
+}) async {
+  try {
+    final logicalWidth = math.min(MediaQuery.of(context).size.width, 430.0);
+    final matchRows = <TeamEventShareMatchRow>[
+      for (final m in matches)
+        TeamEventShareMatchRow(
+          opponentTeam: m.opponentTeam,
+          ourPointsLabel: m.ourPointsLabel,
+          opponentPointsLabel: m.opponentPointsLabel,
+          result: m.result,
+        ),
+    ];
+
+    final imageBytes = await captureCardPng(
+      context,
+      width: logicalWidth,
+      pixelRatio: 3.0,
+      child: TeamEventShareImageCard(
+        width: logicalWidth,
+        team: team,
+        eventName: eventName,
+        matches: matchRows,
+      ),
+    );
+    if (imageBytes == null) {
+      throw StateError('Team share card render produced no image');
+    }
+    if (!context.mounted) return;
+
+    final tempDir = await getTemporaryDirectory();
+    final safe =
+        team.teamName
+            .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+            .replaceAll(RegExp(r'^-+|-+$'), '')
+            .toLowerCase();
+    final file = io.File(
+      '${tempDir.path}/${safe.isEmpty ? 'team' : safe}-scorecard.png',
+    );
+    await file.writeAsBytes(imageBytes);
+    if (!context.mounted) return;
+
+    final subject =
+        eventName?.trim().isNotEmpty == true
+            ? '${team.teamName} — $eventName'
+            : team.teamName;
+
+    await showShareImagePreview(
+      context,
+      imageBytes: imageBytes,
+      onShareImage: () async {
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'image/png')],
+          text: shareUrl,
+          subject: subject,
+          sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+        );
+      },
+      onShareLink: () async {
+        await Share.share(
+          shareUrl,
+          subject: subject,
+          sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+        );
+      },
+    );
+  } catch (e) {
+    debugPrint('Failed to share team scorecard: $e');
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not share team scorecard')),
     );
   }
 }

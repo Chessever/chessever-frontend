@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/team_player_nav.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -116,27 +117,35 @@ class GroupEventMatchCard extends ConsumerWidget {
                   // the card no matter how long the team names are.
                   SizedBox(width: 24.w),
                   Expanded(
-                    child: Row(
-                      children: [
-                        if (country1.isNotEmpty) ...[
-                          CountryFlag.fromCountryCode(
-                            country1,
-                            theme: ImageTheme(height: 12.h, width: 16.w),
-                          ),
-                          SizedBox(width: 4.w),
-                        ],
-                        Expanded(
-                          child: Text(
-                            team1Name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: context.colors.textPrimary,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        // Stop header InkWell from toggling expand; push keeps
+                        // Games list mounted so scroll position is preserved.
+                        openTeamScoreCard(context, ref, team1Name);
+                      },
+                      child: Row(
+                        children: [
+                          if (country1.isNotEmpty) ...[
+                            CountryFlag.fromCountryCode(
+                              country1,
+                              theme: ImageTheme(height: 12.h, width: 16.w),
                             ),
-                            textAlign: TextAlign.left,
+                            SizedBox(width: 4.w),
+                          ],
+                          Expanded(
+                            child: Text(
+                              team1Name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                              textAlign: TextAlign.left,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
 
@@ -183,27 +192,33 @@ class GroupEventMatchCard extends ConsumerWidget {
                   ),
 
                   Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            team2Name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: context.colors.textPrimary,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        openTeamScoreCard(context, ref, team2Name);
+                      },
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              team2Name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                              textAlign: TextAlign.right,
                             ),
-                            textAlign: TextAlign.right,
                           ),
-                        ),
-                        if (country2.isNotEmpty) ...[
-                          SizedBox(width: 4.w),
-                          CountryFlag.fromCountryCode(
-                            country2,
-                            theme: ImageTheme(height: 12.h, width: 16.w),
-                          ),
+                          if (country2.isNotEmpty) ...[
+                            SizedBox(width: 4.w),
+                            CountryFlag.fromCountryCode(
+                              country2,
+                              theme: ImageTheme(height: 12.h, width: 16.w),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
 

@@ -40,7 +40,10 @@ const String kEventStandingsTab = 'standings';
 /// Pass [playerFideId] to link a specific player's scorecard within the event
 /// (`/broadcast/<slug>/<id>/player/<fideId>`): the same link opens the event and
 /// then that player's scorecard in-app, and renders the player card on the web.
-/// A player link takes precedence over [tab].
+///
+/// Pass [teamName] to link a team scorecard within the event
+/// (`/broadcast/<slug>/<id>/team/<encodedTeamName>`). Precedence:
+/// player → team → tab → plain event.
 String buildEventShareUrl({
   required String id,
   required String title,
@@ -48,6 +51,7 @@ String buildEventShareUrl({
   String? tourSlug,
   String? tab,
   int? playerFideId,
+  String? teamName,
 }) {
   final String base;
   if (tourId != null &&
@@ -61,6 +65,10 @@ String buildEventShareUrl({
   }
   if (playerFideId != null) {
     return '$base/player/$playerFideId';
+  }
+  final trimmedTeam = teamName?.trim();
+  if (trimmedTeam != null && trimmedTeam.isNotEmpty) {
+    return '$base/team/${Uri.encodeComponent(trimmedTeam)}';
   }
   if (tab != null && tab.isNotEmpty) {
     return '$base?$kEventTabQueryParam=$tab';

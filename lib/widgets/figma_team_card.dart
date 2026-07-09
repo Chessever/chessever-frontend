@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart' show kGreenColor2, kRedColor;
+import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
@@ -101,7 +101,7 @@ class FigmaTeamCard extends StatelessWidget {
                                   TextSpan(
                                     text: '${team.matchesWon}',
                                     style: AppTypography.textSmMedium.copyWith(
-                                      color: kGreenColor2,
+                                      color: context.colors.brand,
                                     ),
                                   ),
                                   const TextSpan(text: ' · '),

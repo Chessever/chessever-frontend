@@ -2,7 +2,7 @@ import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart' show kGreenColor2, kRedColor;
+import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -55,16 +55,17 @@ class _TeamRoundGroupState extends State<TeamRoundGroup> {
     final match = widget.match;
     final colors = context.colors;
 
-    // Per-side score colors: winner green, loser red, draw/ongoing neutral.
+    // Per-side score colors: winner brand (Games-tab parity), loser red,
+    // draw/ongoing neutral.
     final Color ourScoreColor;
     final Color oppScoreColor;
     switch (match.result) {
       case TeamMatchResult.win:
-        ourScoreColor = kGreenColor2;
+        ourScoreColor = colors.brand;
         oppScoreColor = kRedColor;
       case TeamMatchResult.loss:
         ourScoreColor = kRedColor;
-        oppScoreColor = kGreenColor2;
+        oppScoreColor = colors.brand;
       case TeamMatchResult.draw:
         ourScoreColor = colors.textPrimary;
         oppScoreColor = colors.textPrimary;

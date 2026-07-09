@@ -29,12 +29,15 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
     show playerTourScreenProvider;
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart'
     show
         selectedPlayerProvider,
         scoreCardGamesContextProvider,
         scoreCardHasEventContextProvider,
         scoreCardPlayerProfileDataSourceProvider;
+import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart'
+    show selectedTeamProvider, teamStandingsProvider;
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart'
     show PlayerProfileDataSource;
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
@@ -195,6 +198,7 @@ class DeepLinkService {
       String? folderId;
       String? broadcastId;
       int? playerFideId;
+      String? teamName;
       int? profileFideId;
 
       // Universal link: https://chessever.com/games/<id>
@@ -217,6 +221,7 @@ class DeepLinkService {
       // Universal link: https://chessever.com/broadcast/<slug>/<id>
       // Also accept /broadcast/<id> for links without a slug.
       // Player scorecard: https://chessever.com/broadcast/<slug>/<id>/player/<fideId>
+      // Team scorecard:   https://chessever.com/broadcast/<slug>/<id>/team/<teamName>
       if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'broadcast') {
         if (uri.pathSegments.length >= 3) {
           broadcastId = uri.pathSegments[2];
@@ -225,6 +230,11 @@ class DeepLinkService {
         }
         if (uri.pathSegments.length >= 5 && uri.pathSegments[3] == 'player') {
           playerFideId = int.tryParse(uri.pathSegments[4]);
+        } else if (uri.pathSegments.length >= 5 &&
+            uri.pathSegments[3] == 'team') {
+          // pathSegments are already percent-decoded by Uri.
+          teamName = uri.pathSegments[4].trim();
+          if (teamName.isEmpty) teamName = null;
         }
       }
 
@@ -264,17 +274,24 @@ class DeepLinkService {
       }
 
       // Custom scheme: com.chessever.app://broadcast/<slug>/<id>
-      // Also accept com.chessever.app://broadcast/<id> and
-      // com.chessever.app://broadcast/<slug>/<id>/player/<fideId>.
+      // Also accept com.chessever.app://broadcast/<id>,
+      // .../player/<fideId>, and .../team/<teamName>.
       if (broadcastId == null &&
           uri.host == 'broadcast' &&
           uri.pathSegments.isNotEmpty) {
         final segs = uri.pathSegments;
         final playerIdx = segs.indexOf('player');
+        final teamIdx = segs.indexOf('team');
         if (playerIdx > 0) {
           broadcastId = segs[playerIdx - 1];
           if (playerIdx + 1 < segs.length) {
             playerFideId = int.tryParse(segs[playerIdx + 1]);
+          }
+        } else if (teamIdx > 0) {
+          broadcastId = segs[teamIdx - 1];
+          if (teamIdx + 1 < segs.length) {
+            final t = segs[teamIdx + 1].trim();
+            teamName = t.isEmpty ? null : t;
           }
         } else {
           broadcastId = segs.last;
@@ -289,6 +306,7 @@ class DeepLinkService {
           'bookShareToken': _maskedValue(bookShareToken),
           'folderId': _maskedValue(folderId),
           'broadcastId': _maskedValue(broadcastId),
+          'teamName': teamName,
         },
       );
 
@@ -347,6 +365,23 @@ class DeepLinkService {
         _navigateToPlayerScorecard(
           broadcastId,
           playerFideId,
+          navigatorKey,
+          ref,
+        );
+      } else if (broadcastId != null &&
+          broadcastId.isNotEmpty &&
+          teamName != null &&
+          teamName.isNotEmpty) {
+        _addBreadcrumb(
+          'routing to team scorecard',
+          data: {
+            'broadcastId': _maskedValue(broadcastId),
+            'teamName': teamName,
+          },
+        );
+        _navigateToTeamScorecard(
+          broadcastId,
+          teamName,
           navigatorKey,
           ref,
         );
@@ -1301,6 +1336,132 @@ class DeepLinkService {
     }
   }
 
+  /// Opens a team scorecard from
+  /// `chessever.com/broadcast/<slug>/<id>/team/<teamName>`. Lands on the event
+  /// first (standings tab for team events), resolves the team from standings,
+  /// then pushes `/team_scorecard_screen`.
+  Future<void> _navigateToTeamScorecard(
+    String groupBroadcastId,
+    String teamName,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) {
+      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
+      return;
+    }
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      AppAuthState? resolvedState = ref.read(authStateProvider).value;
+      if (resolvedState == null) {
+        try {
+          resolvedState = await ref.read(authStateProvider.future);
+        } catch (_) {
+          resolvedState = null;
+        }
+      }
+      if (!_isFullyAuthenticated(resolvedState)) {
+        debugPrint(
+          'DeepLinkService: User not authenticated, routing to auth screen',
+        );
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/auth_screen',
+          (route) => false,
+        );
+        return;
+      }
+
+      final routeContext = await _resolveEventRouteContext(
+        ref,
+        groupBroadcastId: groupBroadcastId,
+      );
+      if (routeContext == null) {
+        debugPrint(
+          'DeepLinkService: Could not resolve event for team scorecard '
+          '(group_broadcast_id=$groupBroadcastId)',
+        );
+        _navigateToHome(navigatorKey);
+        return;
+      }
+
+      final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+      final broadcast = await broadcastRepo
+          .getGroupBroadcastById(routeContext.groupBroadcastId)
+          .timeout(_fetchTimeout);
+
+      await _preselectTourAndRound(
+        ref,
+        groupBroadcastId: broadcast.id,
+        tourId: routeContext.tourId,
+        roundId: routeContext.roundId,
+      );
+
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+      ref.read(selectedTourModeProvider.notifier).state =
+          TournamentDetailScreenMode.standings;
+
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/tournament_detail_screen',
+        (route) => route.isFirst,
+      );
+
+      final matched = await _awaitTeamInStandings(
+        ref,
+        teamName,
+        timeout: const Duration(seconds: 20),
+      );
+
+      final team =
+          matched ??
+          TeamStandingModel(
+            teamName: teamName,
+            rank: 0,
+            matchPoints: 0,
+            gamePoints: 0,
+            matchesWon: 0,
+            matchesDrawn: 0,
+            matchesLost: 0,
+            boardsPlayed: 0,
+            players: const [],
+          );
+      if (matched == null) {
+        debugPrint(
+          'DeepLinkService: Team "$teamName" not found in standings; '
+          'opening stub scorecard',
+        );
+      }
+
+      ref.read(selectedTeamProvider.notifier).state = team;
+      navigatorKey.currentState?.pushNamed('/team_scorecard_screen');
+    } catch (e, stackTrace) {
+      debugPrint('DeepLinkService: Failed to open team scorecard: $e');
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'navigate_to_team_scorecard',
+        extras: {
+          'groupBroadcastId': groupBroadcastId,
+          'teamName': teamName,
+        },
+      );
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
   /// Opens a player's overall profile from a shared link
   /// `chessever.com/player/<fideId>` (or the canonical
   /// `/player/<name-slug>/<fideId>` SEO form). Resolves the player's name,
@@ -1435,6 +1596,57 @@ class DeepLinkService {
     try {
       sub = ref.listenManual<AsyncValue<List<PlayerStandingModel>>>(
         playerTourScreenProvider,
+        (_, next) => inspect(next),
+        fireImmediately: true,
+      );
+      timer = Timer(timeout, () => finish(null));
+      return await completer.future;
+    } finally {
+      timer?.cancel();
+      sub?.close();
+    }
+  }
+
+  Future<TeamStandingModel?> _awaitTeamInStandings(
+    WidgetRef ref,
+    String teamName, {
+    required Duration timeout,
+  }) async {
+    final target = teamName.trim();
+    final completer = Completer<TeamStandingModel?>();
+    Timer? timer;
+    ProviderSubscription<AsyncValue<List<TeamStandingModel>>>? sub;
+
+    void finish(TeamStandingModel? value) {
+      if (completer.isCompleted) return;
+      completer.complete(value);
+    }
+
+    void inspect(AsyncValue<List<TeamStandingModel>> async) {
+      if (completer.isCompleted) return;
+      async.when(
+        data: (standings) {
+          if (standings.isEmpty) return;
+          for (final t in standings) {
+            if (t.teamName == target) {
+              finish(t);
+              return;
+            }
+          }
+          finish(null);
+        },
+        loading: () {},
+        error: (error, _) {
+          debugPrint(
+            'DeepLinkService: team standings error while awaiting team: $error',
+          );
+        },
+      );
+    }
+
+    try {
+      sub = ref.listenManual<AsyncValue<List<TeamStandingModel>>>(
+        teamStandingsProvider,
         (_, next) => inspect(next),
         fireImmediately: true,
       );
