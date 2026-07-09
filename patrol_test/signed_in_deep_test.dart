@@ -157,9 +157,9 @@ void main() {
         await expectVisible($, E2eIds.openingExplorerRoot);
         await expectVisible($, E2eIds.boardEvalBar);
         await expectVisible($, E2eIds.openingExplorerEngineLines);
-        await byId($, E2eIds.openingExplorerDoneButton).tap();
-        await expectVisible($, E2eIds.chessBoardRoot);
-        await assertBoardEngineReady($);
+        await byId($, E2eIds.openingExplorerSaveButton).tap();
+        await $('Save Analysis').waitUntilVisible();
+        await popRoute($);
         await popRoute($);
         await popRoute($);
 

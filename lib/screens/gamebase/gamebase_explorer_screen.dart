@@ -18,12 +18,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -612,10 +612,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
         ],
       ),
-      // Three actions, evenly spaced: Reset, Filters (with active dot when
-      // filters are applied), Done. The dot on the filter icon is enough to
-      // signal "filters active" — no separate clear-filters button is needed
-      // since Reset wipes the same state.
+      // Three compact actions: Reset, Filters (with active dot when filters
+      // are applied), Save. The dot on the filter icon is enough to signal
+      // "filters active" — no separate clear-filters button is needed since
+      // Reset wipes the same state.
       actions: [
         IconButton(
           icon: Icon(Icons.restart_alt, size: 24.ic),
@@ -646,36 +646,24 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
           onPressed: () => _showFilterSheet(context),
           tooltip: 'Filters',
         ),
-        // Match IconButton's default 8dp surrounding padding so the gap
-        // tune→Done equals the gap reset→tune.
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8.sp),
-          child: GestureDetector(
-            onTap: () => _openAnalysis(context),
-            child: Container(
-              key: e2eKey(E2eIds.openingExplorerDoneButton),
-              padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Text(
-                'Done',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.background,
-                ),
-              ),
-            ),
+        IconButton(
+          key: e2eKey(E2eIds.openingExplorerSaveButton),
+          icon: Icon(
+            Icons.save_outlined,
+            color: context.colors.textPrimary,
+            size: 24.ic,
           ),
+          onPressed: _showSaveAnalysisDialog,
+          tooltip: 'Save analysis',
         ),
       ],
     );
   }
 
-  void _openAnalysis(BuildContext context) {
+  GamesTourModel? _buildExplorerTourGame() {
     final state = ref.read(gamebaseExplorerProvider);
     final game = state.game;
-    if (game == null) return;
+    if (game == null) return null;
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
@@ -702,7 +690,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       fideId: null,
     );
 
-    final tourGame = GamesTourModel(
+    return GamesTourModel(
       gameId: 'explorer_$timestamp',
       source: GameSource.openingExplorer,
       whitePlayer: whitePlayer,
@@ -716,22 +704,41 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       tourId: 'opening_explorer',
       pgn: pgn,
     );
+  }
 
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
+  Future<void> _showSaveAnalysisDialog() async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed || !mounted) return;
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              currentIndex: 0,
-              games: [tourGame],
-              hideEventInfo: true,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              startAtLastMove: true,
-            ),
-      ),
+    final tourGame = _buildExplorerTourGame();
+    if (tourGame == null) return;
+
+    final params = ChessBoardProviderParams(
+      game: tourGame,
+      index: 0,
+      startAtLastMove: true,
+    );
+
+    final provider = chessBoardScreenProviderNew(params);
+    await ref.read(provider.notifier).parseMoves();
+    if (!mounted) return;
+
+    final boardState = ref.read(provider).valueOrNull;
+    if (boardState == null || boardState.analysisState.game == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please wait for the game to load'),
+          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    await showSaveAnalysisSheet(
+      context: context,
+      state: boardState,
+      params: params,
     );
   }
 
@@ -900,7 +907,10 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                           ref.read(gamebaseExplorerProvider).currentMoveNumber;
                       if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
                         if (!context.mounted) return;
-                        final unlocked = await requirePremiumGuard(context, ref);
+                        final unlocked = await requirePremiumGuard(
+                          context,
+                          ref,
+                        );
                         if (!unlocked) return;
                       }
                     }

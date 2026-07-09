@@ -58,7 +58,7 @@ class E2eIds {
   static const libraryBoardEditorButton = 'e2e_library_board_editor_button';
   static const libraryCreateFolderButton = 'e2e_library_create_folder_button';
   static const boardEditorDoneButton = 'e2e_board_editor_done_button';
-  static const openingExplorerDoneButton = 'e2e_opening_explorer_done_button';
+  static const openingExplorerSaveButton = 'e2e_opening_explorer_save_button';
   static const openingExplorerEngineLines = 'e2e_opening_explorer_engine_lines';
   static const scorecardRoot = 'e2e_scorecard_root';
   static const favoritesGamesSearchField = 'e2e_favorites_games_search_field';
