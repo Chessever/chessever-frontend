@@ -126,63 +126,6 @@ String formatMoveText(
   return buffer.toString();
 }
 
-String _nagToSymbol(int nag) {
-  switch (nag) {
-    case 1:
-      return '!';
-    case 2:
-      return '?';
-    case 3:
-      return '!!';
-    case 4:
-      return '??';
-    case 5:
-      return '!?'; // Corrected from ?!
-    case 6:
-      return '?!'; // Corrected from !?
-    case 7:
-      return '□';
-    case 8:
-      return 'null'; // Unusual
-    case 10:
-      return '=';
-    case 13:
-      return '∞';
-    case 14:
-      return '⩲'; // Unicode for +=
-    case 15:
-      return '⩱'; // Unicode for =+
-    case 16:
-      return '±'; // Unicode for +/-
-    case 17:
-      return '∓'; // Unicode for -/+
-    case 18:
-      return '+-';
-    case 19:
-      return '-+';
-    case 22:
-      return '⨀';
-    case 23:
-      return '⨀';
-    case 32:
-      return '⟳';
-    case 36:
-      return '→';
-    case 40:
-      return '↑';
-    case 44:
-      return '=';
-    case 132:
-      return '⇆';
-    case 140:
-      return '∆';
-    case 146:
-      return 'N';
-    default:
-      return '';
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Collapse heuristic
 // ---------------------------------------------------------------------------
@@ -217,6 +160,8 @@ List<NotationDisplayToken> buildNotationTokens(
   bool rawPgnMode = false,
 }) {
   final tokens = <NotationDisplayToken>[];
+  // A parsed variation belongs to the last common move in the game tree, but
+  // visually it belongs after the following mainline move that it replaces.
   for (var i = 0; i < moves.length; i++) {
     final node = moves[i];
     final pointerList = List<Number>.of(node.pointer);
@@ -301,7 +246,11 @@ List<NotationDisplayToken> buildNotationTokens(
       );
     }
 
-    for (final variation in node.variations) {
+    final variationsToRender = <NotationVariationNode>[
+      if (i > 0) ...moves[i - 1].variations,
+      if (i == moves.length - 1) ...node.variations,
+    ];
+    for (final variation in variationsToRender) {
       final defaultCollapsed = shouldCollapseByDefault(
         variation,
         autoCollapseDepth: autoCollapseDepth,

@@ -138,6 +138,23 @@ class NotationTreeBuilder {
   }
 }
 
+String? variationAlternativeToText(
+  NotationVariationNode variation,
+  Map<String, NotationMoveNode> pointerMap,
+) {
+  if (variation.parentPointer.isEmpty) return null;
+
+  final alternativeToPointer = List<Number>.of(variation.parentPointer);
+  alternativeToPointer[alternativeToPointer.length - 1]++;
+  final alternativeToId = NotationPointer.encode(alternativeToPointer);
+  final alternativeTo = pointerMap[alternativeToId];
+  if (alternativeTo == null) return null;
+
+  final dots = alternativeTo.isWhiteMove ? '.' : '...';
+  final cleanSan = alternativeTo.move.san.replaceAll(RegExp(r'[!?]+$'), '');
+  return 'Alt to ${alternativeTo.moveNumber}$dots$cleanSan';
+}
+
 String notationGameSignature(ChessGame game) {
   final buffer = StringBuffer(game.startingFen);
   _appendLineSignature(game.mainline, buffer);

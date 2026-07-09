@@ -53,6 +53,14 @@ final gamesTourScreenProvider = StateNotifierProvider<
 // Can use this in future to maintain the state across the app
 final showFinishedGamesProvider = StateProvider<bool>((ref) => true);
 
+@visibleForTesting
+bool shouldInitializeGamesScreen({
+  required GamesScreenModel? currentScreen,
+  required AsyncValue<List<Games>> nextGames,
+}) {
+  return currentScreen == null && nextGames.hasValue;
+}
+
 class _GamesProcessingArgs {
   final List<Games> games;
   final List<String> pinnedIds;
@@ -194,18 +202,22 @@ class GamesTourScreenProvider
       final previousGames = previous?.valueOrNull ?? [];
       final nextGames = next.valueOrNull ?? [];
 
-      // ALWAYS recompute if we don't have any model data yet
-      // This ensures we don't miss the initial load
-      final needsInitialData =
-          current == null || current.gamesTourModels.isEmpty;
-      if (needsInitialData && nextGames.isNotEmpty) {
+      // Loading -> data is an initial result even when the result is empty.
+      // Ignoring an empty first result leaves this provider in AsyncLoading
+      // forever, so the Games tab never reaches its empty state.
+      if (shouldInitializeGamesScreen(
+        currentScreen: current,
+        nextGames: next,
+      )) {
         debugPrint(
           '🎮 GamesTourScreen: Initial data load - triggering recompute with ${nextGames.length} games',
         );
         _recompute();
-        await ref
-            .read(gamesPinprovider(aboutTourModel!.id).notifier)
-            .computeAutoPins();
+        if (nextGames.isNotEmpty) {
+          await ref
+              .read(gamesPinprovider(aboutTourModel!.id).notifier)
+              .computeAutoPins();
+        }
         return;
       }
 

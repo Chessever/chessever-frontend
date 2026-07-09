@@ -11676,16 +11676,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final railWidth = depth == 1 ? 2.0 : 1.5;
     final indentPx = math.min(depth - 1, 3) * 6.sp;
 
-    String? headerLabel;
-    if (variation != null && variation.parentPointer.isNotEmpty) {
-      final parentId = NotationPointer.encode(variation.parentPointer);
-      final parent = pointerMap[parentId];
-      if (parent != null) {
-        final dots = parent.isWhiteMove ? '.' : '...';
-        final cleanSan = parent.move.san.replaceAll(RegExp(r'[!?]+$'), '');
-        headerLabel = '${parent.moveNumber}$dots$cleanSan';
-      }
-    }
+    final headerText =
+        variation == null
+            ? null
+            : variationAlternativeToText(variation, pointerMap);
 
     final innerRows = _buildNotationRows(
       innerTokens,
@@ -11711,7 +11705,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (headerLabel != null)
+            if (headerText != null)
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
@@ -11732,7 +11726,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                       SizedBox(width: 3.sp),
                       Flexible(
                         child: Text(
-                          'alt to $headerLabel',
+                          headerText,
                           style: AppTypography.textXsRegular.copyWith(
                             color: accent.withValues(alpha: 0.85),
                             fontSize: 10.sp,

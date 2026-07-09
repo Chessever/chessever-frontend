@@ -112,6 +112,128 @@ void main() {
   });
 
   group('buildNotationTokens', () {
+    test('variation header names the mainline move it replaces, not the last '
+        'common move', () {
+      const pgn = r'''
+[Annotator "Durarbayli"]
+[Black "Andrew"]
+[BlackElo "2279"]
+[Date "2025.06.07"]
+[PlyCount "66"]
+[Result "0-1"]
+[White "Ruben"]
+[WhiteElo "1930"]
+
+1. e4 Nc6 2. Nf3 e5 3. Bc4 Bc5 4. d3 d6 5. O-O Nf6 6. c3 a5
+7. Nbd2 Ba7 8. Re1 O-O 9. Nf1 Bd7 10. Bb3
+(10. Ng3 a4 11. Bb5 a3 12. b4) 10... Ne7 11. Ng3 (11. a4)
+11... a4 12. Bc2 Ng6 13. Be3 $2
+{[%c_effect e3;square;e3;type;Mistake;persistent;true]}
+(13. d4 Bg4) (13. h3 Re8 (13... c5 $2) 14. d4 exd4 15. cxd4)
+13... Bxe3 14. fxe3 c5 15. Qd2 b5 16. d4 Qb6 17. Rad1 Rfd8
+18. Qf2 Ng4 19. Qd2 Rac8 20. h3 Nf6 21. Qf2 (21. Nf5)
+(21. Rf1 cxd4 22. exd4 b4) (21. Kh2 $5) 21... cxd4 22. exd4 b4
+23. cxb4 Qxb4 24. Bb1 (24. b3 $1 24... a3) 24... Re8 25. Nf5 Rb8
+26. Rd2 (26. Nxd6 $6 26... Ng4 $3 27. hxg4 Qxd6 28. dxe5 Qe7
+29. g5 Bg4) 26... exd4 27. Qxd4 (27. Rxd4 Qxb2 28. Nxd6 Qxf2+
+29. Kxf2 Rb2+ 30. Nd2 Reb8 31. e5 Ne8 32. N6c4 R2b7 33. Be4 Rc7)
+27... Bxf5 28. Qxb4 Rxb4 29. exf5 Rxe1+ 30. Nxe1 Nf8 31. Nf3
+(31. Nd3 Rd4 (31... Rb6) 32. Rd1 N8d7) 31... N8d7 32. Kf1 Kf8
+33. Ke2 Ke7 0-1
+''';
+      final game = ChessGame.fromPgn('variation-label', pgn);
+      final tree = NotationTreeBuilder.build(game);
+      final pointerMap = <String, NotationMoveNode>{};
+      final tokens = buildNotationTokens(
+        tree.mainline,
+        depth: 0,
+        startingPly: tree.startingPly,
+        pointerMap: pointerMap,
+        forcedOpenIds: const {},
+        variationComments: const {},
+        lichessAnnotations: const {},
+        collapsedVariationIds: const {},
+        expandedVariationIds: const {},
+      );
+      final openVariationTokens =
+          tokens
+              .where((token) => token.type == NotationTokenType.openParen)
+              .toList();
+      final variation = openVariationTokens.first.variation!;
+
+      final replacementMoveIndex = tokens.indexWhere(
+        (token) =>
+            token.type == NotationTokenType.move &&
+            token.node?.move.san == 'Bb3' &&
+            token.depth == 0,
+      );
+      final variationIndex = tokens.indexWhere(
+        (token) => token.type == NotationTokenType.openParen,
+      );
+      final nextMainlineMoveIndex = tokens.indexWhere(
+        (token) =>
+            token.type == NotationTokenType.move &&
+            token.node?.move.san == 'Ne7' &&
+            token.depth == 0,
+      );
+
+      expect(
+        variationAlternativeToText(variation, pointerMap),
+        'Alt to 10.Bb3',
+      );
+      expect(variationIndex, greaterThan(replacementMoveIndex));
+      expect(variationIndex, lessThan(nextMainlineMoveIndex));
+      expect(
+        variationAlternativeToText(variation, pointerMap),
+        isNot(contains('Bd7')),
+      );
+
+      final expectedLabelsByVariationHead = <String, String>{
+        'Ng3': 'Alt to 10.Bb3',
+        'a4': 'Alt to 11.Ng3',
+        'd4': 'Alt to 13.Be3',
+        'h3': 'Alt to 13.Be3',
+        'c5': 'Alt to 13...Re8',
+        'Nf5': 'Alt to 21.Qf2',
+        'Rf1': 'Alt to 21.Qf2',
+        'Kh2': 'Alt to 21.Qf2',
+        'b3': 'Alt to 24.Bb1',
+        'Nxd6': 'Alt to 26.Rd2',
+        'Rxd4': 'Alt to 27.Qxd4',
+        'Nd3': 'Alt to 31.Nf3',
+        'Rb6': 'Alt to 31...Rd4',
+      };
+      expect(
+        openVariationTokens,
+        hasLength(expectedLabelsByVariationHead.length),
+      );
+
+      for (final token in openVariationTokens) {
+        final currentVariation = token.variation!;
+        final headSan = currentVariation.moves.first.move.san;
+        expect(
+          variationAlternativeToText(currentVariation, pointerMap),
+          expectedLabelsByVariationHead[headSan],
+          reason: 'Incorrect alternative label for $headSan',
+        );
+
+        final replacementPointer = List<Number>.of(
+          currentVariation.parentPointer,
+        );
+        replacementPointer[replacementPointer.length - 1]++;
+        final replacementIndex = tokens.indexWhere(
+          (candidate) =>
+              candidate.pointerId == NotationPointer.encode(replacementPointer),
+        );
+        expect(replacementIndex, greaterThanOrEqualTo(0));
+        expect(
+          tokens.indexOf(token),
+          greaterThan(replacementIndex),
+          reason: '$headSan must render after the move it replaces',
+        );
+      }
+    });
+
     test('non-annotated moves produce only move tokens', () {
       final tree = _treeFromSans(['e4', 'e5', 'Nf3']);
       final tokens = _buildTokens(tree);
