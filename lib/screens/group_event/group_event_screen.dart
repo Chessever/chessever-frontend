@@ -148,7 +148,9 @@ class GroupEventScreen extends HookConsumerWidget {
             searchController.clear();
           }
           if (next == GroupEventCategory.forYou) {
-            unawaited(ref.read(forYouEventsProvider.notifier).refreshIfStale());
+            unawaited(
+              ref.read(forYouEventsProvider.notifier).refreshForVisibility(),
+            );
           }
           FocusScope.of(context).unfocus();
           // ignore: unused_result

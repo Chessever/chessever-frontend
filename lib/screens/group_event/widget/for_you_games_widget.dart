@@ -9,6 +9,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -215,8 +216,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       final notifier = ref.read(forYouEventsProvider.notifier);
       unawaited(
         forceFeedRefresh
-            ? notifier.refreshIfStale(maxAge: Duration.zero)
-            : notifier.refreshIfStale(),
+            ? notifier.refreshForVisibility(maxFeedAge: Duration.zero)
+            : notifier.refreshForVisibility(),
       );
     }
   }
@@ -237,6 +238,20 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   @override
   Widget build(BuildContext context) {
     super.build(context); // required by AutomaticKeepAliveClientMixin
+
+    ref.listen<int>(liveGroupBroadcastRefreshTickProvider, (previous, next) {
+      if (previous == null || previous == next) return;
+      final isForYouSelected =
+          ref.read(selectedGroupCategoryProvider) == GroupEventCategory.forYou;
+      if (!shouldRunForYouHeartbeat(
+        isForYouSelected: isForYouSelected,
+        routeIsCurrent: _routeIsCurrent,
+        appIsResumed: _appIsResumed,
+      )) {
+        return;
+      }
+      unawaited(ref.read(forYouEventsProvider.notifier).refreshForVisibility());
+    });
 
     // If PageView keeps this page around briefly while swiping, drop all
     // expensive provider subscriptions until For You is visible again.

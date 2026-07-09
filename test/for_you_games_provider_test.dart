@@ -195,6 +195,108 @@ void main() {
     return () => bumpEventPinRefreshSignal(ref, eventId);
   });
 
+  group('For You automatic freshness', () {
+    test('fresh feed heartbeat refreshes only top-game membership', () {
+      final now = DateTime.utc(2026, 7, 10, 12);
+
+      expect(
+        resolveForYouVisibilityRefresh(
+          lastFeedRefreshAt: now.subtract(const Duration(minutes: 2)),
+          now: now,
+          maxFeedAge: const Duration(minutes: 5),
+        ),
+        ForYouVisibilityRefresh.topGames,
+      );
+    });
+
+    test('stale feed heartbeat refreshes the full ordered feed', () {
+      final now = DateTime.utc(2026, 7, 10, 12);
+
+      expect(
+        resolveForYouVisibilityRefresh(
+          lastFeedRefreshAt: now.subtract(const Duration(minutes: 5)),
+          now: now,
+          maxFeedAge: const Duration(minutes: 5),
+        ),
+        ForYouVisibilityRefresh.fullFeed,
+      );
+    });
+
+    test('heartbeat runs only while For You is visible and resumed', () {
+      expect(
+        shouldRunForYouHeartbeat(
+          isForYouSelected: true,
+          routeIsCurrent: true,
+          appIsResumed: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldRunForYouHeartbeat(
+          isForYouSelected: false,
+          routeIsCurrent: true,
+          appIsResumed: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRunForYouHeartbeat(
+          isForYouSelected: true,
+          routeIsCurrent: false,
+          appIsResumed: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRunForYouHeartbeat(
+          isForYouSelected: true,
+          routeIsCurrent: true,
+          appIsResumed: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('unchanged heartbeat snapshots preserve cache identity', () {
+      final current = <String, ForYouEventGamesSnapshot>{
+        'event-1': _snapshot('event-1', visibleGames: [_game('game-1')]),
+      };
+      final incoming = <String, ForYouEventGamesSnapshot>{
+        'event-1': _snapshot('event-1', visibleGames: [_game('game-1')]),
+      };
+
+      final merged = mergeForYouTopGameSnapshots(
+        current: current,
+        incoming: incoming,
+        replace: false,
+      );
+
+      expect(identical(merged, current), isTrue);
+    });
+
+    test('heartbeat snapshots replace only changed event entries', () {
+      final event1 = _snapshot('event-1', visibleGames: [_game('game-1')]);
+      final event2 = _snapshot('event-2', visibleGames: [_game('game-2')]);
+      final current = <String, ForYouEventGamesSnapshot>{
+        'event-1': event1,
+        'event-2': event2,
+      };
+
+      final merged = mergeForYouTopGameSnapshots(
+        current: current,
+        incoming: {
+          'event-1': _snapshot('event-1', visibleGames: [_game('game-1')]),
+          'event-2': _snapshot('event-2', visibleGames: [_game('game-3')]),
+        },
+        replace: false,
+      );
+
+      expect(identical(merged['event-1'], event1), isTrue);
+      expect(identical(merged['event-2'], event2), isFalse);
+      expect(merged['event-2']!.visibleGames.single.gameId, 'game-3');
+    });
+  });
+
   group('mergeMissingFavoriteCurrentBroadcasts', () {
     test(
       'prepends favorite current broadcasts missing from the first page',

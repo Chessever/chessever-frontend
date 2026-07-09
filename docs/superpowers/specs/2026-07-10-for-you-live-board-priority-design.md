@@ -10,9 +10,9 @@ lightweight frontend and its existing position and clock streams.
 
 ## Scope
 
-Change only the `public.get_for_you_top_games(text[], integer)` database RPC.
-There will be no new frontend query, client-side sort, provider, subscription,
-or rendering work.
+Change `public.get_for_you_top_games(text[], integer)` and add a small frontend
+freshness coordinator around the existing RPC/cache path. Do not add a timer,
+Realtime channel, ranking algorithm, or rendering path.
 
 ## Selection and ranking
 
@@ -37,17 +37,40 @@ placeholder filtering, and live-round/fallback-round discovery stay unchanged.
 
 ## Performance
 
-The change adds a computed boolean/integer sort key to candidate rows already
-loaded by the RPC. It introduces no table scan, join, network request, response
-field, or frontend operation. The existing RPC limit continues to reduce the
-payload before it reaches Flutter.
+The database change adds a computed boolean/integer sort key to candidate rows
+already loaded by the RPC. It introduces no table scan, join, response field,
+or payload expansion. The existing RPC limit continues to reduce the payload
+before it reaches Flutter. Automatic freshness adds one batched top-games call
+per minute only while For You is visible; unchanged snapshots do not rebuild.
 
 ## Realtime behavior
 
 The existing frontend remains responsible for streaming FEN/position, clocks,
-last move, and completion status for the selected cards. This change only
-chooses and orders the initial card IDs. No Realtime publication, subscription,
-or refresh behavior changes.
+last move, and completion status for selected cards. No Realtime publication
+or subscription changes. Refresh coordination only reselects card IDs and
+event membership at bounded intervals or on actual live-set changes.
+
+## Automatic freshness follow-up
+
+The event feed remains personalized on-device. Starred events and favorite-
+player counts are user-specific, so the existing client ranking stays intact;
+they are not passed into or recomputed by the feed RPC.
+
+For You piggybacks the existing strict-live resolver's one-minute timer. It
+adds no timer and no Realtime channel. While the For You route is selected,
+current, and foregrounded, each tick performs one batched top-games RPC for
+eligible events. It does not refetch favorite-player counts. The full event
+feed remains capped at one refresh per five minutes.
+
+Tab activation and route return immediately refresh top-game membership. App
+resume continues to force the full catch-up path. An actual live event, tour,
+or round-set change clears the session-order cache and re-runs the existing
+client personalization once, allowing newly eligible starred/hearted events to
+bubble without continuous sorting.
+
+Heartbeat results are diffed against the snapshot cache. Equivalent snapshots
+reuse the existing object and do not notify widgets; only events whose selected
+boards changed rebuild. Card FEN/position and clock streams are unchanged.
 
 ## Validation
 
@@ -60,10 +83,15 @@ or refresh behavior changes.
   numbers.
 - Run Supabase security and performance advisors and confirm this function
   remains `security invoker` and executable only by `authenticated`.
+- Test the one-minute/five-minute refresh decision and visible-route gating.
+- Test that equivalent heartbeat snapshots preserve cache identity and changed
+  events replace only their own cache entry.
+- Run scoped `flutter analyze --no-pub` on every touched Flutter/test file.
 
 ## Non-goals
 
-- No frontend sorting or over-fetching.
+- No new frontend ranking algorithm or backend event personalization.
+- No replacement of the existing user-specific client ranking.
 - No changes to game-card streaming, clocks, or position updates.
-- No changes to event ordering in the For You feed.
+- No per-move RPC refresh or background/off-route heartbeat work.
 - No schema, RLS, index, or response-shape changes.

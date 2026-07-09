@@ -18,6 +18,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const liveIndicatorStaleAfter = Duration(hours: 2);
 const _liveIndicatorRefreshInterval = Duration(minutes: 1);
 
+/// Increments after the existing strict-live resolver's one-minute pass.
+/// Consumers can piggyback lightweight freshness work without adding another
+/// timer or Realtime channel.
+final liveGroupBroadcastRefreshTickProvider = StateProvider<int>((ref) => 0);
+
 final configuredLiveGroupBroadcastIdsProvider =
     AutoDisposeStreamProvider<List<String>>(
       (ref) =>
@@ -162,7 +167,12 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
   );
 
   final refreshTimer = Timer.periodic(_liveIndicatorRefreshInterval, (_) {
-    unawaited(emitResolvedIds());
+    unawaited(() async {
+      await emitResolvedIds();
+      if (controller.isClosed) return;
+      final notifier = ref.read(liveGroupBroadcastRefreshTickProvider.notifier);
+      notifier.state++;
+    }());
   });
 
   // The realtime settings stream can die silently while the app is

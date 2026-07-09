@@ -52,6 +52,29 @@ const int kGamesPerEvent = 4;
 const int _kPageSize = 20;
 const Duration _kForYouStaleThreshold = Duration(minutes: 5);
 
+enum ForYouVisibilityRefresh { topGames, fullFeed }
+
+@visibleForTesting
+ForYouVisibilityRefresh resolveForYouVisibilityRefresh({
+  required DateTime? lastFeedRefreshAt,
+  required DateTime now,
+  required Duration maxFeedAge,
+}) {
+  if (lastFeedRefreshAt == null ||
+      now.difference(lastFeedRefreshAt) >= maxFeedAge) {
+    return ForYouVisibilityRefresh.fullFeed;
+  }
+  return ForYouVisibilityRefresh.topGames;
+}
+
+bool shouldRunForYouHeartbeat({
+  required bool isForYouSelected,
+  required bool routeIsCurrent,
+  required bool appIsResumed,
+}) {
+  return isForYouSelected && routeIsCurrent && appIsResumed;
+}
+
 @visibleForTesting
 List<GroupBroadcast> mergeMissingFavoriteCurrentBroadcasts({
   required List<GroupBroadcast> pageBroadcasts,
@@ -81,6 +104,34 @@ List<GroupBroadcast> mergeMissingFavoriteCurrentBroadcasts({
   }
 
   return [...missingFavorites, ...pageBroadcasts];
+}
+
+@visibleForTesting
+Map<String, ForYouEventGamesSnapshot> mergeForYouTopGameSnapshots({
+  required Map<String, ForYouEventGamesSnapshot> current,
+  required Map<String, ForYouEventGamesSnapshot> incoming,
+  required bool replace,
+}) {
+  var changed =
+      replace && !setEquals(current.keys.toSet(), incoming.keys.toSet());
+  final merged =
+      replace
+          ? <String, ForYouEventGamesSnapshot>{}
+          : <String, ForYouEventGamesSnapshot>{...current};
+
+  for (final entry in incoming.entries) {
+    final existing = current[entry.key];
+    if (existing != null &&
+        areEquivalentForYouSnapshots(existing, entry.value)) {
+      if (replace) merged[entry.key] = existing;
+      continue;
+    }
+
+    merged[entry.key] = entry.value;
+    changed = true;
+  }
+
+  return changed ? merged : current;
 }
 
 // ============================================================================
@@ -119,6 +170,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   final Ref ref;
   int _offset = 0;
   bool _isFetching = false;
+  bool _queuedFeedRefresh = false;
   DateTime? _lastRefreshAt;
   final Map<String, int> _sessionEventOrder = <String, int>{};
   int _nextSessionEventOrder = 0;
@@ -126,6 +178,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   final Set<String> _handledUnknownLiveEventIds = <String>{};
   bool _isRefreshingTopGames = false;
   bool _queuedTopGamesRefresh = false;
+  bool _liveFeedRefreshScheduled = false;
   final Set<String> _handledFinishedTopGameRefreshes = <String>{};
 
   ForYouNotifier(this.ref) : super(const ForYouState(isLoading: true)) {
@@ -144,9 +197,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     ) {
       next.whenData((liveIds) {
         final liveCategoryChanged = _refreshLiveCategories(liveIds);
-        _maybeRefreshForUnknownLiveEvents(liveIds);
-        if (liveCategoryChanged) {
-          unawaited(refreshVisibleTopGames());
+        final hasUnknownLiveEvent = _hasUnknownLiveEvents(liveIds);
+        if (liveCategoryChanged || hasUnknownLiveEvent) {
+          _refreshFeedForLiveChange();
         }
       });
     });
@@ -198,8 +251,8 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   /// page 0 so it can enter the list. Guarded per-id so ids that legitimately
   /// never enter the personalized feed (e.g. filtered out) don't refetch on
   /// every live-ids emission.
-  void _maybeRefreshForUnknownLiveEvents(List<String> liveIds) {
-    if (state.isLoading || state.events.isEmpty) return;
+  bool _hasUnknownLiveEvents(List<String> liveIds) {
+    if (state.isLoading || state.events.isEmpty) return false;
 
     final knownIds = state.events.map((event) => event.id).toSet();
     var hasNewUnknownId = false;
@@ -209,9 +262,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         hasNewUnknownId = true;
       }
     }
-    if (!hasNewUnknownId) return;
-
-    unawaited(refresh());
+    return hasNewUnknownId;
   }
 
   bool _refreshLiveCategories(List<String> liveIds) {
@@ -238,6 +289,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   Future<void> refresh() async {
+    if (_isFetching) {
+      _queuedFeedRefresh = true;
+      return;
+    }
     _offset = 0;
     state = state.copyWith(isLoading: true, error: null);
     bumpForYouEventsRefreshSignal(ref);
@@ -260,11 +315,45 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     await _fetchPage(isInitial: false);
   }
 
+  /// Refresh board membership whenever For You becomes visible or receives
+  /// its existing one-minute liveness heartbeat. The heavier ordered event
+  /// page remains capped at one refresh per [_kForYouStaleThreshold].
+  Future<void> refreshForVisibility({
+    Duration maxFeedAge = _kForYouStaleThreshold,
+  }) async {
+    if (_isFetching || state.isLoading) return;
+
+    final refresh = resolveForYouVisibilityRefresh(
+      lastFeedRefreshAt: _lastRefreshAt,
+      now: DateTime.now(),
+      maxFeedAge: maxFeedAge,
+    );
+    if (refresh == ForYouVisibilityRefresh.fullFeed) {
+      await this.refresh();
+      return;
+    }
+
+    await refreshVisibleTopGames();
+  }
+
   void _refreshTopGamesAfterLiveSelectionChange() {
-    // Keep the legacy signal for non-feed consumers, but For You itself should
-    // only reselect preview boards through the batched backend RPC.
-    bumpForYouEventsRefreshSignal(ref);
-    unawaited(refreshVisibleTopGames());
+    // A new live round can change both preview membership and which existing
+    // personalized event should bubble. Re-run the existing client ranking;
+    // do not move user-specific stars/favorite-player logic into the RPC.
+    _refreshFeedForLiveChange();
+  }
+
+  void _refreshFeedForLiveChange() {
+    _sessionEventOrder.clear();
+    _nextSessionEventOrder = 0;
+    if (_liveFeedRefreshScheduled) return;
+    _liveFeedRefreshScheduled = true;
+    Future.microtask(() {
+      _liveFeedRefreshScheduled = false;
+      if (mounted) {
+        unawaited(refresh());
+      }
+    });
   }
 
   Future<void> refreshVisibleTopGames() async {
@@ -281,7 +370,11 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         _queuedTopGamesRefresh = false;
         final visibleEvents = _topGamesRefreshCandidates(state.events);
         if (visibleEvents.isNotEmpty) {
-          await _prefetchTopGames(visibleEvents, replace: false);
+          await _prefetchTopGames(
+            visibleEvents,
+            replace: false,
+            refreshFavoritePlayerCounts: false,
+          );
         }
       } while (mounted && _queuedTopGamesRefresh);
     } finally {
@@ -316,7 +409,11 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     }
     if (model == null) return;
 
-    await _prefetchTopGames([model], replace: false);
+    await _prefetchTopGames(
+      [model],
+      replace: false,
+      refreshFavoritePlayerCounts: false,
+    );
   }
 
   List<GroupEventCardModel> _topGamesRefreshCandidates(
@@ -408,6 +505,20 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
       // Update state
       if (isInitial) {
+        final previousEventIds = state.events
+            .map((event) => event.id)
+            .toList(growable: false);
+        final nextEventIds = models
+            .map((event) => event.id)
+            .toList(growable: false);
+        if (previousEventIds.isNotEmpty &&
+            !_sameStringSet(previousEventIds, nextEventIds)) {
+          // A newly eligible event must enter through the existing
+          // user-specific star/favorite-player ranking, not be appended after
+          // the session-stable cards.
+          _sessionEventOrder.clear();
+          _nextSessionEventOrder = 0;
+        }
         state = ForYouState(
           events: _sortPageOnceForSession(models),
           isLoading: false,
@@ -435,6 +546,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       }
     } finally {
       _isFetching = false;
+      if (_queuedFeedRefresh && mounted) {
+        _queuedFeedRefresh = false;
+        Future.microtask(refresh);
+      }
     }
   }
 
@@ -499,6 +614,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> _prefetchTopGames(
     List<GroupEventCardModel> models, {
     required bool replace,
+    bool refreshFavoritePlayerCounts = true,
   }) async {
     final notifier = ref.read(forYouTopGamesSnapshotCacheProvider.notifier);
 
@@ -523,21 +639,23 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         eventIds: eventIds,
         boardsPerEvent: kGamesPerEvent,
       ),
-      _loadFavoritePlayerMatches(
-        gameRepository: gameRepository,
-        eventIds: eventIds,
-        allowOrderHydrationFinalize: replace && _sessionEventOrder.isEmpty,
-      ),
+      if (refreshFavoritePlayerCounts)
+        _loadFavoritePlayerMatches(
+          gameRepository: gameRepository,
+          eventIds: eventIds,
+          allowOrderHydrationFinalize: replace && _sessionEventOrder.isEmpty,
+        ),
     ]);
 
     final gamesByEventId = prefetchResults[0]! as Map<String, List<Games>>;
-    final favoritePlayerMatchesByEventId =
-        prefetchResults[1]! as Map<String, List<int>>;
-
-    _cacheFavoritePlayerMatches(
-      eventIds: eventIds,
-      matchesByEventId: favoritePlayerMatchesByEventId,
-    );
+    if (refreshFavoritePlayerCounts) {
+      final favoritePlayerMatchesByEventId =
+          prefetchResults[1]! as Map<String, List<int>>;
+      _cacheFavoritePlayerMatches(
+        eventIds: eventIds,
+        matchesByEventId: favoritePlayerMatchesByEventId,
+      );
+    }
 
     if (!mounted) return;
 
@@ -549,13 +667,14 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         ),
     };
 
-    notifier.state =
-        replace
-            ? snapshots
-            : <String, ForYouEventGamesSnapshot>{
-              ...notifier.state,
-              ...snapshots,
-            };
+    final merged = mergeForYouTopGameSnapshots(
+      current: notifier.state,
+      incoming: snapshots,
+      replace: replace,
+    );
+    if (!identical(merged, notifier.state)) {
+      notifier.state = merged;
+    }
   }
 
   Future<void> _refreshVisibleFavoritePlayerCounts({
