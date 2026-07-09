@@ -14,6 +14,7 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
+import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -114,11 +115,13 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
       final repo = _ref.read(chessPlayerRepositoryProvider);
       final offset = isInitial ? 0 : state.offset;
 
-      final players = await repo.getPlayersByCountry(
-        countryCode: countryCode,
-        searchQuery: state.isSearching ? state.searchQuery : null,
-        limit: _pageSize,
-        offset: offset,
+      final players = await retryTransientRead(
+        () => repo.getPlayersByCountry(
+          countryCode: countryCode,
+          searchQuery: state.isSearching ? state.searchQuery : null,
+          limit: _pageSize,
+          offset: offset,
+        ),
       );
 
       final playerModels =

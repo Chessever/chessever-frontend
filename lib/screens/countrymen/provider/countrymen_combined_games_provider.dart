@@ -2,6 +2,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:country_picker/country_picker.dart';
@@ -264,12 +265,14 @@ class CountrymenCombinedGamesNotifier
         '[CountrymenSearch] Searching for "$query" in country $fideCode',
       );
 
-      final games = await gameRepo.searchCountrymenGames(
-        countryCode: fideCode,
-        query: query,
-        filter: state.filter,
-        limit: _searchBatchSize,
-        offset: isInitial ? 0 : state.games.length,
+      final games = await retryTransientRead(
+        () => gameRepo.searchCountrymenGames(
+          countryCode: fideCode,
+          query: query,
+          filter: state.filter,
+          limit: _searchBatchSize,
+          offset: isInitial ? 0 : state.games.length,
+        ),
       );
 
       final newGames = <GamesTourModel>[];
@@ -336,11 +339,13 @@ class CountrymenCombinedGamesNotifier
 
       // Step 1: Get available dates if not cached
       if (_availableDates.isEmpty && _hasMoreDates) {
-        final dates = await gameRepo.getDistinctDatesForCountry(
-          countryCode: fideCode,
-          filter: state.filter,
-          limit: 30, // Get enough dates
-          offset: 0,
+        final dates = await retryTransientRead(
+          () => gameRepo.getDistinctDatesForCountry(
+            countryCode: fideCode,
+            filter: state.filter,
+            limit: 30, // Get enough dates
+            offset: 0,
+          ),
         );
         _availableDates = dates;
         _hasMoreDates = dates.length >= 30;
@@ -355,11 +360,13 @@ class CountrymenCombinedGamesNotifier
       if (datesToLoad.isEmpty) {
         // Try to get more dates
         if (_hasMoreDates) {
-          final moreDates = await gameRepo.getDistinctDatesForCountry(
-            countryCode: fideCode,
-            filter: state.filter,
-            limit: 30,
-            offset: _availableDates.length,
+          final moreDates = await retryTransientRead(
+            () => gameRepo.getDistinctDatesForCountry(
+              countryCode: fideCode,
+              filter: state.filter,
+              limit: 30,
+              offset: _availableDates.length,
+            ),
           );
           _availableDates.addAll(moreDates);
           _hasMoreDates = moreDates.length >= 30;
@@ -416,10 +423,12 @@ class CountrymenCombinedGamesNotifier
         '[CountrymenGames] Loading ALL games for ${date.toString().split(' ')[0]}',
       );
 
-      final dayGames = await gameRepo.getGamesByCountryAndDate(
-        countryCode: fideCode,
-        date: date,
-        filter: state.filter,
+      final dayGames = await retryTransientRead(
+        () => gameRepo.getGamesByCountryAndDate(
+          countryCode: fideCode,
+          date: date,
+          filter: state.filter,
+        ),
       );
 
       debugPrint(

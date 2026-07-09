@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
@@ -288,13 +289,15 @@ class FavoritesCombinedGamesNotifier
               .map((f) => f.fideId!.toString())
               .toList();
 
-      final games = await gameRepo.searchFavoritesGames(
-        fideIds: fideIds,
-        playerNames: [],
-        query: query,
-        filter: state.filter,
-        limit: _searchBatchSize,
-        offset: isInitial ? 0 : state.games.length,
+      final games = await retryTransientRead(
+        () => gameRepo.searchFavoritesGames(
+          fideIds: fideIds,
+          playerNames: [],
+          query: query,
+          filter: state.filter,
+          limit: _searchBatchSize,
+          offset: isInitial ? 0 : state.games.length,
+        ),
       );
 
       final newGames = <GamesTourModel>[];
@@ -379,11 +382,13 @@ class FavoritesCombinedGamesNotifier
 
       // Get available dates if not cached (day-based pagination)
       if (_availableDates.isEmpty && _hasMoreDates) {
-        final dates = await gameRepo.getDistinctDatesForFavorites(
-          fideIds: fideIds,
-          filter: state.filter,
-          limit: 30,
-          offset: 0,
+        final dates = await retryTransientRead(
+          () => gameRepo.getDistinctDatesForFavorites(
+            fideIds: fideIds,
+            filter: state.filter,
+            limit: 30,
+            offset: 0,
+          ),
         );
         _availableDates = dates;
         _hasMoreDates = dates.length >= 30;
@@ -398,11 +403,13 @@ class FavoritesCombinedGamesNotifier
       if (datesToLoad.isEmpty) {
         // Try to get more dates
         if (_hasMoreDates) {
-          final moreDates = await gameRepo.getDistinctDatesForFavorites(
-            fideIds: fideIds,
-            filter: state.filter,
-            limit: 30,
-            offset: _availableDates.length,
+          final moreDates = await retryTransientRead(
+            () => gameRepo.getDistinctDatesForFavorites(
+              fideIds: fideIds,
+              filter: state.filter,
+              limit: 30,
+              offset: _availableDates.length,
+            ),
           );
           _availableDates.addAll(moreDates);
           _hasMoreDates = moreDates.length >= 30;
@@ -461,10 +468,12 @@ class FavoritesCombinedGamesNotifier
         '[FavoritesGames] Loading ALL games for ${date.toString().split(' ')[0]}',
       );
 
-      final dayGames = await gameRepo.getGamesByFideIdsAndDate(
-        fideIds: fideIds,
-        date: date,
-        filter: state.filter,
+      final dayGames = await retryTransientRead(
+        () => gameRepo.getGamesByFideIdsAndDate(
+          fideIds: fideIds,
+          date: date,
+          filter: state.filter,
+        ),
       );
 
       debugPrint(
