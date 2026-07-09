@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/team_avg_elo.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +30,6 @@ void main() {
       );
       expect(url, contains('/team/'));
       expect(url, contains(Uri.encodeComponent('Team USA / A')));
-      // Opening pathSegments must round-trip the name.
       final uri = Uri.parse(url);
       expect(uri.pathSegments[0], 'broadcast');
       expect(uri.pathSegments[3], 'team');
@@ -49,26 +50,72 @@ void main() {
     });
   });
 
-  group('TeamStandingModel averageBoardPoints', () {
-    test('divides game points by boards played', () {
+  group('normalizeEventTimeControlBucket', () {
+    test('maps compact broadcast enums', () {
+      expect(normalizeEventTimeControlBucket('standard'), 'standard');
+      expect(normalizeEventTimeControlBucket('rapid'), 'rapid');
+      expect(normalizeEventTimeControlBucket('blitz'), 'blitz');
+    });
+
+    test('detects free-form clock strings', () {
+      expect(
+        normalizeEventTimeControlBucket('45 min + 10 sec'),
+        'standard', // no rapid/blitz token → classical default
+      );
+      expect(
+        normalizeEventTimeControlBucket('15+10 rapid'),
+        'rapid',
+      );
+      expect(normalizeEventTimeControlBucket('3+2 Blitz'), 'blitz');
+      expect(
+        normalizeEventTimeControlBucket('90min/40moves classical'),
+        'standard',
+      );
+    });
+  });
+
+  group('team average Elo', () {
+    test('averages positive standings ratings and ignores zeros', () {
       const team = TeamStandingModel(
-        teamName: 'A',
+        teamName: 'USA',
         rank: 1,
         matchPoints: 4,
-        gamePoints: 6.5,
+        gamePoints: 10,
         matchesWon: 2,
         matchesDrawn: 0,
         matchesLost: 0,
-        boardsPlayed: 10,
-        players: [],
+        boardsPlayed: 8,
+        players: [
+          PlayerStandingModel(
+            countryCode: 'USA',
+            name: 'A',
+            score: 2800,
+            scoreChange: 0,
+            matchScore: null,
+          ),
+          PlayerStandingModel(
+            countryCode: 'USA',
+            name: 'B',
+            score: 2700,
+            scoreChange: 0,
+            matchScore: null,
+          ),
+          PlayerStandingModel(
+            countryCode: 'USA',
+            name: 'C',
+            score: 0,
+            scoreChange: 0,
+            matchScore: null,
+          ),
+        ],
       );
-      expect(team.averageBoardPoints, closeTo(0.65, 1e-9));
-      expect(team.averageBoardPointsLabel, '0.65');
+      expect(teamAverageEloFromStandings(team), 2750);
+      expect(formatTeamAvgElo(2750), '2750');
     });
 
-    test('returns em dash when no boards played', () {
+    test('returns null when roster has no ratings', () {
       const team = TeamStandingModel(
-        teamName: 'B',
+        teamName: 'X',
         rank: 2,
         matchPoints: 0,
         gamePoints: 0,
@@ -76,25 +123,23 @@ void main() {
         matchesDrawn: 0,
         matchesLost: 0,
         boardsPlayed: 0,
-        players: [],
+        players: [
+          PlayerStandingModel(
+            countryCode: '',
+            name: 'Unknown',
+            score: 0,
+            scoreChange: 0,
+            matchScore: null,
+          ),
+        ],
       );
-      expect(team.averageBoardPoints, isNull);
-      expect(team.averageBoardPointsLabel, '—');
+      expect(teamAverageEloFromStandings(team), isNull);
+      expect(formatTeamAvgElo(null), '—');
     });
 
-    test('formats whole averages without trailing decimals', () {
-      const team = TeamStandingModel(
-        teamName: 'C',
-        rank: 1,
-        matchPoints: 2,
-        gamePoints: 4,
-        matchesWon: 1,
-        matchesDrawn: 0,
-        matchesLost: 0,
-        boardsPlayed: 4,
-        players: [],
-      );
-      expect(team.averageBoardPointsLabel, '1');
+    test('averagePositiveRatings rounds half up via round()', () {
+      expect(averagePositiveRatings([2700, 2701]), 2701);
+      expect(averagePositiveRatings(const <int>[]), isNull);
     });
   });
 }

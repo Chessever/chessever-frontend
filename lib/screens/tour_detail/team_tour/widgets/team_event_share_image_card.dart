@@ -28,12 +28,16 @@ class TeamEventShareImageCard extends StatelessWidget {
     required this.team,
     required this.eventName,
     required this.matches,
+    this.averageElo,
   });
 
   final double width;
   final TeamStandingModel team;
   final String? eventName;
   final List<TeamEventShareMatchRow> matches;
+
+  /// Mean roster Elo for the event time control (standard / rapid / blitz).
+  final int? averageElo;
 
   static const _bg = Color(0xFF0A0B0D);
   static const _surface = Color(0xFF15171C);
@@ -72,7 +76,7 @@ class TeamEventShareImageCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: _padH),
                   child: Text(
                     '${team.matchesWon} W  ·  ${team.matchesDrawn} D  ·  ${team.matchesLost} L'
-                    '${team.boardsPlayed > 0 ? '  ·  avg ${team.averageBoardPointsLabel}' : ''}',
+                    '${averageElo != null ? '  ·  avg elo $averageElo' : ''}',
                     style: AppTypography.textSmMedium.copyWith(color: _textMid),
                   ),
                 ),
@@ -259,7 +263,10 @@ class TeamEventShareImageCard extends StatelessWidget {
         const SizedBox(width: 8),
         tile('Board Pts', team.gamePointsLabel),
         const SizedBox(width: 8),
-        tile('Avg', team.averageBoardPointsLabel),
+        tile(
+          'Avg Elo',
+          averageElo != null ? averageElo.toString() : '—',
+        ),
       ],
     );
   }

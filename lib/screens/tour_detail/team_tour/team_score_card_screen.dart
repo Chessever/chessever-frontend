@@ -1,6 +1,7 @@
 import 'dart:io' as io;
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/standings/team_avg_elo.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -90,36 +91,18 @@ class TeamScoreCardScreen extends ConsumerWidget {
                     ),
                   ),
                   actions: [
-                    // Avg board score — fills the trailing slot so the bar
-                    // isn't empty next to share.
+                    // Average roster Elo for the event's time control
+                    // (standard / rapid / blitz) — not board-point average.
                     Padding(
                       padding: EdgeInsets.only(right: 4.w),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'AVG',
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: context.colors.textTertiary,
-                              fontSize: 9.sp,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                          Text(
-                            team.averageBoardPointsLabel,
-                            style: AppTypography.textSmBold.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: _TeamAvgEloLabel(team: team),
                     ),
                     if (shareUrl != null)
                       InkWell(
                         onTap:
                             () => _shareTeamScorecard(
                               context: context,
+                              ref: ref,
                               team: team,
                               matches: matches,
                               eventName: eventName,
@@ -388,8 +371,42 @@ class _RecordLine extends StatelessWidget {
   }
 }
 
+class _TeamAvgEloLabel extends ConsumerWidget {
+  const _TeamAvgEloLabel({required this.team});
+
+  final TeamStandingModel team;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(teamAvgEloProvider(team.teamName));
+    final avg =
+        async.valueOrNull ?? teamAverageEloFromStandings(team);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          'AVG ELO',
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textTertiary,
+            fontSize: 9.sp,
+            letterSpacing: 0.6,
+          ),
+        ),
+        Text(
+          formatTeamAvgElo(avg),
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 Future<void> _shareTeamScorecard({
   required BuildContext context,
+  required WidgetRef ref,
   required TeamStandingModel team,
   required List<TeamMatch> matches,
   required String? eventName,
@@ -406,6 +423,9 @@ Future<void> _shareTeamScorecard({
           result: m.result,
         ),
     ];
+    final avgElo =
+        ref.read(teamAvgEloProvider(team.teamName)).valueOrNull ??
+        teamAverageEloFromStandings(team);
 
     final imageBytes = await captureCardPng(
       context,
@@ -416,6 +436,7 @@ Future<void> _shareTeamScorecard({
         team: team,
         eventName: eventName,
         matches: matchRows,
+        averageElo: avgElo,
       ),
     );
     if (imageBytes == null) {
