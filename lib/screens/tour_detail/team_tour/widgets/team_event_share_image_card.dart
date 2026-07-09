@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -48,8 +49,31 @@ class TeamEventShareImageCard extends StatelessWidget {
   static const _textHi = Colors.white;
   static const _textMid = Color(0xFFAEB4BF);
   static const _textLo = Color(0xFF868C97);
+  static const _gold = kLightYellowColor;
   static const _padH = 22.0;
   static const footerSlogan = 'Follow Chess Better';
+
+  /// Compact share label: optional title + surname-first name, e.g. "GM Carlsen".
+  static String playerShareLabel(PlayerStandingModel player) {
+    final name = _presentName(player.name);
+    final title = player.title?.trim();
+    if (title != null && title.isNotEmpty) return '$title $name';
+    return name;
+  }
+
+  /// "Carlsen, Magnus" → "Carlsen"; "Magnus Carlsen" → "Carlsen" when multi-word.
+  /// Keeps full single-token names as-is. Prefer last-name weight for density.
+  static String _presentName(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return trimmed;
+    if (trimmed.contains(',')) {
+      return trimmed.split(',').first.trim();
+    }
+    final parts = trimmed.split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final list = parts.toList();
+    if (list.length >= 2) return list.last;
+    return trimmed;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,12 +90,12 @@ class TeamEventShareImageCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildHero(),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _padH),
                   child: _buildStats(),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _padH),
                   child: Text(
@@ -80,8 +104,15 @@ class TeamEventShareImageCard extends StatelessWidget {
                     style: AppTypography.textSmMedium.copyWith(color: _textMid),
                   ),
                 ),
+                if (team.players.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: _padH),
+                    child: _buildSquad(),
+                  ),
+                ],
                 if (matches.isNotEmpty) ...[
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: _padH),
                     child: Text(
@@ -92,13 +123,13 @@ class TeamEventShareImageCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: _padH),
                     child: Container(
                       decoration: BoxDecoration(
                         color: _surface,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: _hairline),
                       ),
                       child: Column(
@@ -116,12 +147,12 @@ class TeamEventShareImageCard extends StatelessWidget {
                     ),
                   ),
                 ],
-                const SizedBox(height: 22),
+                const SizedBox(height: 18),
                 Container(
                   color: const Color(0xFF07080B),
                   padding: const EdgeInsets.symmetric(
                     horizontal: _padH,
-                    vertical: 16,
+                    vertical: 14,
                   ),
                   child: Row(
                     children: [
@@ -146,6 +177,97 @@ class TeamEventShareImageCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Dense two-column squad grid: title + surname · rating.
+  Widget _buildSquad() {
+    final players = List<PlayerStandingModel>.from(team.players)
+      ..sort((a, b) {
+        if (b.score != a.score) return b.score.compareTo(a.score);
+        return a.name.compareTo(b.name);
+      });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'SQUAD',
+          style: AppTypography.textXsMedium.copyWith(
+            color: _textLo,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _hairline),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final gap = 8.0;
+              final colW = (constraints.maxWidth - gap) / 2;
+              return Wrap(
+                spacing: gap,
+                runSpacing: 5,
+                children: [
+                  for (final p in players)
+                    SizedBox(
+                      width: colW,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  if (p.title != null &&
+                                      p.title!.trim().isNotEmpty)
+                                    TextSpan(
+                                      text: '${p.title!.trim()} ',
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(
+                                            color: _gold,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                  TextSpan(
+                                    text: _presentName(p.name),
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: _textHi,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (p.score > 0) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              '${p.score}',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: _textMid,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -236,18 +358,18 @@ class TeamEventShareImageCard extends StatelessWidget {
   Widget _buildStats() {
     Widget tile(String label, String value) => Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: _surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
           children: [
             Text(
               value,
-              style: AppTypography.textLgBold.copyWith(color: _textHi),
+              style: AppTypography.textMdBold.copyWith(color: _textHi),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
               style: AppTypography.textXsMedium.copyWith(color: _textLo),
@@ -294,7 +416,7 @@ class _MatchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       child: Row(
         children: [
           Expanded(
@@ -302,40 +424,40 @@ class _MatchRow extends StatelessWidget {
               teamName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.textSmMedium.copyWith(
+              style: AppTypography.textXsMedium.copyWith(
                 color: TeamEventShareImageCard._textHi,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            margin: const EdgeInsets.symmetric(horizontal: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(7),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   row.ourPointsLabel,
-                  style: AppTypography.textSmBold.copyWith(
+                  style: AppTypography.textXsBold.copyWith(
                     color: _sideColor(true),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Text(
                     '–',
-                    style: AppTypography.textSmMedium.copyWith(
+                    style: AppTypography.textXsMedium.copyWith(
                       color: TeamEventShareImageCard._textLo,
                     ),
                   ),
                 ),
                 Text(
                   row.opponentPointsLabel,
-                  style: AppTypography.textSmBold.copyWith(
+                  style: AppTypography.textXsBold.copyWith(
                     color: _sideColor(false),
                   ),
                 ),
@@ -348,7 +470,7 @@ class _MatchRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
-              style: AppTypography.textSmMedium.copyWith(
+              style: AppTypography.textXsMedium.copyWith(
                 color: TeamEventShareImageCard._textMid,
               ),
             ),

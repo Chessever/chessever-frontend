@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/team_avg_elo.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_event_share_image_card.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -140,6 +141,36 @@ void main() {
     test('averagePositiveRatings rounds half up via round()', () {
       expect(averagePositiveRatings([2700, 2701]), 2701);
       expect(averagePositiveRatings(const <int>[]), isNull);
+    });
+  });
+
+  group('TeamEventShareImageCard player labels', () {
+    test('compact share label uses title and surname', () {
+      expect(
+        TeamEventShareImageCard.playerShareLabel(
+          const PlayerStandingModel(
+            countryCode: 'NOR',
+            title: 'GM',
+            name: 'Carlsen, Magnus',
+            score: 2830,
+            scoreChange: 0,
+            matchScore: null,
+          ),
+        ),
+        'GM Carlsen',
+      );
+      expect(
+        TeamEventShareImageCard.playerShareLabel(
+          const PlayerStandingModel(
+            countryCode: 'USA',
+            name: 'Fabiano Caruana',
+            score: 2780,
+            scoreChange: 0,
+            matchScore: null,
+          ),
+        ),
+        'Caruana',
+      );
     });
   });
 }
