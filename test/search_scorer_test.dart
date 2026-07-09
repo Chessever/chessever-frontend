@@ -163,6 +163,41 @@ void main() {
       expect(match.matchedText, '2026 Naroditsky Memorial');
     });
 
+    test('ranks direct event-name prefix matches above player-term events', () {
+      final memorialMatch = bestFlexibleEventSearchMatch(
+        query: 'naro',
+        name: '2026 Naroditsky Memorial',
+        aliases: const ['2026 Naroditsky Memorial | Rapid'],
+      );
+      final playerEventMatch = bestFlexibleEventSearchMatch(
+        query: 'naro',
+        name: 'CCT Chess.com Classic 2025',
+        aliases: const ['Naroditsky, Daniel'],
+      );
+
+      expect(memorialMatch.matchedText, '2026 Naroditsky Memorial');
+      expect(memorialMatch.score, greaterThan(playerEventMatch.score));
+    });
+
+    test('keeps surname-named event text above the same player-term hit', () {
+      final memorialMatch = bestFlexibleEventSearchMatch(
+        query: 'daniel naroditsky',
+        name: '2026 Naroditsky Memorial',
+        aliases: const [
+          '2026 Naroditsky Memorial Rapid & Blitz',
+          'Naroditsky, Daniel',
+        ],
+      );
+      final playerEventMatch = bestFlexibleEventSearchMatch(
+        query: 'daniel naroditsky',
+        name: 'CCT Chess.com Classic 2025',
+        aliases: const ['Naroditsky, Daniel'],
+      );
+
+      expect(memorialMatch.matchedText, '2026 Naroditsky Memorial');
+      expect(memorialMatch.score, greaterThan(playerEventMatch.score));
+    });
+
     test('does not surface generic event titles from country/team aliases', () {
       final match = bestFlexibleEventSearchMatch(
         query: 'norway chess',

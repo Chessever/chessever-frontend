@@ -131,14 +131,12 @@ class TeamScoreCardScreen extends ConsumerWidget {
                   SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
                       return Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          horizontalPadding,
-                          0,
-                          horizontalPadding,
-                          10.h,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding,
                         ),
                         child: TeamRoundGroup(
                           match: matches[index],
+                          teamName: team.teamName,
                           index: index,
                         ),
                       );

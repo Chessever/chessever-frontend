@@ -453,30 +453,44 @@ SearchScoreMatch bestFlexibleEventSearchMatch({
   required String name,
   Iterable<String> aliases = const [],
 }) {
-  final titleMatch = SearchScorer.bestTournamentMatch(
-    query: query,
-    name: name,
-    aliases: aliases,
-  );
   final playerTermMatch = bestPlayerSearchTermMatch(
     query: query,
     searchTerms: aliases,
+  );
+  final titleMatch = _prioritizeEventTextMatch(
+    SearchScorer.bestTournamentMatch(
+      query: query,
+      name: name,
+      aliases: aliases,
+    ),
   );
   final namedTitleMatch = _bestNamedEventTitleTokenMatch(
     query: query,
     name: name,
     aliases: aliases,
   );
+  final prioritizedNamedTitleMatch = _prioritizeEventTextMatch(namedTitleMatch);
 
   var bestMatch = titleMatch;
   if (playerTermMatch.score > bestMatch.score) {
     bestMatch = playerTermMatch;
   }
-  if (namedTitleMatch.score > bestMatch.score) {
-    bestMatch = namedTitleMatch;
+  if (prioritizedNamedTitleMatch.score > bestMatch.score) {
+    bestMatch = prioritizedNamedTitleMatch;
   }
 
   return bestMatch;
+}
+
+SearchScoreMatch _prioritizeEventTextMatch(SearchScoreMatch match) {
+  const eventTextMatchPriorityFloor = 91.0;
+  if (match.score <= 0 || match.score >= eventTextMatchPriorityFloor) {
+    return match;
+  }
+  return SearchScoreMatch(
+    score: eventTextMatchPriorityFloor,
+    matchedText: match.matchedText,
+  );
 }
 
 SearchScoreMatch bestPlayerSearchTermMatch({

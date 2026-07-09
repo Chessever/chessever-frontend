@@ -201,7 +201,11 @@ class _TeamExpansion extends ConsumerWidget {
             )
           else
             for (var i = 0; i < matches.length; i++)
-              TeamRoundGroup(match: matches[i], index: i),
+              TeamRoundGroup(
+                match: matches[i],
+                teamName: team.teamName,
+                index: i,
+              ),
         ],
       ),
     );

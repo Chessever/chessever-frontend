@@ -242,3 +242,6 @@ fastlane/test_output
 fastlane/.env*
 **/fastlane/Appfile
 **/fastlane/metadata
+
+# Local brainstorm visual companion sessions
+.superpowers/

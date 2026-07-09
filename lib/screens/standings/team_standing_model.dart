@@ -41,6 +41,6 @@ class TeamStandingModel {
           ? gamePoints.toInt().toString()
           : gamePoints.toStringAsFixed(1);
 
-  /// "W-D-L" record over completed matches.
-  String get recordLabel => '$matchesWon-$matchesDrawn-$matchesLost';
+  /// "W · D · L" record over completed matches.
+  String get recordLabel => '$matchesWon · $matchesDrawn · $matchesLost';
 }

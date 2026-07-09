@@ -104,14 +104,14 @@ class FigmaTeamCard extends StatelessWidget {
                                       color: kGreenColor2,
                                     ),
                                   ),
-                                  const TextSpan(text: '-'),
+                                  const TextSpan(text: ' · '),
                                   TextSpan(
                                     text: '${team.matchesDrawn}',
                                     style: AppTypography.textSmMedium.copyWith(
                                       color: _drawGrey,
                                     ),
                                   ),
-                                  const TextSpan(text: '-'),
+                                  const TextSpan(text: ' · '),
                                   TextSpan(
                                     text: '${team.matchesLost}',
                                     style: AppTypography.textSmMedium.copyWith(

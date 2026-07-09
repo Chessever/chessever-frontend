@@ -10758,6 +10758,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   String? _lastSignature;
   ChessMovePointer? _lastPointer;
 
+  /// Custom double-tap tracking for notation comments.
+  ///
+  /// Flutter's [GestureDetector.onDoubleTap] is unreliable inside the notation
+  /// [SingleChildScrollView] (drag recognizers win the arena). We detect a
+  /// second tap on the same comment id within [_commentDoubleTapTimeout]
+  /// ourselves so an intentional double-tap always opens the editor.
+  static const Duration _commentDoubleTapTimeout = Duration(milliseconds: 400);
+  DateTime? _lastCommentTapTime;
+  String? _lastCommentTapId;
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -11810,6 +11820,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   /// Editorial block-quote for a comment — full-width, depth-colored left
   /// rail, soft white wash. Long comments fold to a "Read more" toggle.
+  ///
+  /// Edit is **double-tap or long-press** — never a lone single-tap. Single-tap
+  /// used to open the editor for short comments and mistapped when users aimed
+  /// for the bottom-nav → control under a full-width comment. Long comments
+  /// still expand/collapse on a confirmed single tap; short ones ignore it.
   Widget _buildCommentBlock(
     NotationDisplayToken token,
     ChessBoardProviderParams params,
@@ -11832,22 +11847,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       seed: token.variationColorKey ?? token.variation?.id,
     );
 
+    void openEditor() {
+      HapticFeedback.mediumImpact();
+      _editNotationComment(token, params, fullText);
+    }
+
     return Padding(
       padding: EdgeInsets.only(top: 5.sp, bottom: 5.sp),
       child: GestureDetector(
+        // Full block is tappable (double-tap / long-press). Single-tap never
+        // opens the editor, so accidental hits while aiming for → stay harmless.
         behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.lightImpact();
-          if (isLong) {
-            _toggleCommentExpansion(id, isExpanded);
-          } else {
-            _editNotationComment(token, params, fullText);
-          }
-        },
-        onLongPress: () {
-          HapticFeedback.mediumImpact();
-          _editNotationComment(token, params, fullText);
-        },
+        onTap:
+            () => _handleCommentTap(
+              id: id,
+              isLong: isLong,
+              isExpanded: isExpanded,
+              openEditor: openEditor,
+            ),
+        onLongPress: openEditor,
         child: Container(
           width: double.infinity,
           padding: EdgeInsets.fromLTRB(11.sp, 8.sp, 11.sp, 8.sp),
@@ -11889,6 +11907,46 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ),
       ),
     );
+  }
+
+  /// Resolves single vs double tap on a notation comment without relying on
+  /// [GestureDetector.onDoubleTap] (unreliable under vertical scroll views).
+  void _handleCommentTap({
+    required String id,
+    required bool isLong,
+    required bool isExpanded,
+    required VoidCallback openEditor,
+  }) {
+    final now = DateTime.now();
+    final isDoubleTap =
+        _lastCommentTapId == id &&
+        _lastCommentTapTime != null &&
+        now.difference(_lastCommentTapTime!) <= _commentDoubleTapTimeout;
+
+    if (isDoubleTap) {
+      _lastCommentTapId = null;
+      _lastCommentTapTime = null;
+      openEditor();
+      return;
+    }
+
+    _lastCommentTapId = id;
+    _lastCommentTapTime = now;
+
+    // Short comments: single tap is a no-op (avoids → mistaps).
+    // Long comments: expand only after the double-tap window expires so a
+    // second tap can still open the editor instead of toggling expand twice.
+    if (!isLong) return;
+
+    final scheduledFor = now;
+    Future<void>.delayed(_commentDoubleTapTimeout, () {
+      if (!mounted) return;
+      if (_lastCommentTapId != id || _lastCommentTapTime != scheduledFor) {
+        return;
+      }
+      HapticFeedback.lightImpact();
+      _toggleCommentExpansion(id, isExpanded);
+    });
   }
 
   Widget _buildLichessCommentBlock(NotationDisplayToken token) {
