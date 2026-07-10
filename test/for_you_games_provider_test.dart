@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
@@ -196,7 +198,7 @@ void main() {
   });
 
   group('For You automatic freshness', () {
-    test('fresh feed heartbeat refreshes only top-game membership', () {
+    test('fresh visibility refresh updates only top-game membership', () {
       final now = DateTime.utc(2026, 7, 10, 12);
 
       expect(
@@ -209,7 +211,7 @@ void main() {
       );
     });
 
-    test('stale feed heartbeat refreshes the full ordered feed', () {
+    test('stale visibility refresh updates the full ordered feed', () {
       final now = DateTime.utc(2026, 7, 10, 12);
 
       expect(
@@ -222,42 +224,27 @@ void main() {
       );
     });
 
-    test('heartbeat runs only while For You is visible and resumed', () {
+    test('For You does not attach RPC work to the periodic live resolver', () {
+      final widgetSource =
+          File(
+            'lib/screens/group_event/widget/for_you_games_widget.dart',
+          ).readAsStringSync();
+      final resolverSource =
+          File(
+            'lib/screens/group_event/providers/live_group_broadcast_id_provider.dart',
+          ).readAsStringSync();
+
       expect(
-        shouldRunForYouHeartbeat(
-          isForYouSelected: true,
-          routeIsCurrent: true,
-          appIsResumed: true,
-        ),
-        isTrue,
+        widgetSource,
+        isNot(contains('liveGroupBroadcastRefreshTickProvider')),
       );
       expect(
-        shouldRunForYouHeartbeat(
-          isForYouSelected: false,
-          routeIsCurrent: true,
-          appIsResumed: true,
-        ),
-        isFalse,
-      );
-      expect(
-        shouldRunForYouHeartbeat(
-          isForYouSelected: true,
-          routeIsCurrent: false,
-          appIsResumed: true,
-        ),
-        isFalse,
-      );
-      expect(
-        shouldRunForYouHeartbeat(
-          isForYouSelected: true,
-          routeIsCurrent: true,
-          appIsResumed: false,
-        ),
-        isFalse,
+        resolverSource,
+        isNot(contains('liveGroupBroadcastRefreshTickProvider')),
       );
     });
 
-    test('unchanged heartbeat snapshots preserve cache identity', () {
+    test('unchanged refreshed snapshots preserve cache identity', () {
       final current = <String, ForYouEventGamesSnapshot>{
         'event-1': _snapshot('event-1', visibleGames: [_game('game-1')]),
       };
@@ -274,7 +261,7 @@ void main() {
       expect(identical(merged, current), isTrue);
     });
 
-    test('heartbeat snapshots replace only changed event entries', () {
+    test('refreshed snapshots replace only changed event entries', () {
       final event1 = _snapshot('event-1', visibleGames: [_game('game-1')]);
       final event2 = _snapshot('event-2', visibleGames: [_game('game-2')]);
       final current = <String, ForYouEventGamesSnapshot>{

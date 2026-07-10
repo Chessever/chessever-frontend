@@ -40,15 +40,15 @@ placeholder filtering, and live-round/fallback-round discovery stay unchanged.
 The database change adds a computed boolean/integer sort key to candidate rows
 already loaded by the RPC. It introduces no table scan, join, response field,
 or payload expansion. The existing RPC limit continues to reduce the payload
-before it reaches Flutter. Automatic freshness adds one batched top-games call
-per minute only while For You is visible; unchanged snapshots do not rebuild.
+before it reaches Flutter. Automatic freshness is event- and visibility-driven;
+there is no recurring For You RPC or periodic cache replacement.
 
 ## Realtime behavior
 
 The existing frontend remains responsible for streaming FEN/position, clocks,
 last move, and completion status for selected cards. No Realtime publication
 or subscription changes. Refresh coordination only reselects card IDs and
-event membership at bounded intervals or on actual live-set changes.
+event membership on visibility changes or actual live-set changes.
 
 ## Automatic freshness follow-up
 
@@ -56,19 +56,18 @@ The event feed remains personalized on-device. Starred events and favorite-
 player counts are user-specific, so the existing client ranking stays intact;
 they are not passed into or recomputed by the feed RPC.
 
-For You piggybacks the existing strict-live resolver's one-minute timer. It
-adds no timer and no Realtime channel. While the For You route is selected,
-current, and foregrounded, each tick performs one batched top-games RPC for
-eligible events. It does not refetch favorite-player counts. The full event
-feed remains capped at one refresh per five minutes.
+The existing strict-live resolver keeps its own timer solely for live-indicator
+resolution. For You does not listen to that timer and performs no periodic RPC,
+cache replacement, sorting, or widget work. This avoids decoding and merging a
+large top-games payload on Flutter's main isolate while the user is scrolling.
 
-Tab activation and route return immediately refresh top-game membership. App
-resume continues to force the full catch-up path. An actual live event, tour,
-or round-set change clears the session-order cache and re-runs the existing
-client personalization once, allowing newly eligible starred/hearted events to
-bubble without continuous sorting.
+Tab activation and route return immediately refresh top-game membership, using
+the full feed only when it is stale. App resume forces the full catch-up path.
+An actual live event, tour, or round-set change clears the session-order cache
+and re-runs the existing client personalization once, allowing newly eligible
+starred/hearted events to bubble without continuous sorting.
 
-Heartbeat results are diffed against the snapshot cache. Equivalent snapshots
+Refreshed results are diffed against the snapshot cache. Equivalent snapshots
 reuse the existing object and do not notify widgets; only events whose selected
 boards changed rebuild. Card FEN/position and clock streams are unchanged.
 
@@ -83,8 +82,9 @@ boards changed rebuild. Card FEN/position and clock streams are unchanged.
   numbers.
 - Run Supabase security and performance advisors and confirm this function
   remains `security invoker` and executable only by `authenticated`.
-- Test the one-minute/five-minute refresh decision and visible-route gating.
-- Test that equivalent heartbeat snapshots preserve cache identity and changed
+- Test visibility refresh decisions and enforce that the periodic live resolver
+  cannot trigger For You RPC work.
+- Test that equivalent refreshed snapshots preserve cache identity and changed
   events replace only their own cache entry.
 - Run scoped `flutter analyze --no-pub` on every touched Flutter/test file.
 
@@ -93,5 +93,5 @@ boards changed rebuild. Card FEN/position and clock streams are unchanged.
 - No new frontend ranking algorithm or backend event personalization.
 - No replacement of the existing user-specific client ranking.
 - No changes to game-card streaming, clocks, or position updates.
-- No per-move RPC refresh or background/off-route heartbeat work.
+- No per-move, timer-driven, background, or off-route RPC refresh work.
 - No schema, RLS, index, or response-shape changes.

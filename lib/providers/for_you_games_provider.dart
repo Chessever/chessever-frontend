@@ -67,14 +67,6 @@ ForYouVisibilityRefresh resolveForYouVisibilityRefresh({
   return ForYouVisibilityRefresh.topGames;
 }
 
-bool shouldRunForYouHeartbeat({
-  required bool isForYouSelected,
-  required bool routeIsCurrent,
-  required bool appIsResumed,
-}) {
-  return isForYouSelected && routeIsCurrent && appIsResumed;
-}
-
 @visibleForTesting
 List<GroupBroadcast> mergeMissingFavoriteCurrentBroadcasts({
   required List<GroupBroadcast> pageBroadcasts,
@@ -315,9 +307,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     await _fetchPage(isInitial: false);
   }
 
-  /// Refresh board membership whenever For You becomes visible or receives
-  /// its existing one-minute liveness heartbeat. The heavier ordered event
-  /// page remains capped at one refresh per [_kForYouStaleThreshold].
+  /// Refresh board membership when For You becomes visible. The heavier
+  /// ordered event page is fetched only when the existing feed is older than
+  /// [_kForYouStaleThreshold]. Live-set listeners handle in-place transitions.
   Future<void> refreshForVisibility({
     Duration maxFeedAge = _kForYouStaleThreshold,
   }) async {
