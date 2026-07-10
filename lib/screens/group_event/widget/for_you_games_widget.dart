@@ -79,6 +79,7 @@ class ForYouGamesWidget extends ConsumerStatefulWidget {
 
 class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
+  late final StateController<bool> _surfaceVisibilityController;
   bool _routeSubscribed = false;
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
@@ -87,6 +88,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   @override
   void initState() {
     super.initState();
+    _surfaceVisibilityController = ref.read(
+      forYouSurfaceVisibleProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -112,7 +116,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   @override
   void dispose() {
     _isDisposing = true;
-    ref.read(forYouSurfaceVisibleProvider.notifier).state = false;
+    _surfaceVisibilityController.state = false;
     widget.scrollController.removeListener(_onScroll);
     if (_routeSubscribed) {
       pageRouteObserver.unsubscribe(this);
