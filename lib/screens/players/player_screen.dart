@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_loading.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -20,6 +23,10 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'widgets/player_card.dart';
 import 'providers/player_providers.dart';
+
+enum _PlayerDirectoryFilter { all, favorites }
+
+enum _PlayerDirectorySort { ranking, name, rating }
 
 class PlayerListScreen extends ConsumerStatefulWidget {
   const PlayerListScreen({super.key});
@@ -34,6 +41,8 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
   final double _scrollThreshold = 200.0;
   Timer? _searchAnalyticsTimer;
   bool _searchExpanded = false;
+  _PlayerDirectoryFilter _filter = _PlayerDirectoryFilter.all;
+  _PlayerDirectorySort _sort = _PlayerDirectorySort.ranking;
 
   @override
   void initState() {
@@ -82,92 +91,180 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
   Widget build(BuildContext context) {
     ref.watch(playerInitializationProvider);
 
-    // Tablet-specific padding
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
     );
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(14) * 1.2;
+    final controlHeight = (scaledLabelHeight + 20).clamp(48.0, 72.0);
 
-    return ScreenWrapper(
-      child: Scaffold(
-        key: e2eKey(E2eIds.playersRoot),
-        backgroundColor: Colors.transparent,
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
-            ),
-            child: Column(
-              children: [
-                GlassIslandTopBar(
-                  horizontalPadding: horizontalPadding,
-                  center: GlassIslandSearch(
-                    controller: _searchController,
-                    expanded: _searchExpanded,
-                    textFieldKey: e2eKey(E2eIds.playersSearchField),
-                    hintText: 'Search Player',
-                    onExpandedChanged:
-                        (v) => setState(() => _searchExpanded = v),
-                    onChanged: (_) {},
-                    onClear: () {
-                      _searchController.clear();
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    horizontalPadding,
-                    0,
-                    horizontalPadding,
-                    8.sp,
-                  ),
-                  child: DefaultTextStyle(
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              'Player',
-                              style: AppTypography.textSmMedium,
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: Text(
-                              'Elo',
-                              style: AppTypography.textSmMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: Text(
-                              'Age',
-                              style: AppTypography.textSmMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          SizedBox(width: 30.w),
-                        ],
+    return GlassFullScreenPage(
+      key: e2eKey(E2eIds.playersRoot),
+      backgroundColor: context.colors.background,
+      contentPadding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        controlHeight * 2 + 26,
+        horizontalPadding,
+        8,
+      ),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: GlassIslandStack(
+        key: const ValueKey<String>('players-floating-controls'),
+        includeStatusBar: false,
+        gap: 6,
+        children: [
+          GlassIslandTopBar(
+            topPadding: 0,
+            height: controlHeight,
+            horizontalPadding: horizontalPadding,
+            title:
+                _searchExpanded
+                    ? null
+                    : Semantics(
+                      header: true,
+                      child: _DirectoryChip(
+                        label: 'Players',
+                        controlHeight: controlHeight,
                       ),
                     ),
-                  ),
-
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                    child: _PlayerList(
-                      scrollController: _scrollController,
-                      searchController: _searchController,
-                    ),
-                  ),
-                ),
-              ],
+            center: Semantics(
+              label:
+                  _searchExpanded ? 'Search players field' : 'Search players',
+              button: !_searchExpanded,
+              textField: _searchExpanded,
+              child: GlassIslandSearch(
+                controller: _searchController,
+                expanded: _searchExpanded,
+                textFieldKey: e2eKey(E2eIds.playersSearchField),
+                hintText: 'Search players',
+                collapsedSize: controlHeight,
+                expandedHeight: controlHeight,
+                onExpandedChanged:
+                    (expanded) => setState(() => _searchExpanded = expanded),
+                onChanged: (_) {},
+                onClear: _searchController.clear,
+              ),
             ),
+          ),
+          _buildDirectoryControls(
+            horizontalPadding: horizontalPadding,
+            controlHeight: controlHeight,
+          ),
+        ],
+      ),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: _PlayerList(
+            scrollController: _scrollController,
+            searchController: _searchController,
+            filter: _filter,
+            sort: _sort,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDirectoryControls({
+    required double horizontalPadding,
+    required double controlHeight,
+  }) {
+    final filterLabel =
+        _filter == _PlayerDirectoryFilter.all ? 'All players' : 'Favorites';
+    final sortLabel = switch (_sort) {
+      _PlayerDirectorySort.ranking => 'Rank',
+      _PlayerDirectorySort.name => 'Player',
+      _PlayerDirectorySort.rating => 'Elo',
+    };
+
+    return SingleChildScrollView(
+      key: const ValueKey<String>('players-floating-control-rail'),
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: Row(
+        children: [
+          _DirectoryChip(
+            label: filterLabel,
+            controlHeight: controlHeight,
+            selected: _filter == _PlayerDirectoryFilter.favorites,
+            semanticsLabel: 'Filter players, $filterLabel',
+            onTap: () {
+              setState(() {
+                _filter =
+                    _filter == _PlayerDirectoryFilter.all
+                        ? _PlayerDirectoryFilter.favorites
+                        : _PlayerDirectoryFilter.all;
+              });
+            },
+          ),
+          const SizedBox(width: 8),
+          _DirectoryChip(
+            label: 'Sort · $sortLabel',
+            controlHeight: controlHeight,
+            semanticsLabel: 'Sort players by $sortLabel',
+            onTap: () {
+              setState(() {
+                _sort = switch (_sort) {
+                  _PlayerDirectorySort.ranking => _PlayerDirectorySort.name,
+                  _PlayerDirectorySort.name => _PlayerDirectorySort.rating,
+                  _PlayerDirectorySort.rating => _PlayerDirectorySort.ranking,
+                };
+              });
+            },
+          ),
+          const SizedBox(width: 8),
+          _DirectoryChip(
+            label: 'Player · Elo · Age',
+            controlHeight: controlHeight,
+            semanticsLabel: 'Columns: Player, Elo, Age',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectoryChip extends StatelessWidget {
+  const _DirectoryChip({
+    required this.label,
+    required this.controlHeight,
+    this.selected = false,
+    this.semanticsLabel,
+    this.onTap,
+  });
+
+  final String label;
+  final double controlHeight;
+  final bool selected;
+  final String? semanticsLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = GlassMotion.reduceMotion(context);
+    return Semantics(
+      button: onTap != null,
+      selected: onTap == null ? null : selected,
+      label: semanticsLabel ?? label,
+      onTap: onTap,
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: controlHeight),
+          child: GlassChip(
+            label: label,
+            selected: selected,
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            labelStyle: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            interactionScale: reduceMotion ? 1 : 1.03,
+            stretch: reduceMotion ? 0 : 0.3,
+            onTap: onTap,
           ),
         ),
       ),
@@ -178,10 +275,14 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
 class _PlayerList extends ConsumerWidget {
   final ScrollController scrollController;
   final TextEditingController searchController;
+  final _PlayerDirectoryFilter filter;
+  final _PlayerDirectorySort sort;
 
   const _PlayerList({
     required this.scrollController,
     required this.searchController,
+    required this.filter,
+    required this.sort,
   });
 
   Future<void> _handleRefresh(WidgetRef ref) async {
@@ -194,7 +295,8 @@ class _PlayerList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playersState = ref.watch(playerPaginationProvider);
-    final filteredPlayers = ref.watch(filteredPlayersProvider);
+    final players = ref.watch(filteredPlayersProvider);
+    final filteredPlayers = _visiblePlayers(players);
     final notifier = ref.read(playerPaginationProvider.notifier);
 
     return RefreshIndicator(
@@ -203,10 +305,7 @@ class _PlayerList extends ConsumerWidget {
       displacement: 40.0,
       onRefresh: () => _handleRefresh(ref),
       child: playersState.when(
-        loading:
-            () =>  Center(
-              child: const GlassLoading.circular(size: 28),
-            ),
+        loading: () => Center(child: const GlassLoading.circular(size: 28)),
         error: (error, stack) {
           return RefreshIndicator(
             onRefresh: () => _handleRefresh(ref),
@@ -228,7 +327,9 @@ class _PlayerList extends ConsumerWidget {
                       Text(
                         'Pull down to retry',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.7),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.7,
+                          ),
                         ),
                       ),
                     ],
@@ -260,7 +361,9 @@ class _PlayerList extends ConsumerWidget {
                         Text(
                           'Pull down to refresh',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.7),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.7,
+                            ),
                           ),
                         ),
                       ],
@@ -277,7 +380,7 @@ class _PlayerList extends ConsumerWidget {
             itemCount: filteredPlayers.length + (notifier.hasMore ? 1 : 0),
             itemBuilder: (context, index) {
               if (index >= filteredPlayers.length) {
-                return  Center(
+                return Center(
                   child: Padding(
                     padding: EdgeInsets.all(16.0),
                     child: const GlassLoading.circular(size: 28),
@@ -297,6 +400,7 @@ class _PlayerList extends ConsumerWidget {
                 onBeforeToggle: () async {
                   final authOk = await requireFullAuthGuard(context);
                   if (!authOk) return false;
+                  if (!context.mounted) return false;
                   // Check limit if adding (not currently favorite)
                   if (player['isFavorite'] != true) {
                     return await canAddMoreFavorites(context, ref);
@@ -305,10 +409,10 @@ class _PlayerList extends ConsumerWidget {
                 },
                 onFavoriteToggle:
                     () => _toggleFavorite(
-                          context,
-                          ref,
-                          player['fideId'].toString(),
-                        ),
+                      context,
+                      ref,
+                      player['fideId'].toString(),
+                    ),
                 index: index,
                 isFirst: index == 0,
                 isLast: index == filteredPlayers.length - 1,
@@ -318,6 +422,33 @@ class _PlayerList extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _visiblePlayers(
+    List<Map<String, dynamic>> players,
+  ) {
+    final visible =
+        filter == _PlayerDirectoryFilter.favorites
+            ? players.where((player) => player['isFavorite'] == true).toList()
+            : List<Map<String, dynamic>>.of(players);
+
+    switch (sort) {
+      case _PlayerDirectorySort.ranking:
+        return visible;
+      case _PlayerDirectorySort.name:
+        visible.sort((a, b) {
+          final aName = a['name']?.toString().toLowerCase() ?? '';
+          final bName = b['name']?.toString().toLowerCase() ?? '';
+          return aName.compareTo(bName);
+        });
+      case _PlayerDirectorySort.rating:
+        visible.sort((a, b) {
+          final aRating = a['rating'] as int? ?? 0;
+          final bRating = b['rating'] as int? ?? 0;
+          return bRating.compareTo(aRating);
+        });
+    }
+    return visible;
   }
 
   void _toggleFavorite(
