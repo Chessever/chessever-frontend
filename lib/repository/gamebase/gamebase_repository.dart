@@ -599,6 +599,731 @@ String? _cleanMiniatureDate(String? value) {
   return (from: from, to: to);
 }
 
+enum GamebaseStudySort {
+  score,
+  recent,
+  name,
+  chapters,
+  created;
+
+  String get apiValue => switch (this) {
+    GamebaseStudySort.score => 'score',
+    GamebaseStudySort.recent => 'recent',
+    GamebaseStudySort.name => 'name',
+    GamebaseStudySort.chapters => 'chapters',
+    GamebaseStudySort.created => 'created',
+  };
+}
+
+enum GamebaseStudySortOrder {
+  asc,
+  desc;
+
+  String get apiValue => name;
+}
+
+enum GamebaseStudyStatus {
+  active,
+  gone;
+
+  static GamebaseStudyStatus fromApiValue(Object? value) {
+    final normalized = _readRequiredStudyString(value, 'status').toLowerCase();
+    return switch (normalized) {
+      'active' => GamebaseStudyStatus.active,
+      'gone' => GamebaseStudyStatus.gone,
+      _ =>
+        throw GamebaseStudyContractException(
+          'Invalid Study field "status": $normalized.',
+        ),
+    };
+  }
+}
+
+enum GamebaseStudySource { lichess }
+
+/// Current redistribution knowledge for mirrored Study chapter content.
+///
+/// The existing API supplies no explicit rights metadata, so current responses
+/// always use [unknown]. A future backend contract must opt into any stronger
+/// capability explicitly.
+enum GamebaseStudyRedistributionCapability { unknown, allowed, prohibited }
+
+/// Version and rights facts required before mirrored chapter content can open.
+class GamebaseStudyContentCapabilities {
+  const GamebaseStudyContentCapabilities({
+    required this.contentVersion,
+    required this.rights,
+    required this.redistribution,
+    required this.canOpenMirroredChapterInApp,
+  });
+
+  static const unavailable = GamebaseStudyContentCapabilities(
+    contentVersion: null,
+    rights: null,
+    redistribution: GamebaseStudyRedistributionCapability.unknown,
+    canOpenMirroredChapterInApp: false,
+  );
+
+  final String? contentVersion;
+  final String? rights;
+  final GamebaseStudyRedistributionCapability redistribution;
+  final bool canOpenMirroredChapterInApp;
+}
+
+class GamebaseStudyContractException implements Exception {
+  const GamebaseStudyContractException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'GamebaseStudyContractException: $message';
+}
+
+class GamebaseStudyRequestException implements Exception {
+  const GamebaseStudyRequestException({
+    required this.operation,
+    required this.message,
+    this.statusCode,
+    this.cause,
+  });
+
+  final String operation;
+  final String message;
+  final int? statusCode;
+  final Object? cause;
+
+  bool get isNotFound => statusCode == 404;
+
+  @override
+  String toString() {
+    final status = statusCode == null ? '' : ' ($statusCode)';
+    return 'GamebaseStudyRequestException: $operation$status: $message';
+  }
+}
+
+/// Exact current filter contract for `GET /api/studies`.
+class GamebaseStudiesFilter {
+  const GamebaseStudiesFilter({
+    this.sort = GamebaseStudySort.score,
+    this.order = GamebaseStudySortOrder.desc,
+    this.search,
+    this.ecos = const <String>{},
+    this.ecoCategories = const <String>{},
+    this.openings = const <String>{},
+    this.variants = const <String>{},
+    this.chapterModes = const <String>{},
+    this.players = const <String>{},
+    this.gamebook,
+    this.customPositions,
+    this.hasAnnotations,
+    this.minViews,
+    this.minChapters,
+  });
+
+  static const defaultFilter = GamebaseStudiesFilter();
+
+  final GamebaseStudySort sort;
+  final GamebaseStudySortOrder order;
+  final String? search;
+  final Set<String> ecos;
+  final Set<String> ecoCategories;
+  final Set<String> openings;
+  final Set<String> variants;
+  final Set<String> chapterModes;
+  final Set<String> players;
+  final bool? gamebook;
+  final bool? customPositions;
+  final bool? hasAnnotations;
+  final int? minViews;
+  final int? minChapters;
+
+  Map<String, dynamic> queryParameters({
+    required int limit,
+    required int offset,
+  }) {
+    if (limit < 1 || limit > 100) {
+      throw RangeError.range(limit, 1, 100, 'limit');
+    }
+    if (offset < 0 || offset > 1000000) {
+      throw RangeError.range(offset, 0, 1000000, 'offset');
+    }
+    final normalizedMinViews = minViews;
+    if (normalizedMinViews != null && normalizedMinViews < 0) {
+      throw RangeError.value(
+        normalizedMinViews,
+        'minViews',
+        'Must be non-negative.',
+      );
+    }
+    final normalizedMinChapters = minChapters;
+    if (normalizedMinChapters != null && normalizedMinChapters < 0) {
+      throw RangeError.value(
+        normalizedMinChapters,
+        'minChapters',
+        'Must be non-negative.',
+      );
+    }
+
+    final query = <String, dynamic>{
+      'sort': sort.apiValue,
+      'order': order.apiValue,
+      'limit': limit,
+      'offset': offset,
+    };
+
+    final normalizedSearch = _cleanStudyText(search);
+    if (normalizedSearch != null) query['q'] = normalizedSearch;
+
+    void addCsv(String key, Iterable<String> values, {bool uppercase = false}) {
+      final normalized = _cleanStudyQueryValues(values, uppercase: uppercase);
+      if (normalized.isNotEmpty) query[key] = normalized.join(',');
+    }
+
+    addCsv('eco', ecos, uppercase: true);
+    addCsv('ecoCategory', ecoCategories, uppercase: true);
+    addCsv('opening', openings);
+    addCsv('variant', variants);
+    addCsv('chapterMode', chapterModes);
+    addCsv('player', players);
+
+    if (gamebook != null) query['gamebook'] = gamebook;
+    if (customPositions != null) {
+      query['customPositions'] = customPositions;
+    }
+    if (hasAnnotations != null) {
+      query['hasAnnotations'] = hasAnnotations;
+    }
+    if (minViews != null) query['minViews'] = minViews;
+    if (minChapters != null) query['minChapters'] = minChapters;
+
+    return query;
+  }
+}
+
+class GamebaseStudySummary {
+  const GamebaseStudySummary({
+    required this.lichessStudyId,
+    required this.authorUsername,
+    required this.name,
+    required this.views,
+    required this.lichessCreatedAt,
+    required this.lichessUpdatedAt,
+    required this.chapterCount,
+    required this.plyTotal,
+    required this.hasAnnotations,
+    required this.ecos,
+    required this.ecoCategories,
+    required this.openings,
+    required this.variants,
+    required this.chapterModes,
+    required this.players,
+    required this.isGamebook,
+    required this.hasCustomPositions,
+    required this.credibilityScore,
+    required this.passedGate,
+    required this.status,
+    required this.syncedAt,
+    this.contentCapabilities = GamebaseStudyContentCapabilities.unavailable,
+  });
+
+  final String lichessStudyId;
+  final String? authorUsername;
+  final String name;
+  final int views;
+  final DateTime? lichessCreatedAt;
+  final DateTime lichessUpdatedAt;
+  final int chapterCount;
+  final int plyTotal;
+  final bool hasAnnotations;
+  final List<String> ecos;
+  final List<String> ecoCategories;
+  final List<String> openings;
+  final List<String> variants;
+  final List<String> chapterModes;
+  final List<String> players;
+  final bool isGamebook;
+  final bool hasCustomPositions;
+  final double credibilityScore;
+  final bool passedGate;
+  final GamebaseStudyStatus status;
+  final DateTime syncedAt;
+  final GamebaseStudyContentCapabilities contentCapabilities;
+
+  String get id => lichessStudyId;
+  String get canonicalStudyId => lichessStudyId;
+  GamebaseStudySource get source => GamebaseStudySource.lichess;
+  String? get contentVersion => contentCapabilities.contentVersion;
+  String? get rights => contentCapabilities.rights;
+  GamebaseStudyRedistributionCapability get redistribution =>
+      contentCapabilities.redistribution;
+  bool get canOpenMirroredChapterInApp =>
+      contentCapabilities.canOpenMirroredChapterInApp;
+  Uri get sourceUrl => Uri(
+    scheme: 'https',
+    host: 'lichess.org',
+    pathSegments: <String>['study', lichessStudyId],
+  );
+  Uri get canonicalSourceUrl => sourceUrl;
+
+  factory GamebaseStudySummary.fromJson(Map<String, dynamic> json) {
+    final views = _readRequiredStudyInt(json['views'], 'views');
+    final chapterCount = _readRequiredStudyInt(
+      json['chapterCount'],
+      'chapterCount',
+    );
+    final plyTotal = _readRequiredStudyInt(json['plyTotal'], 'plyTotal');
+    if (views < 0 || chapterCount < 0 || plyTotal < 0) {
+      throw const GamebaseStudyContractException(
+        'Invalid Study summary: counts cannot be negative.',
+      );
+    }
+
+    return GamebaseStudySummary(
+      lichessStudyId: _readLichessStudyId(json['id']),
+      authorUsername: _readOptionalStudyString(
+        json['authorUsername'],
+        'authorUsername',
+      ),
+      name: _readRequiredStudyString(json['name'], 'name'),
+      views: views,
+      lichessCreatedAt: _readOptionalStudyDate(
+        json['lichessCreatedAt'],
+        'lichessCreatedAt',
+      ),
+      lichessUpdatedAt: _readRequiredStudyDate(
+        json['lichessUpdatedAt'],
+        'lichessUpdatedAt',
+      ),
+      chapterCount: chapterCount,
+      plyTotal: plyTotal,
+      hasAnnotations: _readRequiredStudyBool(
+        json['hasAnnotations'],
+        'hasAnnotations',
+      ),
+      ecos: _readRequiredStudyStringList(json['ecos'], 'ecos'),
+      ecoCategories: _readRequiredStudyStringList(
+        json['ecoCategories'],
+        'ecoCategories',
+      ),
+      openings: _readRequiredStudyStringList(json['openings'], 'openings'),
+      variants: _readRequiredStudyStringList(json['variants'], 'variants'),
+      chapterModes: _readRequiredStudyStringList(
+        json['chapterModes'],
+        'chapterModes',
+      ),
+      players: _readRequiredStudyStringList(json['players'], 'players'),
+      isGamebook: _readRequiredStudyBool(json['isGamebook'], 'isGamebook'),
+      hasCustomPositions: _readRequiredStudyBool(
+        json['hasCustomPositions'],
+        'hasCustomPositions',
+      ),
+      credibilityScore: _readRequiredStudyDouble(
+        json['credibilityScore'],
+        'credibilityScore',
+      ),
+      passedGate: _readRequiredStudyBool(json['passedGate'], 'passedGate'),
+      status: GamebaseStudyStatus.fromApiValue(json['status']),
+      syncedAt: _readRequiredStudyDate(json['syncedAt'], 'syncedAt'),
+    );
+  }
+}
+
+class GamebaseStudiesPage {
+  const GamebaseStudiesPage({
+    required this.items,
+    required this.total,
+    required this.limit,
+    required this.offset,
+  });
+
+  final List<GamebaseStudySummary> items;
+  final int total;
+  final int limit;
+  final int offset;
+
+  int get nextOffset => offset + items.length;
+  bool get hasMore => items.isNotEmpty && nextOffset < total;
+
+  factory GamebaseStudiesPage.fromJson(Map<String, dynamic> json) {
+    final payload = _readStudyEnvelopeData(json, operation: 'list Studies');
+    final rawItems = payload['items'];
+    if (rawItems is! List) {
+      throw const GamebaseStudyContractException(
+        'Invalid Studies payload: "items" must be a list.',
+      );
+    }
+
+    final total = _readRequiredStudyInt(payload['total'], 'total');
+    final limit = _readRequiredStudyInt(payload['limit'], 'limit');
+    final offset = _readRequiredStudyInt(payload['offset'], 'offset');
+    if (total < 0 || offset < 0 || limit < 1) {
+      throw const GamebaseStudyContractException(
+        'Invalid Studies pagination metadata.',
+      );
+    }
+
+    final items = <GamebaseStudySummary>[];
+    for (var index = 0; index < rawItems.length; index++) {
+      final item = _readStudyMap(rawItems[index], 'items[$index]');
+      try {
+        items.add(GamebaseStudySummary.fromJson(item));
+      } on GamebaseStudyContractException catch (error) {
+        throw GamebaseStudyContractException(
+          'Invalid Study at index $index: ${error.message}',
+        );
+      }
+    }
+
+    return GamebaseStudiesPage(
+      items: List<GamebaseStudySummary>.unmodifiable(items),
+      total: total,
+      limit: limit,
+      offset: offset,
+    );
+  }
+}
+
+class GamebaseStudyChapterMetadata {
+  const GamebaseStudyChapterMetadata({
+    required this.lichessStudyId,
+    required this.lichessChapterId,
+    required this.name,
+    required this.plyCount,
+    required this.orderIndex,
+    required this.eco,
+    required this.opening,
+    required this.variant,
+    required this.result,
+    required this.chapterMode,
+    required this.isSetup,
+    required this.whiteName,
+    required this.blackName,
+    required this.whiteElo,
+    required this.blackElo,
+    required this.hasAnnotations,
+    this.contentCapabilities = GamebaseStudyContentCapabilities.unavailable,
+  });
+
+  final String lichessStudyId;
+  final String lichessChapterId;
+  final String? name;
+  final int plyCount;
+  final int orderIndex;
+  final String? eco;
+  final String? opening;
+  final String? variant;
+  final String? result;
+  final String? chapterMode;
+  final bool isSetup;
+  final String? whiteName;
+  final String? blackName;
+  final int? whiteElo;
+  final int? blackElo;
+  final bool hasAnnotations;
+  final GamebaseStudyContentCapabilities contentCapabilities;
+
+  String get studyId => lichessStudyId;
+  String get chapterId => lichessChapterId;
+  String get canonicalStudyId => lichessStudyId;
+  String get canonicalChapterId => lichessChapterId;
+  GamebaseStudySource get source => GamebaseStudySource.lichess;
+  String? get contentVersion => contentCapabilities.contentVersion;
+  String? get rights => contentCapabilities.rights;
+  GamebaseStudyRedistributionCapability get redistribution =>
+      contentCapabilities.redistribution;
+  bool get canOpenMirroredChapterInApp =>
+      contentCapabilities.canOpenMirroredChapterInApp;
+  Uri get sourceUrl => Uri(
+    scheme: 'https',
+    host: 'lichess.org',
+    pathSegments: <String>['study', lichessStudyId, lichessChapterId],
+  );
+  Uri get canonicalSourceUrl => sourceUrl;
+
+  factory GamebaseStudyChapterMetadata.fromJson(
+    Map<String, dynamic> json, {
+    required String lichessStudyId,
+  }) {
+    final plyCount = _readRequiredStudyInt(json['plyCount'], 'plyCount');
+    final orderIndex = _readRequiredStudyInt(json['orderIndex'], 'orderIndex');
+    if (plyCount < 0 || orderIndex < 0) {
+      throw const GamebaseStudyContractException(
+        'Invalid Study chapter: plyCount and orderIndex cannot be negative.',
+      );
+    }
+
+    // `json['id']` is the mirror's internal row UUID. It is deliberately not
+    // read into this model; only the source chapterId is a user-facing identity.
+    return GamebaseStudyChapterMetadata(
+      lichessStudyId: lichessStudyId,
+      lichessChapterId: _readLichessChapterId(json['chapterId']),
+      name: _readOptionalStudyString(json['name'], 'name'),
+      plyCount: plyCount,
+      orderIndex: orderIndex,
+      eco: _readOptionalStudyString(json['eco'], 'eco'),
+      opening: _readOptionalStudyString(json['opening'], 'opening'),
+      variant: _readOptionalStudyString(json['variant'], 'variant'),
+      result: _readOptionalStudyString(json['result'], 'result'),
+      chapterMode: _readOptionalStudyString(json['chapterMode'], 'chapterMode'),
+      isSetup: _readRequiredStudyBool(json['isSetup'], 'isSetup'),
+      whiteName: _readOptionalStudyString(json['whiteName'], 'whiteName'),
+      blackName: _readOptionalStudyString(json['blackName'], 'blackName'),
+      whiteElo: _readOptionalStudyInt(json['whiteElo'], 'whiteElo'),
+      blackElo: _readOptionalStudyInt(json['blackElo'], 'blackElo'),
+      hasAnnotations: _readRequiredStudyBool(
+        json['hasAnnotations'],
+        'hasAnnotations',
+      ),
+    );
+  }
+}
+
+class GamebaseStudyDetail {
+  const GamebaseStudyDetail({required this.study, required this.chapters});
+
+  final GamebaseStudySummary study;
+  final List<GamebaseStudyChapterMetadata> chapters;
+
+  String get canonicalStudyId => study.canonicalStudyId;
+  Uri get sourceUrl => study.sourceUrl;
+  GamebaseStudyContentCapabilities get contentCapabilities =>
+      study.contentCapabilities;
+  String? get contentVersion => contentCapabilities.contentVersion;
+  String? get rights => contentCapabilities.rights;
+  GamebaseStudyRedistributionCapability get redistribution =>
+      contentCapabilities.redistribution;
+  bool get canOpenMirroredChapterInApp =>
+      contentCapabilities.canOpenMirroredChapterInApp;
+
+  factory GamebaseStudyDetail.fromJson(Map<String, dynamic> json) {
+    final payload = _readStudyEnvelopeData(json, operation: 'get Study');
+    final study = GamebaseStudySummary.fromJson(
+      _readStudyMap(payload['study'], 'study'),
+    );
+    final rawChapters = payload['chapters'];
+    if (rawChapters is! List) {
+      throw const GamebaseStudyContractException(
+        'Invalid Study detail: "chapters" must be a list.',
+      );
+    }
+
+    final chapters = <GamebaseStudyChapterMetadata>[];
+    for (var index = 0; index < rawChapters.length; index++) {
+      final chapter = _readStudyMap(rawChapters[index], 'chapters[$index]');
+      try {
+        chapters.add(
+          GamebaseStudyChapterMetadata.fromJson(
+            chapter,
+            lichessStudyId: study.lichessStudyId,
+          ),
+        );
+      } on GamebaseStudyContractException catch (error) {
+        throw GamebaseStudyContractException(
+          'Invalid Study chapter at index $index: ${error.message}',
+        );
+      }
+    }
+    chapters.sort((left, right) => left.orderIndex.compareTo(right.orderIndex));
+
+    return GamebaseStudyDetail(
+      study: study,
+      chapters: List<GamebaseStudyChapterMetadata>.unmodifiable(chapters),
+    );
+  }
+}
+
+Map<String, dynamic> _readStudyEnvelopeData(
+  Map<String, dynamic> json, {
+  required String operation,
+}) {
+  final status = json['status'];
+  if (status is! String || status.trim().toLowerCase() != 'success') {
+    throw GamebaseStudyContractException(
+      'Invalid $operation envelope: expected status "success".',
+    );
+  }
+  return _readStudyMap(json['data'], 'data');
+}
+
+Map<String, dynamic> _readStudyMap(Object? value, String field) {
+  if (value is! Map) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected an object.',
+    );
+  }
+  try {
+    return Map<String, dynamic>.from(value);
+  } catch (_) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected string keys.',
+    );
+  }
+}
+
+String _readRequiredStudyString(Object? value, String field) {
+  if (value is! String || value.trim().isEmpty) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected a non-empty string.',
+    );
+  }
+  return value.trim();
+}
+
+String _readLichessStudyId(Object? value) {
+  final id = _readRequiredStudyString(value, 'id');
+  if (!RegExp(r'^[A-Za-z0-9]{8}$').hasMatch(id)) {
+    throw const GamebaseStudyContractException(
+      'Invalid Study field "id": expected an external Lichess Study ID.',
+    );
+  }
+  return id;
+}
+
+String _readLichessChapterId(Object? value) {
+  final id = _readRequiredStudyString(value, 'chapterId');
+  if (!RegExp(r'^[A-Za-z0-9]+$').hasMatch(id)) {
+    throw const GamebaseStudyContractException(
+      'Invalid Study field "chapterId": expected an external Lichess chapter ID.',
+    );
+  }
+  return id;
+}
+
+String? _readOptionalStudyString(Object? value, String field) {
+  if (value == null) return null;
+  if (value is! String) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected a string or null.',
+    );
+  }
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+int _readRequiredStudyInt(Object? value, String field) {
+  final parsed = _parseStudyInt(value);
+  if (parsed == null) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected an integer.',
+    );
+  }
+  return parsed;
+}
+
+int? _readOptionalStudyInt(Object? value, String field) {
+  if (value == null) return null;
+  final parsed = _parseStudyInt(value);
+  if (parsed == null) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected an integer or null.',
+    );
+  }
+  return parsed;
+}
+
+int? _parseStudyInt(Object? value) {
+  if (value is int) return value;
+  if (value is num && value.isFinite && value == value.truncate()) {
+    return value.toInt();
+  }
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+double _readRequiredStudyDouble(Object? value, String field) {
+  final parsed = switch (value) {
+    num number when number.isFinite => number.toDouble(),
+    String raw => double.tryParse(raw.trim()),
+    _ => null,
+  };
+  if (parsed == null || !parsed.isFinite) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected a finite number.',
+    );
+  }
+  return parsed;
+}
+
+bool _readRequiredStudyBool(Object? value, String field) {
+  if (value is bool) return value;
+  if (value == 1 || value == '1') return true;
+  if (value == 0 || value == '0') return false;
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true') return true;
+    if (normalized == 'false') return false;
+  }
+  throw GamebaseStudyContractException(
+    'Invalid Study field "$field": expected a boolean.',
+  );
+}
+
+DateTime _readRequiredStudyDate(Object? value, String field) {
+  final parsed = _parseStudyDate(value);
+  if (parsed == null) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected an ISO-8601 date.',
+    );
+  }
+  return parsed;
+}
+
+DateTime? _readOptionalStudyDate(Object? value, String field) {
+  if (value == null) return null;
+  final parsed = _parseStudyDate(value);
+  if (parsed == null) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected an ISO-8601 date or null.',
+    );
+  }
+  return parsed;
+}
+
+DateTime? _parseStudyDate(Object? value) {
+  if (value is! String || value.trim().isEmpty) return null;
+  return DateTime.tryParse(value.trim());
+}
+
+List<String> _readRequiredStudyStringList(Object? value, String field) {
+  if (value is! List) {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "$field": expected a string list.',
+    );
+  }
+  final result = <String>[];
+  for (var index = 0; index < value.length; index++) {
+    final item = value[index];
+    if (item is! String) {
+      throw GamebaseStudyContractException(
+        'Invalid Study field "$field[$index]": expected a string.',
+      );
+    }
+    final normalized = item.trim();
+    if (normalized.isNotEmpty) result.add(normalized);
+  }
+  return List<String>.unmodifiable(result);
+}
+
+String? _cleanStudyText(String? value) {
+  final trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
+List<String> _cleanStudyQueryValues(
+  Iterable<String> values, {
+  bool uppercase = false,
+}) {
+  final result = <String>[];
+  for (final value in values) {
+    var normalized = value.trim();
+    if (uppercase) normalized = normalized.toUpperCase();
+    if (normalized.isNotEmpty && !result.contains(normalized)) {
+      result.add(normalized);
+    }
+  }
+  return result;
+}
+
 class MissingGamebaseApiKeyException implements Exception {
   const MissingGamebaseApiKeyException();
 
@@ -1002,6 +1727,87 @@ class GamebaseRepository {
       );
     } catch (e) {
       throw Exception('Failed to load miniatures: $e');
+    }
+  }
+
+  /// List credibility-gated, active Lichess Study summaries from Gamebase.
+  Future<GamebaseStudiesPage> getStudies({
+    GamebaseStudiesFilter filter = GamebaseStudiesFilter.defaultFilter,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final query = filter.queryParameters(limit: limit, offset: offset);
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/studies',
+        queryParameters: query,
+        options: Options(headers: _headers),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw const GamebaseStudyContractException(
+          'Invalid list Studies response: expected a JSON object.',
+        );
+      }
+      return GamebaseStudiesPage.fromJson(Map<String, dynamic>.from(data));
+    } on GamebaseStudyContractException {
+      rethrow;
+    } on DioException catch (error) {
+      throw GamebaseStudyRequestException(
+        operation: 'list Studies',
+        message: error.message ?? 'Network request failed.',
+        statusCode: error.response?.statusCode,
+        cause: error,
+      );
+    } catch (error) {
+      throw GamebaseStudyRequestException(
+        operation: 'list Studies',
+        message: 'Unexpected request failure.',
+        cause: error,
+      );
+    }
+  }
+
+  /// Fetch Study metadata and ordered chapter metadata without PGN bodies.
+  Future<GamebaseStudyDetail> getStudy(String lichessStudyId) async {
+    final normalizedId = lichessStudyId.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError.value(
+        lichessStudyId,
+        'lichessStudyId',
+        'Must not be empty.',
+      );
+    }
+
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/studies/${Uri.encodeComponent(normalizedId)}',
+        options: Options(headers: _headers),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw const GamebaseStudyContractException(
+          'Invalid get Study response: expected a JSON object.',
+        );
+      }
+      return GamebaseStudyDetail.fromJson(Map<String, dynamic>.from(data));
+    } on GamebaseStudyContractException {
+      rethrow;
+    } on DioException catch (error) {
+      throw GamebaseStudyRequestException(
+        operation: 'get Study',
+        message: error.message ?? 'Network request failed.',
+        statusCode: error.response?.statusCode,
+        cause: error,
+      );
+    } catch (error) {
+      throw GamebaseStudyRequestException(
+        operation: 'get Study',
+        message: 'Unexpected request failure.',
+        cause: error,
+      );
     }
   }
 
