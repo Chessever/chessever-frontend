@@ -263,18 +263,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         bottomBar: const BottomNavBar(),
         body: NotificationListener<ScrollNotification>(
           onNotification: (notification) {
-            // Drive bottom-island shrink/expand from primary feed scrolls.
-            // Vertical lists only (ignore PageView / horizontal carousels).
-            if (notification is ScrollUpdateNotification &&
-                notification.metrics.axis == Axis.vertical) {
-              final delta = notification.scrollDelta;
-              if (delta != null && delta != 0) {
-                ref
-                    .read(homeScrollChromeProvider.notifier)
-                    .applyScrollDelta(delta);
-              }
-            }
-            return false; // let children keep receiving notifications
+            // Drive bottom-island shrink on scroll-down; grow back on
+            // scroll-up and always fully restore when at the top of the page.
+            return ref
+                .read(homeScrollChromeProvider.notifier)
+                .onScrollNotification(notification);
           },
           child: BillingIssueGate(
             child: KeyedSubtree(

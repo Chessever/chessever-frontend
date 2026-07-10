@@ -35,7 +35,7 @@ void main() {
       final mapper = ScrollChromeMapper(
         minScale: 0.72,
         collapseRange: 64.0,
-        expandRange: 48.0,
+        expandRange: 36.0,
       );
 
       mapper.applyScrollDelta(64.0); // fully minimized
@@ -43,7 +43,7 @@ void main() {
       expect(mapper.scale, closeTo(0.72, 1e-9));
 
       // Half expand range
-      mapper.applyScrollDelta(-24.0);
+      mapper.applyScrollDelta(-18.0);
       expect(mapper.progress, closeTo(0.5, 1e-9));
       expect(
         mapper.scale,
@@ -51,10 +51,97 @@ void main() {
       );
 
       // Rest of expand → full size
-      mapper.applyScrollDelta(-24.0);
+      mapper.applyScrollDelta(-18.0);
       expect(mapper.progress, 0.0);
       expect(mapper.scale, 1.0);
       expect(mapper.isMinimized, isFalse);
+    });
+
+    test('at top-most position forces full expand even if minimized', () {
+      final mapper = ScrollChromeMapper();
+      mapper.applyScrollDelta(100);
+      expect(mapper.progress, 1.0);
+
+      // Settled at top (pixels == minScrollExtent) — grow back fully.
+      mapper.applyScroll(
+        pixels: 0,
+        minScrollExtent: 0,
+        delta: null,
+      );
+      expect(mapper.progress, 0.0);
+      expect(mapper.scale, 1.0);
+      expect(mapper.isMinimized, isFalse);
+    });
+
+    test('overscroll past top still forces expand', () {
+      final mapper = ScrollChromeMapper();
+      mapper.applyScrollDelta(80);
+      // iOS rubber-band: pixels can go below minScrollExtent.
+      mapper.applyScroll(
+        pixels: -12,
+        minScrollExtent: 0,
+        delta: -4,
+      );
+      expect(mapper.progress, 0.0);
+      expect(mapper.scale, 1.0);
+    });
+
+    test('scroll-up away from top expands via delta without full reset', () {
+      final mapper = ScrollChromeMapper(expandRange: 36);
+      mapper.applyScrollDelta(64); // minimized
+      mapper.applyScroll(
+        pixels: 400,
+        minScrollExtent: 0,
+        delta: -18,
+      );
+      expect(mapper.progress, closeTo(0.5, 1e-9));
+      expect(mapper.isMinimized, isTrue);
+    });
+
+    test('top-edge wins over positive (down) delta', () {
+      final mapper = ScrollChromeMapper();
+      mapper.applyScrollDelta(64);
+      // Still at top — must stay expanded even if a spurious +delta arrives.
+      mapper.applyScroll(
+        pixels: 0,
+        minScrollExtent: 0,
+        delta: 20,
+      );
+      expect(mapper.progress, 0.0);
+    });
+
+    test('isAtTop respects epsilon', () {
+      expect(ScrollChromeMapper.isAtTop(0, 0), isTrue);
+      expect(ScrollChromeMapper.isAtTop(0.5, 0, topEpsilon: 1.0), isTrue);
+      expect(ScrollChromeMapper.isAtTop(2.0, 0, topEpsilon: 1.0), isFalse);
+      expect(ScrollChromeMapper.isAtTop(-8, 0), isTrue);
+    });
+
+    test('nextProgressFromMetrics pure helper matches instance applyScroll', () {
+      var progress = 1.0;
+      final mapper = ScrollChromeMapper()..setProgress(1.0);
+
+      progress = ScrollChromeMapper.nextProgressFromMetrics(
+        current: progress,
+        pixels: 0,
+        minScrollExtent: 0,
+        delta: 10,
+      );
+      mapper.applyScroll(pixels: 0, minScrollExtent: 0, delta: 10);
+      expect(mapper.progress, 0.0);
+      expect(progress, 0.0);
+
+      progress = ScrollChromeMapper.nextProgressFromMetrics(
+        current: 0.8,
+        pixels: 200,
+        minScrollExtent: 0,
+        delta: -18,
+        expandRange: 36,
+      );
+      mapper.setProgress(0.8);
+      mapper.applyScroll(pixels: 200, minScrollExtent: 0, delta: -18);
+      expect(mapper.progress, closeTo(progress, 1e-9));
+      expect(progress, closeTo(0.3, 1e-9));
     });
 
     test('clamps progress at 0 and 1 under large deltas', () {
@@ -65,7 +152,7 @@ void main() {
       expect(mapper.progress, 0.0);
     });
 
-    test('zero delta is a no-op', () {
+    test('zero delta is a no-op when not at top', () {
       final mapper = ScrollChromeMapper();
       mapper.applyScrollDelta(32.0);
       final p = mapper.progress;
