@@ -32,6 +32,573 @@ class GamebaseData with GamebaseDataMappable {
   static const fromJson = GamebaseDataMapper.fromJson;
 }
 
+/// Date window supported by `GET /api/miniatures`.
+enum MiniatureGamesWindow {
+  today,
+  week,
+  all;
+
+  String get apiValue => name;
+}
+
+/// Primary sort supported by `GET /api/miniatures`.
+enum MiniatureGamesSort {
+  rating,
+  moves,
+  recent;
+
+  String get apiValue => name;
+}
+
+enum MiniatureGamesSortOrder {
+  asc,
+  desc;
+
+  String get apiValue => name;
+}
+
+/// Miniatures are decisive, so the backend only serves white or black wins.
+enum MiniatureGameResult {
+  whiteWins,
+  blackWins;
+
+  String get apiValue => switch (this) {
+    MiniatureGameResult.whiteWins => 'W',
+    MiniatureGameResult.blackWins => 'B',
+  };
+
+  static MiniatureGameResult fromApiValue(Object? value) {
+    final normalized =
+        _readRequiredMiniatureString(value, 'result').toUpperCase();
+    return switch (normalized) {
+      'W' => MiniatureGameResult.whiteWins,
+      'B' => MiniatureGameResult.blackWins,
+      _ =>
+        throw FormatException(
+          'Invalid miniatures field "result": expected W or B.',
+        ),
+    };
+  }
+}
+
+enum MiniatureGameTimeControl {
+  classical,
+  rapid,
+  blitz;
+
+  String get apiValue => name.toUpperCase();
+
+  static MiniatureGameTimeControl fromApiValue(Object? value) {
+    final normalized =
+        _readRequiredMiniatureString(value, 'timeControl').toUpperCase();
+    return switch (normalized) {
+      'CLASSICAL' => MiniatureGameTimeControl.classical,
+      'RAPID' => MiniatureGameTimeControl.rapid,
+      'BLITZ' => MiniatureGameTimeControl.blitz,
+      _ =>
+        throw FormatException(
+          'Invalid miniatures field "timeControl": $normalized.',
+        ),
+    };
+  }
+}
+
+/// Typed tri-state used by both filters and returned miniature rows.
+///
+/// [all] is only a filter value and is omitted from the request. Parsed rows
+/// always contain either [online] or [offline].
+enum MiniatureGameOnlineStatus {
+  all,
+  online,
+  offline;
+
+  bool? get apiValue => switch (this) {
+    MiniatureGameOnlineStatus.all => null,
+    MiniatureGameOnlineStatus.online => true,
+    MiniatureGameOnlineStatus.offline => false,
+  };
+
+  static MiniatureGameOnlineStatus fromApiValue(Object? value) {
+    return _readRequiredMiniatureBool(value, 'isOnline')
+        ? MiniatureGameOnlineStatus.online
+        : MiniatureGameOnlineStatus.offline;
+  }
+}
+
+/// Canonical source represented by a miniature summary.
+enum GamebaseMiniatureSource { gamebase }
+
+/// Stable identity needed to hydrate a miniature through `/api/game/{id}`.
+///
+/// Miniature list rows intentionally contain no PGN or moves. Keeping this as
+/// an explicit reference prevents summary metadata from being mistaken for a
+/// complete game document.
+class GamebaseMiniatureSourceMetadata {
+  const GamebaseMiniatureSourceMetadata({
+    required this.gameId,
+    this.source = GamebaseMiniatureSource.gamebase,
+    this.requiresFullGameHydration = true,
+    this.whitePlayerId,
+    this.blackPlayerId,
+  });
+
+  final String gameId;
+  final GamebaseMiniatureSource source;
+  final bool requiresFullGameHydration;
+  final String? whitePlayerId;
+  final String? blackPlayerId;
+}
+
+/// Complete filter and sort contract for `GET /api/miniatures`.
+class MiniatureGamesFilter {
+  const MiniatureGamesFilter({
+    this.window = MiniatureGamesWindow.all,
+    this.sort = MiniatureGamesSort.rating,
+    this.order = MiniatureGamesSortOrder.desc,
+    this.search,
+    this.results = const <MiniatureGameResult>{},
+    this.eco,
+    this.ecoCategories = const <String>{},
+    this.opening,
+    this.variation,
+    this.timeControls = const <MiniatureGameTimeControl>{},
+    this.onlineStatus = MiniatureGameOnlineStatus.all,
+    this.minRating,
+    this.maxRating,
+    this.minMoves,
+    this.maxMoves,
+    this.dateFrom,
+    this.dateTo,
+    this.player,
+    this.playerId,
+  });
+
+  static const defaultFilter = MiniatureGamesFilter();
+
+  final MiniatureGamesWindow window;
+  final MiniatureGamesSort sort;
+  final MiniatureGamesSortOrder order;
+  final String? search;
+  final Set<MiniatureGameResult> results;
+  final String? eco;
+  final Set<String> ecoCategories;
+  final String? opening;
+  final String? variation;
+  final Set<MiniatureGameTimeControl> timeControls;
+  final MiniatureGameOnlineStatus onlineStatus;
+  final int? minRating;
+  final int? maxRating;
+  final int? minMoves;
+  final int? maxMoves;
+  final String? dateFrom;
+  final String? dateTo;
+  final String? player;
+  final String? playerId;
+
+  Map<String, dynamic> queryParameters({
+    required int limit,
+    required int offset,
+  }) {
+    if (limit < 1 || limit > 100) {
+      throw RangeError.range(limit, 1, 100, 'limit');
+    }
+    if (offset < 0 || offset > 1000000) {
+      throw RangeError.range(offset, 0, 1000000, 'offset');
+    }
+
+    final query = <String, dynamic>{
+      'window': window.apiValue,
+      'sort': sort.apiValue,
+      'order': order.apiValue,
+      'limit': limit,
+      'offset': offset,
+    };
+
+    final normalizedSearch = _cleanMiniatureText(search);
+    if (normalizedSearch != null) query['q'] = normalizedSearch;
+
+    if (results.isNotEmpty) {
+      query['result'] = results.map((result) => result.apiValue).join(',');
+    }
+
+    final normalizedEco = _cleanMiniatureCsv(eco, uppercase: true);
+    if (normalizedEco != null) query['eco'] = normalizedEco;
+
+    final normalizedCategories = _cleanMiniatureValues(
+      ecoCategories,
+      uppercase: true,
+    );
+    if (normalizedCategories.isNotEmpty) {
+      query['ecoCategory'] = normalizedCategories.join(',');
+    }
+
+    final normalizedOpening = _cleanMiniatureText(opening);
+    if (normalizedOpening != null) query['opening'] = normalizedOpening;
+
+    final normalizedVariation = _cleanMiniatureText(variation);
+    if (normalizedVariation != null) {
+      query['variation'] = normalizedVariation;
+    }
+
+    if (timeControls.isNotEmpty) {
+      query['timeControl'] = timeControls
+          .map((control) => control.apiValue)
+          .join(',');
+    }
+
+    final isOnline = onlineStatus.apiValue;
+    if (isOnline != null) query['isOnline'] = isOnline;
+
+    if (minRating != null) query['minRating'] = minRating;
+    if (maxRating != null) query['maxRating'] = maxRating;
+    if (minMoves != null) query['minMoves'] = minMoves;
+    if (maxMoves != null) query['maxMoves'] = maxMoves;
+
+    final (:from, :to) = _cleanMiniatureDateRange(
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+    );
+    if (from != null) query['dateFrom'] = from;
+    if (to != null) query['dateTo'] = to;
+
+    final normalizedPlayer = _cleanMiniatureText(player);
+    if (normalizedPlayer != null) query['player'] = normalizedPlayer;
+
+    final normalizedPlayerId = _cleanMiniatureText(playerId);
+    if (normalizedPlayerId != null) query['playerId'] = normalizedPlayerId;
+
+    return query;
+  }
+}
+
+class GamebaseMiniaturesPage {
+  const GamebaseMiniaturesPage({
+    required this.items,
+    required this.total,
+    required this.limit,
+    required this.offset,
+  });
+
+  final List<GamebaseMiniature> items;
+  final int total;
+  final int limit;
+  final int offset;
+
+  /// Advance by rows actually received so a short page never creates a gap.
+  int get nextOffset => offset + items.length;
+
+  /// An empty page is terminal even if a stale backend total says otherwise.
+  bool get hasMore => items.isNotEmpty && nextOffset < total;
+
+  factory GamebaseMiniaturesPage.fromJson(Map<String, dynamic> json) {
+    final payload = _readMiniaturesPagePayload(json);
+    final rawItems = payload['items'];
+    if (rawItems is! List) {
+      throw const FormatException(
+        'Invalid miniatures payload: "items" must be a list.',
+      );
+    }
+
+    final total = _readRequiredMiniatureInt(payload['total'], 'total');
+    final limit = _readRequiredMiniatureInt(payload['limit'], 'limit');
+    final offset = _readRequiredMiniatureInt(payload['offset'], 'offset');
+    if (total < 0) {
+      throw const FormatException(
+        'Invalid miniatures payload: "total" cannot be negative.',
+      );
+    }
+    if (limit < 1) {
+      throw const FormatException(
+        'Invalid miniatures payload: "limit" must be positive.',
+      );
+    }
+    if (offset < 0) {
+      throw const FormatException(
+        'Invalid miniatures payload: "offset" cannot be negative.',
+      );
+    }
+
+    final items = <GamebaseMiniature>[];
+    for (var index = 0; index < rawItems.length; index++) {
+      final rawItem = rawItems[index];
+      if (rawItem is! Map) {
+        throw FormatException(
+          'Invalid miniatures payload: item at index $index is not an object.',
+        );
+      }
+      try {
+        items.add(
+          GamebaseMiniature.fromJson(Map<String, dynamic>.from(rawItem)),
+        );
+      } on FormatException catch (error) {
+        throw FormatException(
+          'Invalid miniatures payload item at index $index: ${error.message}',
+        );
+      }
+    }
+
+    return GamebaseMiniaturesPage(
+      items: List<GamebaseMiniature>.unmodifiable(items),
+      total: total,
+      limit: limit,
+      offset: offset,
+    );
+  }
+}
+
+/// Lightweight Miniatures row. It is not a complete Gamebase game.
+class GamebaseMiniature {
+  const GamebaseMiniature({
+    required this.gameId,
+    this.avgRating,
+    required this.plyCount,
+    required this.finalMoveNumber,
+    required this.result,
+    required this.timeControl,
+    required this.onlineStatus,
+    this.date,
+    this.event,
+    this.eco,
+    this.ecoCategory,
+    this.opening,
+    this.variation,
+    this.whiteName,
+    this.blackName,
+    this.whiteElo,
+    this.blackElo,
+    this.whitePlayerId,
+    this.blackPlayerId,
+    this.whiteFed,
+    this.blackFed,
+  });
+
+  final String gameId;
+  final int? avgRating;
+  final int plyCount;
+  final int finalMoveNumber;
+  final MiniatureGameResult result;
+  final MiniatureGameTimeControl timeControl;
+  final MiniatureGameOnlineStatus onlineStatus;
+  final DateTime? date;
+  final String? event;
+  final String? eco;
+  final String? ecoCategory;
+  final String? opening;
+  final String? variation;
+  final String? whiteName;
+  final String? blackName;
+  final int? whiteElo;
+  final int? blackElo;
+  final String? whitePlayerId;
+  final String? blackPlayerId;
+  final String? whiteFed;
+  final String? blackFed;
+
+  String get canonicalGameId => gameId;
+  String get sourceGameId => gameId;
+  bool get isOnline => onlineStatus == MiniatureGameOnlineStatus.online;
+
+  GamebaseMiniatureSourceMetadata get sourceMetadata =>
+      GamebaseMiniatureSourceMetadata(
+        gameId: gameId,
+        whitePlayerId: whitePlayerId,
+        blackPlayerId: blackPlayerId,
+      );
+
+  factory GamebaseMiniature.fromJson(Map<String, dynamic> json) {
+    return GamebaseMiniature(
+      gameId: _readRequiredMiniatureString(json['gameId'], 'gameId'),
+      avgRating: _readOptionalMiniatureInt(json['avgRating'], 'avgRating'),
+      plyCount: _readRequiredMiniatureInt(json['plyCount'], 'plyCount'),
+      finalMoveNumber: _readRequiredMiniatureInt(
+        json['finalMoveNumber'],
+        'finalMoveNumber',
+      ),
+      result: MiniatureGameResult.fromApiValue(json['result']),
+      timeControl: MiniatureGameTimeControl.fromApiValue(json['timeControl']),
+      onlineStatus: MiniatureGameOnlineStatus.fromApiValue(json['isOnline']),
+      date: _readOptionalMiniatureDate(json['date'], 'date'),
+      event: _readOptionalMiniatureString(json['event'], 'event'),
+      eco: _readOptionalMiniatureString(json['eco'], 'eco'),
+      ecoCategory: _readOptionalMiniatureString(
+        json['ecoCategory'],
+        'ecoCategory',
+      ),
+      opening: _readOptionalMiniatureString(json['opening'], 'opening'),
+      variation: _readOptionalMiniatureString(json['variation'], 'variation'),
+      whiteName: _readOptionalMiniatureString(json['whiteName'], 'whiteName'),
+      blackName: _readOptionalMiniatureString(json['blackName'], 'blackName'),
+      whiteElo: _readOptionalMiniatureInt(json['whiteElo'], 'whiteElo'),
+      blackElo: _readOptionalMiniatureInt(json['blackElo'], 'blackElo'),
+      whitePlayerId: _readOptionalMiniatureString(
+        json['whitePlayerId'],
+        'whitePlayerId',
+      ),
+      blackPlayerId: _readOptionalMiniatureString(
+        json['blackPlayerId'],
+        'blackPlayerId',
+      ),
+      whiteFed: _readOptionalMiniatureString(json['whiteFed'], 'whiteFed'),
+      blackFed: _readOptionalMiniatureString(json['blackFed'], 'blackFed'),
+    );
+  }
+}
+
+Map<String, dynamic> _readMiniaturesPagePayload(Map<String, dynamic> json) {
+  if (json.containsKey('data')) {
+    final status = json['status'];
+    if (status is! String || status.trim().toLowerCase() != 'success') {
+      throw const FormatException(
+        'Invalid miniatures envelope: expected status "success".',
+      );
+    }
+    final data = json['data'];
+    if (data is! Map) {
+      throw const FormatException(
+        'Invalid miniatures envelope: "data" must be an object.',
+      );
+    }
+    return Map<String, dynamic>.from(data);
+  }
+
+  // Historical clients received the page payload directly.
+  if (!json.containsKey('items') || !json.containsKey('total')) {
+    throw const FormatException(
+      'Invalid miniatures envelope: missing page payload.',
+    );
+  }
+  final status = json['status'];
+  if (status != null &&
+      (status is! String || status.trim().toLowerCase() != 'success')) {
+    throw const FormatException(
+      'Invalid miniatures envelope: expected status "success".',
+    );
+  }
+  return json;
+}
+
+String _readRequiredMiniatureString(Object? value, String field) {
+  if (value is! String || value.trim().isEmpty) {
+    throw FormatException(
+      'Invalid miniatures field "$field": expected a non-empty string.',
+    );
+  }
+  return value.trim();
+}
+
+String? _readOptionalMiniatureString(Object? value, String field) {
+  if (value == null) return null;
+  if (value is! String) {
+    throw FormatException(
+      'Invalid miniatures field "$field": expected a string or null.',
+    );
+  }
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+int _readRequiredMiniatureInt(Object? value, String field) {
+  final parsed = _parseMiniatureInt(value);
+  if (parsed == null) {
+    throw FormatException(
+      'Invalid miniatures field "$field": expected an integer.',
+    );
+  }
+  return parsed;
+}
+
+int? _readOptionalMiniatureInt(Object? value, String field) {
+  if (value == null) return null;
+  final parsed = _parseMiniatureInt(value);
+  if (parsed == null) {
+    throw FormatException(
+      'Invalid miniatures field "$field": expected an integer or null.',
+    );
+  }
+  return parsed;
+}
+
+int? _parseMiniatureInt(Object? value) {
+  if (value is int) return value;
+  if (value is num && value.isFinite && value == value.truncate()) {
+    return value.toInt();
+  }
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+bool _readRequiredMiniatureBool(Object? value, String field) {
+  if (value is bool) return value;
+  if (value == 1 || value == '1') return true;
+  if (value == 0 || value == '0') return false;
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true') return true;
+    if (normalized == 'false') return false;
+  }
+  throw FormatException(
+    'Invalid miniatures field "$field": expected a boolean.',
+  );
+}
+
+DateTime? _readOptionalMiniatureDate(Object? value, String field) {
+  final raw = _readOptionalMiniatureString(value, field);
+  if (raw == null) return null;
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) {
+    throw FormatException(
+      'Invalid miniatures field "$field": expected an ISO-8601 date.',
+    );
+  }
+  return parsed;
+}
+
+String? _cleanMiniatureText(String? value) {
+  final trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
+String? _cleanMiniatureCsv(String? value, {bool uppercase = false}) {
+  final values = _cleanMiniatureValues(
+    value?.split(',') ?? const <String>[],
+    uppercase: uppercase,
+  );
+  return values.isEmpty ? null : values.join(',');
+}
+
+List<String> _cleanMiniatureValues(
+  Iterable<String> values, {
+  bool uppercase = false,
+}) {
+  final result = <String>[];
+  for (final value in values) {
+    var normalized = value.trim();
+    if (uppercase) normalized = normalized.toUpperCase();
+    if (normalized.isNotEmpty && !result.contains(normalized)) {
+      result.add(normalized);
+    }
+  }
+  return result;
+}
+
+String? _cleanMiniatureDate(String? value) {
+  final trimmed = _cleanMiniatureText(value);
+  if (trimmed == null) return null;
+  return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(trimmed) ? trimmed : null;
+}
+
+({String? from, String? to}) _cleanMiniatureDateRange({
+  required String? dateFrom,
+  required String? dateTo,
+}) {
+  final from = _cleanMiniatureDate(dateFrom);
+  final to = _cleanMiniatureDate(dateTo);
+  if (from != null && to != null && from.compareTo(to) > 0) {
+    return (from: to, to: from);
+  }
+  return (from: from, to: to);
+}
+
 class MissingGamebaseApiKeyException implements Exception {
   const MissingGamebaseApiKeyException();
 
@@ -394,6 +961,47 @@ class GamebaseRepository {
         debugPrint('[GamebaseRepository] getGameWithPgn error: $e');
       }
       return null;
+    }
+  }
+
+  /// Fetch decisive short-game summaries from the canonical Gamebase index.
+  ///
+  /// The response is offset-paginated. Returned rows intentionally omit PGN;
+  /// use [getGameWithPgn] with [GamebaseMiniature.canonicalGameId] before
+  /// opening a row as a complete game.
+  Future<GamebaseMiniaturesPage> getMiniatures({
+    MiniatureGamesFilter filter = MiniatureGamesFilter.defaultFilter,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/miniatures',
+        queryParameters: filter.queryParameters(limit: limit, offset: offset),
+        options: Options(headers: _headers),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw const FormatException(
+          'Invalid miniatures response: expected a JSON object.',
+        );
+      }
+      return GamebaseMiniaturesPage.fromJson(Map<String, dynamic>.from(data));
+    } on FormatException {
+      rethrow;
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getMiniatures DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+        debugPrint('  Response: ${e.response?.data}');
+      }
+      throw Exception(
+        'Failed to load miniatures: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
+    } catch (e) {
+      throw Exception('Failed to load miniatures: $e');
     }
   }
 
