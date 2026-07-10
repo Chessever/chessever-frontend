@@ -8,12 +8,15 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
-import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 
 class PlayerGamesScreen extends ConsumerStatefulWidget {
   final String? fideId;
@@ -68,10 +71,16 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
   @override
   Widget build(BuildContext context) {
     final playerGamesAsync = ref.watch(playerGamesProvider(_playerIdentifier));
+    final controlExtent = _controlExtent(context);
+    final topContentInset =
+        MediaQuery.viewPaddingOf(context).top + 4 + controlExtent + 6 + 8;
 
-    return Scaffold(
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      body: Center(
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth:
@@ -79,155 +88,126 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                     ? ResponsiveHelper.contentMaxWidth
                     : double.infinity,
           ),
-          child: Column(
-            children: [
-              // Header
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 16.h),
-              _buildHeader(),
-              SizedBox(height: 16.h),
-
-              // Games content
-              Expanded(
-                child: playerGamesAsync.when(
-                  data: (playerGamesState) => _buildContent(playerGamesState),
-                  loading: () => _buildLoadingState(),
-                  error: (error, stack) {
-                    debugPrint(
-                      '===== PlayerGamesScreen AsyncValue error =====',
-                    );
-                    debugPrint('Error type: ${error.runtimeType}');
-                    debugPrint('Error: $error');
-                    debugPrint('Stack: $stack');
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const GenericErrorWidget(),
-                          SizedBox(height: 16.h),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 32.sp),
-                            child: Text(
-                              userFacingError(error),
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(alpha: 0.7),
-                              ),
-                              textAlign: TextAlign.center,
+          child: _buildHeader(controlExtent),
+        ),
+      ),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+          ),
+          child: playerGamesAsync.when(
+            data:
+                (playerGamesState) =>
+                    _buildContent(playerGamesState, topContentInset),
+            loading: () => _buildLoadingState(topContentInset),
+            error: (error, stack) {
+              debugPrint('===== PlayerGamesScreen AsyncValue error =====');
+              debugPrint('Error type: ${error.runtimeType}');
+              debugPrint('Error: $error');
+              debugPrint('Stack: $stack');
+              return Padding(
+                padding: EdgeInsets.only(top: topContentInset),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const _PlayerGamesErrorHeading(),
+                      SizedBox(height: 16.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 32.sp),
+                        child: Text(
+                          userFacingError(error),
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.7,
                             ),
                           ),
-                        ],
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  Widget _buildHeader(double controlExtent) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
     );
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Row(
-        children: [
-          IconButton(
-            iconSize: 24.ic,
-            padding: EdgeInsets.zero,
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-          ),
-          SizedBox(width: 16.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (widget.playerTitle?.isNotEmpty == true) ...[
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8.w,
-                          vertical: 2.h,
-                        ),
-                        margin: EdgeInsets.only(right: 8.w),
-                        decoration: BoxDecoration(
-                          color: kGreenColor,
-                          borderRadius: BorderRadius.circular(12.sp),
-                        ),
-                        child: Text(
-                          widget.playerTitle!,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: Colors.white,
-                            fontSize: 10.sp,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                    Expanded(
-                      child: Text(
-                        widget.playerName,
-                        style: AppTypography.textLgBold.copyWith(
-                          color: context.colors.textPrimary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  'All Games',
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.7),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+    final title =
+        widget.playerTitle?.isNotEmpty == true
+            ? '${widget.playerTitle} ${widget.playerName}'
+            : widget.playerName;
+    return GlassIslandTopBar(
+      horizontalPadding: horizontalPadding,
+      topPadding: 0,
+      height: controlExtent,
+      leading: const GlassBackButton(),
+      title: GlassTitleChip(
+        label: title,
+        height: controlExtent,
+        maxWidth: 220.w,
       ),
     );
   }
 
-  Widget _buildContent(PlayerGamesState playerGamesState) {
+  Widget _buildContent(
+    PlayerGamesState playerGamesState,
+    double topContentInset,
+  ) {
     final tournamentGroups = playerGamesState.tournamentGroups;
     final isLoading = playerGamesState.isLoading;
     final error = playerGamesState.error;
 
     // Error state
     if (error != null && tournamentGroups.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const GenericErrorWidget(),
-            SizedBox(height: 16.h),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 32.sp),
-              child: Text(
-                error,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.7),
+      return Padding(
+        padding: EdgeInsets.only(top: topContentInset),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const _PlayerGamesErrorHeading(),
+              SizedBox(height: 16.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 32.sp),
+                child: Text(
+                  error,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
 
     // Empty state (no loading, no groups)
     if (!isLoading && tournamentGroups.isEmpty) {
-      return _buildEmptyState();
+      return Padding(
+        padding: EdgeInsets.only(top: topContentInset),
+        child: _buildEmptyState(),
+      );
     }
 
     // Has data
@@ -240,11 +220,13 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
       },
       color: context.colors.textPrimaryMuted,
       backgroundColor: context.colors.surfaceRecessed,
+      edgeOffset: topContentInset,
       child: ListView.builder(
         controller: _scrollController,
         padding: EdgeInsets.only(
           left: 20.sp,
           right: 20.sp,
+          top: topContentInset + 8.h,
           bottom: MediaQuery.of(context).viewPadding.bottom + 20.sp,
         ),
         itemCount: _calculateItemCount(tournamentGroups, isLoading),
@@ -354,10 +336,15 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildLoadingState(double topContentInset) {
     return SkeletonWidget(
       child: ListView.builder(
-        padding: EdgeInsets.symmetric(horizontal: 20.sp),
+        padding: EdgeInsets.fromLTRB(
+          20.sp,
+          topContentInset + 8.h,
+          20.sp,
+          MediaQuery.viewPaddingOf(context).bottom + 20.h,
+        ),
         itemCount: 3,
         itemBuilder:
             (context, index) => Column(
@@ -387,6 +374,32 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
               ],
             ),
       ),
+    );
+  }
+}
+
+class _PlayerGamesErrorHeading extends StatelessWidget {
+  const _PlayerGamesErrorHeading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.error_outline_rounded,
+          size: 40,
+          color: context.colors.iconSecondary,
+        ),
+        SizedBox(height: 8.h),
+        Text(
+          'Something went wrong',
+          textAlign: TextAlign.center,
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 }

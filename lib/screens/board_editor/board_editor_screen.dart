@@ -13,11 +13,17 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart' hide Board;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:motor/motor.dart';
 
 class BoardEditorScreen extends ConsumerStatefulWidget {
@@ -69,7 +75,10 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: TextStyle(color: context.colors.textPrimary)),
+        content: Text(
+          message,
+          style: TextStyle(color: context.colors.textPrimary),
+        ),
         backgroundColor:
             backgroundColor ?? context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
@@ -336,7 +345,10 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('FEN copied', style: TextStyle(color: context.colors.textPrimary)),
+        content: Text(
+          'FEN copied',
+          style: TextStyle(color: context.colors.textPrimary),
+        ),
         backgroundColor: context.colors.surface.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 1),
@@ -417,33 +429,54 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final controlExtent = _floatingControlExtent(context);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final topContentInset = viewPadding.top + 4 + controlExtent + 6 + 8;
+
+    return GlassFullScreenPage(
       key: e2eKey(E2eIds.boardEditorRoot),
       backgroundColor: context.colors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isTablet = ResponsiveHelper.isTablet;
-                  final isLandscape = ResponsiveHelper.isLandscape;
-
-                  if (isTablet && isLandscape) {
-                    return _buildTabletLandscapeLayout(constraints);
-                  } else if (isTablet) {
-                    return _buildTabletPortraitLayout(constraints);
-                  } else {
-                    return _buildPhoneLayout(constraints);
-                  }
-                },
-              ),
-            ),
-          ],
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      contentPadding: EdgeInsets.fromLTRB(
+        viewPadding.left,
+        topContentInset,
+        viewPadding.right,
+        viewPadding.bottom,
+      ),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+          ),
+          child: _buildAppBar(controlExtent),
         ),
       ),
+      content: LayoutBuilder(
+        builder: (context, constraints) {
+          final isTablet = ResponsiveHelper.isTablet;
+          final isLandscape = ResponsiveHelper.isLandscape;
+
+          if (isTablet && isLandscape) {
+            return _buildTabletLandscapeLayout(constraints);
+          } else if (isTablet) {
+            return _buildTabletPortraitLayout(constraints);
+          } else {
+            return _buildPhoneLayout(constraints);
+          }
+        },
+      ),
     );
+  }
+
+  double _floatingControlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
   }
 
   /// Phone layout — unchanged from original.
@@ -490,13 +523,14 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       child: LayoutBuilder(
         builder: (context, inner) {
           // Compute the largest square board that fits both height and width.
-          final maxBoardFromHeight =
-              ((inner.maxHeight - trayOverhead) / 1.225)
-                  .clamp(0.0, double.infinity);
+          final maxBoardFromHeight = ((inner.maxHeight - trayOverhead) / 1.225)
+              .clamp(0.0, double.infinity);
           // Reserve at least 280px on the right for controls + fen + actions.
-          final maxBoardFromWidth =
-              (inner.maxWidth - 12.sp - 280.0 - evalBarWidth)
-                  .clamp(0.0, double.infinity);
+          final maxBoardFromWidth = (inner.maxWidth -
+                  12.sp -
+                  280.0 -
+                  evalBarWidth)
+              .clamp(0.0, double.infinity);
           final boardSize =
               (maxBoardFromHeight < maxBoardFromWidth
                       ? maxBoardFromHeight
@@ -535,10 +569,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                     _buildTopControls(),
                     const Spacer(),
                     _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
-                    _ActionRow(
-                      onPasteFen: _pasteFen,
-                      onPastePgn: _pastePgn,
-                    ),
+                    _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
                   ],
                 ),
               ),
@@ -569,9 +600,9 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, inner) {
-                  final maxBoardFromHeight =
-                      ((inner.maxHeight - trayOverhead) / 1.225)
-                          .clamp(0.0, double.infinity);
+                  final maxBoardFromHeight = ((inner.maxHeight - trayOverhead) /
+                          1.225)
+                      .clamp(0.0, double.infinity);
                   final maxBoardFromWidth = inner.maxWidth;
                   final boardSize =
                       (maxBoardFromHeight < maxBoardFromWidth
@@ -612,46 +643,42 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     );
   }
 
-  Widget _buildAppBar() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: context.colors.textPrimary,
-              size: 20.sp,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              'Board Editor',
-              style: AppTypography.textLgMedium.copyWith(color: context.colors.textPrimary),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          GestureDetector(
-            onTap: _onDone,
-            child: Container(
+  Widget _buildAppBar(double controlExtent) {
+    final reduceMotion = GlassMotion.reduceMotion(context);
+    return GlassIslandTopBar(
+      topPadding: 0,
+      height: controlExtent,
+      leading: const GlassBackButton(),
+      title: GlassTitleChip(label: 'Board Editor', height: controlExtent),
+      trailing: [
+        Semantics(
+          label: 'Analyze position',
+          button: true,
+          onTap: _onDone,
+          child: ExcludeSemantics(
+            child: GlassButton.custom(
               key: e2eKey(E2eIds.boardEditorDoneButton),
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
+              label: 'Analyze position',
+              onTap: _onDone,
+              width: controlExtent + 30,
+              height: controlExtent,
+              useOwnLayer: true,
+              style: GlassButtonStyle.prominent,
+              interactionScale: reduceMotion ? 1 : 1.03,
+              stretch: reduceMotion ? 0 : 0.3,
+              shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
               child: Text(
                 'Analyze',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.background,
+                  color: context.colors.textPrimary,
                 ),
               ),
             ),
           ),
-          SizedBox(width: 4.w),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -701,81 +728,85 @@ class _BoardWithEvalBar extends ConsumerWidget {
       );
     }
 
+    Widget buildBoard(double progress) {
+      final clamped = progress.clamp(0.0, 1.0);
+      final currentEvalWidth = evalBarWidth * clamped;
+      final boardSize = availableWidth - currentEvalWidth;
+
+      return Row(
+        children: [
+          if (clamped > 0.01)
+            SizedBox(
+              width: currentEvalWidth,
+              height: boardSize,
+              child: Opacity(
+                opacity: clamped,
+                child: EvaluationBarWidget(
+                  key: e2eKey(E2eIds.boardEvalBar),
+                  width: currentEvalWidth,
+                  height: boardSize,
+                  evaluation: evaluation,
+                  mate: mate,
+                  isEvaluating: isEvaluating,
+                  isFlipped: editorState.orientation == Side.black,
+                  isWhiteToMove: editorState.sideToMove == Side.white,
+                  positionKey: fen,
+                ),
+              ),
+            ),
+          _EditorTapWrapper(
+            boardSize: boardSize,
+            orientation: editorState.orientation,
+            pointerMode: editorState.pointerMode,
+            onTapSquare: (square) {
+              ref.read(boardEditorProvider.notifier).onTapSquare(square);
+            },
+            child: ChessboardEditor(
+              size: boardSize,
+              orientation: editorState.orientation,
+              pieces: editorState.pieces,
+              pointerMode: editorState.pointerMode,
+              // chessground v10: squareHighlights is a plain Map (was IMap).
+              squareHighlights:
+                  editorState.selectedDragSquare != null
+                      ? {
+                        editorState.selectedDragSquare!: SquareHighlight(
+                          details: boardSettings.colorScheme.selected,
+                        ),
+                      }
+                      : const {},
+              settings: ChessboardSettings(
+                colorScheme: boardSettings.colorScheme,
+                pieceAssets: boardSettings.pieceAssets,
+                enableCoordinates: true,
+                dragFeedbackScale: 2.0,
+                dragFeedbackOffset: const Offset(0.0, -1.0),
+              ),
+              onEditedSquare: (square) {
+                ref.read(boardEditorProvider.notifier).onEditedSquare(square);
+              },
+              onDroppedPiece: (origin, dest, piece) {
+                ref
+                    .read(boardEditorProvider.notifier)
+                    .onDroppedPiece(origin, dest, piece);
+              },
+              onDiscardedPiece: (square) {
+                ref.read(boardEditorProvider.notifier).onDiscardedPiece(square);
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (GlassMotion.reduceMotion(context)) {
+      return buildBoard(showEval ? 1 : 0);
+    }
+
     return SingleMotionBuilder(
       motion: CupertinoMotion.snappy(),
       value: showEval ? 1.0 : 0.0,
-      builder: (context, animVal, _) {
-        final clamped = animVal.clamp(0.0, 1.0);
-        final currentEvalWidth = evalBarWidth * clamped;
-        final boardSize = availableWidth - currentEvalWidth;
-
-        return Row(
-          children: [
-            if (clamped > 0.01)
-              SizedBox(
-                width: currentEvalWidth,
-                height: boardSize,
-                child: Opacity(
-                  opacity: clamped,
-                  child: EvaluationBarWidget(
-                    key: e2eKey(E2eIds.boardEvalBar),
-                    width: currentEvalWidth,
-                    height: boardSize,
-                    evaluation: evaluation,
-                    mate: mate,
-                    isEvaluating: isEvaluating,
-                    isFlipped: editorState.orientation == Side.black,
-                    isWhiteToMove: editorState.sideToMove == Side.white,
-                    positionKey: fen,
-                  ),
-                ),
-              ),
-            _EditorTapWrapper(
-              boardSize: boardSize,
-              orientation: editorState.orientation,
-              pointerMode: editorState.pointerMode,
-              onTapSquare: (square) {
-                ref.read(boardEditorProvider.notifier).onTapSquare(square);
-              },
-              child: ChessboardEditor(
-                size: boardSize,
-                orientation: editorState.orientation,
-                pieces: editorState.pieces,
-                pointerMode: editorState.pointerMode,
-                // chessground v10: squareHighlights is a plain Map (was IMap).
-                squareHighlights:
-                    editorState.selectedDragSquare != null
-                        ? {
-                          editorState.selectedDragSquare!: SquareHighlight(
-                            details: boardSettings.colorScheme.selected,
-                          ),
-                        }
-                        : const {},
-                settings: ChessboardSettings(
-                  colorScheme: boardSettings.colorScheme,
-                  pieceAssets: boardSettings.pieceAssets,
-                  enableCoordinates: true,
-                  dragFeedbackScale: 2.0,
-                  dragFeedbackOffset: const Offset(0.0, -1.0),
-                ),
-                onEditedSquare: (square) {
-                  ref.read(boardEditorProvider.notifier).onEditedSquare(square);
-                },
-                onDroppedPiece: (origin, dest, piece) {
-                  ref
-                      .read(boardEditorProvider.notifier)
-                      .onDroppedPiece(origin, dest, piece);
-                },
-                onDiscardedPiece: (square) {
-                  ref
-                      .read(boardEditorProvider.notifier)
-                      .onDiscardedPiece(square);
-                },
-              ),
-            ),
-          ],
-        );
-      },
+      builder: (context, animVal, _) => buildBoard(animVal),
     );
   }
 }
@@ -918,17 +949,36 @@ class _SmallButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Semantics(
+      label: label,
+      button: true,
       onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          color: context.colors.textPrimary,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        child: Text(
-          label,
-          style: AppTypography.textSmMedium.copyWith(color: context.colors.background),
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.colors.textPrimary,
+                borderRadius: BorderRadius.circular(12.br),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14.w),
+                child: Center(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.background,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -948,12 +998,14 @@ class _SideToMoveToggle extends StatelessWidget {
       children: [
         _SideOption(
           label: '\u2659', // White pawn
+          semanticLabel: 'White to move',
           isSelected: sideToMove == Side.white,
           onTap: () => onChanged(Side.white),
         ),
         SizedBox(width: 4.w),
         _SideOption(
           label: '\u265F', // Black pawn
+          semanticLabel: 'Black to move',
           isSelected: sideToMove == Side.black,
           onTap: () => onChanged(Side.black),
         ),
@@ -964,32 +1016,50 @@ class _SideToMoveToggle extends StatelessWidget {
 
 class _SideOption extends StatelessWidget {
   final String label;
+  final String semanticLabel;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _SideOption({
     required this.label,
+    required this.semanticLabel,
     required this.isSelected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      selected: isSelected,
       onTap: onTap,
-      child: Container(
-        width: 36.h,
-        height: 36.h,
-        decoration: BoxDecoration(
-          color: isSelected ? context.colors.textPrimary : context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 20.f,
-              color: isSelected ? context.colors.background : context.colors.textPrimary,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color:
+                  isSelected
+                      ? context.colors.textPrimary
+                      : context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(12.br),
+              border: Border.all(color: context.colors.divider),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 20.f,
+                  color:
+                      isSelected
+                          ? context.colors.background
+                          : context.colors.textPrimary,
+                ),
+              ),
             ),
           ),
         ),
@@ -1057,32 +1127,43 @@ class _CastlingCheck extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 20.sp,
-            height: 20.sp,
-            child: Checkbox(
-              value: value,
-              onChanged: (v) => onChanged(v ?? false),
-              activeColor: context.colors.textPrimary,
-              checkColor: context.colors.background,
-              side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.5)),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
+    void toggle() => onChanged(!value);
+    return Semantics(
+      label: '$label castling',
+      button: true,
+      checked: value,
+      onTap: toggle,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: toggle,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Checkbox(
+                  value: value,
+                  onChanged: (v) => onChanged(v ?? false),
+                  activeColor: context.colors.textPrimary,
+                  checkColor: context.colors.background,
+                  side: BorderSide(
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  ),
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  visualDensity: VisualDensity.compact,
+                ),
+                SizedBox(width: 2.w),
+                Text(
+                  label,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: context.colors.textPrimary.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
             ),
           ),
-          SizedBox(width: 4.w),
-          Text(
-            label,
-            style: AppTypography.textXsMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1135,7 +1216,12 @@ class _PieceTray extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: const Color(0xFFA1ADAE),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        border: Border.symmetric(
+          horizontal: BorderSide(color: context.colors.divider),
+        ),
+      ),
       padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 8.w),
       child: Column(
         children: [
@@ -1145,6 +1231,8 @@ class _PieceTray extends StatelessWidget {
               // Delete button
               _TrayActionButton(
                 icon: Icons.delete_outline_rounded,
+                semanticLabel:
+                    isDeleteMode ? 'Stop deleting pieces' : 'Delete pieces',
                 isActive: isDeleteMode,
                 onTap: onToggleDeleteMode,
                 onLongPress: onDeleteLongPress,
@@ -1173,6 +1261,7 @@ class _PieceTray extends StatelessWidget {
               // Flip button
               _TrayActionButton(
                 icon: Icons.swap_vert_rounded,
+                semanticLabel: 'Flip board',
                 isActive: false,
                 onTap: onFlipBoard,
                 size: trayPieceSize,
@@ -1201,6 +1290,7 @@ class _PieceTray extends StatelessWidget {
 
 class _TrayActionButton extends StatelessWidget {
   final IconData icon;
+  final String semanticLabel;
   final bool isActive;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
@@ -1208,6 +1298,7 @@ class _TrayActionButton extends StatelessWidget {
 
   const _TrayActionButton({
     required this.icon,
+    required this.semanticLabel,
     required this.isActive,
     required this.onTap,
     this.onLongPress,
@@ -1216,31 +1307,47 @@ class _TrayActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final targetSize = size < 48 ? 48.0 : size;
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      selected: isActive,
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color:
-              isActive
-                  ? context.colors.textPrimary.withValues(alpha: 0.3)
-                  : Colors.transparent,
-          borderRadius: BorderRadius.circular(6.br),
-          border:
-              isActive
-                  ? Border.all(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
-                    width: 1.5,
-                  )
-                  : null,
-        ),
-        child: Center(
-          child: Icon(
-            icon,
-            color: isActive ? context.colors.background : context.colors.surfaceRecessed,
-            size: size * 0.6,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Container(
+            width: targetSize,
+            height: targetSize,
+            decoration: BoxDecoration(
+              color:
+                  isActive
+                      ? context.colors.textPrimary.withValues(alpha: 0.3)
+                      : Colors.transparent,
+              borderRadius: BorderRadius.circular(8.br),
+              border:
+                  isActive
+                      ? Border.all(
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.6,
+                        ),
+                        width: 1.5,
+                      )
+                      : null,
+            ),
+            child: Center(
+              child: Icon(
+                icon,
+                color:
+                    isActive
+                        ? context.colors.background
+                        : context.colors.iconSecondary,
+                size: size * 0.6,
+              ),
+            ),
           ),
         ),
       ),
@@ -1266,42 +1373,56 @@ class _TrayPiece extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
+      child: Semantics(
+        label: 'Select ${piece.color.name} ${piece.role.name}',
+        button: true,
+        selected: isSelected,
         onTap: onTap,
-        child: Draggable<Piece>(
-          data: piece,
-          feedback: PieceDragFeedback(
-            piece: piece,
-            squareSize: size,
-            pieceAssets: pieceAssets,
-          ),
-          childWhenDragging: Opacity(
-            opacity: 0.3,
-            child: PieceWidget(
-              piece: piece,
-              size: size,
-              pieceAssets: pieceAssets,
-            ),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color:
-                  isSelected
-                      ? context.colors.textPrimary.withValues(alpha: 0.3)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(6.br),
-              border:
-                  isSelected
-                      ? Border.all(
-                        color: context.colors.textPrimary.withValues(alpha: 0.6),
-                        width: 1.5,
-                      )
-                      : null,
-            ),
-            child: PieceWidget(
-              piece: piece,
-              size: size,
-              pieceAssets: pieceAssets,
+        child: ExcludeSemantics(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Draggable<Piece>(
+              data: piece,
+              feedback: PieceDragFeedback(
+                piece: piece,
+                squareSize: size,
+                pieceAssets: pieceAssets,
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.3,
+                child: PieceWidget(
+                  piece: piece,
+                  size: size,
+                  pieceAssets: pieceAssets,
+                ),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color:
+                        isSelected
+                            ? context.colors.textPrimary.withValues(alpha: 0.3)
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6.br),
+                    border:
+                        isSelected
+                            ? Border.all(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.6,
+                              ),
+                              width: 1.5,
+                            )
+                            : null,
+                  ),
+                  child: PieceWidget(
+                    piece: piece,
+                    size: size,
+                    pieceAssets: pieceAssets,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -1339,12 +1460,23 @@ class _FenBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: 8.w),
-          GestureDetector(
+          Semantics(
+            label: 'Copy FEN',
+            button: true,
             onTap: onCopy,
-            child: Icon(
-              Icons.copy_rounded,
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-              size: 18.sp,
+            child: ExcludeSemantics(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onCopy,
+                child: SizedBox.square(
+                  dimension: 48,
+                  child: Icon(
+                    Icons.copy_rounded,
+                    color: context.colors.textPrimary.withValues(alpha: 0.7),
+                    size: 18.sp,
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -1385,18 +1517,32 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Semantics(
+      label: label,
+      button: true,
       onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 12.h),
-        decoration: BoxDecoration(
-          color: context.colors.textPrimary,
-          borderRadius: BorderRadius.circular(24.br),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.background),
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: context.colors.textPrimary,
+                borderRadius: BorderRadius.circular(24.br),
+              ),
+              child: Center(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.background,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -1417,8 +1563,7 @@ String? _extractFen(String input) {
   final trimmed = input.trim();
   if (_isValidFen(trimmed)) return trimmed;
 
-  final pgnMatch =
-      RegExp(r'\[\s*FEN\s+"([^"]+)"\s*\]').firstMatch(input);
+  final pgnMatch = RegExp(r'\[\s*FEN\s+"([^"]+)"\s*\]').firstMatch(input);
   if (pgnMatch != null) {
     final inside = pgnMatch.group(1)!.trim();
     if (_isValidFen(inside)) return inside;
@@ -1469,7 +1614,8 @@ String _stripFenWrappers(String s) {
   while (current.length >= 2) {
     final first = current[0];
     final last = current[current.length - 1];
-    final isMatchingPair = (first == '"' && last == '"') ||
+    final isMatchingPair =
+        (first == '"' && last == '"') ||
         (first == "'" && last == "'") ||
         (first == '`' && last == '`');
     if (!isMatchingPair) break;

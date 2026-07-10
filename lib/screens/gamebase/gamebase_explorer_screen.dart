@@ -22,7 +22,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
@@ -31,8 +31,15 @@ import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
@@ -322,6 +329,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         );
 
     final state = ref.watch(gamebaseExplorerProvider);
+    final controlExtent = _floatingControlExtent(context);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final topContentInset = _topContentInset(context, controlExtent);
+    final bottomContentInset = _bottomContentInset(context, controlExtent);
     final scopedPlayerId = widget.initialPlayer?.id;
     if (scopedPlayerId != null && scopedPlayerId.isNotEmpty) {
       ref.listen<PlayerOpeningTreeState>(
@@ -342,78 +353,94 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       );
     }
 
-    return ScreenWrapper(
-      child: PopScope(
-        onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) return;
-          _resetExplorerState();
-        },
-        child: Scaffold(
-          key: e2eKey(E2eIds.openingExplorerRoot),
-          backgroundColor: context.colors.surface,
-          appBar: _buildAppBar(context),
-          bottomNavigationBar: ChessBoardBottomNavBar(
-            gameIndex: 0,
-            onFlip: () => setState(() => _isFlipped = !_isFlipped),
-            toggleEngineVisibility: _toggleEngineAnalysis,
-            onEngineSettingsLongPress: () {
-              requireFullAuthGuard(context).then((allowed) {
-                if (!allowed || !context.mounted) return;
-                Navigator.of(context).push(
-                  SettingsPage.route(initiallyExpanded: SettingsSection.board),
-                );
-              });
-            },
-            onRightMove:
-                state.canGoForward
-                    ? () async {
-                      final allowed = await _ensureExplorerForwardAllowed();
-                      if (!allowed) return;
-                      ref.read(gamebaseExplorerProvider.notifier).goForward();
-                    }
-                    : null,
-            onLeftMove:
-                state.canGoBack
-                    ? () => ref.read(gamebaseExplorerProvider.notifier).goBack()
-                    : null,
-            onLongPressBackwardStart:
-                state.canGoBack ? _startLongPressBackward : null,
-            onLongPressBackwardEnd: _stopLongPressBackward,
-            onLongPressForwardStart:
-                state.canGoForward ? _startLongPressForward : null,
-            onLongPressForwardEnd: _stopLongPressForward,
-            canMoveForward: state.canGoForward,
-            canMoveBackward: state.canGoBack,
-            showEngineAnalysis: showEngineAnalysis,
-            showUnseenMoveBadge: false,
-            showGamebaseButton: false,
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) return;
+        _resetExplorerState();
+      },
+      child: GlassFullScreenPage(
+        key: e2eKey(E2eIds.openingExplorerRoot),
+        backgroundColor: context.colors.surface,
+        includeContentSafeArea: false,
+        topOverlayPadding: const EdgeInsets.only(top: 4),
+        bottomOverlayPadding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        contentPadding: EdgeInsets.fromLTRB(
+          viewPadding.left,
+          topContentInset,
+          viewPadding.right,
+          bottomContentInset,
+        ),
+        topOverlay: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth:
+                  ResponsiveHelper.isTablet
+                      ? ResponsiveHelper.contentMaxWidth
+                      : double.infinity,
+            ),
+            child: GlassIslandStack(
+              includeStatusBar: false,
+              gap: 8,
+              children: [
+                _buildTopBar(context, controlExtent),
+                _buildViewSwitcher(context, controlExtent),
+              ],
+            ),
           ),
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final isTablet = ResponsiveHelper.isTablet;
-              final isLandscape = ResponsiveHelper.isLandscape;
+        ),
+        bottomOverlay: _buildBottomControls(
+          context,
+          state: state,
+          showEngineAnalysis: showEngineAnalysis,
+          controlExtent: controlExtent,
+        ),
+        content: LayoutBuilder(
+          builder: (context, constraints) {
+            final isTablet = ResponsiveHelper.isTablet;
+            final isLandscape = ResponsiveHelper.isLandscape;
 
-              if (isTablet && isLandscape) {
-                return _buildTabletLandscapeLayout(
-                  constraints,
-                  showEngineAnalysis: showEngineAnalysis,
-                );
-              } else if (isTablet) {
-                return _buildTabletPortraitLayout(
-                  constraints,
-                  showEngineAnalysis: showEngineAnalysis,
-                );
-              } else {
-                return _buildPhoneLayout(
-                  constraints,
-                  showEngineAnalysis: showEngineAnalysis,
-                );
-              }
-            },
-          ),
+            if (isTablet && isLandscape) {
+              return _buildTabletLandscapeLayout(
+                constraints,
+                showEngineAnalysis: showEngineAnalysis,
+              );
+            } else if (isTablet) {
+              return _buildTabletPortraitLayout(
+                constraints,
+                showEngineAnalysis: showEngineAnalysis,
+              );
+            } else {
+              return _buildPhoneLayout(
+                constraints,
+                showEngineAnalysis: showEngineAnalysis,
+              );
+            }
+          },
         ),
       ),
     );
+  }
+
+  double _floatingControlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(BuildContext context, double controlExtent) {
+    return MediaQuery.viewPaddingOf(context).top +
+        4 +
+        controlExtent +
+        6 +
+        8 +
+        controlExtent +
+        4 +
+        8;
+  }
+
+  double _bottomContentInset(BuildContext context, double controlExtent) {
+    return MediaQuery.viewPaddingOf(context).bottom + controlExtent + 24;
   }
 
   /// Phone layout — identical to the original layout.
@@ -606,104 +633,282 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  Widget _buildTopBar(BuildContext context, double controlExtent) {
     final state = ref.watch(gamebaseExplorerProvider);
-    final currentPage = ref.watch(explorerPageIndexProvider);
+    final reduceMotion = GlassMotion.reduceMotion(context);
+    final playerLabel =
+        state.filters.selectedPlayers.isNotEmpty
+            ? state.filters.selectedPlayers.first.titleAndName
+            : 'Opening Explorer';
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final viewportWidth =
+        MediaQuery.sizeOf(context).width - viewPadding.left - viewPadding.right;
+    final primaryActionWidth = controlExtent + 18;
+    final titleSpace = viewportWidth - 200 - primaryActionWidth;
+    final showTitle = titleSpace >= 64;
+    void resetExplorer() =>
+        _resetExplorerState(fetch: true, preserveScope: true);
+    void openFilters() => _showFilterSheet(context);
 
-    return AppBar(
-      backgroundColor: context.colors.surface,
-      elevation: 0,
-      centerTitle: false,
-      titleSpacing: 0,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back, size: 24.ic),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (state.filters.selectedPlayers.isNotEmpty)
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    state.filters.selectedPlayers.first.titleAndName,
-                    style: TextStyle(
-                      color: context.colors.textPrimary,
-                      fontSize: 15.f,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+    return Semantics(
+      label: '$playerLabel explorer controls',
+      container: true,
+      child: GlassIslandTopBar(
+        topPadding: 0,
+        height: controlExtent,
+        leading: const GlassBackButton(),
+        title:
+            showTitle
+                ? GlassTitleChip(
+                  label: playerLabel,
+                  height: controlExtent,
+                  maxWidth: math.min(160.w, titleSpace),
+                )
+                : null,
+        trailing: [
+          Tooltip(
+            message: 'Reset explorer',
+            child: Semantics(
+              label: 'Reset explorer',
+              button: true,
+              onTap: resetExplorer,
+              child: ExcludeSemantics(
+                child: GlassIconButton(
+                  icon: Icon(
+                    Icons.restart_alt,
+                    color: context.colors.iconPrimary,
                   ),
-                  _ExplorerSegmentedTitle(currentPage: currentPage),
-                ],
-              ),
-            )
-          else
-            _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
-        ],
-      ),
-      // Three actions, evenly spaced: Reset, Filters (with active dot when
-      // filters are applied), Done. The dot on the filter icon is enough to
-      // signal "filters active" — no separate clear-filters button is needed
-      // since Reset wipes the same state.
-      actions: [
-        IconButton(
-          icon: Icon(Icons.restart_alt, size: 24.ic),
-          onPressed:
-              () => _resetExplorerState(fetch: true, preserveScope: true),
-          tooltip: 'Reset explorer',
-        ),
-        IconButton(
-          icon: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(Icons.tune, size: 24.ic),
-              if (_shouldShowClearFilters(state))
-                Positioned(
-                  top: -2,
-                  right: -2,
-                  child: Container(
-                    width: 8.sp,
-                    height: 8.sp,
-                    decoration: const BoxDecoration(
-                      color: kPrimaryColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          onPressed: () => _showFilterSheet(context),
-          tooltip: 'Filters',
-        ),
-        // Match IconButton's default 8dp surrounding padding so the gap
-        // tune→Done equals the gap reset→tune.
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8.sp),
-          child: GestureDetector(
-            onTap: () => _openAnalysis(context),
-            child: Container(
-              key: e2eKey(E2eIds.openingExplorerDoneButton),
-              padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Text(
-                'Done',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.background,
+                  onPressed: resetExplorer,
+                  size: 48,
+                  iconSize: 20,
+                  interactionScale: reduceMotion ? 1 : 0.95,
+                  anchorStretch: !reduceMotion,
+                  useOwnLayer: true,
                 ),
               ),
             ),
           ),
-        ),
-      ],
+          Tooltip(
+            message: 'Filters',
+            child: Semantics(
+              label:
+                  _shouldShowClearFilters(state)
+                      ? 'Filters, active'
+                      : 'Filters',
+              button: true,
+              onTap: openFilters,
+              child: ExcludeSemantics(
+                child: GlassBadge(
+                  count: _shouldShowClearFilters(state) ? 1 : 0,
+                  backgroundColor: kPrimaryColor,
+                  child: GlassIconButton(
+                    icon: Icon(Icons.tune, color: context.colors.iconPrimary),
+                    onPressed: openFilters,
+                    size: 48,
+                    iconSize: 18,
+                    interactionScale: reduceMotion ? 1 : 0.95,
+                    anchorStretch: !reduceMotion,
+                    useOwnLayer: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Semantics(
+            label: 'Open position in analysis',
+            button: true,
+            onTap: () => _openAnalysis(context),
+            child: ExcludeSemantics(
+              child: GlassButton.custom(
+                key: e2eKey(E2eIds.openingExplorerDoneButton),
+                label: 'Open position in analysis',
+                onTap: () => _openAnalysis(context),
+                width: primaryActionWidth,
+                height: controlExtent,
+                useOwnLayer: true,
+                style: GlassButtonStyle.prominent,
+                interactionScale: reduceMotion ? 1 : 1.03,
+                stretch: reduceMotion ? 0 : 0.3,
+                shape: LiquidRoundedSuperellipse(
+                  borderRadius: controlExtent / 2,
+                ),
+                child: Text(
+                  'Done',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViewSwitcher(BuildContext context, double controlExtent) {
+    final currentPage = ref.watch(explorerPageIndexProvider);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final availableWidth =
+        MediaQuery.sizeOf(context).width -
+        viewPadding.left -
+        viewPadding.right -
+        96;
+    final width = math.min(availableWidth, 280.0);
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: GlassContainer(
+        width: width,
+        height: controlExtent,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        alignment: Alignment.center,
+        useOwnLayer: true,
+        quality: GlassQuality.standard,
+        shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
+        child: _ExplorerSegmentedTitle(currentPage: currentPage),
+      ),
+    );
+  }
+
+  Widget _buildBottomControls(
+    BuildContext context, {
+    required GamebaseExplorerState state,
+    required bool showEngineAnalysis,
+    required double controlExtent,
+  }) {
+    final fullWidth = MediaQuery.sizeOf(context).width;
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final islandWidth = math.min(
+      fullWidth - viewPadding.left - viewPadding.right - 24,
+      ResponsiveHelper.isTablet ? 520.0 : 380.0,
+    );
+    final barHeight = controlExtent + 8;
+    final buttonWidth = (islandWidth - 8) / 4;
+
+    void openEngineSettings() {
+      requireFullAuthGuard(context).then((allowed) {
+        if (!allowed || !context.mounted) return;
+        Navigator.of(
+          context,
+        ).push(SettingsPage.route(initiallyExpanded: SettingsSection.board));
+      });
+    }
+
+    final VoidCallback? goBack =
+        state.canGoBack
+            ? () => ref.read(gamebaseExplorerProvider.notifier).goBack()
+            : null;
+    final VoidCallback? goForward =
+        state.canGoForward
+            ? () async {
+              final allowed = await _ensureExplorerForwardAllowed();
+              if (!allowed) return;
+              ref.read(gamebaseExplorerProvider.notifier).goForward();
+            }
+            : null;
+
+    Widget semanticControl({
+      required String label,
+      required Widget child,
+      required VoidCallback? onTap,
+      VoidCallback? onLongPress,
+      bool? toggled,
+    }) {
+      return Semantics(
+        label: label,
+        button: true,
+        enabled: onTap != null,
+        toggled: toggled,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: ExcludeSemantics(child: child),
+      );
+    }
+
+    final island = GlassContainer(
+      width: islandWidth,
+      height: barHeight,
+      padding: const EdgeInsets.all(4),
+      alignment: Alignment.center,
+      useOwnLayer: true,
+      quality: GlassQuality.standard,
+      shape: LiquidRoundedSuperellipse(borderRadius: barHeight / 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          semanticControl(
+            label:
+                showEngineAnalysis
+                    ? 'Hide engine analysis'
+                    : 'Show engine analysis',
+            toggled: showEngineAnalysis,
+            onTap: _toggleEngineAnalysis,
+            onLongPress: openEngineSettings,
+            child: ChessSvgBottomNavbar(
+              key: e2eKey(E2eIds.boardEngineToggle),
+              width: buttonWidth,
+              svgPath: SvgAsset.laptop,
+              onPressed: _toggleEngineAnalysis,
+              onLongPress: openEngineSettings,
+              isActive: showEngineAnalysis,
+            ),
+          ),
+          semanticControl(
+            label: 'Flip board',
+            onTap: () => setState(() => _isFlipped = !_isFlipped),
+            child: ChessSvgBottomNavbar(
+              key: e2eKey(E2eIds.boardFlip),
+              width: buttonWidth,
+              svgPath: SvgAsset.refresh,
+              onPressed: () => setState(() => _isFlipped = !_isFlipped),
+            ),
+          ),
+          semanticControl(
+            label: 'Previous move',
+            onTap: goBack,
+            onLongPress: state.canGoBack ? _startLongPressBackward : null,
+            child: ChessSvgBottomNavbarWithLongPress(
+              key: e2eKey(E2eIds.boardMoveBack),
+              svgPath: SvgAsset.left_arrow,
+              width: buttonWidth,
+              onPressed: goBack,
+              onLongPressStart:
+                  state.canGoBack ? _startLongPressBackward : null,
+              onLongPressEnd: _stopLongPressBackward,
+            ),
+          ),
+          semanticControl(
+            label: 'Next move',
+            onTap: goForward,
+            onLongPress: state.canGoForward ? _startLongPressForward : null,
+            child: ChessSvgBottomNavbarWithLongPress(
+              key: e2eKey(E2eIds.boardMoveForward),
+              svgPath: SvgAsset.right_arrow,
+              width: buttonWidth,
+              onPressed: goForward,
+              onLongPressStart:
+                  state.canGoForward ? _startLongPressForward : null,
+              onLongPressEnd: _stopLongPressForward,
+              showBadge: false,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final isTabletLandscape =
+        ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
+    return Center(
+      child: GestureDetector(
+        onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
+        onHorizontalDragUpdate: isTabletLandscape ? (_) {} : null,
+        onHorizontalDragEnd: isTabletLandscape ? (_) {} : null,
+        behavior: HitTestBehavior.opaque,
+        child: island,
+      ),
     );
   }
 
@@ -913,7 +1118,10 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                   controller: _boardController,
                   settings: ChessboardSettings(
                     enableCoordinates: boardSettings.showCoordinates,
-                    animationDuration: const Duration(milliseconds: 200),
+                    animationDuration: GlassMotion.resolveDuration(
+                      context,
+                      const Duration(milliseconds: 200),
+                    ),
                     colorScheme: boardSettings.colorScheme,
                     pieceAssets: boardSettings.pieceAssets,
                     pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
@@ -1347,7 +1555,10 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     return SafeArea(
       top: false,
       child: AnimatedPadding(
-        duration: const Duration(milliseconds: 180),
+        duration: GlassMotion.resolveDuration(
+          context,
+          const Duration(milliseconds: 180),
+        ),
         curve: Curves.easeOut,
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -2160,50 +2371,43 @@ class _EngineLine extends StatelessWidget {
   }
 }
 
-// AppBar segmented title that toggles between Explorer (page 0) and Notation
-// (page 1). Tap-to-cycle, with the inactive label dimmed and a pair of
-// growing/shrinking dots in between for visual continuity with the swipe.
+// Floating segmented island content that toggles between Explorer (page 0)
+// and Notation (page 1). Tap-to-cycle is preserved from the original app bar.
 class _ExplorerSegmentedTitle extends ConsumerWidget {
-  const _ExplorerSegmentedTitle({
-    required this.currentPage,
-    this.isLarge = false,
-  });
+  const _ExplorerSegmentedTitle({required this.currentPage});
 
   final int currentPage;
-  final bool isLarge;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () {
-        ref.read(explorerPageIndexProvider.notifier).state =
-            (currentPage + 1) % 2;
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Semantics(
-        label:
-            currentPage == 0
-                ? 'Opening Explorer: Moves view. Tap to switch to notation.'
-                : 'Opening Explorer: Notation view. Tap to switch to moves.',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _SegmentLabel(
-              label: 'Explorer',
-              isActive: currentPage == 0,
-              isLarge: isLarge,
-            ),
-            SizedBox(width: 8.sp),
-            _ExplorerPageDot(isSelected: currentPage == 0),
-            SizedBox(width: 4.sp),
-            _ExplorerPageDot(isSelected: currentPage == 1),
-            SizedBox(width: 8.sp),
-            _SegmentLabel(
-              label: 'Notation',
-              isActive: currentPage == 1,
-              isLarge: isLarge,
-            ),
-          ],
+    void toggleView() {
+      ref.read(explorerPageIndexProvider.notifier).state =
+          (currentPage + 1) % 2;
+    }
+
+    return Semantics(
+      label:
+          currentPage == 0
+              ? 'Opening Explorer: Moves view. Tap to switch to notation.'
+              : 'Opening Explorer: Notation view. Tap to switch to moves.',
+      button: true,
+      onTap: toggleView,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          onTap: toggleView,
+          behavior: HitTestBehavior.opaque,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SegmentLabel(label: 'Explorer', isActive: currentPage == 0),
+              SizedBox(width: 8.sp),
+              _ExplorerPageDot(isSelected: currentPage == 0),
+              SizedBox(width: 4.sp),
+              _ExplorerPageDot(isSelected: currentPage == 1),
+              SizedBox(width: 8.sp),
+              _SegmentLabel(label: 'Notation', isActive: currentPage == 1),
+            ],
+          ),
         ),
       ),
     );
@@ -2211,26 +2415,24 @@ class _ExplorerSegmentedTitle extends ConsumerWidget {
 }
 
 class _SegmentLabel extends StatelessWidget {
-  const _SegmentLabel({
-    required this.label,
-    required this.isActive,
-    required this.isLarge,
-  });
+  const _SegmentLabel({required this.label, required this.isActive});
 
   final String label;
   final bool isActive;
-  final bool isLarge;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 200),
+      duration: GlassMotion.resolveDuration(
+        context,
+        const Duration(milliseconds: 200),
+      ),
       style: TextStyle(
         color:
             isActive
                 ? context.colors.textPrimary
                 : context.colors.textSecondary.withValues(alpha: 0.7),
-        fontSize: isLarge ? 17.f : 13.f,
+        fontSize: 13.f,
         // Constant weight prevents layout shift as the active label changes.
         fontWeight: FontWeight.w600,
         letterSpacing: -0.2,
@@ -2248,7 +2450,10 @@ class _ExplorerPageDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+      duration: GlassMotion.resolveDuration(
+        context,
+        const Duration(milliseconds: 180),
+      ),
       curve: Curves.easeOutCubic,
       width: isSelected ? 12.sp : 4.sp,
       height: 4.sp,
@@ -2387,6 +2592,8 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
   }
 
   Future<void> _checkAndShowWalkthrough() async {
+    if (GlassMotion.reduceMotion(context)) return;
+
     final prefs = ref.read(sharedPreferencesRepository);
     final now = DateTime.now();
 
@@ -2484,11 +2691,15 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
     ref.listen(explorerPageIndexProvider, (previous, next) {
       if (_showTutorialOverlay) return;
       if (_pageController.hasClients && _pageController.page?.round() != next) {
-        _pageController.animateToPage(
-          next,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-        );
+        if (GlassMotion.reduceMotion(context)) {
+          _pageController.jumpToPage(next);
+        } else {
+          _pageController.animateToPage(
+            next,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
+        }
       }
     });
 
@@ -2904,7 +3115,10 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
+                duration: GlassMotion.resolveDuration(
+                  context,
+                  const Duration(milliseconds: 150),
+                ),
                 curve: Curves.easeOutCubic,
                 width: 16.sp,
                 height: 16.sp,
@@ -2924,7 +3138,10 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                 ),
                 child: Center(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 150),
+                    duration: GlassMotion.resolveDuration(
+                      context,
+                      const Duration(milliseconds: 150),
+                    ),
                     child: Icon(
                       isCollapsed ? Icons.add_rounded : Icons.remove_rounded,
                       key: ValueKey<bool>(isCollapsed),
@@ -3081,7 +3298,10 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
 
     Scrollable.ensureVisible(
       targetContext,
-      duration: const Duration(milliseconds: 220),
+      duration: GlassMotion.resolveDuration(
+        context,
+        const Duration(milliseconds: 220),
+      ),
       curve: Curves.easeOutCubic,
       alignment: 0.5,
     );
