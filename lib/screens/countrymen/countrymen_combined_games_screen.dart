@@ -14,11 +14,18 @@ import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class CountrymenCombinedGamesScreen extends ConsumerStatefulWidget {
   const CountrymenCombinedGamesScreen({super.key});
@@ -217,10 +224,30 @@ class _CountrymenCombinedGamesScreenState
     }
 
     final state = ref.watch(countrymenCombinedGamesProvider);
+    final controlExtent = _controlExtent(context);
+    final topContentInset = _topContentInset(context);
 
-    return Scaffold(
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      body: Center(
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: GlassIslandStack(
+            includeStatusBar: false,
+            gap: 8,
+            children: [
+              _buildTopBar(context, state, controlExtent),
+              _buildSearchBar(controlExtent),
+            ],
+          ),
+        ),
+      ),
+      content: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: ResponsiveHelper.contentMaxWidth,
@@ -234,7 +261,7 @@ class _CountrymenCombinedGamesScreenState
             },
             color: context.colors.textPrimary,
             backgroundColor: context.colors.surface,
-            edgeOffset: 120,
+            edgeOffset: topContentInset,
             child: CustomScrollView(
               controller: _scrollController,
               scrollCacheExtent: kListScrollCacheExtent,
@@ -242,20 +269,13 @@ class _CountrymenCombinedGamesScreenState
                 parent: BouncingScrollPhysics(),
               ),
               slivers: [
-                // Pinned app bar
-                _buildPinnedAppBar(context, state),
-
-                // Pinned search bar
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SliverSearchBarDelegate(
-                    child: _buildSearchBar(),
-                    height: 68.h,
-                  ),
-                ),
-
-                // Content
+                // This spacer scrolls away with the content. It protects the
+                // first card at rest without creating a sticky top region.
+                SliverToBoxAdapter(child: SizedBox(height: topContentInset)),
                 _buildContentSliver(state),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: _bottomContentInset(context)),
+                ),
               ],
             ),
           ),
@@ -264,132 +284,94 @@ class _CountrymenCombinedGamesScreenState
     );
   }
 
-  Widget _buildPinnedAppBar(
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(BuildContext context) {
+    final controlExtent = _controlExtent(context);
+    const overlayTopPadding = 4.0;
+    const topBarBottomPadding = 6.0;
+    const rowGap = 8.0;
+    const stackBottomPadding = 4.0;
+    const contentGap = 8.0;
+    return MediaQuery.viewPaddingOf(context).top +
+        overlayTopPadding +
+        (controlExtent * 2) +
+        topBarBottomPadding +
+        rowGap +
+        stackBottomPadding +
+        contentGap;
+  }
+
+  double _bottomContentInset(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return media.viewPadding.bottom + media.viewInsets.bottom + 24.h;
+  }
+
+  Widget _buildTopBar(
     BuildContext context,
     CountrymenCombinedGamesState state,
+    double controlExtent,
   ) {
     final countryCode = state.countryCode ?? '';
     final countryName = state.countryName ?? 'Your Country';
     final hasActiveFilters = state.filter.hasActiveFilters;
     final activeFilterCount = state.filter.activeFilterCount;
 
-    return SliverAppBar(
-      pinned: true,
-      floating: false,
-      backgroundColor: context.colors.background,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      automaticallyImplyLeading: false,
-      toolbarHeight: 64.h,
-      titleSpacing: 0,
-      title: Row(
-        children: [
-          SizedBox(width: 8.w),
-          IconButton(
-            iconSize: 24.ic,
-            padding: EdgeInsets.zero,
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 22.ic,
-              color: context.colors.textPrimary,
-            ),
-          ),
-          SizedBox(width: 8.w),
-          if (countryCode.isNotEmpty) ...[
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4.br),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: CountryFlag.fromCountryCode(
-                countryCode,
-                theme: ImageTheme(
-                  height: 18.h,
-                  width: 26.w,
-                  shape: RoundedRectangle(4.br),
-                ),
-              ),
-            ),
-            SizedBox(width: 10.w),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  countryName,
-                  style: AppTypography.textLgBold.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  'Games with players from your country',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textSecondary,
+    void openFilters() => _showFilterDialog(state);
+    final filterLabel =
+        hasActiveFilters ? 'Filters, $activeFilterCount active' : 'Filters';
+
+    return GlassIslandTopBar(
+      topPadding: 0,
+      height: controlExtent,
+      horizontalPadding: ResponsiveHelper.adaptive(phone: 12, tablet: 24),
+      leading: const GlassBackButton(),
+      title: GlassTitleChip(
+        label: countryName,
+        height: controlExtent,
+        maxWidth: 200.w,
+        icon:
+            countryCode.isEmpty
+                ? null
+                : CountryFlag.fromCountryCode(
+                  countryCode,
+                  theme: ImageTheme(
+                    height: 14.h,
+                    width: 20.w,
+                    shape: RoundedRectangle(3.br),
                   ),
                 ),
-              ],
-            ),
-          ),
-          // Filter button
-          GestureDetector(
-            onTap: () => _showFilterDialog(state),
-            child: Container(
-              padding: EdgeInsets.all(8.w),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 22.ic,
-                    color:
-                        hasActiveFilters
-                            ? context.colors.textPrimary
-                            : context.colors.textSecondary,
-                  ),
-                  // Badge showing active filter count
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: -4.w,
-                      top: -4.h,
-                      child: Container(
-                        padding: EdgeInsets.all(4.w),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: BoxConstraints(
-                          minWidth: 16.w,
-                          minHeight: 16.h,
-                        ),
-                        child: Text(
-                          '$activeFilterCount',
-                          style: AppTypography.textXsBold.copyWith(
-                            color: context.colors.textPrimary,
-                            fontSize: 10.sp,
-                            height: 1,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(width: 12.w),
-        ],
       ),
+      trailing: [
+        Semantics(
+          label: filterLabel,
+          button: true,
+          onTap: openFilters,
+          child: ExcludeSemantics(
+            child: GlassBadge(
+              count: hasActiveFilters ? activeFilterCount : 0,
+              backgroundColor: context.colors.danger,
+              child: GlassIconButton(
+                icon: Icon(
+                  Icons.tune_rounded,
+                  color:
+                      hasActiveFilters
+                          ? context.colors.iconPrimary
+                          : context.colors.iconSecondary,
+                ),
+                onPressed: openFilters,
+                size: 48,
+                iconSize: 18,
+                useOwnLayer: true,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -405,64 +387,73 @@ class _CountrymenCombinedGamesScreenState
     }
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(double controlExtent) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 32.w,
     );
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        0,
-        horizontalPadding,
-        12.h,
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.colors.background,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: context.colors.surfaceRecessed),
-        ),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: GlassContainer(
+        useOwnLayer: true,
+        quality: GlassQuality.standard,
+        height: controlExtent,
+        padding: EdgeInsets.only(left: 14.w),
+        shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
         child: Row(
           children: [
-            SizedBox(width: 12.w),
-            Icon(
-              Icons.search,
-              size: 20.sp,
-              color: context.colors.textSecondary,
+            ExcludeSemantics(
+              child: Icon(
+                Icons.search,
+                size: 20.sp,
+                color: context.colors.iconSecondary,
+              ),
             ),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
+                textAlignVertical: TextAlignVertical.center,
                 style: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textPrimary,
                 ),
                 onChanged: _onSearchChanged,
                 decoration: InputDecoration(
-                  isDense: true,
+                  isCollapsed: true,
                   hintText: 'Search',
                   hintStyle: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textSecondary,
                   ),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14.h),
                 ),
               ),
             ),
-            if (_searchController.text.isNotEmpty) ...[
-              GestureDetector(
-                onTap: _clearSearch,
-                child: Icon(
-                  Icons.close,
-                  size: 20.sp,
-                  color: context.colors.textSecondary,
-                ),
-              ),
-              SizedBox(width: 8.w),
-            ],
-            SizedBox(width: 8.w),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _searchController,
+              builder: (context, value, _) {
+                if (value.text.isEmpty) return SizedBox(width: 8.w);
+                return Semantics(
+                  label: 'Clear search',
+                  button: true,
+                  onTap: _clearSearch,
+                  child: ExcludeSemantics(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _clearSearch,
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 20.sp,
+                          color: context.colors.iconSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -544,7 +535,7 @@ class _CountrymenCombinedGamesScreenState
                             Text(
                               'Loading more games...',
                               style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textTertiary,
+                                color: context.colors.textSecondary,
                               ),
                             ),
                           ],
@@ -554,7 +545,7 @@ class _CountrymenCombinedGamesScreenState
                         : Text(
                           'No more games',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
+                            color: context.colors.textSecondary,
                           ),
                         ),
               ),
@@ -581,238 +572,256 @@ class _CountrymenCombinedGamesScreenState
   }
 
   Widget _buildLoadingState(String countryName) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 48.w,
-            height: 48.h,
-            child: CircularProgressIndicator(
-              color: context.colors.textPrimary,
-              strokeWidth: 2.5,
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 48.w,
+              height: 48.h,
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimary,
+                strokeWidth: 2.5,
+              ),
             ),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            'Loading games...',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textSecondary,
+            SizedBox(height: 16.h),
+            Text(
+              'Loading games...',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
             ),
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            'Finding games from $countryName',
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textTertiary,
+            SizedBox(height: 8.h),
+            Text(
+              'Finding games from $countryName',
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildErrorState(String error) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 64.w,
-            height: 64.h,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16.br),
-            ),
-            child: Icon(
-              Icons.error_outline_rounded,
-              color: const Color(0xFFEF4444),
-              size: 32.ic,
-            ),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 32.w),
-            child: Text(
-              error,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64.w,
+              height: 64.h,
+              decoration: BoxDecoration(
+                color: context.colors.danger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16.br),
               ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          SizedBox(height: 24.h),
-          TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(countrymenCombinedGamesProvider.notifier)
-                        .refreshGames(),
-            style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(
-                alpha: 0.1,
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.br),
+              child: Icon(
+                Icons.error_outline_rounded,
+                color: context.colors.danger,
+                size: 32.ic,
               ),
             ),
-            child: Text(
-              'Retry',
-              style: AppTypography.textSmMedium.copyWith(
+            SizedBox(height: 16.h),
+            Text(
+              'Failed to load games',
+              style: AppTypography.textMdMedium.copyWith(
                 color: context.colors.textPrimary,
               ),
             ),
-          ),
-        ],
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 32.w),
+              child: Text(
+                error,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            SizedBox(height: 24.h),
+            TextButton(
+              onPressed:
+                  () =>
+                      ref
+                          .read(countrymenCombinedGamesProvider.notifier)
+                          .refreshGames(),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.1,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+              ),
+              child: Text(
+                'Retry',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildEmptyState(String countryName) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80.w,
-            height: 80.h,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  context.colors.textPrimary.withValues(alpha: 0.15),
-                  context.colors.textPrimary.withValues(alpha: 0.05),
-                ],
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80.w,
+              height: 80.h,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    context.colors.textPrimary.withValues(alpha: 0.15),
+                    context.colors.textPrimary.withValues(alpha: 0.05),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20.br),
               ),
-              borderRadius: BorderRadius.circular(20.br),
+              child: Icon(
+                Icons.public_outlined,
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
+                size: 40.ic,
+              ),
             ),
-            child: Icon(
-              Icons.public_outlined,
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-              size: 40.ic,
+            SizedBox(height: 20.h),
+            Text(
+              'No games found',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
-          ),
-          SizedBox(height: 20.h),
-          Text(
-            'No games found',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 40.w),
+              child: Text(
+                'No recent games found for players from $countryName',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
-          ),
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 40.w),
-            child: Text(
-              'No recent games found for players from $countryName',
+            SizedBox(height: 24.h),
+            TextButton(
+              onPressed:
+                  () =>
+                      ref
+                          .read(countrymenCombinedGamesProvider.notifier)
+                          .refreshGames(),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.1,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+              ),
+              child: Text(
+                'Refresh',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      scale: true,
+    );
+  }
+
+  Widget _buildNoSearchResultsState() {
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off_outlined,
+              size: 56.sp,
+              color: context.colors.iconSecondary,
+            ),
+            SizedBox(height: 12.h),
+            Text(
+              'No results',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
+              ),
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              'Try a different search term',
               style: AppTypography.textSmRegular.copyWith(
                 color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
-          ),
-          SizedBox(height: 24.h),
-          TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(countrymenCombinedGamesProvider.notifier)
-                        .refreshGames(),
-            style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(
-                alpha: 0.1,
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-            ),
-            child: Text(
-              'Refresh',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
-  }
-
-  Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off_outlined,
-            size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No results',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try a different search term',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildNoFilterResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.filter_alt_off_outlined,
-            size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No matching games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.filter_alt_off_outlined,
+              size: 56.sp,
+              color: context.colors.iconSecondary,
             ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try adjusting your filters',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+            SizedBox(height: 12.h),
+            Text(
+              'No matching games',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              ref.read(countrymenCombinedGamesProvider.notifier).clearFilter();
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
+            SizedBox(height: 6.h),
+            Text(
+              'Try adjusting your filters',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 20.h),
+            TextButton(
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                ref
+                    .read(countrymenCombinedGamesProvider.notifier)
+                    .clearFilter();
+              },
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.1,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
               ),
               child: Text(
                 'Clear Filters',
@@ -821,46 +830,24 @@ class _CountrymenCombinedGamesScreenState
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
+  }
+
+  Widget _withEntranceMotion(Widget child, {bool scale = false}) {
+    if (GlassMotion.reduceMotion(context)) return child;
+    if (scale) {
+      return child
+          .animate()
+          .fadeIn(duration: 300.ms)
+          .scale(begin: const Offset(0.95, 0.95));
+    }
+    return child.animate().fadeIn(duration: 300.ms);
   }
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
     showAddToFolderSheet(context: context, game: game);
-  }
-}
-
-/// Delegate for pinned search bar in sliver list
-class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverSearchBarDelegate({required this.child, required this.height});
-
-  final Widget child;
-  final double height;
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    // Use SizedBox to ensure the child respects the exact height
-    // This prevents layoutExtent from exceeding paintExtent
-    return SizedBox(
-      height: maxExtent,
-      child: Container(color: context.colors.background, child: child),
-    );
-  }
-
-  @override
-  bool shouldRebuild(_SliverSearchBarDelegate oldDelegate) {
-    return child != oldDelegate.child || height != oldDelegate.height;
   }
 }

@@ -10,7 +10,6 @@ import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_car
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
@@ -18,7 +17,14 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -383,11 +389,40 @@ class _FavoritesCombinedGamesScreenState
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final favorites = favoritesAsync.valueOrNull ?? [];
     final favoriteCount = favorites.length;
+    final showsPlayerFilters = favorites.length > 1;
+    final controlExtent = _controlExtent(context);
+    final topContentInset = _topContentInset(
+      context,
+      includesPlayerFilters: showsPlayerFilters,
+    );
     _pruneStaleSelections(favorites);
 
-    return Scaffold(
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      body: Center(
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+          ),
+          child: GlassIslandStack(
+            includeStatusBar: false,
+            gap: 8,
+            children: [
+              _buildTopBar(context, favoriteCount, state, controlExtent),
+              _buildSearchBar(state, controlExtent),
+              if (showsPlayerFilters)
+                _buildFilterChips(favorites, controlExtent),
+            ],
+          ),
+        ),
+      ),
+      content: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth:
@@ -404,7 +439,7 @@ class _FavoritesCombinedGamesScreenState
             },
             color: context.colors.textPrimary,
             backgroundColor: context.colors.surface,
-            edgeOffset: 120,
+            edgeOffset: topContentInset,
             child: CustomScrollView(
               controller: _scrollController,
               scrollCacheExtent: kListScrollCacheExtent,
@@ -412,27 +447,13 @@ class _FavoritesCombinedGamesScreenState
                 parent: BouncingScrollPhysics(),
               ),
               slivers: [
-                // Pinned app bar that floats
-                _buildPinnedAppBar(context, favoriteCount, state),
-
-                // Pinned search bar
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SliverSearchBarDelegate(
-                    child: _buildSearchBar(state),
-                    height: 68.h,
-                  ),
-                ),
-
-                // Filter chips — compose with search & filter dialog
-                if (favorites.length > 1)
-                  SliverToBoxAdapter(child: _buildFilterChips(favorites)),
-
-                // Content
+                // This spacer belongs to the scroll content, so the cards can
+                // travel behind the floating controls without a sticky band.
+                SliverToBoxAdapter(child: SizedBox(height: topContentInset)),
                 _buildContentSliver(state, favorites),
-
-                // Bottom padding
-                SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: _bottomContentInset(context)),
+                ),
               ],
             ),
           ),
@@ -441,143 +462,90 @@ class _FavoritesCombinedGamesScreenState
     );
   }
 
-  Widget _buildPinnedAppBar(
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(
+    BuildContext context, {
+    required bool includesPlayerFilters,
+  }) {
+    final controlExtent = _controlExtent(context);
+    final rowCount = includesPlayerFilters ? 3 : 2;
+    const overlayTopPadding = 4.0;
+    const topBarBottomPadding = 6.0;
+    const rowGap = 8.0;
+    const stackBottomPadding = 4.0;
+    const contentGap = 8.0;
+    return MediaQuery.viewPaddingOf(context).top +
+        overlayTopPadding +
+        (controlExtent * rowCount) +
+        topBarBottomPadding +
+        (rowGap * (rowCount - 1)) +
+        stackBottomPadding +
+        contentGap;
+  }
+
+  double _bottomContentInset(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return media.viewPadding.bottom + media.viewInsets.bottom + 24.h;
+  }
+
+  Widget _buildTopBar(
     BuildContext context,
     int favoriteCount,
     FavoritesCombinedGamesState state,
+    double controlExtent,
   ) {
     final hasActiveFilters = state.filter.hasActiveFilters;
     final activeFilterCount = state.filter.activeFilterCount;
 
-    return SliverAppBar(
-      pinned: true,
-      floating: false,
-      backgroundColor: context.colors.background,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      automaticallyImplyLeading: false,
-      toolbarHeight: 56.h,
-      titleSpacing: 0,
-      title: Row(
-        children: [
-          SizedBox(width: 12.w),
-          // Back button
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: EdgeInsets.all(4.w),
-              child: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 20.sp,
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          SizedBox(width: 8.w),
-          // Heart icon
-          Container(
-            width: 28.w,
-            height: 28.h,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFFEF4444).withValues(alpha: 0.18),
-                  const Color(0xFFDC2626).withValues(alpha: 0.08),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(7.br),
-            ),
-            child: Center(
-              child: Icon(
-                Icons.favorite_rounded,
-                size: 16.sp,
-                color: const Color(0xFFF87171),
-              ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          // Title
-          Expanded(
-            child: Row(
-              children: [
-                Text(
-                  'Favorites',
-                  style: AppTypography.textLgBold.copyWith(
-                    color: context.colors.textPrimary,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                // Count badge
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                  decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
-                    borderRadius: BorderRadius.circular(10.br),
-                  ),
-                  child: Text(
-                    '$favoriteCount',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: context.colors.textSecondary,
-                      height: 1.1,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Filter button
-          GestureDetector(
-            onTap: () => _showFilterDialog(state),
-            child: Container(
-              padding: EdgeInsets.all(8.w),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 22.ic,
-                    color:
-                        hasActiveFilters
-                            ? context.colors.textPrimary
-                            : context.colors.textSecondary,
-                  ),
-                  // Badge showing active filter count
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: -4.w,
-                      top: -4.h,
-                      child: Container(
-                        padding: EdgeInsets.all(4.w),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: BoxConstraints(
-                          minWidth: 16.w,
-                          minHeight: 16.h,
-                        ),
-                        child: Text(
-                          '$activeFilterCount',
-                          style: AppTypography.textXsBold.copyWith(
-                            color: context.colors.textPrimary,
-                            fontSize: 10.sp,
-                            height: 1,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(width: 12.w),
-        ],
+    void openFilters() => _showFilterDialog(state);
+    final filterLabel =
+        hasActiveFilters ? 'Filters, $activeFilterCount active' : 'Filters';
+
+    return GlassIslandTopBar(
+      topPadding: 0,
+      height: controlExtent,
+      horizontalPadding: ResponsiveHelper.adaptive(phone: 12, tablet: 24),
+      leading: const GlassBackButton(),
+      title: GlassTitleChip(
+        label: favoriteCount > 0 ? 'Favorites · $favoriteCount' : 'Favorites',
+        height: controlExtent,
+        icon: Icon(
+          Icons.favorite_rounded,
+          color: context.colors.danger,
+          size: 16,
+        ),
       ),
+      trailing: [
+        Semantics(
+          label: filterLabel,
+          button: true,
+          onTap: openFilters,
+          child: ExcludeSemantics(
+            child: GlassBadge(
+              count: hasActiveFilters ? activeFilterCount : 0,
+              backgroundColor: context.colors.danger,
+              child: GlassIconButton(
+                icon: Icon(
+                  Icons.tune_rounded,
+                  color:
+                      hasActiveFilters
+                          ? context.colors.iconPrimary
+                          : context.colors.iconSecondary,
+                ),
+                onPressed: openFilters,
+                size: 48,
+                iconSize: 18,
+                useOwnLayer: true,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -593,66 +561,97 @@ class _FavoritesCombinedGamesScreenState
     }
   }
 
-  Widget _buildSearchBar(FavoritesCombinedGamesState state) {
+  Widget _buildSearchBar(
+    FavoritesCombinedGamesState state,
+    double controlExtent,
+  ) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 32.w,
+    );
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.h),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.colors.background,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: context.colors.surfaceRecessed),
-        ),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: GlassContainer(
+        useOwnLayer: true,
+        quality: GlassQuality.standard,
+        height: controlExtent,
+        padding: EdgeInsets.only(left: 14.w),
+        shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
         child: Row(
           children: [
-            SizedBox(width: 12.w),
-            Icon(
-              Icons.search,
-              size: 20.sp,
-              color: context.colors.textSecondary,
+            ExcludeSemantics(
+              child: Icon(
+                Icons.search,
+                size: 20.sp,
+                color: context.colors.iconSecondary,
+              ),
             ),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
+                textAlignVertical: TextAlignVertical.center,
                 style: AppTypography.textSmRegular.copyWith(
                   color: context.colors.textPrimary,
                 ),
                 onChanged: _onSearchChanged,
                 decoration: InputDecoration(
-                  isDense: true,
+                  isCollapsed: true,
                   hintText: 'Search',
                   hintStyle: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textSecondary,
                   ),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14.h),
                 ),
               ),
             ),
-            if (_searchController.text.isNotEmpty || state.isSearching) ...[
-              GestureDetector(
-                onTap: _clearSearch,
-                child: Icon(
-                  Icons.close,
-                  size: 20.sp,
-                  color: context.colors.textSecondary,
-                ),
-              ),
-              SizedBox(width: 8.w),
-            ],
-            SizedBox(width: 8.w),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _searchController,
+              builder: (context, value, _) {
+                if (value.text.isEmpty && !state.isSearching) {
+                  return SizedBox(width: 8.w);
+                }
+                return Semantics(
+                  label: 'Clear search',
+                  button: true,
+                  onTap: _clearSearch,
+                  child: ExcludeSemantics(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _clearSearch,
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 20.sp,
+                          color: context.colors.iconSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFilterChips(List<FavoritePlayer> favorites) {
+  Widget _buildFilterChips(
+    List<FavoritePlayer> favorites,
+    double controlExtent,
+  ) {
     final hasSelection = _selectedPlayerIds.isNotEmpty;
+    final reduceMotion = GlassMotion.reduceMotion(context);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 32.w,
+    );
 
     return SizedBox(
-      height: 48.h,
+      height: controlExtent,
       child: ShaderMask(
         shaderCallback: (Rect bounds) {
           return LinearGradient(
@@ -671,46 +670,39 @@ class _FavoritesCombinedGamesScreenState
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
           itemCount: favorites.length + (hasSelection ? 1 : 0),
           itemBuilder: (context, index) {
             // Clear button at the end when there's a selection
             if (hasSelection && index == favorites.length) {
               return Padding(
                 padding: EdgeInsets.only(right: 8.w),
-                child: GestureDetector(
+                child: Semantics(
+                  label: 'Clear player filters',
+                  button: true,
                   onTap: _clearAllFilters,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.w,
-                      vertical: 8.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(16.br),
-                      border: Border.all(
-                        color: context.colors.divider,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
+                  child: ExcludeSemantics(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: controlExtent),
+                      child: GlassChip(
+                        label: 'Clear',
+                        icon: Icon(
                           Icons.close_rounded,
-                          size: 14.sp,
+                          color: context.colors.iconSecondary,
+                        ),
+                        onTap: _clearAllFilters,
+                        useOwnLayer: true,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 12.h,
+                        ),
+                        labelStyle: AppTypography.textSmMedium.copyWith(
                           color: context.colors.textSecondary,
                         ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          'Clear',
-                          style: TextStyle(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w500,
-                            color: context.colors.textSecondary,
-                          ),
-                        ),
-                      ],
+                        iconColor: context.colors.iconSecondary,
+                        interactionScale: reduceMotion ? 1 : 1.03,
+                        stretch: reduceMotion ? 0 : 0.3,
+                      ),
                     ),
                   ),
                 ),
@@ -724,51 +716,43 @@ class _FavoritesCombinedGamesScreenState
 
             return Padding(
               padding: EdgeInsets.only(right: 8.w),
-              child: GestureDetector(
+              child: Semantics(
+                label: 'Filter games by $displayName',
+                button: true,
+                selected: isSelected,
                 onTap: () => _togglePlayerFilter(player.id),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 10.w,
-                    vertical: 8.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        isSelected
-                            ? const Color(0xFFEF4444)
-                            : context.colors.surfaceRecessed,
-                    borderRadius: BorderRadius.circular(16.br),
-                    border: Border.all(
-                      color:
-                          isSelected
-                              ? const Color(0xFFEF4444)
-                              : context.colors.divider,
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FederationFlag(
+                child: ExcludeSemantics(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: controlExtent),
+                    child: GlassChip(
+                      label: displayName,
+                      icon: FederationFlag(
                         federation: federation,
                         width: 16.w,
                         height: 12.h,
                         borderRadius: BorderRadius.circular(2.br),
                       ),
-                      SizedBox(width: 6.w),
-                      Text(
-                        displayName,
-                        style: TextStyle(
-                          fontSize: 13.sp,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color:
-                              isSelected
-                                  ? kWhiteColor
-                                  : context.colors.textPrimary,
-                        ),
+                      onTap: () => _togglePlayerFilter(player.id),
+                      selected: isSelected,
+                      selectedColor: context.colors.danger.withValues(
+                        alpha:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? 0.28
+                                : 0.16,
                       ),
-                    ],
+                      useOwnLayer: true,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 12.h,
+                      ),
+                      labelStyle: AppTypography.textSmMedium.copyWith(
+                        color: context.colors.textPrimary,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                      interactionScale: reduceMotion ? 1 : 1.03,
+                      stretch: reduceMotion ? 0 : 0.3,
+                    ),
                   ),
                 ),
               ),
@@ -862,7 +846,7 @@ class _FavoritesCombinedGamesScreenState
                             Text(
                               'Loading more games...',
                               style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textTertiary,
+                                color: context.colors.textSecondary,
                               ),
                             ),
                           ],
@@ -872,7 +856,7 @@ class _FavoritesCombinedGamesScreenState
                         : Text(
                           'No more games',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
+                            color: context.colors.textSecondary,
                           ),
                         ),
               ),
@@ -899,234 +883,250 @@ class _FavoritesCombinedGamesScreenState
   }
 
   Widget _buildLoadingState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 48.w,
-            height: 48.h,
-            child: CircularProgressIndicator(
-              color: context.colors.textPrimary,
-              strokeWidth: 2.5,
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 48.w,
+              height: 48.h,
+              child: CircularProgressIndicator(
+                color: context.colors.textPrimary,
+                strokeWidth: 2.5,
+              ),
             ),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            'Loading games...',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textSecondary,
+            SizedBox(height: 16.h),
+            Text(
+              'Loading games...',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
             ),
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            'Fetching from multiple sources',
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textTertiary,
+            SizedBox(height: 8.h),
+            Text(
+              'Fetching from multiple sources',
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildErrorState(String error) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 64.w,
-            height: 64.h,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16.br),
-            ),
-            child: Icon(
-              Icons.error_outline_rounded,
-              color: const Color(0xFFEF4444),
-              size: 32.ic,
-            ),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            'Failed to load games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 32.w),
-            child: Text(
-              error,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64.w,
+              height: 64.h,
+              decoration: BoxDecoration(
+                color: context.colors.danger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16.br),
               ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          SizedBox(height: 24.h),
-          TextButton(
-            onPressed:
-                () =>
-                    ref
-                        .read(favoritesCombinedGamesProvider.notifier)
-                        .refreshGames(),
-            style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(
-                alpha: 0.1,
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.br),
+              child: Icon(
+                Icons.error_outline_rounded,
+                color: context.colors.danger,
+                size: 32.ic,
               ),
             ),
-            child: Text(
-              'Retry',
-              style: AppTypography.textSmMedium.copyWith(
+            SizedBox(height: 16.h),
+            Text(
+              'Failed to load games',
+              style: AppTypography.textMdMedium.copyWith(
                 color: context.colors.textPrimary,
               ),
             ),
-          ),
-        ],
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 32.w),
+              child: Text(
+                error,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            SizedBox(height: 24.h),
+            TextButton(
+              onPressed:
+                  () =>
+                      ref
+                          .read(favoritesCombinedGamesProvider.notifier)
+                          .refreshGames(),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.1,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+              ),
+              child: Text(
+                'Retry',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80.w,
-            height: 80.h,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  context.colors.textPrimary.withValues(alpha: 0.15),
-                  context.colors.textPrimary.withValues(alpha: 0.05),
-                ],
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80.w,
+              height: 80.h,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    context.colors.textPrimary.withValues(alpha: 0.15),
+                    context.colors.textPrimary.withValues(alpha: 0.05),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20.br),
               ),
-              borderRadius: BorderRadius.circular(20.br),
+              child: Icon(
+                Icons.sports_esports_outlined,
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
+                size: 40.ic,
+              ),
             ),
-            child: Icon(
-              Icons.sports_esports_outlined,
-              color: context.colors.textPrimary.withValues(alpha: 0.7),
-              size: 40.ic,
+            SizedBox(height: 20.h),
+            Text(
+              'No games found',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
-          ),
-          SizedBox(height: 20.h),
-          Text(
-            'No games found',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 40.w),
+              child: Text(
+                'Your favorite players haven\'t played any games yet, or add some favorite players first.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
-          ),
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 40.w),
-            child: Text(
-              'Your favorite players haven\'t played any games yet, or add some favorite players first.',
+            SizedBox(height: 24.h),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.1,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+              ),
+              child: Text(
+                'Add favorites',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      scale: true,
+    );
+  }
+
+  Widget _buildNoSearchResultsState() {
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off_outlined,
+              size: 56.sp,
+              color: context.colors.iconSecondary,
+            ),
+            SizedBox(height: 12.h),
+            Text(
+              'No results',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
+              ),
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              'Try a different filter',
               style: AppTypography.textSmRegular.copyWith(
                 color: context.colors.textSecondary,
               ),
               textAlign: TextAlign.center,
             ),
-          ),
-          SizedBox(height: 24.h),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            style: TextButton.styleFrom(
-              backgroundColor: context.colors.textPrimary.withValues(
-                alpha: 0.1,
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-            ),
-            child: Text(
-              'Add favorites',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
-  }
-
-  Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off_outlined,
-            size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No results',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
-            ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try a different filter',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildNoChipResultsState() {
     final selectedCount = _selectedPlayerIds.length;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.person_off_outlined,
-            size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            selectedCount == 1
-                ? 'No games for this player'
-                : 'No games for these players',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.person_off_outlined,
+              size: 56.sp,
+              color: context.colors.iconSecondary,
             ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Clear chips or load more games',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+            SizedBox(height: 12.h),
+            Text(
+              selectedCount == 1
+                  ? 'No games for this player'
+                  : 'No games for these players',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: _clearAllFilters,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
+            SizedBox(height: 6.h),
+            Text(
+              'Clear chips or load more games',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 20.h),
+            TextButton(
+              onPressed: _clearAllFilters,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.1,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
               ),
               child: Text(
                 'Clear Chips',
@@ -1135,48 +1135,53 @@ class _FavoritesCombinedGamesScreenState
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildNoFilterResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.filter_alt_off_outlined,
-            size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No matching games',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
+    return _withEntranceMotion(
+      Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.filter_alt_off_outlined,
+              size: 56.sp,
+              color: context.colors.iconSecondary,
             ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try adjusting your filters',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+            SizedBox(height: 12.h),
+            Text(
+              'No matching games',
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary.withValues(alpha: 0.85),
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              ref.read(favoritesCombinedGamesProvider.notifier).clearFilter();
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
+            SizedBox(height: 6.h),
+            Text(
+              'Try adjusting your filters',
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 20.h),
+            TextButton(
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                ref.read(favoritesCombinedGamesProvider.notifier).clearFilter();
+              },
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: context.colors.textPrimary.withValues(
+                  alpha: 0.1,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
               ),
               child: Text(
                 'Clear Filters',
@@ -1185,46 +1190,24 @@ class _FavoritesCombinedGamesScreenState
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
+  }
+
+  Widget _withEntranceMotion(Widget child, {bool scale = false}) {
+    if (GlassMotion.reduceMotion(context)) return child;
+    if (scale) {
+      return child
+          .animate()
+          .fadeIn(duration: 300.ms)
+          .scale(begin: const Offset(0.95, 0.95));
+    }
+    return child.animate().fadeIn(duration: 300.ms);
   }
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
     showAddToFolderSheet(context: context, game: game);
-  }
-}
-
-/// Delegate for pinned search bar in sliver list
-class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverSearchBarDelegate({required this.child, required this.height});
-
-  final Widget child;
-  final double height;
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    // Use SizedBox to ensure the child respects the exact height
-    // This prevents layoutExtent from exceeding paintExtent
-    return SizedBox(
-      height: maxExtent,
-      child: Container(color: context.colors.background, child: child),
-    );
-  }
-
-  @override
-  bool shouldRebuild(_SliverSearchBarDelegate oldDelegate) {
-    return child != oldDelegate.child || height != oldDelegate.height;
   }
 }
