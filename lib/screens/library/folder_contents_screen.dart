@@ -19,7 +19,6 @@ import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
@@ -29,10 +28,9 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
-import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_kit.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -138,14 +136,6 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     });
   }
 
-  void _clearSearch() {
-    HapticFeedbackService.light();
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    _searchFocusNode.unfocus();
-    ref.read(folderFilterProvider(_folderFilterKey).notifier).clearSearch();
-  }
-
   void _toggleTagFilter(String tag) {
     final trimmed = tag.trim();
     if (trimmed.isEmpty) return;
@@ -238,7 +228,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'Undo',
-            textColor: kPrimaryColor,
+            textColor: context.colors.brandMuted,
             onPressed: () async {
               try {
                 final now = DateTime.now();
@@ -284,10 +274,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               fallback: 'Could not remove this item. Please try again.',
             ),
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
+              color: Theme.of(context).colorScheme.onError,
             ),
           ),
-          backgroundColor: kRedColor,
+          backgroundColor: context.colors.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -338,10 +328,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 fallback: 'Could not open the file picker. Please try again.',
               ),
               style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
+                color: Theme.of(context).colorScheme.onError,
               ),
             ),
-            backgroundColor: kRedColor.withValues(alpha: 0.9),
+            backgroundColor: context.colors.danger.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -392,10 +382,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           content: Text(
             'Clipboard does not contain a valid PGN',
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
+              color: Theme.of(context).colorScheme.onError,
             ),
           ),
-          backgroundColor: kRedColor.withValues(alpha: 0.9),
+          backgroundColor: context.colors.danger.withValues(alpha: 0.9),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -463,10 +453,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               fallback: 'Could not create this item. Please try again.',
             ),
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
+              color: Theme.of(context).colorScheme.onError,
             ),
           ),
-          backgroundColor: kRedColor,
+          backgroundColor: context.colors.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -517,10 +507,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               fallback: 'Could not rename this item. Please try again.',
             ),
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
+              color: Theme.of(context).colorScheme.onError,
             ),
           ),
-          backgroundColor: kRedColor,
+          backgroundColor: context.colors.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -580,10 +570,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 )
                 : 'Nothing to export here',
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
+              color: Theme.of(context).colorScheme.onError,
             ),
           ),
-          backgroundColor: kRedColor,
+          backgroundColor: context.colors.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -628,10 +618,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               fallback: 'Could not share this. Please try again.',
             ),
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
+              color: Theme.of(context).colorScheme.onError,
             ),
           ),
-          backgroundColor: kRedColor,
+          backgroundColor: context.colors.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -651,25 +641,21 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     // and empty-state messaging.
     final query = filterState.searchQuery.trim().toLowerCase();
 
-    return Scaffold(
+    return GlassFullScreenPage(
       key: e2eKey(E2eIds.folderContentsRoot),
       backgroundColor: context.colors.background,
-      body: ScreenWrapper(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth:
-                  ResponsiveHelper.isTablet
-                      ? ResponsiveHelper.contentMaxWidth
-                      : double.infinity,
-            ),
-            child: Column(
-              children: [
-                _buildTopArea(context, bookAsync),
-                Expanded(child: _buildSavedGames(bookAsync, query)),
-              ],
-            ),
+      contentPadding: EdgeInsets.only(top: _isDatabase ? 180 : 116),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: _buildTopArea(context, bookAsync),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
           ),
+          child: _buildSavedGames(bookAsync, query),
         ),
       ),
     );
@@ -679,26 +665,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     BuildContext context,
     AsyncValue<PaginatedBookState> bookAsync,
   ) {
-    final topPadding = MediaQuery.of(context).viewPadding.top;
-
-    return Container(
-      padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            context.colors.background,
-            context.colors.background.withValues(alpha: 0),
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth:
+              ResponsiveHelper.isTablet
+                  ? ResponsiveHelper.contentMaxWidth
+                  : double.infinity,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(context, bookAsync),
+            _buildSearchBar(),
+            if (_isDatabase) _buildTagQuickFilters(),
           ],
         ),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(context, bookAsync),
-          _buildSearchBar(),
-          if (_isDatabase) _buildTagQuickFilters(),
-        ],
       ),
     );
   }
@@ -718,116 +700,140 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     final bool showRename = !_isSubscribed;
     final bool showAdd = !_isSubscribed;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        0,
-        horizontalPadding,
-        8.h,
+    final titleLabel =
+        totalCount == null
+            ? _currentFolderName
+            : totalCount == 1
+            ? '$_currentFolderName · 1 game'
+            : '$_currentFolderName · $totalCount games';
+
+    return GlassIslandTopBar(
+      horizontalPadding: horizontalPadding,
+      topPadding: 0,
+      height: 48,
+      leading: GlassBackButton(
+        onPressed: () {
+          HapticFeedbackService.light();
+          Navigator.of(context).pop();
+        },
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          IconButton(
-            onPressed: () {
-              HapticFeedbackService.light();
-              Navigator.of(context).pop();
-            },
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.symmetric(horizontal: 6.w),
-            constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: context.colors.textPrimary,
-              size: 20.ic,
-            ),
+      title: GlassTitleChip(label: titleLabel, maxWidth: 180.w),
+      trailing: [
+        if (showExport)
+          _buildHeaderAction(
+            label: 'Export as PGN',
+            icon: Icons.ios_share_rounded,
+            onPressed: _handleExportPgn,
           ),
-          SizedBox(width: 4.w),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _currentFolderName,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
-                    height: 1.15,
-                    letterSpacing: -0.2,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (totalCount != null) ...[
-                  SizedBox(height: 2.h),
-                  Text(
-                    totalCount == 1 ? '1 game' : '$totalCount games',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
-                      height: 1.1,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+        if (showRename)
+          _buildHeaderAction(
+            label: 'Rename',
+            icon: Icons.edit_rounded,
+            onPressed: _handleRename,
           ),
-          SizedBox(width: 4.w),
-          if (showExport)
-            IconButton(
-              onPressed: _handleExportPgn,
-              tooltip: 'Export as PGN',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-              icon: Icon(
-                Icons.ios_share_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
-            ),
-          if (showRename)
-            IconButton(
-              onPressed: _handleRename,
-              tooltip: 'Rename',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-              icon: Icon(
-                Icons.edit_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
-            ),
-          if (showAdd)
-            IconButton(
-              onPressed: _handlePlusButton,
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-              icon: Icon(
-                Icons.add_rounded,
-                color: context.colors.textPrimary,
-                size: 26.ic,
-              ),
-            ),
-        ],
+        if (showAdd)
+          _buildHeaderAction(
+            label: 'Add to folder',
+            icon: Icons.add_rounded,
+            onPressed: _handlePlusButton,
+            iconSize: 22,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildHeaderAction({
+    required String label,
+    required IconData icon,
+    required VoidCallback onPressed,
+    double iconSize = 18,
+  }) {
+    return Semantics(
+      label: label,
+      button: true,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: Tooltip(
+          message: label,
+          child: GlassIconButton(
+            icon: Icon(icon, color: context.colors.iconPrimary),
+            onPressed: onPressed,
+            size: 48,
+            iconSize: iconSize,
+            useOwnLayer: true,
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildSearchBar() {
     final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
+    final filterCount =
+        filterState.filter.activeFilterCount +
+        filterState.filter.activeSortCount;
+    final filterLabel =
+        filterCount == 0
+            ? 'Filter and sort games'
+            : 'Filter and sort games, $filterCount active';
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: GameSearchFilterBar(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        currentFilter: filterState.filter,
-        hintText: 'Search games...',
-        onChanged: _onSearchChanged,
-        onClear: _clearSearch,
-        onFilterTap: _showFilterDialog,
+      padding: EdgeInsets.fromLTRB(16.w, 2.h, 16.w, 8.h),
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              textField: true,
+              label: 'Search games',
+              child: GlassSearchBar(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                placeholder: 'Search games',
+                onChanged: _onSearchChanged,
+                useOwnLayer: true,
+                height: 48,
+                showsCancelButton: false,
+                searchIconColor: context.colors.iconSecondary,
+                clearIconColor: context.colors.iconSecondary,
+                textStyle: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+                placeholderStyle: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Semantics(
+            label: filterLabel,
+            button: true,
+            onTap: _showFilterDialog,
+            child: ExcludeSemantics(
+              child: Tooltip(
+                message: filterLabel,
+                child: GlassBadge(
+                  count: filterCount,
+                  backgroundColor: context.colors.danger,
+                  textColor: Theme.of(context).colorScheme.onError,
+                  child: GlassIconButton(
+                    icon: Icon(
+                      Icons.tune_rounded,
+                      color:
+                          filterCount > 0
+                              ? context.colors.danger
+                              : context.colors.iconPrimary,
+                    ),
+                    onPressed: _showFilterDialog,
+                    size: 48,
+                    iconSize: 20,
+                    useOwnLayer: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -887,14 +893,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       );
     }
 
-    // Edge-to-edge horizontal scroll. 48h holds the chip's selected-state
-    // scale-up without vertical clipping; listview padding (not parent
-    // padding) keeps the first/last chip 16w in but lets content scroll
-    // straight off-screen.
+    // Edge-to-edge horizontal scroll. The listview padding (not parent
+    // padding) keeps the first/last filter 16w in while retaining a full 48px
+    // target for every glass control.
     return Padding(
-      padding: EdgeInsets.only(bottom: 8.h),
+      padding: EdgeInsets.only(bottom: 6.h),
       child: SizedBox(
-        height: 48.h,
+        height: 56,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -996,7 +1001,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
                 // Subscribed: read-only cards (no swipe-to-remove)
                 if (_isSubscribed) {
-                  return Padding(
+                  final card = Padding(
                     padding: EdgeInsets.only(bottom: 12.h),
                     child: BookSavedGameCard(
                       analysis: analysis,
@@ -1010,15 +1015,16 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                         );
                       },
                     ),
-                  ).animate().fadeIn();
+                  );
+                  return _withEntranceAnimation(card);
                 }
 
                 // Owned: swipe-to-remove enabled
-                return Padding(
+                final card = Padding(
                   padding: EdgeInsets.only(bottom: 12.h),
                   child: SwipeActionCard(
                     dismissKey: ValueKey(analysis.id),
-                    backgroundColor: kRedColor,
+                    backgroundColor: context.colors.danger,
                     icon: Icons.delete_outline_rounded,
                     onAction: () async => _removeAnalysis(analysis),
                     behavior: SwipeActionBehavior.dismiss,
@@ -1036,7 +1042,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                       },
                     ),
                   ),
-                ).animate().fadeIn();
+                );
+                return _withEntranceAnimation(card);
               }
 
               // 3. Loading indicator at the bottom
@@ -1066,11 +1073,18 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             (e, _) => Center(
               child: Text(
                 userFacingError(e),
-                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.danger,
+                ),
               ),
             ),
       ),
     );
+  }
+
+  Widget _withEntranceAnimation(Widget child) {
+    if (GlassMotion.reduceMotion(context)) return child;
+    return child.animate().fadeIn(duration: 180.ms);
   }
 
   Widget _buildEmptySavedState() {
@@ -1098,8 +1112,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   ? 'Create a folder or database here.'
                   : 'Save your first game here!',
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.colors.textSecondary,
               ),
+              textAlign: TextAlign.center,
             ),
           ],
         ],
@@ -1137,8 +1152,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 ? 'Try adjusting your search or filters'
                 : 'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.colors.textSecondary,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -1164,84 +1180,33 @@ class _DatabaseTagFilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    // No dot anymore — chip carries its tag identity via a low-key tinted
-    // fill + colored border. Selected pops with a brighter fill and stronger
-    // border.
-    final background =
-        selected
-            ? color.withValues(alpha: 0.22)
-            : color.withValues(alpha: 0.08);
-    final borderColor =
-        selected
-            ? color.withValues(alpha: 0.85)
-            : color.withValues(alpha: 0.32);
+    final reduceMotion = GlassMotion.reduceMotion(context);
+    final countLabel = count == null ? '' : ', $count games';
+    final visibleLabel = count == null ? label : '$label · $count';
 
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOutCubic,
-      scale: selected ? 1.03 : 1,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20.br),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            height: 38.h,
-            padding: EdgeInsets.symmetric(horizontal: 12.w),
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(20.br),
-              border: Border.all(color: borderColor),
+    return Semantics(
+      label: '$label$countLabel',
+      button: true,
+      selected: selected,
+      onTap: onTap,
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: 48, maxWidth: 220.w),
+          child: GlassChip(
+            label: visibleLabel,
+            selected: selected,
+            selectedColor: color.withValues(alpha: 0.22),
+            onTap: onTap,
+            useOwnLayer: true,
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+            labelStyle: AppTypography.textXsMedium.copyWith(
+              color: colors.textPrimary,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 170.w),
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color:
-                          selected
-                              ? colors.textPrimary
-                              : colors.textPrimary.withValues(alpha: 0.72),
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ),
-                if (count != null) ...[
-                  SizedBox(width: 7.w),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6.w,
-                      vertical: 2.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color:
-                          selected
-                              ? color.withValues(alpha: 0.18)
-                              : colors.textPrimary.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(999.br),
-                    ),
-                    child: Text(
-                      count.toString(),
-                      style: AppTypography.textXsMedium.copyWith(
-                        color:
-                            selected
-                                ? colors.textPrimary
-                                : colors.textPrimary.withValues(alpha: 0.55),
-                        fontSize: 10.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+            interactionScale: reduceMotion ? 1 : 0.97,
+            stretch: reduceMotion ? 0 : 0.18,
+            glowRadius: reduceMotion ? 0 : 0.7,
+            anchorStretch: !reduceMotion,
           ),
         ),
       ),
@@ -1330,7 +1295,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: context.colors.divider),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1341,9 +1306,9 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               SizedBox(
                 width: 16.sp,
                 height: 16.sp,
-                child: const CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: kPrimaryColor,
+                  color: context.colors.brand,
                 ),
               ),
               SizedBox(width: 10.w),
@@ -1365,7 +1330,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.08,
               ),
-              valueColor: const AlwaysStoppedAnimation<Color>(kPrimaryColor),
+              valueColor: AlwaysStoppedAnimation<Color>(context.colors.brand),
               minHeight: 6.h,
             ),
           ),

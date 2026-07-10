@@ -1,7 +1,6 @@
-import 'package:chessever2/e2e/e2e_ids.dart';
 import 'dart:async';
 
-import 'package:chessever2/utils/number_format_utils.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
@@ -10,16 +9,15 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
-import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/screens/library/widgets/twic_player_search_cards.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -191,32 +189,39 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           (index * estimatedItemWidth) -
           (viewportWidth / 2) +
           (estimatedItemWidth / 2);
-      _chipScrollController.animateTo(
-        targetOffset.clamp(0.0, _chipScrollController.position.maxScrollExtent),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
+      final destination =
+          targetOffset
+              .clamp(0.0, _chipScrollController.position.maxScrollExtent)
+              .toDouble();
+      if (GlassMotion.reduceMotion(context)) {
+        _chipScrollController.jumpTo(destination);
+      } else {
+        _chipScrollController.animateTo(
+          destination,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GlassFullScreenPage(
       key: e2eKey(E2eIds.twicContentsRoot),
       backgroundColor: context.colors.background,
-      body: ScreenWrapper(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth:
-                  ResponsiveHelper.isTablet
-                      ? ResponsiveHelper.contentMaxWidth
-                      : double.infinity,
-            ),
-            child: Column(
-              children: [_buildTopArea(), Expanded(child: _buildContent())],
-            ),
+      contentPadding: const EdgeInsets.only(top: 136),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: _buildTopArea(),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
           ),
+          child: _buildContent(),
         ),
       ),
     );
@@ -227,22 +232,18 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildTopArea() {
-    final topPadding = MediaQuery.of(context).viewPadding.top;
-
-    return Container(
-      padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration:  BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            context.colors.background,
-            context.colors.background.withValues(alpha: 0),
-          ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth:
+              ResponsiveHelper.isTablet
+                  ? ResponsiveHelper.contentMaxWidth
+                  : double.infinity,
         ),
-      ),
-      child: Column(
-        children: [_buildHeader(), _buildSearchRow(), _buildResultCount()],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [_buildHeader(), _buildSearchRow(), _buildResultCount()],
+        ),
       ),
     );
   }
@@ -252,42 +253,17 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       phone: 8.w,
       tablet: 16.w,
     );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        0,
-        horizontalPadding,
-        8.h,
+    return GlassIslandTopBar(
+      horizontalPadding: horizontalPadding,
+      topPadding: 0,
+      height: 48,
+      leading: GlassBackButton(
+        onPressed: () {
+          HapticFeedbackService.light();
+          Navigator.of(context).pop();
+        },
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              onPressed: () {
-                HapticFeedbackService.light();
-                Navigator.of(context).pop();
-              },
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.7),
-                size: 20.ic,
-              ),
-            ),
-          ),
-          Opacity(
-            opacity: 0.8,
-            child: Text(
-              'ChessEver Database',
-              style: AppTypography.textMdMedium.copyWith(
-                fontWeight: FontWeight.w600,
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
+      title: const GlassTitleChip(label: 'ChessEver Database'),
     );
   }
 
@@ -297,24 +273,74 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       tablet: 24.w,
     );
     final filterCount = ref.watch(activeGamebaseFilterCountProvider);
+    final filterLabel =
+        filterCount == 0
+            ? 'Filter database games'
+            : 'Filter database games, $filterCount active';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
-        0,
+        2.h,
         horizontalPadding,
         8.h,
       ),
-      child: LibrarySearchBar(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        enableOverlay: false,
-        hintText: 'Search',
-        rotatingHints: const ['player', 'event', 'opening'],
-        onChanged: _onSearchChanged,
-        onFilterTap: _openFilters,
-        filterButtonKey: e2eKey(E2eIds.libraryFilterButton),
-        filterBadgeCount: filterCount,
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              textField: true,
+              label: 'Search database games',
+              child: GlassSearchBar(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                placeholder: 'Search players, events, openings',
+                onChanged: _onSearchChanged,
+                useOwnLayer: true,
+                height: 48,
+                showsCancelButton: false,
+                searchIconColor: context.colors.iconSecondary,
+                clearIconColor: context.colors.iconSecondary,
+                textStyle: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+                placeholderStyle: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Semantics(
+            label: filterLabel,
+            button: true,
+            onTap: _openFilters,
+            child: ExcludeSemantics(
+              child: Tooltip(
+                message: filterLabel,
+                child: GlassBadge(
+                  count: filterCount,
+                  backgroundColor: context.colors.danger,
+                  textColor: Theme.of(context).colorScheme.onError,
+                  child: GlassIconButton(
+                    key: e2eKey(E2eIds.libraryFilterButton),
+                    icon: Icon(
+                      Icons.tune_rounded,
+                      color:
+                          filterCount > 0
+                              ? context.colors.danger
+                              : context.colors.iconPrimary,
+                    ),
+                    onPressed: _openFilters,
+                    size: 48,
+                    iconSize: 20,
+                    useOwnLayer: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -365,7 +391,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         child: Text(
           '${isEstimate ? '~' : ''}${formatCompactCount(totalCount)} games',
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.colors.textSecondary,
           ),
         ),
       ),
@@ -466,20 +492,25 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     required _TwicEventDisplayItem? selectedItem,
     required double horizontalPadding,
   }) {
+    final child = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        eventRow,
+        _buildSelectedEventDetailBar(
+          selectedItem: selectedItem,
+          horizontalPadding: horizontalPadding,
+        ),
+      ],
+    );
+    if (GlassMotion.reduceMotion(context)) {
+      return _showChipRow ? child : const SizedBox.shrink();
+    }
+
     return SingleMotionBuilder(
       motion: const CupertinoMotion.snappy(),
       value: _showChipRow ? 1.0 : 0.0,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          eventRow,
-          _buildSelectedEventDetailBar(
-            selectedItem: selectedItem,
-            horizontalPadding: horizontalPadding,
-          ),
-        ],
-      ),
+      child: child,
       builder: (context, progress, child) {
         final clamped = progress.clamp(0.0, 1.0);
         return ClipRect(
@@ -596,11 +627,14 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     return Skeletonizer(
       enabled: true,
       ignoreContainers: true,
-      effect:  ShimmerEffect(
-        baseColor: context.colors.surfaceRecessed,
-        highlightColor: Color(0xFF48484E),
-        duration: Duration(milliseconds: 1200),
-      ),
+      effect:
+          GlassMotion.reduceMotion(context)
+              ? SolidColorEffect(color: context.colors.skeleton)
+              : ShimmerEffect(
+                baseColor: context.colors.skeleton,
+                highlightColor: context.colors.surfaceElevated,
+                duration: const Duration(milliseconds: 1200),
+              ),
       child: ListView.separated(
         physics: const NeverScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
@@ -634,7 +668,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     return Padding(
       padding: EdgeInsets.fromLTRB(0, 6.h, 0, 12.h),
       child: SizedBox(
-        height: 40.h,
+        height: 56,
         child: ListView.separated(
           controller: _chipScrollController,
           scrollDirection: Axis.horizontal,
@@ -694,15 +728,18 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     return Padding(
       padding: EdgeInsets.fromLTRB(0, 6.h, 0, 12.h),
       child: SizedBox(
-        height: 40.h,
+        height: 56,
         child: Skeletonizer(
           enabled: true,
           ignoreContainers: true,
-          effect:  ShimmerEffect(
-            baseColor: context.colors.surfaceRecessed,
-            highlightColor: Color(0xFF48484E),
-            duration: Duration(milliseconds: 1200),
-          ),
+          effect:
+              GlassMotion.reduceMotion(context)
+                  ? SolidColorEffect(color: context.colors.skeleton)
+                  : ShimmerEffect(
+                    baseColor: context.colors.skeleton,
+                    highlightColor: context.colors.surfaceElevated,
+                    duration: const Duration(milliseconds: 1200),
+                  ),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
@@ -712,7 +749,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             itemBuilder: (context, index) {
               return Bone(
                 width: index == 0 ? 50.w : (80 + index * 20).w,
-                height: 40.h,
+                height: 48,
                 borderRadius: BorderRadius.circular(999.br),
               );
             },
@@ -730,6 +767,12 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     required _TwicEventDisplayItem? selectedItem,
     required double horizontalPadding,
   }) {
+    final child =
+        selectedItem != null
+            ? _buildDetailBarContent(selectedItem, horizontalPadding)
+            : const SizedBox.shrink();
+    if (GlassMotion.reduceMotion(context)) return child;
+
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
       value: selectedItem != null ? 1.0 : 0.0,
@@ -750,10 +793,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           ),
         );
       },
-      child:
-          selectedItem != null
-              ? _buildDetailBarContent(selectedItem, horizontalPadding)
-              : const SizedBox.shrink(),
+      child: child,
     );
   }
 
@@ -761,11 +801,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     _TwicEventDisplayItem item,
     double horizontalPadding,
   ) {
+    final accent =
+        context.isLightTheme ? context.colors.brandMuted : context.colors.brand;
     final infoStyle = AppTypography.textXsRegular.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.55),
+      color: context.colors.textSecondary,
     );
     final separatorStyle = infoStyle.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.3),
+      color: context.colors.textTertiary,
     );
 
     final infoParts = <Widget>[];
@@ -778,7 +820,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             Icon(
               Icons.location_on_rounded,
               size: 11.ic,
-              color: context.colors.textPrimary.withValues(alpha: 0.45),
+              color: context.colors.iconSecondary,
             ),
             SizedBox(width: 2.w),
             ConstrainedBox(
@@ -833,7 +875,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         child: Container(
           decoration: BoxDecoration(
             color: context.colors.surface,
-            border: Border(left: BorderSide(color: kPrimaryColor, width: 2.5)),
+            border: Border(left: BorderSide(color: accent, width: 2.5)),
           ),
           padding: EdgeInsets.fromLTRB(12.w, 10.h, 8.w, 10.h),
           child: Column(
@@ -854,22 +896,23 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                     ),
                   ),
                   SizedBox(width: 8.w),
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedbackService.light();
-                      ref.read(twicSelectedEventProvider.notifier).state = null;
-                      _scrollChipToIndex(0);
-                    },
-                    child: Container(
-                      padding: EdgeInsets.all(4.w),
-                      decoration: BoxDecoration(
-                        color: context.colors.textPrimary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6.br),
-                      ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 14.ic,
-                        color: context.colors.textPrimary.withValues(alpha: 0.6),
+                  Semantics(
+                    label: 'Clear event filter',
+                    button: true,
+                    onTap: _clearSelectedEvent,
+                    child: ExcludeSemantics(
+                      child: Tooltip(
+                        message: 'Clear event filter',
+                        child: GlassIconButton(
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: context.colors.iconPrimary,
+                          ),
+                          onPressed: _clearSelectedEvent,
+                          size: 48,
+                          iconSize: 18,
+                          useOwnLayer: true,
+                        ),
                       ),
                     ),
                   ),
@@ -877,56 +920,56 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
               ),
               if (infoChildren.isNotEmpty) ...[
                 SizedBox(height: 4.h),
-                Row(children: infoChildren),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: infoChildren,
+                ),
               ],
               SizedBox(height: 12.h),
-              GestureDetector(
-                onTap: () {
-                  HapticFeedbackService.light();
-                  final games =
-                      ref.read(gamebaseDatabaseGamesPaginatedProvider).games;
-                  if (games.isNotEmpty) {
-                    showBulkAddToFolderSheet(
-                      context: context,
-                      games: games,
-                      sourceLabel: item.event,
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Load games first to add them to library.',
-                        ),
-                      ),
-                    );
-                  }
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.symmetric(vertical: 10.h),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8.br),
-                    border: Border.all(
-                      color: kPrimaryColor.withValues(alpha: 0.3),
+              Semantics(
+                label: 'Save games to library',
+                button: true,
+                onTap: () => _saveSelectedEventGames(item),
+                child: ExcludeSemantics(
+                  child: Material(
+                    color: accent.withValues(alpha: 0.12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.br),
+                      side: BorderSide(color: accent.withValues(alpha: 0.38)),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.library_add_outlined,
-                        size: 16.ic,
-                        color: kPrimaryColor,
-                      ),
-                      SizedBox(width: 8.w),
-                      Text(
-                        'Save Games to Library',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kPrimaryColor,
+                    child: InkWell(
+                      onTap: () => _saveSelectedEventGames(item),
+                      borderRadius: BorderRadius.circular(10.br),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 12.w,
+                            vertical: 12.h,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.library_add_outlined,
+                                size: 18.ic,
+                                color: context.colors.iconPrimary,
+                              ),
+                              SizedBox(width: 8.w),
+                              Flexible(
+                                child: Text(
+                                  'Save games to library',
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color: context.colors.textPrimary,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -934,6 +977,28 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _clearSelectedEvent() {
+    HapticFeedbackService.light();
+    ref.read(twicSelectedEventProvider.notifier).state = null;
+    _scrollChipToIndex(0);
+  }
+
+  void _saveSelectedEventGames(_TwicEventDisplayItem item) {
+    HapticFeedbackService.light();
+    final games = ref.read(gamebaseDatabaseGamesPaginatedProvider).games;
+    if (games.isNotEmpty) {
+      showBulkAddToFolderSheet(
+        context: context,
+        games: games,
+        sourceLabel: item.event,
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Load games first to add them to library.')),
     );
   }
 }
@@ -945,21 +1010,16 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
 class _SkeletonGameCard extends StatelessWidget {
   const _SkeletonGameCard();
 
-  // Passive variants of real LibraryGameCard colors:
-  // Real top gradient: 0xFFDDDDE0 → 0xFFADAEB3
-  // Real bottom: 0xFF1A1A1C
-  // Real outer: 0xFF2E2E2E
-  static const _outerBg = Color(0xFF242426);
-  static const _topBg = Color(0xFF38383C);
-  static const _bottomBg = Color(0xFF1A1A1C);
   static const _boneRadius = 4.0;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     return Container(
       decoration: BoxDecoration(
-        color: _outerBg,
+        color: colors.surfaceElevated,
         borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: colors.divider),
       ),
       child: Column(
         children: [
@@ -967,7 +1027,7 @@ class _SkeletonGameCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
             decoration: BoxDecoration(
-              color: _topBg,
+              color: colors.surfaceRecessed,
               borderRadius: BorderRadius.vertical(top: Radius.circular(12.br)),
             ),
             child: Row(
@@ -1032,7 +1092,7 @@ class _SkeletonGameCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 5.h),
             decoration: BoxDecoration(
-              color: _bottomBg,
+              color: colors.surface,
               borderRadius: BorderRadius.vertical(
                 bottom: Radius.circular(12.br),
               ),
@@ -1093,16 +1153,10 @@ class _TwicEventDisplayItem {
 }
 
 // ---------------------------------------------------------------------------
-// Stadium chip for event selection — motor press scale + selection bounce
+// Glass event filters
 // ---------------------------------------------------------------------------
 
-class _TwicEventCard extends StatefulWidget {
-  final String label;
-  final int? gameCount;
-  final bool isSelected;
-  final bool isAllCard;
-  final VoidCallback onTap;
-
+class _TwicEventCard extends StatelessWidget {
   const _TwicEventCard({
     required this.label,
     required this.isSelected,
@@ -1111,120 +1165,50 @@ class _TwicEventCard extends StatefulWidget {
     this.gameCount,
   });
 
-  @override
-  State<_TwicEventCard> createState() => _TwicEventCardState();
-}
-
-class _TwicEventCardState extends State<_TwicEventCard> {
-  double _pressScale = 1.0;
-
-  void _onTapDown(TapDownDetails _) {
-    setState(() => _pressScale = 0.92);
-  }
-
-  void _onTapUp(TapUpDetails _) {
-    setState(() => _pressScale = 1.0);
-    HapticFeedbackService.light();
-    widget.onTap();
-  }
-
-  void _onTapCancel() {
-    setState(() => _pressScale = 1.0);
-  }
+  final String label;
+  final int? gameCount;
+  final bool isSelected;
+  final bool isAllCard;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: _onTapDown,
-      onTapUp: _onTapUp,
-      onTapCancel: _onTapCancel,
-      child: SingleMotionBuilder(
-        motion: const CupertinoMotion.snappy(),
-        value: _pressScale,
-        builder: (context, pressScale, _) {
-          return SingleMotionBuilder(
-            motion: const CupertinoMotion.bouncy(),
-            value: widget.isSelected ? 1.0 : 0.0,
-            builder: (context, selectProgress, _) {
-              final bgColor =
-                  Color.lerp(
-                    context.colors.surface,
-                    kPrimaryColor.withValues(alpha: 0.18),
-                    selectProgress,
-                  )!;
-              final borderColor =
-                  Color.lerp(
-                    Colors.transparent,
-                    kPrimaryColor,
-                    selectProgress,
-                  )!;
-              final labelColor =
-                  Color.lerp(
-                    context.colors.textPrimary.withValues(alpha: 0.7),
-                    kPrimaryColor,
-                    selectProgress,
-                  )!;
-              final borderWidth = selectProgress * 2.0;
-              final selectScale = 1.0 + (selectProgress * 0.04);
-              final combinedScale = pressScale * selectScale;
-              final clampedSelect = selectProgress.clamp(0.0, 1.0);
+    final reduceMotion = GlassMotion.reduceMotion(context);
+    final accent =
+        context.isLightTheme ? context.colors.brandMuted : context.colors.brand;
+    final countLabel =
+        gameCount == null || isAllCard ? '' : ', $gameCount games';
+    final visibleLabel =
+        gameCount == null || isAllCard ? label : '$label · $gameCount';
 
-              return Transform.scale(
-                scale: combinedScale,
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 12.w,
-                    vertical: 6.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    borderRadius: BorderRadius.circular(999.br),
-                    border:
-                        borderWidth > 0.01
-                            ? Border.all(color: borderColor, width: borderWidth)
-                            : null,
-                    boxShadow:
-                        clampedSelect > 0.01
-                            ? [
-                              BoxShadow(
-                                color: kPrimaryColor.withValues(
-                                  alpha: 0.25 * clampedSelect,
-                                ),
-                                blurRadius: 10 * clampedSelect,
-                              ),
-                            ]
-                            : null,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          widget.label,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: labelColor,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (widget.gameCount != null && !widget.isAllCard) ...[
-                        SizedBox(width: 4.w),
-                        Text(
-                          '${widget.gameCount}',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: labelColor.withValues(alpha: 0.6),
-                            fontSize: 10.sp,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              );
+    return Semantics(
+      label: '$label$countLabel',
+      button: true,
+      selected: isSelected,
+      onTap: onTap,
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: 48, maxWidth: 230.w),
+          child: GlassChip(
+            label: visibleLabel,
+            selected: isSelected,
+            selectedColor: accent.withValues(alpha: 0.2),
+            onTap: () {
+              HapticFeedbackService.light();
+              onTap();
             },
-          );
-        },
+            useOwnLayer: true,
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+            labelStyle: AppTypography.textXsMedium.copyWith(
+              color: context.colors.textPrimary,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            ),
+            interactionScale: reduceMotion ? 1 : 0.97,
+            stretch: reduceMotion ? 0 : 0.18,
+            glowRadius: reduceMotion ? 0 : 0.7,
+            anchorStretch: !reduceMotion,
+          ),
+        ),
       ),
     );
   }

@@ -5,11 +5,10 @@ import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.da
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -53,11 +52,6 @@ class _PgnImportPreviewScreenState
     super.dispose();
   }
 
-  void _clearSearch() {
-    HapticFeedbackService.light();
-    _searchController.clear();
-  }
-
   Future<void> _handleSave() async {
     HapticFeedbackService.medium();
     final saved = await showImportPgnToFolderSheet(
@@ -75,8 +69,7 @@ class _PgnImportPreviewScreenState
     HapticFeedbackService.cardTap();
     // Build a minimal GamesTourModel per game, embedding the full PGN so
     // ChessBoardScreenNew can render it without a Supabase lookup.
-    final games =
-        widget.games.map(chessGameToImportedGamesTourModel).toList();
+    final games = widget.games.map(chessGameToImportedGamesTourModel).toList();
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
@@ -118,45 +111,38 @@ class _PgnImportPreviewScreenState
       }
     }
 
-    return Scaffold(
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      body: ScreenWrapper(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth:
-                  ResponsiveHelper.isTablet
-                      ? ResponsiveHelper.contentMaxWidth
-                      : double.infinity,
-            ),
-            child: Column(
-              children: [
-                _buildTopArea(context),
-                Expanded(child: _buildList(filtered, query)),
-              ],
-            ),
+      contentPadding: const EdgeInsets.only(top: 118),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: _buildTopArea(context),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
           ),
+          child: _buildList(filtered, query),
         ),
       ),
     );
   }
 
   Widget _buildTopArea(BuildContext context) {
-    final topPadding = MediaQuery.of(context).viewPadding.top;
-    return Container(
-      padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration:  BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            context.colors.background,
-            context.colors.background.withValues(alpha: 0),
-          ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth:
+              ResponsiveHelper.isTablet
+                  ? ResponsiveHelper.contentMaxWidth
+                  : double.infinity,
         ),
-      ),
-      child: Column(
-        children: [_buildHeader(context), _buildSearchBar()],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [_buildHeader(context), _buildSearchBar()],
+        ),
       ),
     );
   }
@@ -166,120 +152,66 @@ class _PgnImportPreviewScreenState
       phone: 8.w,
       tablet: 16.w,
     );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        0,
-        horizontalPadding,
-        8.h,
+    final countLabel =
+        widget.games.length == 1
+            ? 'Import PGN · 1 game'
+            : 'Import PGN · ${widget.games.length} games';
+    return GlassIslandTopBar(
+      horizontalPadding: horizontalPadding,
+      topPadding: 0,
+      height: 48,
+      leading: GlassBackButton(
+        onPressed: () {
+          HapticFeedbackService.light();
+          Navigator.of(context).pop();
+        },
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              onPressed: () {
-                HapticFeedbackService.light();
-                Navigator.of(context).pop();
-              },
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
+      title: GlassTitleChip(label: countLabel, maxWidth: 220.w),
+      trailing: [
+        Semantics(
+          label: 'Save games to a folder',
+          button: true,
+          onTap: _handleSave,
+          child: ExcludeSemantics(
+            child: Tooltip(
+              message: 'Save to folder',
+              child: GlassIconButton(
+                icon: Icon(
+                  Icons.save_rounded,
+                  color: context.colors.iconPrimary,
+                ),
+                onPressed: _handleSave,
+                size: 48,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
             ),
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              onPressed: _handleSave,
-              tooltip: 'Save to folder',
-              icon: Icon(
-                Icons.save_rounded,
-                color: context.colors.textPrimary,
-                size: 26.ic,
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 56.w),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Import PGN',
-                  style: AppTypography.textLgBold.copyWith(
-                    color: context.colors.textPrimary,
-                    height: 1.1,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  widget.games.length == 1
-                      ? '1 game'
-                      : '${widget.games.length} games',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildSearchBar() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: Container(
-        height: 38.h,
-        decoration: BoxDecoration(
-          color: context.colors.textPrimary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10.br),
-        ),
-        child: Row(
-          children: [
-            SizedBox(width: 12.w),
-            Icon(
-              Icons.search_rounded,
-              size: 18.sp,
-              color: const Color(0xFFA1A1AA),
-            ),
-            SizedBox(width: 8.w),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
-                decoration: InputDecoration(
-                  hintText: 'Search games...',
-                  hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  isDense: true,
-                ),
-              ),
-            ),
-            if (_searchController.text.isNotEmpty) ...[
-              GestureDetector(
-                onTap: _clearSearch,
-                child: Icon(
-                  Icons.close,
-                  size: 20.sp,
-                  color: const Color(0xFFA1A1AA),
-                ),
-              ),
-              SizedBox(width: 8.w),
-            ],
-            SizedBox(width: 8.w),
-          ],
+      padding: EdgeInsets.fromLTRB(16.w, 2.h, 16.w, 8.h),
+      child: Semantics(
+        textField: true,
+        label: 'Search imported games',
+        child: GlassSearchBar(
+          controller: _searchController,
+          placeholder: 'Search games',
+          useOwnLayer: true,
+          height: 48,
+          showsCancelButton: false,
+          searchIconColor: context.colors.iconSecondary,
+          clearIconColor: context.colors.iconSecondary,
+          textStyle: AppTypography.textSmRegular.copyWith(
+            color: context.colors.textPrimary,
+          ),
+          placeholderStyle: AppTypography.textSmRegular.copyWith(
+            color: context.colors.textSecondary,
+          ),
         ),
       ),
     );
@@ -295,16 +227,16 @@ class _PgnImportPreviewScreenState
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              query.isEmpty
-                  ? Icons.inbox_outlined
-                  : Icons.search_off_rounded,
+              query.isEmpty ? Icons.inbox_outlined : Icons.search_off_rounded,
               size: 64.sp,
               color: context.colors.textPrimary.withValues(alpha: 0.1),
             ),
             SizedBox(height: 16.h),
             Text(
               query.isEmpty ? 'No games to import' : 'No matches found',
-              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ],
         ),
@@ -320,14 +252,16 @@ class _PgnImportPreviewScreenState
         final md = entry.game.metadata;
         final eventName = _eventNameFromMetadata(md);
 
-        return Padding(
+        final card = Padding(
           padding: EdgeInsets.only(bottom: 12.h),
           child: LibraryGameCard(
             game: tourModel,
             eventName: eventName,
             onTap: () => _openGame(entry.originalIndex),
           ),
-        ).animate().fadeIn(duration: 150.ms);
+        );
+        if (GlassMotion.reduceMotion(context)) return card;
+        return card.animate().fadeIn(duration: 150.ms);
       },
     );
   }
