@@ -16,6 +16,29 @@ final expandedTeamsProvider = StateProvider.autoDispose<Set<String>>(
 /// team score card screen). Mirrors `selectedPlayerProvider`.
 final selectedTeamProvider = StateProvider<TeamStandingModel?>((ref) => null);
 
+/// Replaces an early scorecard placeholder with the fully computed standing
+/// as soon as standings finish loading. Games-tab navigation intentionally
+/// opens immediately, so the selected value can initially have no players.
+TeamStandingModel? resolveSelectedTeamStanding({
+  required TeamStandingModel? selected,
+  required List<TeamStandingModel>? standings,
+}) {
+  if (selected == null) return null;
+  final selectedKey = selected.teamName.trim().toLowerCase();
+  if (selectedKey.isEmpty || standings == null) return selected;
+  for (final team in standings) {
+    if (team.teamName.trim().toLowerCase() == selectedKey) return team;
+  }
+  return selected;
+}
+
+final selectedTeamStandingProvider = Provider<TeamStandingModel?>((ref) {
+  return resolveSelectedTeamStanding(
+    selected: ref.watch(selectedTeamProvider),
+    standings: ref.watch(teamStandingsProvider).valueOrNull,
+  );
+});
+
 /// Reads the current tour's live games as [GamesTourModel]s, subscribing only
 /// to result-affecting changes.
 List<GamesTourModel> _watchTeamGames(Ref ref) {
@@ -43,7 +66,7 @@ final teamMatchesFamilyProvider =
 
 /// Round-by-round matches for the currently selected team (team score card).
 final teamMatchesProvider = AutoDisposeProvider<List<TeamMatch>>((ref) {
-  final team = ref.watch(selectedTeamProvider);
+  final team = ref.watch(selectedTeamStandingProvider);
   if (team == null) return const [];
   return ref.watch(teamMatchesFamilyProvider(team.teamName));
 });

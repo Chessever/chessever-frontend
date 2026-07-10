@@ -32,7 +32,7 @@ class TeamScoreCardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final team = ref.watch(selectedTeamProvider);
+    final team = ref.watch(selectedTeamStandingProvider);
     if (team == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -41,7 +41,8 @@ class TeamScoreCardScreen extends ConsumerWidget {
       phone: 20.sp,
       tablet: 24.sp,
     );
-    final about = ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
+    final about =
+        ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
     final eventName = about?.name;
     final eventShareId =
         about?.groupBroadcastId?.isNotEmpty == true
@@ -124,7 +125,9 @@ class TeamScoreCardScreen extends ConsumerWidget {
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                    ),
                     child: _TeamHeader(team: team),
                   ),
                 ),
@@ -379,8 +382,7 @@ class _TeamAvgEloLabel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(teamAvgEloProvider(team.teamName));
-    final avg =
-        async.valueOrNull ?? teamAverageEloFromStandings(team);
+    final avg = async.valueOrNull ?? teamAverageEloFromStandings(team);
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.end,

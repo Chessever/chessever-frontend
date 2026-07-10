@@ -83,7 +83,7 @@ final teamAvgEloProvider = FutureProvider.autoDispose.family<int?, String>((
   final trimmed = teamName.trim();
   if (trimmed.isEmpty) return null;
 
-  TeamStandingModel? team = ref.watch(selectedTeamProvider);
+  TeamStandingModel? team = ref.watch(selectedTeamStandingProvider);
   if (team == null || team.teamName != trimmed) {
     final standings = ref.watch(teamStandingsProvider).valueOrNull;
     if (standings != null) {

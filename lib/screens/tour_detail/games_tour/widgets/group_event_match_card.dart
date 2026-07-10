@@ -368,6 +368,7 @@ class GroupEventMatchCard extends ConsumerWidget {
             ),
             gameIndex: gameIndex,
             isChessBoardVisible: true,
+            fixedBottomSide: teamOneBottomSide(matchWithComparison.comparison),
             allowStockfishFallback: allowStockfishFallback,
             streamEnabled: streamEnabled,
             onReturnFromChessboard: onReturnFromChessboard,
@@ -393,6 +394,7 @@ class GroupEventMatchCard extends ConsumerWidget {
       liveBatchKey: liveBatchKeyByGameId[matchWithComparison.game.gameId],
       orderedGames: fullGamesList,
       gameIndex: gameIndex,
+      fixedBottomSide: teamOneBottomSide(matchWithComparison.comparison),
       onChangedWithLiveGames:
           (updatedGames) => ref
               .read(gameCardWrapperProvider)

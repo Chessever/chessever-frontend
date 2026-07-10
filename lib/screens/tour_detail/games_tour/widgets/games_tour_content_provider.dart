@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourContentProvider = AutoDisposeProvider(
@@ -12,6 +13,120 @@ class MatchWithComparison {
   final MatchComparison comparison;
 
   MatchWithComparison({required this.game, required this.comparison});
+}
+
+/// The first team in a matchup header is the visual anchor for every board.
+/// When that team's player has Black, the board is flipped so the team still
+/// occupies the bottom side of board and grid previews.
+Side teamOneBottomSide(MatchComparison comparison) => switch (comparison) {
+  MatchComparison.sameOrder => Side.white,
+  MatchComparison.oppositeOrder => Side.black,
+  MatchComparison.different => Side.white,
+};
+
+/// Player order for compact team-event cards. The matchup header's first team
+/// stays on the first/left side even when that player is Black in this game.
+({PlayerCard teamOne, PlayerCard teamTwo}) teamOrderedPlayers(
+  MatchWithComparison match,
+) => switch (match.comparison) {
+  MatchComparison.sameOrder => (
+    teamOne: match.game.whitePlayer,
+    teamTwo: match.game.blackPlayer,
+  ),
+  MatchComparison.oppositeOrder => (
+    teamOne: match.game.blackPlayer,
+    teamTwo: match.game.whitePlayer,
+  ),
+  MatchComparison.different => (
+    teamOne: match.game.whitePlayer,
+    teamTwo: match.game.blackPlayer,
+  ),
+};
+
+/// Groups a round's games by unordered team matchup while retaining, per
+/// board, whether its actual White/Black order matches the stable header.
+/// Compact cards use this comparison to keep Team 1 on the left; board and
+/// grid previews use [teamOneBottomSide] to keep Team 1 at the bottom.
+Map<String, List<MatchWithComparison>> groupTeamGamesByMatchup({
+  required String selectedRoundId,
+  required List<GamesTourModel> games,
+}) {
+  final grouped = <String, List<MatchWithComparison>>{};
+  final gamesPerRound = _gamesForTeamRound(
+    roundId: selectedRoundId,
+    games: games,
+  );
+
+  for (final game in gamesPerRound) {
+    final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
+    final blackTeam = game.blackPlayer.team ?? game.blackPlayer.countryCode;
+    final header = '$whiteTeam vs $blackTeam';
+    final comparison = _compareAllTeamHeaders(grouped.keys, header);
+
+    if (comparison == MatchComparison.sameOrder) {
+      grouped[header]!.add(
+        MatchWithComparison(game: game, comparison: comparison),
+      );
+    } else if (comparison == MatchComparison.oppositeOrder) {
+      final existingHeader = grouped.keys.firstWhere(
+        (candidate) =>
+            _compareTeamHeaders(candidate, header) ==
+            MatchComparison.oppositeOrder,
+      );
+      grouped[existingHeader]!.add(
+        MatchWithComparison(game: game, comparison: comparison),
+      );
+    } else {
+      grouped[header] = [
+        MatchWithComparison(game: game, comparison: MatchComparison.sameOrder),
+      ];
+    }
+  }
+  return grouped;
+}
+
+List<GamesTourModel> _gamesForTeamRound({
+  required String roundId,
+  required List<GamesTourModel> games,
+}) {
+  final idLower = roundId.toLowerCase();
+  if (idLower.startsWith('$kKnockoutStagePrefix-') ||
+      idLower.startsWith('knockout-round-')) {
+    return List<GamesTourModel>.from(games);
+  }
+  return games.where((game) => game.roundId == roundId).toList();
+}
+
+MatchComparison _compareAllTeamHeaders(
+  Iterable<String> headers,
+  String candidate,
+) {
+  var foundOpposite = false;
+  for (final header in headers) {
+    final comparison = _compareTeamHeaders(header, candidate);
+    if (comparison == MatchComparison.sameOrder) return comparison;
+    if (comparison == MatchComparison.oppositeOrder) foundOpposite = true;
+  }
+  return foundOpposite
+      ? MatchComparison.oppositeOrder
+      : MatchComparison.different;
+}
+
+String _normalizeTeamName(String name) => name.trim().toLowerCase();
+
+MatchComparison _compareTeamHeaders(String first, String second) {
+  final firstTeams = first.split(' vs ').map(_normalizeTeamName).toList();
+  final secondTeams = second.split(' vs ').map(_normalizeTeamName).toList();
+  if (firstTeams.length != 2 || secondTeams.length != 2) {
+    return MatchComparison.different;
+  }
+  if (firstTeams[0] == secondTeams[0] && firstTeams[1] == secondTeams[1]) {
+    return MatchComparison.sameOrder;
+  }
+  if (firstTeams[0] == secondTeams[1] && firstTeams[1] == secondTeams[0]) {
+    return MatchComparison.oppositeOrder;
+  }
+  return MatchComparison.different;
 }
 
 class _GamesTourContentProvider {
@@ -42,46 +157,10 @@ class _GamesTourContentProvider {
     required String selectedRoundId,
     required GamesScreenModel gamesScreenModel,
   }) {
-    final grouped = <String, List<MatchWithComparison>>{};
-
-    final gamesPerRound = _gamesForRound(
-      roundId: selectedRoundId,
-      gamesScreenModel: gamesScreenModel,
+    return groupTeamGamesByMatchup(
+      selectedRoundId: selectedRoundId,
+      games: gamesScreenModel.gamesTourModels,
     );
-
-    for (var game in gamesPerRound) {
-      final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
-      final blackTeam = game.blackPlayer.team ?? game.blackPlayer.countryCode;
-      final header = '$whiteTeam vs $blackTeam';
-
-      // Check existing headers
-      final comparison = _compareAllWithOne(grouped.keys.toList(), header);
-
-      if (comparison == MatchComparison.sameOrder) {
-        // Same header, add to same list
-        grouped[header]!.add(
-          MatchWithComparison(game: game, comparison: comparison),
-        );
-      } else if (comparison == MatchComparison.oppositeOrder) {
-        // Opposite header exists, find it and add there
-        final existingHeader = grouped.keys.firstWhere(
-          (h) =>
-              _compareMatchHeaders(h, header) == MatchComparison.oppositeOrder,
-        );
-        grouped[existingHeader]!.add(
-          MatchWithComparison(game: game, comparison: comparison),
-        );
-      } else {
-        // No matching header, create a new one
-        grouped[header] = [
-          MatchWithComparison(
-            game: game,
-            comparison: MatchComparison.sameOrder,
-          ),
-        ];
-      }
-    }
-    return grouped;
   }
 
   List<GamesTourModel> _gamesForRound({
@@ -97,46 +176,6 @@ class _GamesTourContentProvider {
     return gamesScreenModel.gamesTourModels
         .where((game) => game.roundId == roundId)
         .toList();
-  }
-
-  MatchComparison _compareAllWithOne(List<String> headers, String compare) {
-    var allHeaders = <MatchComparison>[];
-
-    for (final header in headers) {
-      final comparison = _compareMatchHeaders(header, compare);
-      allHeaders.add(comparison);
-    }
-    if (allHeaders.contains(MatchComparison.sameOrder)) {
-      return MatchComparison.sameOrder;
-    } else if (allHeaders.contains(MatchComparison.oppositeOrder)) {
-      return MatchComparison.oppositeOrder;
-    } else {
-      return MatchComparison.different;
-    }
-  }
-
-  /// Normalize team names for consistent comparison
-  String _normalizeTeamName(String name) {
-    return name.trim().toLowerCase();
-  }
-
-  MatchComparison _compareMatchHeaders(String h1, String h2) {
-    final split1 = h1.split(' vs ').map((e) => e.trim()).toList();
-    final split2 = h2.split(' vs ').map((e) => e.trim()).toList();
-
-    // Normalize team names for case-insensitive comparison
-    final team1A = _normalizeTeamName(split1[0]);
-    final team1B = _normalizeTeamName(split1[1]);
-    final team2A = _normalizeTeamName(split2[0]);
-    final team2B = _normalizeTeamName(split2[1]);
-
-    if (team1A == team2A && team1B == team2B) {
-      return MatchComparison.sameOrder;
-    } else if (team1A == team2B && team1B == team2A) {
-      return MatchComparison.oppositeOrder;
-    } else {
-      return MatchComparison.different;
-    }
   }
 }
 

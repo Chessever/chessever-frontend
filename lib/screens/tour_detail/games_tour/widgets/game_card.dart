@@ -259,15 +259,9 @@ class _TopSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final player1 =
-        matchComparison.comparison == MatchComparison.sameOrder
-            ? matchComparison.game.whitePlayer
-            : matchComparison.game.blackPlayer;
-
-    final player2 =
-        matchComparison.comparison == MatchComparison.sameOrder
-            ? matchComparison.game.blackPlayer
-            : matchComparison.game.whitePlayer;
+    final orderedPlayers = teamOrderedPlayers(matchComparison);
+    final player1 = orderedPlayers.teamOne;
+    final player2 = orderedPlayers.teamTwo;
     // Light theme: use a flat white surface card for the chip strip and let
     // the divider separate it from the bottom row. Dark theme keeps the
     // historical translucent-text-as-bg trick that the user signed off on.
