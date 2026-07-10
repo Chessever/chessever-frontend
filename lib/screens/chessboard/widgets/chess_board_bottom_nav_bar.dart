@@ -2,12 +2,11 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class ChessBoardBottomNavBar extends ConsumerWidget {
   final int gameIndex;
@@ -49,42 +48,36 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     this.showGamebaseButton = false,
   });
 
+  /// Height of the floating control island. It retains the board's familiar
+  /// compact footprint while growing enough for the depth label at large
+  /// Dynamic Type sizes.
+  static double preferredHeight(BuildContext context) {
+    final isTablet = ResponsiveHelper.isTablet;
+    final baseHeight =
+        isTablet ? kBottomNavigationBarHeight + 14 : kBottomNavigationBarHeight;
+    final labelHeight = MediaQuery.textScalerOf(
+      context,
+    ).scale(isTablet ? 11 : 10);
+    return math.max(baseHeight, labelHeight + 38).clamp(baseHeight, 88);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final buttonCount = showGamebaseButton ? 5 : 4;
-    final fullWidth = MediaQuery.of(context).size.width;
-
-    // Tablet-specific layout calculations
     final isTablet = ResponsiveHelper.isTablet;
     final isTabletLandscape = isTablet && ResponsiveHelper.isLandscape;
-    final isTabletPortrait = isTablet && !ResponsiveHelper.isLandscape;
-
-    // Calculate content width based on orientation
-    // Portrait: Match the body content width (85% capped at 720)
-    // Landscape: Use full width but with refined max button sizes
-    double contentWidth;
-    if (isTabletPortrait) {
-      contentWidth = math.min(fullWidth * 0.85, 720.0);
-    } else if (isTabletLandscape) {
-      // In landscape, constrain to a comfortable max width
-      contentWidth = math.min(fullWidth, 800.0);
-    } else {
-      contentWidth = fullWidth;
-    }
-
-    // Button sizing with tablet refinements
-    final rawButtonWidth = contentWidth / buttonCount;
-    // On tablets, limit individual button width for better touch targets
-    final buttonWidth =
-        isTablet ? math.min(rawButtonWidth, 140.0) : rawButtonWidth;
-    final barHeight =
-        isTablet
-            ? kBottomNavigationBarHeight + 14.0
-            : kBottomNavigationBarHeight;
+    final media = MediaQuery.of(context);
+    final safeWidth =
+        media.size.width - media.viewPadding.left - media.viewPadding.right;
+    final islandWidth =
+        math
+            .min(math.max(0.0, safeWidth - 24), isTablet ? 560.0 : 420.0)
+            .toDouble();
+    final barHeight = preferredHeight(context);
+    final buttonWidth = (islandWidth - 8) / buttonCount;
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
-    final activeComponent = depthSnapshot?.component;
     final gaugeProgress = depthSnapshot?.progress;
 
     // Check if user wants to see depth overlay
@@ -102,119 +95,127 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       }
     }
 
+    Widget semanticControl({
+      required String label,
+      required Widget child,
+      required VoidCallback? onTap,
+      bool? toggled,
+    }) {
+      return Semantics(
+        label: label,
+        button: true,
+        enabled: onTap != null,
+        toggled: toggled,
+        onTap: onTap,
+        child: ExcludeSemantics(child: child),
+      );
+    }
 
-    // Build the navigation buttons row
     final buttonsRow = Row(
-      mainAxisSize: isTablet ? MainAxisSize.min : MainAxisSize.max,
+      mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
         if (showGamebaseButton)
-          ChessSvgBottomNavbar(
-            key: e2eKey(E2eIds.boardGamebaseToggle),
-            width: buttonWidth,
-            svgPath: SvgAsset.libraryNavIcon,
-            onPressed: onGamebaseToggle,
-            isActive: isGamebaseActive,
+          semanticControl(
+            label:
+                isGamebaseActive
+                    ? 'Hide Gamebase explorer'
+                    : 'Show Gamebase explorer',
+            toggled: isGamebaseActive,
+            onTap: onGamebaseToggle,
+            child: ChessSvgBottomNavbar(
+              key: e2eKey(E2eIds.boardGamebaseToggle),
+              width: buttonWidth,
+              svgPath: SvgAsset.libraryNavIcon,
+              onPressed: onGamebaseToggle,
+              isActive: isGamebaseActive,
+            ),
           ),
-
-        // Computer/Engine Analysis Toggle Button
-        ChessSvgBottomNavbar(
-          key: e2eKey(E2eIds.boardEngineToggle),
-          width: buttonWidth,
-          svgPath: SvgAsset.laptop,
-          onPressed: toggleEngineVisibility,
-          onLongPress: onEngineSettingsLongPress,
-          isActive: showEngineAnalysis,
-          depthText: showEngineAnalysis ? depthText : null,
+        semanticControl(
+          label:
+              showEngineAnalysis
+                  ? 'Hide engine analysis${depthText == null ? '' : ', $depthText'}'
+                  : 'Show engine analysis',
+          toggled: showEngineAnalysis,
+          onTap: toggleEngineVisibility,
+          child: ChessSvgBottomNavbar(
+            key: e2eKey(E2eIds.boardEngineToggle),
+            width: buttonWidth,
+            svgPath: SvgAsset.laptop,
+            onPressed: toggleEngineVisibility,
+            onLongPress: onEngineSettingsLongPress,
+            isActive: showEngineAnalysis,
+            depthText: showEngineAnalysis ? depthText : null,
+          ),
         ),
-
-        // Flip Board Button
-        ChessSvgBottomNavbar(
-          key: e2eKey(E2eIds.boardFlip),
-          width: buttonWidth,
-          svgPath: SvgAsset.refresh,
-          onPressed: onFlip,
+        semanticControl(
+          label: 'Flip board',
+          onTap: onFlip,
+          child: ChessSvgBottomNavbar(
+            key: e2eKey(E2eIds.boardFlip),
+            width: buttonWidth,
+            svgPath: SvgAsset.refresh,
+            onPressed: onFlip,
+          ),
         ),
-        ChessSvgBottomNavbarWithLongPress(
-          key: e2eKey(E2eIds.boardMoveBack),
-          svgPath: SvgAsset.left_arrow,
-          width: buttonWidth,
-          onPressed: canMoveBackward ? onLeftMove : null,
-          onLongPressStart: canMoveBackward ? onLongPressBackwardStart : null,
-          onLongPressEnd: onLongPressBackwardEnd,
+        semanticControl(
+          label: 'Previous move. Long press to repeat',
+          onTap: canMoveBackward ? onLeftMove : null,
+          child: ChessSvgBottomNavbarWithLongPress(
+            key: e2eKey(E2eIds.boardMoveBack),
+            svgPath: SvgAsset.left_arrow,
+            width: buttonWidth,
+            onPressed: canMoveBackward ? onLeftMove : null,
+            onLongPressStart: canMoveBackward ? onLongPressBackwardStart : null,
+            onLongPressEnd: onLongPressBackwardEnd,
+          ),
         ),
-
-        ChessSvgBottomNavbarWithLongPress(
-          key: e2eKey(E2eIds.boardMoveForward),
-          svgPath: SvgAsset.right_arrow,
-          width: buttonWidth,
-          onPressed: canMoveForward ? onRightMove : null,
-          onLongPressStart: canMoveForward ? onLongPressForwardStart : null,
-          onLongPressEnd: onLongPressForwardEnd,
-          showBadge: showUnseenMoveBadge,
+        semanticControl(
+          label:
+              showUnseenMoveBadge
+                  ? 'Next move, new move available. Long press to repeat'
+                  : 'Next move. Long press to repeat',
+          onTap: canMoveForward ? onRightMove : null,
+          child: ChessSvgBottomNavbarWithLongPress(
+            key: e2eKey(E2eIds.boardMoveForward),
+            svgPath: SvgAsset.right_arrow,
+            width: buttonWidth,
+            onPressed: canMoveForward ? onRightMove : null,
+            onLongPressStart: canMoveForward ? onLongPressForwardStart : null,
+            onLongPressEnd: onLongPressForwardEnd,
+            showBadge: showUnseenMoveBadge,
+          ),
         ),
       ],
     );
 
-    // Tablet-refined container with subtle top border
-    final bar = Container(
-      width: fullWidth,
-      decoration: BoxDecoration(
-        color: context.colors.background,
-        // Add subtle top border for visual separation on tablets
-        border:
-            isTablet
-                ? Border(
-                  top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.06),
-                    width: 1,
-                  ),
-                )
-                : null,
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: barHeight,
-          child: Center(
-            child:
-                isTablet
-                    // Tablet: Container with refined styling
-                    ? Container(
-                      height: barHeight - 12,
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      margin: EdgeInsets.symmetric(vertical: 4),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: buttonsRow,
-                    )
-                    // Phone: Full width row
-                    : SizedBox(width: contentWidth, child: buttonsRow),
-          ),
-        ),
+    final island = GlassContainer(
+      key: const ValueKey<String>('board-floating-bottom-controls'),
+      width: islandWidth,
+      height: barHeight,
+      padding: const EdgeInsets.all(4),
+      alignment: Alignment.center,
+      useOwnLayer: true,
+      quality: GlassQuality.standard,
+      shape: LiquidRoundedSuperellipse(borderRadius: barHeight / 2),
+      child: buttonsRow,
+    );
+
+    final controls = Center(
+      child: GestureDetector(
+        onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
+        onHorizontalDragUpdate: isTabletLandscape ? (_) {} : null,
+        onHorizontalDragEnd: isTabletLandscape ? (_) {} : null,
+        behavior: HitTestBehavior.opaque,
+        child: island,
       ),
     );
 
-    if (!isTabletLandscape) {
-      return bar;
-    }
-
-    return GestureDetector(
-      // Absorb horizontal drags so taps in the bottom bar don't trigger
-      // the parent PageView on tablet landscape.
-      onHorizontalDragStart: (_) {},
-      onHorizontalDragUpdate: (_) {},
-      onHorizontalDragEnd: (_) {},
-      behavior: HitTestBehavior.opaque,
-      child: bar,
+    return Semantics(
+      container: true,
+      label: 'Chess board controls',
+      child: controls,
     );
   }
 }
-
