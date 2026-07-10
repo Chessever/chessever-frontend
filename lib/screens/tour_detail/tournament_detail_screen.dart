@@ -27,11 +27,11 @@ import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.da
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
@@ -250,106 +250,90 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           final isTeam = _isTeamEvent;
           final visibleModes = _visibleModes(isTeam);
 
-          return ScreenWrapper(
-            child: Scaffold(
-              key: e2eKey(E2eIds.tournamentDetailRoot),
-              body: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth:
-                        ResponsiveHelper.isTablet
-                            ? ResponsiveHelper.contentMaxWidth
-                            : double.infinity,
-                  ),
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        height: MediaQuery.of(context).viewPadding.top + 4.h,
-                      ),
-                      tourDetailAsync.when(
-                        data:
-                            (data) => _buildSuccessAppBar(
-                              data,
-                              selectedTourMode,
-                              isTeam,
-                            ),
-                        error: (error, stackTrace) => _buildErrorAppBar(error),
-                        loading:
-                            () => const _LoadingAppBarWithTitle(
-                              title: "ChessEver",
-                            ),
-                      ),
-                      Expanded(
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (notification is! ScrollUpdateNotification) {
-                              return false;
+          final maxWidth =
+              ResponsiveHelper.isTablet
+                  ? ResponsiveHelper.contentMaxWidth
+                  : double.infinity;
+          final controls = tourDetailAsync.when(
+            data: (data) => _buildSuccessAppBar(data, selectedTourMode, isTeam),
+            error: (error, stackTrace) => _buildErrorAppBar(error),
+            loading: () => const _LoadingAppBarWithTitle(title: 'ChessEver'),
+          );
+
+          return GlassFullScreenPage(
+            key: e2eKey(E2eIds.tournamentDetailRoot),
+            contentPadding: EdgeInsets.only(top: 154.h),
+            topOverlayPadding: EdgeInsets.only(top: 4.h),
+            topOverlay: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: controls,
+              ),
+            ),
+            content: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification is! ScrollUpdateNotification) {
+                      return false;
+                    }
+                    if (_chromeCollapse.onScrollUpdate(notification) &&
+                        mounted) {
+                      setState(() {});
+                    }
+                    return false;
+                  },
+                  child: ScrollToTopScope(
+                    bus: _scrollToTopBus,
+                    child: PageView.builder(
+                      controller: pageController,
+                      itemCount: visibleModes.length,
+                      onPageChanged: (index) {
+                        _handlePageChanged(index);
+                        if (!_chromeCollapse.expanded) {
+                          setState(_chromeCollapse.reset);
+                        }
+                      },
+                      itemBuilder: (context, index) {
+                        if (index >= visibleModes.length) {
+                          return const SizedBox.shrink();
+                        }
+                        switch (visibleModes[index]) {
+                          case TournamentDetailScreenMode.about:
+                            return AboutTourScreen();
+                          case TournamentDetailScreenMode.games:
+                            return GamesTourScreen();
+                          case TournamentDetailScreenMode.standings:
+                            if (isTeam) {
+                              return const TeamStandingsScreen();
                             }
-                            if (_chromeCollapse.onScrollUpdate(notification) &&
-                                mounted) {
-                              setState(() {});
-                            }
-                            return false;
-                          },
-                          child: ScrollToTopScope(
-                          bus: _scrollToTopBus,
-                          child: PageView.builder(
-                            controller: pageController,
-                            itemCount: visibleModes.length,
-                            onPageChanged: (index) {
-                              _handlePageChanged(index);
-                              if (!_chromeCollapse.expanded) {
-                                setState(_chromeCollapse.reset);
-                              }
-                            },
-                            itemBuilder: (context, index) {
-                              if (index >= visibleModes.length) {
-                                return const SizedBox.shrink();
-                              }
-                              switch (visibleModes[index]) {
-                                case TournamentDetailScreenMode.about:
-                                  return AboutTourScreen();
-                                case TournamentDetailScreenMode.games:
-                                  return GamesTourScreen();
-                                case TournamentDetailScreenMode.standings:
-                                  // Team events: team table (no standings-image
-                                  // share nudge — the individual standings the
-                                  // nudge shares now live on the Players tab).
-                                  if (isTeam) {
-                                    return const TeamStandingsScreen();
-                                  }
-                                  return ScreenshotShareNudge(
-                                    enabled:
-                                        selectedTourMode ==
-                                        TournamentDetailScreenMode.standings,
-                                    onShare:
-                                        () => shareTournamentStandings(
-                                          context,
-                                          scopedRef,
-                                        ),
-                                    child: PlayerTourScreen(),
-                                  );
-                                case TournamentDetailScreenMode.players:
-                                  // Individual standings for team events; the
-                                  // share nudge follows them here.
-                                  return ScreenshotShareNudge(
-                                    enabled:
-                                        selectedTourMode ==
-                                        TournamentDetailScreenMode.players,
-                                    onShare:
-                                        () => shareTournamentStandings(
-                                          context,
-                                          scopedRef,
-                                        ),
-                                    child: PlayerTourScreen(),
-                                  );
-                              }
-                            },
-                          ),
-                        ),
-                        ),
-                      ),
-                    ],
+                            return ScreenshotShareNudge(
+                              enabled:
+                                  selectedTourMode ==
+                                  TournamentDetailScreenMode.standings,
+                              onShare:
+                                  () => shareTournamentStandings(
+                                    context,
+                                    scopedRef,
+                                  ),
+                              child: PlayerTourScreen(),
+                            );
+                          case TournamentDetailScreenMode.players:
+                            return ScreenshotShareNudge(
+                              enabled:
+                                  selectedTourMode ==
+                                  TournamentDetailScreenMode.players,
+                              onShare:
+                                  () => shareTournamentStandings(
+                                    context,
+                                    scopedRef,
+                                  ),
+                              child: PlayerTourScreen(),
+                            );
+                        }
+                      },
+                    ),
                   ),
                 ),
               ),
