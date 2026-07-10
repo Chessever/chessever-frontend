@@ -3,7 +3,6 @@ import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/search_expand_state.dart';
 import 'package:cue/cue.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:motor/motor.dart';
 
@@ -11,9 +10,12 @@ import 'package:motor/motor.dart';
 /// [GlassSearchBar] with Apple Music–style widen / collapse.
 ///
 /// Motion stack:
-/// - **cue** [Cue.onToggle] + [Act.sizedClip] — horizontal widen from the
-///   search circle (alignment right), reverse uses snappy motion.
-/// - **motor** [SingleMotionBuilder] — soft scale settle on the shell.
+/// - **cue** [Cue.onToggle] + [Act.sizedClip] — true horizontal widen from
+///   [expandAlignment] (default: trailing edge, circle on the right).
+/// - **cue** [Act.stretch] — soft X-axis “inflate” accent during open.
+/// - **cue** [Act.scale] — presence settle around the expansion origin.
+/// - **motor** [SingleMotionBuilder] — directional widen/collapse shell
+///   scale + mid-morph breathe (asymmetric springs).
 /// - **liquid_glass** [GlassSearchBar] — glass field + cancel when expanded.
 class GlassIslandSearch extends StatefulWidget {
   const GlassIslandSearch({
@@ -97,6 +99,7 @@ class _GlassIslandSearchState extends State<GlassIslandSearch> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final radius = widget.expandedHeight / 2;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -111,26 +114,43 @@ class _GlassIslandSearchState extends State<GlassIslandSearch> {
           collapsedSize: collapsed,
         );
 
-        // motor: shell scale pulse while cue widens the clip.
+        // motor: directional shell (widen jelly / collapse snappy).
         return SingleMotionBuilder(
-          motion: GlassMotion.shellPulse,
+          motion: GlassMotion.searchDirection(widget.expanded),
           value: widget.expanded ? 1.0 : 0.0,
-          builder: (context, pulse, _) {
-            final scale = GlassMotion.shellScale(pulse);
+          builder: (context, progress, _) {
+            final shell = GlassMotion.shellScale(progress, min: 0.94);
+            final breathe = GlassMotion.morphBreathe(progress, peak: 0.028);
             return Transform.scale(
-              scale: scale,
+              scale: shell * breathe,
               alignment: widget.expandAlignment,
               child: Cue.onToggle(
                 toggled: widget.expanded,
-                // Widen forward — underdamped smooth = soft jelly overshoot.
-                motion: const CueMotion.smooth(dampingRatio: 0.78),
-                // Collapse back — near-critical snappy settle.
-                reverseMotion: const CueMotion.snappy(dampingRatio: 0.95),
+                // Same duration/bounce tokens as motor widen / collapse.
+                motion: GlassMotion.cueWiden,
+                reverseMotion: GlassMotion.cueCollapse,
                 acts: [
+                  // Core widen: collapsed width ↔ full field. Rest states are
+                  // exact (no permanent scale/stretch distortion when closed).
                   Act.sizedClip(
                     from: NSize.width(collapsed),
                     to: NSize.width(expandedW),
                     alignment: widget.expandAlignment,
+                    clipGeometry: ClipGeometry.superEllipse(
+                      BorderRadius.circular(radius),
+                    ),
+                  ),
+                  // Mid-morph X inflate; 1.0 at both ends so icon stays round.
+                  StretchAct.keyframed(
+                    alignment: widget.expandAlignment,
+                    frames: Keyframes.fractional(
+                      const [
+                        FKeyframe.key(Stretch.none, at: 0.0),
+                        FKeyframe.key(Stretch(x: 1.06, y: 0.98), at: 0.4),
+                        FKeyframe.key(Stretch.none, at: 1.0),
+                      ],
+                      duration: GlassMotion.widenDuration,
+                    ),
                   ),
                 ],
                 child: SizedBox(

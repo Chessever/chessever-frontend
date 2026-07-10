@@ -89,10 +89,24 @@ void main() {
     expect(nav, contains('Cue.onToggle'));
     expect(nav, contains('SingleMotionBuilder'));
     expect(nav, contains('GlassMotion.searchMorphSpring'));
+    expect(nav, contains('GlassMotion.cueWiden'));
+    expect(nav, contains('GlassMotion.cueCollapse'));
+    expect(nav, contains('GlassMotion.searchDirection'));
+    expect(nav, contains('ScaleAct.keyframed'));
+    expect(nav, contains('morphBreathe'));
+    expect(nav, contains('morphLift'));
     expect(search, contains('Cue.onToggle'));
     expect(search, contains('Act.sizedClip'));
+    expect(search, contains('StretchAct.keyframed'));
     expect(search, contains('SingleMotionBuilder'));
+    expect(search, contains('GlassMotion.cueWiden'));
+    expect(search, contains('GlassMotion.searchDirection'));
     expect(motion, contains('CupertinoMotion'));
     expect(motion, contains('searchMorphSpring'));
+    expect(motion, contains('cueWiden'));
+    expect(motion, contains('cueCollapse'));
+    expect(motion, contains('searchDirection'));
+    expect(motion, contains('morphBreathe'));
+    expect(motion, contains('widenBounce'));
   });
 }

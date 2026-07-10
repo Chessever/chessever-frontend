@@ -11,7 +11,6 @@ import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
 import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
 import 'package:cue/cue.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:motor/motor.dart';
@@ -173,8 +172,8 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
         ),
     ];
 
-    // Package searchable morph: search circle (right) + tab pill (left).
-    // springDescription matches GlassMotion (motor-tuned jelly widen/back).
+    // Package owns multi-axis pill morph (tab shrink + search widen leftward).
+    // springDescription is motor Cupertino widen physics (shared with cue).
     final bar = GlassTabBar.searchable(
       tabs: tabs,
       selectedIndex: selectedIndex.clamp(0, tabs.length - 1),
@@ -264,26 +263,59 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       ],
     );
 
-    // cue: subtle shell pulse when search expands/collapses (Apple Music feel).
-    // motor: scroll-minimize scale with physics spring (not linear AnimatedScale).
+    // Motion stack (Apple Music widen forward / snappy back):
+    // 1) cue — mid-morph scale pulse (1 → peak → 1; both rests identity)
+    // 2) motor morph progress — continuous breathe + lift (directional springs)
+    // 3) motor scroll chrome — minimize on scroll (separate axis)
+    // Package springDescription already widens the search pill itself.
+    //
+    // Important: resting collapsed/expanded must be identity transforms so
+    // e2e hit slots and layout stay exact (no permanent 0.94 scale).
     return Cue.onToggle(
       toggled: searchActive,
-      motion: const CueMotion.smooth(dampingRatio: 0.82),
-      reverseMotion: const CueMotion.snappy(dampingRatio: 0.96),
+      motion: GlassMotion.cueWiden,
+      reverseMotion: GlassMotion.cueCollapse,
       acts: [
-        Act.scale(from: 0.985, to: 1.0),
+        // Soft inflate mid-open; ends match so collapsed layout is unscaled.
+        ScaleAct.keyframed(
+          alignment: Alignment.bottomCenter,
+          frames: Keyframes.fractional(
+            const [
+              FKeyframe.key(1.0, at: 0.0),
+              FKeyframe.key(1.04, at: 0.42),
+              FKeyframe.key(1.0, at: 1.0),
+            ],
+            duration: GlassMotion.widenDuration,
+          ),
+        ),
       ],
       child: SingleMotionBuilder(
-        motion: GlassMotion.scrollChrome,
-        value: chrome.scale,
-        builder: (context, scale, child) {
-          return Transform.scale(
-            scale: scale,
-            alignment: Alignment.bottomCenter,
-            child: child,
+        motion: GlassMotion.searchDirection(searchActive),
+        value: searchActive ? 1.0 : 0.0,
+        builder: (context, morphT, child) {
+          final breathe = GlassMotion.morphBreathe(morphT);
+          final lift = GlassMotion.morphLift(morphT);
+          return Transform.translate(
+            offset: Offset(0, lift),
+            child: Transform.scale(
+              scale: breathe,
+              alignment: Alignment.bottomCenter,
+              child: child,
+            ),
           );
         },
-        child: island,
+        child: SingleMotionBuilder(
+          motion: GlassMotion.scrollChrome,
+          value: chrome.scale,
+          builder: (context, scale, child) {
+            return Transform.scale(
+              scale: scale,
+              alignment: Alignment.bottomCenter,
+              child: child,
+            );
+          },
+          child: island,
+        ),
       ),
     );
   }
