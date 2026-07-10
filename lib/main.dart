@@ -62,6 +62,7 @@ import 'services/deep_link_service.dart';
 import 'services/pgn_file_intake_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/notification_permission_prompt_provider.dart';
@@ -77,10 +78,15 @@ Widget _buildRootApp() {
     child: LiquidGlassWidgets.wrap(
       child: const StartupGate(),
       adaptiveQuality: true,
-      theme: GlassThemeData.simple(
-        blur: 10,
-        thickness: 30,
-        quality: GlassQuality.standard,
+      theme: GlassThemeData(
+        light: GlassThemeVariant(
+          settings: GlassThemeSettings(thickness: 28, blur: 8),
+          quality: GlassQuality.standard,
+        ),
+        dark: GlassThemeVariant(
+          settings: GlassThemeSettings(thickness: 36, blur: 10),
+          quality: GlassQuality.standard,
+        ),
       ),
     ),
   );
@@ -1112,12 +1118,8 @@ class MyApp extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Light theme is shelved — force dark mode app-wide regardless of any
-    // previously persisted user preference. The themeModeProvider still
-    // exists so the saved preference isn't wiped, but it's not consulted
-    // here. Re-enable by restoring `ref.watch(themeModeProvider)`.
-    // final themeMode = ref.watch(themeModeProvider);
-    const themeMode = ThemeMode.dark;
+    // Appearance is user-controlled via Settings (light/dark switch).
+    final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
     ref.watch(notificationPermissionPromptProvider);

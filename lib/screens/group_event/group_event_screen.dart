@@ -13,22 +13,24 @@ import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
-import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_avatar_island.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 enum GroupEventCategory { past, current, forYou, search }
 
@@ -186,6 +188,39 @@ class GroupEventScreen extends HookConsumerWidget {
       }
     });
 
+    // Home bottom searchable morph drives Events search query.
+    ref.listen<String>(homeBottomSearchTextProvider, (previous, next) {
+      final trimmed = next.trim();
+      final prevQ = ref.read(searchTabQueryProvider);
+      if (trimmed == prevQ) return;
+      searchTabDebounce.value?.cancel();
+      if (trimmed.isNotEmpty) {
+        ref.read(selectedGroupCategoryProvider.notifier).state =
+            GroupEventCategory.search;
+        if (prevQ.isEmpty) {
+          ref.read(searchTabQueryProvider.notifier).state = trimmed;
+        } else {
+          searchTabDebounce.value = Timer(
+            const Duration(milliseconds: 300),
+            () {
+              ref.read(searchTabQueryProvider.notifier).state = trimmed;
+            },
+          );
+        }
+      } else if (prevQ.isNotEmpty) {
+        ref.read(searchTabQueryProvider.notifier).state = '';
+        searchAnimatedEventIds.clear();
+        ref.read(selectedGroupCategoryProvider.notifier).state =
+            GroupEventCategory.current;
+        // ignore: unused_result
+        ref.refresh(groupEventScreenProvider);
+      }
+      searchController.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: next.length),
+      );
+    });
+
     void onScroll() {
       if (!context.mounted || selectedTourEvent != GroupEventCategory.past) {
         return;
@@ -204,10 +239,31 @@ class GroupEventScreen extends HookConsumerWidget {
     }, [pastScrollController, selectedTourEvent]);
 
     final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
+      phone: 12.sp,
+      tablet: 24.sp,
     );
 
+    void openFilter() {
+      ref.read(filterPopupProvider.notifier).setState(appliedFilterState);
+      showAlertModal<void>(
+        context: context,
+        horizontalPadding: 0,
+        child: FilterPopup(
+          onApplyFilters: (filterState) {
+            ref.read(eventAppliedFilterProvider.notifier).state = filterState;
+            ref.invalidate(forYouEventsProvider);
+          },
+          onResetFilters: () {
+            ref.read(eventAppliedFilterProvider.notifier).state =
+                defaultFilterPopupState;
+            ref.invalidate(forYouEventsProvider);
+          },
+        ),
+      );
+    }
+
+    // Island-only top: avatar circle + filter circle + compact category strip.
+    // Search expands from the home bottom searchable pill (Apple Music morph).
     return Material(
       key: e2eKey(E2eIds.eventsRoot),
       color: context.colors.background,
@@ -220,196 +276,95 @@ class GroupEventScreen extends HookConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder:
-                      (Widget child, Animation<double> animation) =>
-                          FadeTransition(
-                            opacity: animation,
-                            child: SizeTransition(
-                              sizeFactor: animation,
-                              axis: Axis.horizontal,
-                              child: child,
+              GlassIslandTopBar(
+                horizontalPadding: horizontalPadding,
+                leading: GlassAvatarIsland(
+                  onTap: () => Scaffold.maybeOf(context)?.openDrawer(),
+                ),
+                trailing: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      GlassIconButton(
+                        key: e2eKey(E2eIds.eventsFilterButton),
+                        icon: Icon(
+                          CupertinoIcons.slider_horizontal_3,
+                          color: context.colors.iconPrimary,
+                        ),
+                        onPressed: openFilter,
+                        size: 40,
+                        iconSize: 18,
+                        useOwnLayer: true,
+                      ),
+                      if (filterBadgeCount > 0)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: context.colors.brand,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$filterBadgeCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    key: const ValueKey('search_bar'),
-                    child: EnhancedRoundedSearchBar(
-                      focusNode: focusNode,
-                      controller: searchController,
-                      textFieldKey: e2eKey(E2eIds.eventsSearchField),
-                      filterButtonKey: e2eKey(E2eIds.eventsFilterButton),
-                      hintText: 'Search',
-                      rotatingHints: const [
-                        'player',
-                        'tournament',
-                        'openings',
-                        'FIDE country',
-                      ],
-                      showProfile: !isSearching.value,
-                      filterBadgeCount: filterBadgeCount,
-                      onChanged: (value) {
-                        // Tab switch is instant; the query that drives the
-                        // search fan-out (network + local scoring) is
-                        // debounced so keystrokes never trigger heavy work.
-                        final trimmed = value.trim();
-                        final previousQuery = ref.read(searchTabQueryProvider);
-                        searchTabDebounce.value?.cancel();
-                        if (trimmed.isNotEmpty) {
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = GroupEventCategory.search;
-                          if (previousQuery.isEmpty) {
-                            // First keystroke must apply instantly: the search
-                            // tab is only rendered while the query is
-                            // non-empty (sub-2-char queries short-circuit in
-                            // the provider, so this is cheap).
-                            ref.read(searchTabQueryProvider.notifier).state =
-                                trimmed;
-                          } else {
-                            searchTabDebounce.value = Timer(
-                              const Duration(milliseconds: 300),
-                              () {
-                                ref
-                                    .read(searchTabQueryProvider.notifier)
-                                    .state = trimmed;
-                              },
-                            );
-                          }
-                        } else {
-                          ref.read(searchTabQueryProvider.notifier).state = '';
-                          if (previousQuery.isNotEmpty) {
-                            // Only switch tabs when user actively clears a
-                            // non-empty search (not on tapping an empty field)
-                            searchAnimatedEventIds.clear();
-                            ref
-                                .read(selectedGroupCategoryProvider.notifier)
-                                .state = GroupEventCategory.current;
-                            // ignore: unused_result
-                            ref.refresh(groupEventScreenProvider);
-                          }
-                        }
-                      },
-                      onTournamentSelected:
-                          (t) => ref
-                              .read(groupEventScreenProvider.notifier)
-                              .onSelectTournament(context: context, id: t.id),
-                      onPlayerSelected: (player) {
-                        FocusScope.of(context).unfocus();
-                        HapticFeedbackService.buttonPress();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => PlayerProfileScreen(
-                                  fideId: player.fideId,
-                                  playerName: player.name,
-                                  title: player.title,
-                                  federation: player.fed,
-                                  rating: player.rating,
-                                ),
-                          ),
-                        );
-                      },
-                      onFilterTap: () {
-                        ref
-                            .read(filterPopupProvider.notifier)
-                            .setState(appliedFilterState);
-
-                        showAlertModal<void>(
-                          context: context,
-                          horizontalPadding: 0,
-                          child: FilterPopup(
-                            onApplyFilters: (filterState) {
-                              ref
-                                  .read(eventAppliedFilterProvider.notifier)
-                                  .state = filterState;
-                              ref.invalidate(forYouEventsProvider);
-                            },
-                            onResetFilters: () {
-                              ref
-                                  .read(eventAppliedFilterProvider.notifier)
-                                  .state = defaultFilterPopupState;
-                              ref.invalidate(forYouEventsProvider);
-                            },
-                          ),
-                        );
-                      },
-                      onProfileTap:
-                          () => Scaffold.maybeOf(context)?.openDrawer(),
-                      onClearSearchField: () {
-                        // ignore: unused_result
-                        ref.refresh(groupEventScreenProvider);
-                        // Clear search tab state and switch back if on search tab
-                        ref.read(searchTabQueryProvider.notifier).state = '';
-                        searchAnimatedEventIds.clear();
-                        if (selectedTourEvent == GroupEventCategory.search) {
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = GroupEventCategory.current;
-                        }
-                      },
-                    ),
+                        ),
+                    ],
                   ),
-                ),
+                ],
               ),
-
-              SizedBox(height: 16.h),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _SegmentedSwitcher(
-                        searchController: searchController,
-                        selectedTourEvent: selectedTourEvent,
-                        visibleCategories: visibleCategories,
-                        onSelectedChanged: (index) {
-                          final newCategory = visibleCategories[index];
-                          final currentCategory = selectedTourEvent;
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  0,
+                  horizontalPadding,
+                  6,
+                ),
+                child: _SegmentedSwitcher(
+                  searchController: searchController,
+                  selectedTourEvent: selectedTourEvent,
+                  visibleCategories: visibleCategories,
+                  onSelectedChanged: (index) {
+                    final newCategory = visibleCategories[index];
+                    final currentCategory = selectedTourEvent;
 
-                          // If tapping the same tab, scroll to top
-                          if (newCategory == currentCategory) {
-                            ScrollController? controller;
-                            if (newCategory == GroupEventCategory.forYou) {
-                              controller = forYouScrollController;
-                            } else if (newCategory == GroupEventCategory.past) {
-                              controller = pastScrollController;
-                            } else if (newCategory ==
-                                GroupEventCategory.current) {
-                              controller = currentScrollController;
-                            } else if (newCategory ==
-                                GroupEventCategory.search) {
-                              controller = searchScrollController;
-                            }
+                    if (newCategory == currentCategory) {
+                      ScrollController? controller;
+                      if (newCategory == GroupEventCategory.forYou) {
+                        controller = forYouScrollController;
+                      } else if (newCategory == GroupEventCategory.past) {
+                        controller = pastScrollController;
+                      } else if (newCategory == GroupEventCategory.current) {
+                        controller = currentScrollController;
+                      } else if (newCategory == GroupEventCategory.search) {
+                        controller = searchScrollController;
+                      }
 
-                            if (controller != null && controller.hasClients) {
-                              controller.animateTo(
-                                0,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOutCubic,
-                              );
-                            }
-                            return; // Don't change category
-                          }
+                      if (controller != null && controller.hasClients) {
+                        controller.animateTo(
+                          0,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutCubic,
+                        );
+                      }
+                      return;
+                    }
 
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = newCategory;
-                        },
-                      ),
-                    ),
-                  ],
+                    ref.read(selectedGroupCategoryProvider.notifier).state =
+                        newCategory;
+                  },
                 ),
               ),
-
-              SizedBox(height: 12.h),
               Expanded(
                 child: PageView.builder(
                   controller: pageController,

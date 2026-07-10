@@ -12,12 +12,14 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -69,6 +71,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   Timer? _searchAnalyticsTimer;
+  bool _searchExpanded = false;
 
   @override
   void dispose() {
@@ -106,147 +109,92 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final isListMode =
         filterMode != CalendarFilterMode.all || searchQuery.trim().isNotEmpty;
 
-    return Scaffold(
-      key: e2eKey(E2eIds.calendarRoot),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
-
-          /// Search bar + Filters
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.sp),
-            child: Column(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    /// Search bar
-                    Expanded(
-                      child: Hero(
-                        tag: 'search_bar',
-                        child: Material(
-                          color: Colors.transparent,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 2.sp,
-                              vertical: 4.sp,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.colors.surfaceRecessed,
-                              borderRadius: BorderRadius.circular(8.br),
-                              border: Border.all(
-                                color:
-                                    focusNode.hasFocus
-                                        ? kPrimaryColor.withValues(alpha: 0.5)
-                                        : Colors.transparent,
-                                width: 2.0,
-                              ),
-                              boxShadow:
-                                  focusNode.hasFocus
-                                      ? [
-                                        BoxShadow(
-                                          color: kPrimaryColor.withValues(
-                                            alpha: 0.15,
-                                          ),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ]
-                                      : [],
-                            ),
-                            child: SimpleSearchBar(
-                              key: e2eKey(E2eIds.calendarSearchField),
-                              textFieldKey: e2eKey(E2eIds.calendarSearchField),
-                              controller: searchController,
-                              focusNode: focusNode,
-                              hintText: 'Search',
-                              onCloseTap: () {
-                                searchController.clear();
-                                focusNode.unfocus();
-                                ref
-                                    .read(calendarSearchQueryProvider.notifier)
-                                    .state = '';
-                              },
-                              onChanged: (val) {
-                                ref
-                                    .read(calendarSearchQueryProvider.notifier)
-                                    .state = val;
-                                _searchAnalyticsTimer?.cancel();
-                                final query = val.trim();
-                                if (query.isEmpty) return;
-                                _searchAnalyticsTimer = Timer(
-                                  const Duration(milliseconds: 350),
-                                  () {
-                                    AnalyticsService.instance
-                                        .trackEventDetached(
-                                          'Calendar Search',
-                                          properties: {
-                                            'query': query,
-                                            'query_length': query.length,
-                                          },
-                                        );
-                                  },
-                                );
-                              },
-                              onOpenFilter: null,
-                            ),
-                          ),
-                        ),
+    return ScreenWrapper(
+      child: Scaffold(
+        key: e2eKey(E2eIds.calendarRoot),
+        backgroundColor: Colors.transparent,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Island top: expanding search + year chip (no full-width slab).
+            GlassIslandTopBar(
+              center: GlassIslandSearch(
+                controller: searchController,
+                focusNode: focusNode,
+                expanded: _searchExpanded,
+                textFieldKey: e2eKey(E2eIds.calendarSearchField),
+                hintText: 'Search',
+                onExpandedChanged: (v) => setState(() => _searchExpanded = v),
+                onChanged: (val) {
+                  ref.read(calendarSearchQueryProvider.notifier).state = val;
+                  _searchAnalyticsTimer?.cancel();
+                  final query = val.trim();
+                  if (query.isEmpty) return;
+                  _searchAnalyticsTimer = Timer(
+                    const Duration(milliseconds: 350),
+                    () {
+                      AnalyticsService.instance.trackEventDetached(
+                        'Calendar Search',
+                        properties: {
+                          'query': query,
+                          'query_length': query.length,
+                        },
+                      );
+                    },
+                  );
+                },
+                onClear: () {
+                  ref.read(calendarSearchQueryProvider.notifier).state = '';
+                },
+              ),
+              trailing: [
+                Container(
+                  height: 40,
+                  padding: EdgeInsets.symmetric(horizontal: 10.w),
+                  decoration: BoxDecoration(
+                    color: context.colors.surface.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: context.colors.divider),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: ref.watch(selectedYearProvider),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          ref.read(selectedYearProvider.notifier).state =
+                              newValue;
+                          AnalyticsService.instance.trackEventDetached(
+                            'Calendar Year Changed',
+                            properties: {'year': newValue},
+                          );
+                        }
+                      },
+                      icon: Icon(
+                        Icons.keyboard_arrow_down_outlined,
+                        color: context.colors.iconPrimary,
+                        size: 20.ic,
                       ),
+                      style: AppTypography.textMdBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                      dropdownColor: context.colors.surface,
+                      borderRadius: BorderRadius.circular(12.br),
+                      items:
+                          yearList.map((value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text(value.toString()),
+                            );
+                          }).toList(),
                     ),
-                    SizedBox(width: 12.w),
-
-                    /// Year dropdown
-                    Container(
-                      height: 48.h,
-                      padding: EdgeInsets.symmetric(horizontal: 12.w),
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(8.br),
-                        border: Border.all(
-                          color: context.colors.divider,
-                          width: 1.w,
-                        ),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: ref.watch(selectedYearProvider),
-                          onChanged: (int? newValue) {
-                            if (newValue != null) {
-                              ref.read(selectedYearProvider.notifier).state =
-                                  newValue;
-                              AnalyticsService.instance.trackEventDetached(
-                                'Calendar Year Changed',
-                                properties: {'year': newValue},
-                              );
-                            }
-                          },
-                          icon: Icon(
-                            Icons.keyboard_arrow_down_outlined,
-                            color: context.colors.iconPrimary,
-                            size: 20.ic,
-                          ),
-                          style: AppTypography.textMdBold.copyWith(
-                            color: context.colors.textPrimary,
-                          ),
-                          dropdownColor: context.colors.surface,
-                          borderRadius: BorderRadius.circular(8.br),
-                          items:
-                              yearList.map((value) {
-                                return DropdownMenuItem<int>(
-                                  value: value,
-                                  child: Text(value.toString()),
-                                );
-                              }).toList(),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-                SizedBox(height: 12.h),
+              ],
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12.sp),
+              child: Column(
+                children: [
                 Row(
                   children: [
                     /// Time Control dropdown with icons
@@ -468,6 +416,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 ),
           ),
         ],
+      ),
       ),
     );
   }

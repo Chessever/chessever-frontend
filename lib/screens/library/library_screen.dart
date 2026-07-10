@@ -12,7 +12,6 @@ import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
-import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -25,15 +24,16 @@ import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -47,12 +47,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
-  bool _isSearchFocused = false;
+  bool _searchExpanded = false;
 
   @override
   void initState() {
     super.initState();
-    _searchFocusNode.addListener(_onSearchFocusChange);
 
     // Ensure default folders for new users
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,15 +59,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     });
   }
 
-  void _onSearchFocusChange() {
-    setState(() {
-      _isSearchFocused = _searchFocusNode.hasFocus;
-    });
-  }
-
   @override
   void dispose() {
-    _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     _searchController.dispose();
     _scrollController.dispose();
@@ -259,6 +251,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         );
         if (shouldFocusSearch == true && mounted) {
+          setState(() => _searchExpanded = true);
           _searchFocusNode.requestFocus();
         }
       }
@@ -301,6 +294,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       MaterialPageRoute(builder: (_) => FolderContentsScreen(folder: folder)),
     );
     if (shouldFocusSearch == true && mounted) {
+      setState(() => _searchExpanded = true);
       _searchFocusNode.requestFocus();
     }
   }
@@ -334,85 +328,63 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildTopBar() {
-    final topPadding = MediaQuery.of(context).viewPadding.top;
-
-    // CSS: padding: 12px 16px
-    return Container(
-      padding: EdgeInsets.fromLTRB(16.w, topPadding + 12.h, 16.w, 12.h),
-      child: SingleMotionBuilder(
-        motion: CupertinoMotion.snappy(),
-        value: _isSearchFocused ? 1.0 : 0.0,
-        builder: (context, value, child) {
-          final clamped = value.clamp(0.0, 1.0);
-          // CSS: explorer=32, board=32, plus=36, gaps=8+8, total ~116px + 8px gap
-          final buttonsMaxWidth = (116.w + 8.w) * (1 - clamped);
-          final gapWidth = (8.w * (1 - clamped)).clamp(0.0, 8.w);
-          final opacity = (1 - clamped).clamp(0.0, 1.0);
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(child: _buildSearchField()),
-
-              // Buttons group
-              SizedBox(width: gapWidth),
-              ClipRect(
-                child: Opacity(
-                  opacity: opacity,
-                  child: SizedBox(
-                    width: buttonsMaxWidth.clamp(0.0, double.infinity),
-                    child:
-                        buttonsMaxWidth > 1
-                            ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Opening explorer: 32x32
-                                KeyedSubtree(
-                                  key: e2eKey(
-                                    E2eIds.libraryOpeningExplorerButton,
-                                  ),
-                                  child: _OpeningExplorerButton(
-                                    onTap: _navigateToOpeningExplorer,
-                                  ),
-                                ),
-                                SizedBox(width: 8.w),
-                                // CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-                                KeyedSubtree(
-                                  key: e2eKey(E2eIds.libraryBoardEditorButton),
-                                  child: _BoardSettingsButton(
-                                    onTap: _navigateToEmptyBoard,
-                                  ),
-                                ),
-                                SizedBox(width: 8.w),
-                                // CSS: 36x36, bg #262626, radius 10px
-                                KeyedSubtree(
-                                  key: e2eKey(E2eIds.libraryCreateFolderButton),
-                                  child: _PlusButton(onTap: _handlePlusButton),
-                                ),
-                              ],
-                            )
-                            : const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            ],
-          );
+    // Island row: expanding search + glass action circles (no full-width slab).
+    return GlassIslandTopBar(
+      center: GlassIslandSearch(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        expanded: _searchExpanded,
+        textFieldKey: e2eKey(E2eIds.librarySearchField),
+        hintText: 'Search',
+        onExpandedChanged: (v) => setState(() => _searchExpanded = v),
+        onChanged: (query) {
+          setState(() => _searchQuery = query.trim().toLowerCase());
         },
+        onClear: () => setState(() => _searchQuery = ''),
       ),
-    );
-  }
-
-  Widget _buildSearchField() {
-    return LibrarySearchBar(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      textFieldKey: e2eKey(E2eIds.librarySearchField),
-      enableOverlay: false,
-      showFilterIcon: false,
-      hintText: 'Search',
-      onChanged: (query) {
-        setState(() => _searchQuery = query.trim().toLowerCase());
-      },
+      trailing: [
+        if (!_searchExpanded) ...[
+          KeyedSubtree(
+            key: e2eKey(E2eIds.libraryOpeningExplorerButton),
+            child: GlassIconButton(
+              icon: Icon(
+                CupertinoIcons.compass,
+                color: context.colors.iconPrimary,
+              ),
+              onPressed: _navigateToOpeningExplorer,
+              size: 40,
+              iconSize: 18,
+              useOwnLayer: true,
+            ),
+          ),
+          KeyedSubtree(
+            key: e2eKey(E2eIds.libraryBoardEditorButton),
+            child: GlassIconButton(
+              icon: Icon(
+                CupertinoIcons.square_grid_2x2,
+                color: context.colors.iconPrimary,
+              ),
+              onPressed: _navigateToEmptyBoard,
+              size: 40,
+              iconSize: 18,
+              useOwnLayer: true,
+            ),
+          ),
+          KeyedSubtree(
+            key: e2eKey(E2eIds.libraryCreateFolderButton),
+            child: GlassIconButton(
+              icon: Icon(
+                CupertinoIcons.plus,
+                color: context.colors.iconPrimary,
+              ),
+              onPressed: _handlePlusButton,
+              size: 40,
+              iconSize: 18,
+              useOwnLayer: true,
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -696,100 +668,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-/// Opening explorer button
-class _OpeningExplorerButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _OpeningExplorerButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32.h,
-        height: 32.h,
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(4.br),
-          border: Border.all(color: context.colors.divider, width: 0.1),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.explore_outlined,
-            size: 20.sp,
-            color: context.colors.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-/// Contains a 2x2 mini chessboard icon (20x20)
-class _BoardSettingsButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _BoardSettingsButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32.h,
-        height: 32.h,
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(4.br),
-          border: Border.all(color: context.colors.divider, width: 0.1),
-        ),
-        child: Center(
-          child: SvgWidget(
-            SvgAsset.boardSettings,
-            width: 20.sp,
-            height: 20.sp,
-            // Multi-colour (black + white squares) — keep baked colours so
-            // the icon doesn't collapse into a single solid blob.
-            preserveOriginalColors: true,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// CSS: 36x36, bg #262626, radius 10px, white plus icon
-class _PlusButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _PlusButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36.h,
-        height: 36.h,
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(10.br),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.add,
-            size: 20.sp,
-            color: context.colors.textPrimary,
-          ),
         ),
       ),
     );

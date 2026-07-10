@@ -56,12 +56,12 @@ void main() {
     expect(wrapper, contains('background:'));
   });
 
-  test('home phone shell still uses GlassScaffold + GlassTabBar.bottom', () {
+  test('home phone shell uses GlassScaffold + GlassTabBar.searchable', () {
     final home = read('lib/screens/home/home_screen.dart');
     final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
     expect(home, contains('GlassScaffold('));
     expect(home, contains('extendBody: true'));
-    expect(nav, contains('GlassTabBar.bottom('));
+    expect(nav, contains('GlassTabBar.searchable('));
   });
 
   test('shared AppBarWithTitle uses GlassBackButton island', () {

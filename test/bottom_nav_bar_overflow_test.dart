@@ -75,8 +75,7 @@ void main() {
 
       expect(overflowErrors, isEmpty, reason: overflowErrors.join('\n'));
 
-      // Shipped phone chrome path must be the package floating bottom bar —
-      // not a solid full-width Container slab.
+      // Shipped phone chrome path must be the package searchable floating bar.
       expect(find.byType(GlassTabBar), findsOneWidget);
       expect(find.byType(BottomNavBar), findsOneWidget);
       // Labels exist (GlassTabBar dual-paints selected/unselected layers).

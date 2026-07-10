@@ -4,14 +4,19 @@ import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 enum SettingsSection { board, engine, notification }
 
@@ -99,35 +104,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Navigator.of(context).pop();
         }
       },
-      child: Scaffold(
-        key: e2eKey(E2eIds.settingsRoot),
-        backgroundColor: context.colors.background,
-        appBar: AppBar(
-          title: Text(
-            'Settings',
-            style: AppTypography.textLgMedium.copyWith(
-              color: context.colors.textPrimary,
-              fontSize: 16.f,
-            ),
-          ),
-          backgroundColor: context.colors.background,
-          foregroundColor: context.colors.textPrimary,
-          centerTitle: false,
-        ),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
-            ),
-            child: ListView(
-              padding: EdgeInsets.only(
-                left: horizontalPadding,
-                right: horizontalPadding,
-                top: 16.sp,
-                bottom: 16.sp + bottomPadding,
+      child: ScreenWrapper(
+        child: Scaffold(
+          key: e2eKey(E2eIds.settingsRoot),
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.contentMaxWidth,
               ),
-              children: [
-                _CollapsibleSection(
+              child: ListView(
+                padding: EdgeInsets.only(
+                  left: horizontalPadding,
+                  right: horizontalPadding,
+                  top: MediaQuery.viewPaddingOf(context).top + 8,
+                  bottom: 16.sp + bottomPadding,
+                ),
+                children: [
+                  Row(
+                    children: [
+                      const GlassBackButton(),
+                      SizedBox(width: 12.w),
+                      Text(
+                        'Settings',
+                        style: AppTypography.textLgMedium.copyWith(
+                          color: context.colors.textPrimary,
+                          fontSize: 16.f,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16.h),
+                  _AppearanceCard(),
+                  SizedBox(height: 14.h),
+                  _CollapsibleSection(
                   title: 'Board Settings',
                   leading: SvgWidget(
                     SvgAsset.boardSettings,
@@ -167,16 +177,84 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                 ),
                 SizedBox(height: 24.h),
-                _DeleteAccountRow(
-                  onTap: () {
-                    HapticFeedbackService.navigation();
-                    showDeleteAccountDialog(context);
-                  },
+                  _DeleteAccountRow(
+                    onTap: () {
+                      HapticFeedbackService.navigation();
+                      showDeleteAccountDialog(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AppearanceCard extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    final isLight = mode == ThemeMode.light;
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(20.br),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40.w,
+            height: 40.h,
+            decoration: BoxDecoration(
+              color: context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(12.br),
+            ),
+            child: Icon(
+              isLight ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_fill,
+              color: context.colors.iconPrimary,
+              size: 22.ic,
+            ),
+          ),
+          SizedBox(width: 14.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Appearance',
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: context.colors.textPrimary,
+                    fontSize: 14.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  isLight ? 'Light mode' : 'Dark mode',
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textSecondary,
+                    fontSize: 12.f,
+                  ),
                 ),
               ],
             ),
           ),
-        ),
+          GlassSwitch(
+            value: isLight,
+            useOwnLayer: true,
+            onChanged: (v) {
+              HapticFeedbackService.selection();
+              ref
+                  .read(themeModeProvider.notifier)
+                  .setTheme(v ? ThemeMode.light : ThemeMode.dark);
+            },
+          ),
+        ],
       ),
     );
   }

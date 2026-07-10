@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/widgets/rounded_search_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -31,6 +32,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
   final ScrollController _scrollController = ScrollController();
   final double _scrollThreshold = 200.0;
   Timer? _searchAnalyticsTimer;
+  bool _searchExpanded = false;
 
   @override
   void initState() {
@@ -85,39 +87,45 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
       tablet: 24.sp,
     );
 
-    return Scaffold(
-      key: e2eKey(E2eIds.playersRoot),
-      backgroundColor: context.colors.background,
-      body: SafeArea(
-        child: Center(
+    return ScreenWrapper(
+      child: Scaffold(
+        key: e2eKey(E2eIds.playersRoot),
+        backgroundColor: Colors.transparent,
+        body: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16.sp),
-                    child: RoundedSearchBar(
-                      showProfile: false,
-                      controller: _searchController,
-                      hintText: 'Search Player',
-                      onFilterTap: () {},
-                      onProfileTap: () {},
-                      textFieldKey: e2eKey(E2eIds.playersSearchField),
-                    ),
+            child: Column(
+              children: [
+                GlassIslandTopBar(
+                  horizontalPadding: horizontalPadding,
+                  center: GlassIslandSearch(
+                    controller: _searchController,
+                    expanded: _searchExpanded,
+                    textFieldKey: e2eKey(E2eIds.playersSearchField),
+                    hintText: 'Search Player',
+                    onExpandedChanged:
+                        (v) => setState(() => _searchExpanded = v),
+                    onChanged: (_) {},
+                    onClear: () {
+                      _searchController.clear();
+                    },
                   ),
-
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
-                    child: DefaultTextStyle(
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    0,
+                    horizontalPadding,
+                    8.sp,
+                  ),
+                  child: DefaultTextStyle(
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Expanded(
                             flex: 3,
@@ -148,14 +156,16 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
                     ),
                   ),
 
-                  Expanded(
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                     child: _PlayerList(
                       scrollController: _scrollController,
                       searchController: _searchController,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
