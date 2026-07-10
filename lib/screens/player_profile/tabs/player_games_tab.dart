@@ -35,6 +35,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart' show SpringHintWord;
@@ -43,6 +45,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:motor/motor.dart';
 
 /// Games tab showing all games of a player with comprehensive filters
@@ -618,10 +621,20 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       phone: 16.w,
       tablet: 24.w,
     );
-    final headerHeight =
-        58.h +
-        (state.hasActiveFilters ? 42.h : 0) +
-        (isSelectionMode ? 136.h : 0);
+    final controlExtent = _controlExtent(context);
+    final topContentInset = _topContentInset(
+      context,
+      hasActiveFilters: state.hasActiveFilters,
+    );
+    final selectionToolbarExtent = _selectionToolbarExtent(context);
+    final bottomContentInset = _bottomContentInset(
+      context,
+      isSelectionMode: isSelectionMode,
+    );
+    final selectedVisibleCount =
+        state.filteredGames
+            .where((game) => _selectedGameIds.contains(game.gameId))
+            .length;
 
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
@@ -634,6 +647,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       },
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
+      edgeOffset: topContentInset,
       child: CustomScrollView(
         key: PageStorageKey<String>(_scrollStorageKey),
         controller: _scrollController,
@@ -642,32 +656,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          SliverAppBar(
-            primary: false,
-            floating: true,
-            snap: true,
-            pinned: false,
-            elevation: 0,
-            backgroundColor: Colors.transparent,
-            automaticallyImplyLeading: false,
-            toolbarHeight: headerHeight,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Align(
-                alignment: Alignment.bottomCenter,
-                child: _buildStickyHeader(
-                  state,
-                  horizontalPadding,
-                  isSelectionMode,
-                ),
-              ),
-            ),
-          ),
+          // This spacer scrolls with the games. It protects the first card at
+          // rest while allowing the canvas to travel behind floating chrome.
+          SliverToBoxAdapter(child: SizedBox(height: topContentInset)),
 
           // Content
           _buildContentSliver(state, viewMode, eventsAsync, isSelectionMode),
 
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          SliverToBoxAdapter(child: SizedBox(height: bottomContentInset)),
         ],
       ),
     );
@@ -684,60 +680,133 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       );
     }
 
-    return Stack(
-      children: [
-        content,
-        // Scroll to top button
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
-        ),
-      ],
+    return ColoredBox(
+      color: context.colors.background,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(child: content),
+          Positioned(
+            top: 4,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth:
+                      ResponsiveHelper.isTablet
+                          ? ResponsiveHelper.contentMaxWidth
+                          : double.infinity,
+                ),
+                child: _buildFloatingControls(
+                  state,
+                  viewMode,
+                  controlExtent,
+                  horizontalPadding,
+                ),
+              ),
+            ),
+          ),
+          if (isSelectionMode)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.viewPaddingOf(context).bottom + 8,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth:
+                        ResponsiveHelper.isTablet
+                            ? ResponsiveHelper.contentMaxWidth
+                            : double.infinity,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                    ),
+                    child: _buildSelectionToolbar(
+                      state,
+                      selectedVisibleCount,
+                      controlExtent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // Keep the existing scroll-to-top affordance clear of the optional
+          // selection island while preserving its original controller.
+          Positioned(
+            bottom:
+                isSelectionMode
+                    ? MediaQuery.viewPaddingOf(context).bottom +
+                        selectionToolbarExtent +
+                        16
+                    : 0,
+            right: 0,
+            child: ScrollToTopButton(scrollController: _scrollController),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStickyHeader(
-    PlayerProfileGamesState state,
-    double horizontalPadding,
-    bool isSelectionMode,
-  ) {
-    final selectedVisibleCount =
-        state.filteredGames
-            .where((g) => _selectedGameIds.contains(g.gameId))
-            .length;
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
 
-    return Container(
-      color: context.colors.background,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
+  double _topContentInset(
+    BuildContext context, {
+    required bool hasActiveFilters,
+  }) {
+    final controlExtent = _controlExtent(context);
+    final rowCount = hasActiveFilters ? 2 : 1;
+    const overlayTop = 4.0;
+    const rowGap = 8.0;
+    const stackBottom = 4.0;
+    const contentGap = 8.0;
+    return overlayTop +
+        (controlExtent * rowCount) +
+        (rowGap * (rowCount - 1)) +
+        stackBottom +
+        contentGap;
+  }
+
+  double _selectionToolbarExtent(BuildContext context) {
+    final copyExtent = MediaQuery.textScalerOf(context).scale(52);
+    return 24 + copyExtent + 10 + _controlExtent(context);
+  }
+
+  double _bottomContentInset(
+    BuildContext context, {
+    required bool isSelectionMode,
+  }) {
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    if (!isSelectionMode) return safeBottom + 24.h;
+    return safeBottom + 8 + _selectionToolbarExtent(context) + 24.h;
+  }
+
+  Widget _buildFloatingControls(
+    PlayerProfileGamesState state,
+    GamesListViewMode viewMode,
+    double controlExtent,
+    double horizontalPadding,
+  ) {
+    return GlassIslandStack(
+      includeStatusBar: false,
+      gap: 8,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: _buildSearchBar(state, viewMode, controlExtent),
+        ),
+        if (state.hasActiveFilters)
           Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              2.h,
-              horizontalPadding,
-              4.h,
-            ),
-            child: _buildSearchBar(state),
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: _buildActiveFiltersChip(state, controlExtent),
           ),
-          if (isSelectionMode)
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                0,
-                horizontalPadding,
-                state.hasActiveFilters ? 4.h : 6.h,
-              ),
-              child: _buildSelectionToolbar(state, selectedVisibleCount),
-            ),
-          if (state.hasActiveFilters)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-              child: _buildActiveFiltersChip(state),
-            ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -751,41 +820,70 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final style = AppTypography.textSmRegular.copyWith(
       color: context.colors.textSecondary,
     );
-    return IgnorePointer(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Search ', style: style),
-          Flexible(child: SpringHintWord(word: word, style: style)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaledFont = MediaQuery.textScalerOf(
+          context,
+        ).scale(style.fontSize ?? 14);
+        final useCompactHint =
+            GlassMotion.reduceMotion(context) ||
+            constraints.maxWidth < 152 ||
+            scaledFont > 20;
+        return IgnorePointer(
+          child:
+              useCompactHint
+                  ? Text(
+                    'Search',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: style,
+                  )
+                  : Row(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Text('Search ', style: style),
+                      Expanded(child: SpringHintWord(word: word, style: style)),
+                    ],
+                  ),
+        );
+      },
     );
   }
 
-  Widget _buildSearchBar(PlayerProfileGamesState state) {
+  Widget _buildSearchBar(
+    PlayerProfileGamesState state,
+    GamesListViewMode viewMode,
+    double controlExtent,
+  ) {
     final hasActiveFilters = state.hasActiveFilters;
     final activeFilterCount = state.activeFilterCount;
-    final searchBarHeight = 48.h;
+    final filterLabel =
+        hasActiveFilters ? 'Filters, $activeFilterCount active' : 'Filters';
+    final viewModeLabel = switch (viewMode) {
+      GamesListViewMode.gamesCard => 'Game cards',
+      GamesListViewMode.chessBoardGrid => 'Board grid',
+      GamesListViewMode.chessBoard => 'Board list',
+    };
 
     return SizedBox(
-      height: searchBarHeight,
+      height: controlExtent,
       child: Row(
         children: [
-          // Search field
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
+            child: GlassContainer(
+              useOwnLayer: true,
+              quality: GlassQuality.standard,
+              height: controlExtent,
+              padding: EdgeInsets.only(left: 14.w),
+              shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
               child: Row(
                 children: [
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.search,
-                    size: 20.sp,
-                    color: context.colors.textSecondary,
+                  ExcludeSemantics(
+                    child: Icon(
+                      Icons.search,
+                      size: 20.sp,
+                      color: context.colors.iconSecondary,
+                    ),
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
@@ -803,12 +901,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                               key: e2eKey(E2eIds.playerGamesSearchField),
                               controller: _searchController,
                               focusNode: _searchFocusNode,
+                              textAlignVertical: TextAlignVertical.center,
                               style: AppTypography.textSmRegular.copyWith(
                                 color: context.colors.textPrimary,
                               ),
                               onChanged: _onSearchChanged,
                               decoration: InputDecoration(
-                                isDense: true,
+                                isCollapsed: true,
                                 // The TextField owns the "Search" hint except
                                 // while the rotating overlay is driving it.
                                 hintText: showRotating ? null : 'Search',
@@ -816,9 +915,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                                   color: context.colors.textSecondary,
                                 ),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: 14.h,
-                                ),
                               ),
                             ),
                           ],
@@ -826,106 +922,84 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                       },
                     ),
                   ),
-                  if (_searchController.text.isNotEmpty ||
-                      state.searchQuery.isNotEmpty) ...[
-                    GestureDetector(
-                      onTap: _clearSearch,
-                      child: Icon(
-                        Icons.close,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
-          ),
-
-          // Filter button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: _showFilterDialog,
-            child: Container(
-              key: e2eKey(E2eIds.playerGamesFilterButton),
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
-                ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? const Color(0xFFEF4444)
-                            : context.colors.textSecondary,
-                  ),
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _searchController,
+                    builder: (context, value, _) {
+                      if (value.text.isEmpty && state.searchQuery.isEmpty) {
+                        return SizedBox(width: 8.w);
+                      }
+                      return Semantics(
+                        label: 'Clear game search',
+                        button: true,
+                        onTap: _clearSearch,
+                        child: ExcludeSemantics(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _clearSearch,
+                            child: SizedBox.square(
+                              dimension: controlExtent,
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 20.sp,
+                                color: context.colors.iconSecondary,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
           ),
-
-          // Layout toggle button
           SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
+          Semantics(
+            label: filterLabel,
+            button: true,
+            onTap: _showFilterDialog,
+            child: ExcludeSemantics(
+              child: GlassBadge(
+                count: hasActiveFilters ? activeFilterCount : 0,
+                backgroundColor: context.colors.danger,
+                child: GlassIconButton(
+                  key: e2eKey(E2eIds.playerGamesFilterButton),
+                  icon: Icon(
+                    Icons.tune_rounded,
+                    color:
+                        hasActiveFilters
+                            ? context.colors.danger
+                            : context.colors.iconSecondary,
+                  ),
+                  onPressed: _showFilterDialog,
+                  size: controlExtent,
+                  iconSize: 20,
+                  useOwnLayer: true,
+                ),
               ),
-              child: Center(
-                child: SvgPicture.asset(
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Semantics(
+            label: 'Change game view. Current view: $viewModeLabel',
+            button: true,
+            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+            child: ExcludeSemantics(
+              child: GlassIconButton(
+                icon: SvgPicture.asset(
                   SvgAsset.chase_grid,
                   width: 20.sp,
                   height: 20.sp,
                   colorFilter: ColorFilter.mode(
-                    context.colors.textSecondary,
+                    context.colors.iconSecondary,
                     BlendMode.srcIn,
                   ),
                 ),
+                onPressed:
+                    () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+                size: controlExtent,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
             ),
           ),
@@ -937,6 +1011,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget _buildSelectionToolbar(
     PlayerProfileGamesState state,
     int selectedVisibleCount,
+    double controlExtent,
   ) {
     final title =
         selectedVisibleCount == 0
@@ -952,189 +1027,211 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ? 'Selection follows current filters and search'
             : 'Tap games manually or use quick select';
 
+    void closeSelection() {
+      HapticFeedback.lightImpact();
+      ref.read(playerGamesSelectionModeProvider(_playerKey).notifier).state =
+          false;
+    }
+
+    final toolbar = GlassContainer(
+      useOwnLayer: true,
+      quality: GlassQuality.standard,
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+      shape: const LiquidRoundedSuperellipse(borderRadius: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color:
+                            selectedVisibleCount == 0
+                                ? context.colors.textPrimaryMuted
+                                : context.colors.brand,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Semantics(
+                label: 'Exit game selection',
+                button: true,
+                onTap: closeSelection,
+                child: ExcludeSemantics(
+                  child: GlassIconButton(
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: context.colors.iconPrimary,
+                    ),
+                    onPressed: closeSelection,
+                    size: 48,
+                    iconSize: 18,
+                    useOwnLayer: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          Row(
+            children: [
+              Expanded(
+                child: _SelectionActionButton(
+                  label:
+                      _isLoadingAllPagesForSelection
+                          ? (state.totalCount != null &&
+                                  state.totalCount! > state.allGames.length
+                              ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
+                              : 'Selecting...')
+                          : _selectAllLabel(state),
+                  icon: Icons.select_all_rounded,
+                  height: controlExtent,
+                  onTap:
+                      _isLoadingAllPagesForSelection
+                          ? null
+                          : () => _selectAllFilteredGames(state),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: _SelectionActionButton(
+                  label:
+                      selectedVisibleCount > 0
+                          ? 'Add selected'
+                          : 'Select first',
+                  icon: Icons.library_add_rounded,
+                  height: controlExtent,
+                  emphasized: selectedVisibleCount > 0,
+                  onTap:
+                      selectedVisibleCount > 0
+                          ? () => _addSelectedToLibrary(state)
+                          : null,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (GlassMotion.reduceMotion(context)) return toolbar;
     return SingleMotionBuilder(
-      motion: const CupertinoMotion.bouncy(),
+      motion: const CupertinoMotion.snappy(),
       value: 1.0,
+      child: toolbar,
       builder: (context, progress, child) {
+        final value = progress.clamp(0.0, 1.0);
         return Opacity(
-          opacity: progress.clamp(0.0, 1.0),
+          opacity: value,
           child: Transform.translate(
-            offset: Offset(0, (1.0 - progress) * -10),
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(16.br),
-                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
-                boxShadow: [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              title,
-                              style: AppTypography.textSmMedium.copyWith(
-                                color:
-                                    selectedVisibleCount == 0
-                                        ? context.colors.textPrimary.withValues(
-                                          alpha: 0.75,
-                                        )
-                                        : kPrimaryColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 2.h),
-                            Text(
-                              subtitle,
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.58,
-                                ),
-                              ),
-                              maxLines: 2,
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          ref
-                              .read(
-                                playerGamesSelectionModeProvider(
-                                  _playerKey,
-                                ).notifier,
-                              )
-                              .state = false;
-                        },
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 10.w,
-                            vertical: 8.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.1,
-                            ),
-                            borderRadius: BorderRadius.circular(10.br),
-                          ),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 16.sp,
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.8,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SelectionActionButton(
-                          label:
-                              _isLoadingAllPagesForSelection
-                                  ? (state.totalCount != null &&
-                                          state.totalCount! >
-                                              state.allGames.length
-                                      ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
-                                      : 'Selecting...')
-                                  : _selectAllLabel(state),
-                          icon: Icons.select_all_rounded,
-                          onTap:
-                              _isLoadingAllPagesForSelection
-                                  ? null
-                                  : () => _selectAllFilteredGames(state),
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: _SelectionActionButton(
-                          label:
-                              selectedVisibleCount > 0
-                                  ? 'Add selected'
-                                  : 'Select first',
-                          icon: Icons.library_add_rounded,
-                          emphasized: selectedVisibleCount > 0,
-                          onTap:
-                              selectedVisibleCount > 0
-                                  ? () => _addSelectedToLibrary(state)
-                                  : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            offset: Offset(0, (1.0 - value) * 10),
+            child: child,
           ),
         );
       },
     );
   }
 
-  Widget _buildActiveFiltersChip(PlayerProfileGamesState state) {
-    const filterRedColor = Color(0xFFEF4444);
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        ref
-            .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-            .clearFilter();
-      },
-      child: Container(
-        margin: EdgeInsets.only(bottom: 8.h),
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          color: filterRedColor.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: filterRedColor.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.filter_list_rounded, size: 16.sp, color: filterRedColor),
-            SizedBox(width: 6.w),
-            Text(
-              '${state.activeFilterCount} filter${state.activeFilterCount > 1 ? 's' : ''} active · ${formatCompactCount(state.filteredGames.length)} games',
-              style: AppTypography.textXsMedium.copyWith(color: filterRedColor),
-            ),
-            if (state.playerResultFilter != PlayerResultFilter.all) ...[
-              SizedBox(width: 8.w),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                decoration: BoxDecoration(
-                  color: filterRedColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6.br),
+  Widget _buildActiveFiltersChip(
+    PlayerProfileGamesState state,
+    double controlExtent,
+  ) {
+    void clearFilters() {
+      HapticFeedback.lightImpact();
+      _debounceTimer?.cancel();
+      _searchController.clear();
+      _searchFocusNode.unfocus();
+      ref
+          .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+          .clearFilter();
+    }
+
+    final filterSummary =
+        '${state.activeFilterCount} filter${state.activeFilterCount == 1 ? '' : 's'} active, '
+        '${formatCompactCount(state.filteredGames.length)} games';
+    return Semantics(
+      label: '$filterSummary. Clear filters',
+      button: true,
+      onTap: clearFilters,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: clearFilters,
+          child: GlassContainer(
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            height: controlExtent,
+            padding: EdgeInsets.symmetric(horizontal: 12.w),
+            shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.filter_list_rounded,
+                  size: 18.sp,
+                  color: context.colors.danger,
                 ),
-                child: Text(
-                  state.playerResultFilter.label,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: filterRedColor,
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    filterSummary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
                   ),
                 ),
-              ),
-            ],
-            SizedBox(width: 8.w),
-            Icon(Icons.close_rounded, size: 14.sp, color: filterRedColor),
-          ],
+                if (state.playerResultFilter != PlayerResultFilter.all) ...[
+                  SizedBox(width: 8.w),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 7.w,
+                      vertical: 3.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: context.colors.danger.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                    child: Text(
+                      state.playerResultFilter.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+                SizedBox(width: 8.w),
+                Icon(
+                  Icons.close_rounded,
+                  size: 18.sp,
+                  color: context.colors.iconSecondary,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1492,7 +1589,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       clipBehavior: Clip.none,
       children: [
         AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
+          duration: GlassMotion.resolveDuration(
+            context,
+            const Duration(milliseconds: 160),
+          ),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
@@ -1635,50 +1735,62 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     showAddToFolderSheet(context: context, game: game);
   }
 
+  Widget _withEntranceMotion(
+    Widget child, {
+    Duration duration = const Duration(milliseconds: 300),
+    bool scale = false,
+  }) {
+    if (GlassMotion.reduceMotion(context)) return child;
+    final faded = child.animate().fadeIn(duration: duration);
+    if (!scale) return faded;
+    return faded.scale(begin: const Offset(0.95, 0.95));
+  }
+
   Widget _buildLoadingState() {
     // Shimmer is decorative; exclude from semantics and isolate paint so the
     // repeating animation can't dirty the parent semantics tree mid-frame
     // (was throwing `!semantics.parentDataDirty` on tablet under
     // SliverFillRemaining + Center/ConstrainedBox wrap).
-    return ExcludeSemantics(
-      child: RepaintBoundary(
-        child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (int i = 0; i < 4; i++) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 96.h,
-                      margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(12.br),
-                      ),
-                    ),
-                  ],
-                  SizedBox(height: 16.h),
-                  Text(
-                    'Loading games...',
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                ],
+    final skeleton = Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (int i = 0; i < 4; i++) ...[
+            Container(
+              width: double.infinity,
+              height: 96.h,
+              margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
+              decoration: BoxDecoration(
+                color: context.colors.surface,
+                borderRadius: BorderRadius.circular(12.br),
               ),
-            )
-            .animate(onPlay: (controller) => controller.repeat())
-            .shimmer(
-              duration: 1400.ms,
-              color: context.colors.textPrimary.withValues(alpha: 0.1),
             ),
+          ],
+          SizedBox(height: 16.h),
+          Text(
+            'Loading games...',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
+    final content =
+        GlassMotion.reduceMotion(context)
+            ? skeleton
+            : skeleton
+                .animate(onPlay: (controller) => controller.repeat())
+                .shimmer(
+                  duration: 1400.ms,
+                  color: context.colors.textPrimary.withValues(alpha: 0.1),
+                );
+    return ExcludeSemantics(child: RepaintBoundary(child: content));
   }
 
   Widget _buildErrorState(String error) {
-    return Center(
+    final content = Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1740,11 +1852,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
+    return _withEntranceMotion(content);
   }
 
   Widget _buildEmptyState() {
-    return Center(
+    final content = Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1788,11 +1901,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
+    );
+    return _withEntranceMotion(content, scale: true);
   }
 
   Widget _buildNoFilterResultsState() {
-    return Center(
+    final content = Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1841,11 +1955,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
+    return _withEntranceMotion(content);
   }
 
   Widget _buildSearchingMoreState() {
-    return Center(
+    final content = Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1866,7 +1981,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 220.ms);
+    );
+    return _withEntranceMotion(
+      content,
+      duration: const Duration(milliseconds: 220),
+    );
   }
 }
 
@@ -1982,65 +2101,79 @@ class _SelectionActionButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onTap,
+    required this.height,
     this.emphasized = false,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback? onTap;
+  final double height;
   final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    return GestureDetector(
+    final brandForeground =
+        ThemeData.estimateBrightnessForColor(context.colors.brand) ==
+                Brightness.dark
+            ? Colors.white
+            : Colors.black;
+    final foreground =
+        !enabled
+            ? context.colors.textTertiary
+            : emphasized
+            ? brandForeground
+            : context.colors.textPrimary;
+    return Semantics(
+      label: label,
+      button: true,
+      enabled: enabled,
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 9.h),
-        decoration: BoxDecoration(
-          color:
-              enabled
-                  ? (emphasized
-                      ? kPrimaryColor
-                      : context.colors.textPrimary.withValues(alpha: 0.1))
-                  : context.colors.textPrimary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10.br),
-          border: Border.all(
-            color:
-                enabled
-                    ? (emphasized
-                        ? kPrimaryColor.withValues(alpha: 0.8)
-                        : context.colors.textPrimary.withValues(alpha: 0.18))
-                    : context.colors.textPrimary.withValues(alpha: 0.08),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 16.sp,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: GlassMotion.resolveDuration(
+              context,
+              const Duration(milliseconds: 180),
+            ),
+            height: height < 48 ? 48 : height,
+            padding: EdgeInsets.symmetric(horizontal: 10.w),
+            decoration: BoxDecoration(
               color:
                   enabled
-                      ? context.colors.textPrimary
-                      : context.colors.textPrimary.withValues(alpha: 0.45),
-            ),
-            SizedBox(width: 6.w),
-            Flexible(
-              child: Text(
-                label,
-                style: AppTypography.textSmBold.copyWith(
-                  color:
-                      enabled
-                          ? context.colors.textPrimary
-                          : context.colors.textPrimary.withValues(alpha: 0.45),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                      ? (emphasized
+                          ? context.colors.brand
+                          : context.colors.surfaceElevated)
+                      : context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(10.br),
+              border: Border.all(
+                color:
+                    enabled
+                        ? (emphasized
+                            ? context.colors.brand
+                            : context.colors.dividerStrong)
+                        : context.colors.divider,
               ),
             ),
-          ],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 16.sp, color: foreground),
+                SizedBox(width: 6.w),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: AppTypography.textSmBold.copyWith(color: foreground),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
