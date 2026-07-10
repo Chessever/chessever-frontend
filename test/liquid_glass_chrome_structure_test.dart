@@ -35,23 +35,42 @@ void main() {
     },
   );
 
-  test(
-    'favorites + countrymen use GlassPage composition via ScreenWrapper',
-    () {
-      final favorites = read('lib/screens/favorites/favorites_tab_screen.dart');
-      final countrymen = read(
-        'lib/screens/countrymen/countrymen_tab_screen.dart',
+  test('favorites + countrymen use full-screen overlay composition', () {
+    final favorites = read('lib/screens/favorites/favorites_tab_screen.dart');
+    final countrymen = read(
+      'lib/screens/countrymen/countrymen_tab_screen.dart',
+    );
+
+    for (final source in [favorites, countrymen]) {
+      expect(source, contains('GlassFullScreenPage('));
+      expect(source, contains('topOverlay:'));
+      expect(source, contains('content:'));
+      expect(source, contains('PageView.builder('));
+      expect(source, contains('includeContentSafeArea: false'));
+      expect(source, contains('.clamp(48.0, 72.0)'));
+      expect(source, contains('top: contentTopInset'));
+      expect(source, contains('ResponsiveHelper.contentMaxWidth'));
+      expect(source, contains('backgroundColor: context.colors.background'));
+      expect(source, contains('GlassMotion.reduceMotion(context)'));
+      expect(source, contains('Semantics('));
+      expect(source, contains('GlassBackButton'));
+      expect(source, isNot(contains('ScreenWrapper(')));
+      expect(
+        source,
+        isNot(contains('child: Column(\n              children:')),
       );
+      expectNoMaterialIconButton(source);
+    }
 
-      expect(favorites, contains('ScreenWrapper('));
-      expect(favorites, contains('GlassBackButton'));
-      expectNoMaterialIconButton(favorites);
-
-      expect(countrymen, contains('ScreenWrapper('));
-      expect(countrymen, contains('GlassBackButton'));
-      expectNoMaterialIconButton(countrymen);
-    },
-  );
+    expect(favorites, contains('E2eIds.favoritesRoot'));
+    expect(favorites, contains("'favorites-floating-controls'"));
+    expect(favorites, contains("'favorites-segments'"));
+    expect(favorites, contains("'favorites-page-view'"));
+    expect(countrymen, contains('E2eIds.countrymenRoot'));
+    expect(countrymen, contains("'countrymen-floating-controls'"));
+    expect(countrymen, contains("'countrymen-segments'"));
+    expect(countrymen, contains("'countrymen-page-view'"));
+  });
 
   test('GlassBackButton always sets useOwnLayer: true (package contract)', () {
     final back = read('lib/widgets/liquid_glass/glass_back_button.dart');

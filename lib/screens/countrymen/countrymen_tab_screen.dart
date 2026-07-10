@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_events_tab.dart';
@@ -12,10 +13,11 @@ import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:country_picker/country_picker.dart';
@@ -72,17 +74,25 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       ref
           .read(selectedCountrymenModeProvider.notifier)
           .update((_) => CountrymenScreenMode.values[index]);
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      _showPage(index);
       if (!_chromeCollapse.expanded) {
         setState(_chromeCollapse.reset);
       }
     } catch (e) {
       debugPrint('Error handling tab selection: $e');
     }
+  }
+
+  void _showPage(int index) {
+    if (GlassMotion.reduceMotion(context)) {
+      _pageController.jumpToPage(index);
+      return;
+    }
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   void _handlePageChanged(int index) {
@@ -156,71 +166,95 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
         tempCountry != null
             ? AsyncValue.data(tempCountry)
             : persistedCountryAsync;
+    final selectedIndex = CountrymenScreenMode.values.indexOf(selectedMode);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(14) * 1.2;
+    final controlHeight = (scaledLabelHeight + 24).clamp(48.0, 72.0).toDouble();
+    final contentTopInset = viewPadding.top + controlHeight * 2 + 24;
+    final keepSegmentsExpanded = GlassMotion.reduceMotion(context);
 
-    // GlassPage composition (via ScreenWrapper) so glass chrome islands
-    // sample backdrop correctly per liquid_glass_widgets package contract.
-    return ScreenWrapper(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
-            ),
-            child: Column(
+    return GlassFullScreenPage(
+      key: e2eKey(E2eIds.countrymenRoot),
+      backgroundColor: context.colors.background,
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: Semantics(
+            container: true,
+            explicitChildNodes: true,
+            label: 'Countrymen controls',
+            child: GlassIslandStack(
+              key: const ValueKey<String>('countrymen-floating-controls'),
+              includeStatusBar: false,
+              gap: 6,
               children: [
-                GlassIslandStack(
-                  gap: 6,
-                  children: [
-                    _buildAppBar(
-                      context,
-                      effectiveCountryAsync,
-                      selectedMode,
-                    ),
-                    GlassFloatingSegments(
-                      options: countrymenModeNames.values.toList(),
-                      selectedIndex: CountrymenScreenMode.values
-                          .indexOf(selectedMode)
-                          .clamp(0, countrymenModeNames.length - 1),
-                      onSelected: _handleTabSelection,
-                      expanded: _chromeCollapse.expanded,
-                      notifyOnReselect: true,
-                    ),
-                  ],
-                ),
-                Expanded(
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: _onScroll,
-                    child: ScrollToTopScope(
-                      bus: _scrollToTopBus,
-                      child: PageView.builder(
-                        controller: _pageController,
-                        itemCount: 3,
-                        onPageChanged: _handlePageChanged,
-                        itemBuilder: (context, index) {
-                          switch (index) {
-                            case 0:
-                              return const CountrymenEventsTab();
-                            case 1:
-                              return const CountrymenGamesTab();
-                            case 2:
-                              return const CountrymenPlayersTab();
-                            default:
-                              return Center(
-                                child: Text(
-                                  'Invalid page index: $index',
-                                  style: TextStyle(
-                                    color: context.colors.textPrimary,
-                                  ),
-                                ),
-                              );
-                          }
-                        },
+                _buildAppBar(context, effectiveCountryAsync, controlHeight),
+                Semantics(
+                  container: true,
+                  label: 'Countrymen sections',
+                  value: countrymenModeNames[selectedMode],
+                  child: SizedBox(
+                    key: const ValueKey<String>('countrymen-segments'),
+                    height: controlHeight,
+                    child: Center(
+                      child: GlassFloatingSegments(
+                        options: countrymenModeNames.values.toList(),
+                        selectedIndex: selectedIndex.clamp(
+                          0,
+                          countrymenModeNames.length - 1,
+                        ),
+                        onSelected: _handleTabSelection,
+                        expanded:
+                            keepSegmentsExpanded || _chromeCollapse.expanded,
+                        notifyOnReselect: true,
                       ),
                     ),
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScroll,
+            child: ScrollToTopScope(
+              bus: _scrollToTopBus,
+              child: PageView.builder(
+                key: const ValueKey<String>('countrymen-page-view'),
+                controller: _pageController,
+                itemCount: 3,
+                onPageChanged: _handlePageChanged,
+                itemBuilder: (context, index) {
+                  final page = switch (index) {
+                    0 => const CountrymenEventsTab(),
+                    1 => const CountrymenGamesTab(),
+                    2 => const CountrymenPlayersTab(),
+                    _ => Center(
+                      child: Text(
+                        'Invalid page index: $index',
+                        style: TextStyle(color: context.colors.textPrimary),
+                      ),
+                    ),
+                  };
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      top: contentTopInset,
+                      bottom: viewPadding.bottom,
+                    ),
+                    child: page,
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -231,7 +265,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   Widget _buildAppBar(
     BuildContext context,
     AsyncValue<Country> countryAsync,
-    CountrymenScreenMode selectedMode,
+    double controlHeight,
   ) {
     final isTemporary = _isTemporarySelection();
 
@@ -239,24 +273,34 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     return GlassIslandTopBar(
       horizontalPadding: 12.w,
       topPadding: 0,
+      height: controlHeight,
       leading: GlassBackButton(onPressed: _handleBackPressed),
       title: countryAsync.when(
         data:
-            (country) => ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 200.w, minWidth: 120.w),
-              child: GlassContainer(
-                useOwnLayer: true,
-                height: 40,
-                padding: EdgeInsets.zero,
-                shape: const LiquidRoundedSuperellipse(borderRadius: 20),
-                quality: GlassQuality.standard,
-                clipBehavior: Clip.antiAlias,
-                child: _buildCountrySelector(country),
+            (country) => Semantics(
+              container: true,
+              button: true,
+              label: 'Choose country',
+              value: country.name,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 200.w, minWidth: 120.w),
+                child: GlassContainer(
+                  useOwnLayer: true,
+                  height: controlHeight,
+                  padding: EdgeInsets.zero,
+                  shape: LiquidRoundedSuperellipse(
+                    borderRadius: controlHeight / 2,
+                  ),
+                  quality: GlassQuality.standard,
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildCountrySelector(country),
+                ),
               ),
             ),
         loading:
             () => GlassTitleChip(
               label: 'Loading…',
+              height: controlHeight,
               textStyle: AppTypography.textSmMedium.copyWith(
                 color: context.colors.textPrimaryMuted,
               ),
@@ -264,21 +308,29 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
         error:
             (_, __) => GlassTitleChip(
               label: 'Error',
+              height: controlHeight,
               textStyle: AppTypography.textSmMedium.copyWith(color: kRedColor),
             ),
       ),
       trailing: [
         if (isTemporary)
-          GlassIconButton(
-            icon: Icon(
-              Icons.push_pin_rounded,
-              color: kPrimaryColor,
-              size: 18.ic,
+          Semantics(
+            button: true,
+            label: 'Pin selected country as default',
+            onTap: _pinCurrentCountry,
+            child: ExcludeSemantics(
+              child: GlassIconButton(
+                icon: Icon(
+                  Icons.push_pin_rounded,
+                  color: kPrimaryColor,
+                  size: 18.ic,
+                ),
+                onPressed: _pinCurrentCountry,
+                size: 48,
+                iconSize: 18,
+                useOwnLayer: true,
+              ),
             ),
-            onPressed: _pinCurrentCountry,
-            size: 40,
-            iconSize: 18,
-            useOwnLayer: true,
           ),
       ],
     );
