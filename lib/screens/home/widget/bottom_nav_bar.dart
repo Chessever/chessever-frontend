@@ -143,42 +143,43 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
   void _setSearchActive(bool active) {
     ref.read(homeBottomSearchExpandedProvider.notifier).state = active;
     if (active) {
-      // First tap: expand only. Suppress field-tap → full page for one frame
-      // so package autoFocus / layout tap does not immediately push.
+      // First tap: expand the liquid field only — no keyboard yet.
+      // Guard field-tap for the expand animation so the same press does not
+      // open the dedicated page immediately.
       _searchJustExpanded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _searchJustExpanded = false;
-        if (ref.read(homeBottomSearchExpandedProvider)) {
-          _searchFocus.requestFocus();
-        }
+      Future<void>.delayed(const Duration(milliseconds: 380), () {
+        if (mounted) _searchJustExpanded = false;
       });
+      // Keep pill unfocused; keyboard is owned by GlobalSearchScreen.
+      _searchFocus.unfocus();
     } else {
       _searchJustExpanded = false;
       _searchFocus.unfocus();
     }
   }
 
-  /// Second interaction on the expanded field → dedicated liquid search page.
+  /// Second tap on the expanded field → fade-in dedicated search + keyboard.
   void _openDedicatedSearch({String? seed}) {
     final query = (seed ?? _searchController.text).trim();
     _searchController.clear();
     ref.read(homeBottomSearchTextProvider.notifier).state = '';
     _setSearchActive(false);
     if (!mounted) return;
-    Navigator.of(context).push<void>(
-      GlobalSearchScreen.route(initialQuery: query),
+    unawaited(
+      Navigator.of(context).push<void>(
+        GlobalSearchScreen.route(initialQuery: query),
+      ),
     );
   }
 
   void _onSearchFieldTap() {
+    // Still mid-expand from the first icon tap — ignore.
     if (_searchJustExpanded) return;
     if (!ref.read(homeBottomSearchExpandedProvider)) return;
     _openDedicatedSearch();
   }
 
   void _onSearchSubmitted(String value) {
-    // Keyboard "search" from expanded pill also opens full experience.
     if (!ref.read(homeBottomSearchExpandedProvider)) return;
     _openDedicatedSearch(seed: value);
   }
@@ -217,7 +218,7 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
         hintText: 'Search',
         controller: _searchController,
         focusNode: _searchFocus,
-        // Expand owns focus; field tap opens dedicated search page.
+        // Expand only — keyboard + real search live on GlobalSearchScreen.
         autoFocusOnExpand: false,
         expandWhenActive: true,
         showsCancelButton: true,

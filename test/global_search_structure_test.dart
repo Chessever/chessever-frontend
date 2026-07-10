@@ -16,6 +16,10 @@ void main() {
     expect(screen, contains('Recently Searched'));
     expect(screen, contains('supabaseCombinedSearchProvider'));
     expect(screen, contains('ScreenWrapper'));
+    // Smooth enter: fade + soft lift, then keyboard focus.
+    expect(screen, contains('PageRouteBuilder'));
+    expect(screen, contains('FadeTransition'));
+    expect(screen, contains('requestFocus'));
   });
 
   test('bottom nav expands first then opens dedicated search on field tap', () {
@@ -25,6 +29,9 @@ void main() {
     expect(nav, contains('GlobalSearchScreen.route'));
     expect(nav, contains('_searchJustExpanded'));
     expect(nav, contains('onSubmitted: _onSearchSubmitted'));
+    // First tap expands only — no keyboard on the bottom pill.
+    expect(nav, contains('autoFocusOnExpand: false'));
+    expect(nav, contains('_searchFocus.unfocus()'));
   });
 
   test('recent searches provider persists queries', () {

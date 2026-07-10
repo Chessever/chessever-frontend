@@ -31,10 +31,33 @@ class GlobalSearchScreen extends ConsumerStatefulWidget {
 
   final String initialQuery;
 
+  /// Fade-in route so the dedicated search surface arrives smoothly after
+  /// the bottom pill expand (second tap).
   static Route<void> route({String initialQuery = ''}) {
-    return MaterialPageRoute<void>(
-      builder: (_) => GlobalSearchScreen(initialQuery: initialQuery),
+    return PageRouteBuilder<void>(
+      opaque: true,
       fullscreenDialog: true,
+      transitionDuration: const Duration(milliseconds: 340),
+      reverseTransitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return GlobalSearchScreen(initialQuery: initialQuery);
+      },
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final fade = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        // Soft lift + fade — never a hard slide sheet.
+        final slide = Tween<Offset>(
+          begin: const Offset(0, 0.028),
+          end: Offset.zero,
+        ).animate(fade);
+        return FadeTransition(
+          opacity: fade,
+          child: SlideTransition(position: slide, child: child),
+        );
+      },
     );
   }
 
@@ -57,12 +80,16 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
     _controller = TextEditingController(text: widget.initialQuery);
     _focusNode = FocusNode();
     _query = widget.initialQuery.trim();
+    // Focus after the fade-in has started so the keyboard rises with the page.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _focusNode.requestFocus();
-      if (_query.isNotEmpty) {
-        ref.read(recentSearchesProvider.notifier).add(_query);
-      }
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted) return;
+        _focusNode.requestFocus();
+        if (_query.isNotEmpty) {
+          ref.read(recentSearchesProvider.notifier).add(_query);
+        }
+      });
     });
   }
 
