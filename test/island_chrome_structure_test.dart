@@ -36,6 +36,39 @@ void main() {
     }
   });
 
+  test('Player profile uses glass island top chrome (not IconButton slab)', () {
+    final profile = read(
+      'lib/screens/player_profile/player_profile_screen.dart',
+    );
+    expect(profile, contains('GlassBackButton'));
+    expect(profile, contains('GlassIslandTopBar'));
+    expect(profile, contains('GlassIconButton'));
+    // Material IconButton (not GlassIconButton) should be gone from chrome.
+    expect(
+      RegExp(r'(?<![A-Za-z])IconButton\(').hasMatch(profile),
+      isFalse,
+    );
+  });
+
+  test('Tournament EventSearchBar + calendar detail are expand-on-tap islands', () {
+    final eventSearch = read(
+      'lib/screens/tour_detail/widgets/event_search_bar.dart',
+    );
+    final calDetail = read('lib/screens/calendar/calendar_detail_screen.dart');
+    expect(eventSearch, contains('GlassIslandSearch'));
+    expect(eventSearch, isNot(contains('SimpleSearchBar')));
+    expect(eventSearch, isNot(contains('color: context.colors.surfaceRecessed')));
+    expect(calDetail, contains('GlassIslandSearch'));
+    expect(calDetail, contains('GlassBackButton'));
+    expect(calDetail, isNot(contains('SimpleSearchBar')));
+  });
+
+  test('bottom nav tabWidth is compact per-tab slot (~72, not 210)', () {
+    final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
+    expect(nav, contains('tabWidth: 72'));
+    expect(nav, isNot(contains('tabWidth: 210')));
+  });
+
   test('Settings exposes appearance switch and root watches themeModeProvider', () {
     final settings = read('lib/screens/settings/settings_page.dart');
     final main = read('lib/main.dart');

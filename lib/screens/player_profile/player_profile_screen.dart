@@ -32,10 +32,13 @@ import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
@@ -785,102 +788,70 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     required String? effectiveTitle,
   }) {
     final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
+      phone: 12.w,
       tablet: 24.w,
     );
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Row(
-        children: [
-          // Back button
-          IconButton(
-            iconSize: 24.ic,
-            padding: EdgeInsets.zero,
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 24.ic,
-              color: context.colors.textPrimary,
-            ),
-          ),
-
-          // Title and name — no flag, compact style so the share + favorite
-          // actions fit without crowding the header.
-          Expanded(
-            child: Center(
-              child: RichText(
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                text: TextSpan(
-                  children: [
-                    if (effectiveTitle != null &&
-                        effectiveTitle.trim().isNotEmpty)
-                      TextSpan(
-                        text: '${effectiveTitle.trim()} ',
-                        style: AppTypography.textMdBold.copyWith(
-                          color: kLightYellowColor,
-                        ),
-                      ),
-                    TextSpan(
-                      text: _formatDisplayName(name: effectiveName),
-                      style: AppTypography.textMdBold.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                  ],
+    // Floating glass islands — no solid multi-row topbar slab.
+    return GlassIslandTopBar(
+      horizontalPadding: horizontalPadding,
+      topPadding: 0,
+      leading: const GlassBackButton(),
+      center: RichText(
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        text: TextSpan(
+          children: [
+            if (effectiveTitle != null && effectiveTitle.trim().isNotEmpty)
+              TextSpan(
+                text: '${effectiveTitle.trim()} ',
+                style: AppTypography.textMdBold.copyWith(
+                  color: kLightYellowColor,
                 ),
               ),
-            ),
-          ),
-
-          // Share button
-          GestureDetector(
-            onTap:
-                () => _shareProfile(
-                  effectiveName: effectiveName,
-                  effectiveTitle: effectiveTitle,
-                  effectiveFederation: effectiveFederation,
-                ),
-            child: Container(
-              width: 38.w,
-              height: 44.h,
-              padding: EdgeInsets.all(6.sp),
-              alignment: Alignment.center,
-              // The heart SVG next door fills its whole 20px box while the
-              // Material ios_share glyph carries ~2px of built-in padding per
-              // side on its 24-grid — 24 here optically matches the 20px heart.
-              child: Icon(
-                Icons.ios_share,
+            TextSpan(
+              text: _formatDisplayName(name: effectiveName),
+              style: AppTypography.textMdBold.copyWith(
                 color: context.colors.textPrimary,
-                size: 24.ic,
-                semanticLabel: 'Share Profile',
               ),
             ),
-          ),
-
-          // Favorite button
-          GestureDetector(
-            onTap: _toggleFavorite,
-            child: Container(
-              width: 38.w,
-              height: 44.h,
-              padding: EdgeInsets.all(6.sp),
-              child: ScaleTransition(
-                scale: _favoriteScaleAnimation,
-                child: SvgWidget(
-                  isFavorite
-                      ? SvgAsset.favouriteRedIcon
-                      : SvgAsset.favouriteIcon2,
-                  semanticsLabel: 'Favorite',
-                  height: 20.h,
-                  width: 20.w,
-                  preserveOriginalColors: isFavorite,
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
+      trailing: [
+        GlassIconButton(
+          icon: Icon(
+            Icons.ios_share,
+            color: context.colors.textPrimary,
+            semanticLabel: 'Share Profile',
+          ),
+          onPressed:
+              () => _shareProfile(
+                effectiveName: effectiveName,
+                effectiveTitle: effectiveTitle,
+                effectiveFederation: effectiveFederation,
+              ),
+          size: 40,
+          iconSize: 18,
+          useOwnLayer: true,
+        ),
+        GlassIconButton(
+          icon: ScaleTransition(
+            scale: _favoriteScaleAnimation,
+            child: SvgWidget(
+              isFavorite ? SvgAsset.favouriteRedIcon : SvgAsset.favouriteIcon2,
+              semanticsLabel: 'Favorite',
+              height: 18,
+              width: 18,
+              preserveOriginalColors: isFavorite,
+            ),
+          ),
+          onPressed: _toggleFavorite,
+          size: 40,
+          iconSize: 18,
+          useOwnLayer: true,
+        ),
+      ],
     );
   }
 

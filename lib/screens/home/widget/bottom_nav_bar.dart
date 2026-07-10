@@ -201,8 +201,9 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       searchBarHeight: 50,
       verticalPadding: BottomNavBar.verticalPadding,
       horizontalPadding: BottomNavBar.horizontalPadding,
-      // Tight floating pill — not a full-bleed left edge slab.
-      tabWidth: 210,
+      // Per-tab slot width (package: pill ≈ tabWidth × tabCount). Keep ~70–88
+      // so 3 tabs stay a compact floating island, not a full-bleed slab.
+      tabWidth: 72,
       tabPillAnchor: GlassTabPillAnchor.start,
       enableBlend: false,
       showIndicator: true,

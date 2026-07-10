@@ -4,13 +4,14 @@ import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.da
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/month_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -26,11 +27,15 @@ class CalendarDetailsScreen extends ConsumerStatefulWidget {
 class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
   final TextEditingController searchController = TextEditingController();
   final FocusNode focusNode = FocusNode();
+  bool _searchExpanded = false;
 
   @override
   void initState() {
     super.initState();
     searchController.text = ref.read(calendarSearchQueryProvider);
+    if (searchController.text.trim().isNotEmpty) {
+      _searchExpanded = true;
+    }
   }
 
   @override
@@ -57,124 +62,54 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
 
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
-      child: Scaffold(
-        key: e2eKey(E2eIds.calendarDetailRoot),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        height: 24.h + MediaQuery.of(context).viewPadding.top,
-                      ),
-                      AnimatedBuilder(
-                        animation: focusNode,
-                        builder: (cxt, _) {
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 24.ic,
-                                height: 24.ic,
-                                child: IconButton(
-                                  padding: EdgeInsets.zero,
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  icon: Icon(
-                                    Icons.arrow_back_ios_new_outlined,
-                                    size: 24.ic,
-                                  ),
-                                ),
-                              ),
-
-                              SizedBox(width: 11.w),
-                              Expanded(
-                                child: Hero(
-                                  tag: 'search_bar',
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 300,
-                                      ),
-                                      curve: Curves.easeInOut,
-                                      padding: EdgeInsets.all(2.sp),
-                                      decoration: BoxDecoration(
-                                        color: context.colors.surfaceRecessed,
-                                        borderRadius: BorderRadius.circular(
-                                          8.br,
-                                        ),
-                                        border: Border.all(
-                                          color:
-                                              focusNode.hasFocus
-                                                  ? kPrimaryColor.withValues(
-                                                    alpha: 0.5,
-                                                  )
-                                                  : Colors.transparent,
-                                          width: 2.0,
-                                        ),
-                                        boxShadow:
-                                            focusNode.hasFocus
-                                                ? [
-                                                  BoxShadow(
-                                                    color: kPrimaryColor
-                                                        .withValues(
-                                                          alpha: 0.15,
-                                                        ),
-                                                    blurRadius: 12,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                ]
-                                                : [],
-                                      ),
-                                      child: SimpleSearchBar(
-                                        controller: searchController,
-                                        hintText: 'Search',
-                                        focusNode: focusNode,
-                                        onCloseTap: () {
-                                          searchController.clear();
-                                          focusNode.unfocus();
-                                          ref
-                                              .read(
-                                                calendarSearchQueryProvider
-                                                    .notifier,
-                                              )
-                                              .state = '';
-                                        },
-                                        onChanged:
-                                            (query) =>
-                                                ref
-                                                    .read(
-                                                      calendarSearchQueryProvider
-                                                          .notifier,
-                                                    )
-                                                    .state = query,
-                                        onOpenFilter: null,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                          );
-                        },
-                      ),
-                      SizedBox(height: 32.h),
-                      Text(
+      child: ScreenWrapper(
+        child: Scaffold(
+          key: e2eKey(E2eIds.calendarDetailRoot),
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.contentMaxWidth,
+              ),
+              child: Column(
+                children: [
+                  // Island chrome: back circle + expand-on-tap search.
+                  GlassIslandTopBar(
+                    horizontalPadding: horizontalPadding,
+                    leading: const GlassBackButton(),
+                    center: GlassIslandSearch(
+                      controller: searchController,
+                      focusNode: focusNode,
+                      expanded: _searchExpanded,
+                      hintText: 'Search',
+                      onExpandedChanged:
+                          (v) => setState(() => _searchExpanded = v),
+                      onChanged:
+                          (query) =>
+                              ref
+                                  .read(calendarSearchQueryProvider.notifier)
+                                  .state = query,
+                      onClear: () {
+                        ref.read(calendarSearchQueryProvider.notifier).state =
+                            '';
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      8.h,
+                      horizontalPadding,
+                      12.h,
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
                         "Tournaments in ${ref.read(monthProvider).monthNumberToName(selectedMonth)} $selectedYear",
                         style: AppTypography.textLgBold,
                       ),
-                      SizedBox(height: 20.h),
-                    ],
+                    ),
                   ),
-                ),
                 filteredTours.when(
                   data: (filteredEvents) {
                     return Expanded(
@@ -229,6 +164,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

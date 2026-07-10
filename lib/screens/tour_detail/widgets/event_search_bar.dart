@@ -5,15 +5,15 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_placeholder.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Search bar pinned above the event-view tab switcher (About/Games/
-/// Standings). Stays visible while the inner tab content scrolls. Horizontal
-/// inset comes from the enclosing column.
+/// Expand-on-tap glass search island above the event tab switcher.
+///
+/// Collapsed by default (circle only) — expands horizontally when tapped.
+/// No permanent full-width surfaceRecessed slab.
 class EventSearchBar extends ConsumerStatefulWidget {
   const EventSearchBar({super.key});
 
@@ -26,6 +26,7 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
   late final FocusNode _focusNode;
   late final int _placeholderIndex;
   Timer? _debounce;
+  bool _expanded = false;
 
   @override
   void initState() {
@@ -35,6 +36,9 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
     );
     _focusNode = FocusNode();
     _placeholderIndex = math.Random().nextInt(eventSearchPlaceholderCount);
+    if (_controller.text.trim().isNotEmpty) {
+      _expanded = true;
+    }
   }
 
   @override
@@ -51,16 +55,15 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       text: query,
       selection: TextSelection.collapsed(offset: query.length),
     );
+    if (query.trim().isNotEmpty && !_expanded) {
+      setState(() => _expanded = true);
+    }
   }
 
   void _handleChanged(String query) {
     final trimmed = query.trim();
-    // Standings filter is a cheap in-widget operation over a cached list —
-    // update it instantly for a snappy feel.
     ref.read(standingsSearchQueryProvider.notifier).state = query;
 
-    // Games search hits the DB — keep a short debounce so we don't fire a
-    // query per keystroke.
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 200), () {
       final gamesNotifier = ref.read(gamesTourScreenProvider.notifier);
@@ -93,24 +96,18 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       _syncControllerText(next);
     });
 
-    // Sits between the app-bar row and the tab switcher. Tight vertical
-    // padding keeps the strip compact so the tab chips remain near the top
-    // of the viewport.
     return Padding(
-      padding: EdgeInsets.only(top: 4.h, bottom: 8.h),
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 4.h),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        child: SimpleSearchBar(
+      padding: EdgeInsets.only(top: 2.h, bottom: 4.h),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: GlassIslandSearch(
           controller: _controller,
           focusNode: _focusNode,
+          expanded: _expanded,
           hintText: hintText,
+          onExpandedChanged: (v) => setState(() => _expanded = v),
           onChanged: _handleChanged,
-          onCloseTap: _handleCleared,
-          onOpenFilter: null,
+          onClear: _handleCleared,
         ),
       ),
     );
