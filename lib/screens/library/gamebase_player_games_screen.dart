@@ -9,6 +9,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -53,67 +57,35 @@ class _GamebasePlayerGamesScreenState
     final state = ref.watch(gamebasePlayerGamesProvider(widget.player));
     final displayTitle = ChessTitleUtils.normalize(widget.player.title);
 
-    return Scaffold(
+    final titleLabel =
+        displayTitle.isNotEmpty
+            ? '$displayTitle ${widget.player.name}'
+            : widget.player.name;
+
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      appBar: AppBar(
-        backgroundColor: context.colors.background,
-        elevation: 0,
-        leading: IconButton(
-          icon:  Icon(Icons.arrow_back_ios, color: context.colors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (displayTitle.isNotEmpty) ...[
-                  Text(
-                    displayTitle,
-                    style: AppTypography.textSmBold.copyWith(
-                      color: const Color(0xFFA1A1AA), // Zinc 400
-                    ),
-                  ),
-                  SizedBox(width: 6.w),
-                ],
-                Flexible(
-                  child: Text(
-                    widget.player.name,
-                    style: AppTypography.textMdBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            if (widget.player.fed.trim().isNotEmpty) ...[
-              SizedBox(height: 2.h),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FederationFlag(
+      includeContentSafeArea: false,
+      contentPadding: const EdgeInsets.only(top: 72, bottom: 24),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: GlassIslandTopBar(
+        topPadding: 0,
+        height: 48,
+        leading: const GlassBackButton(),
+        title: GlassTitleChip(
+          label: titleLabel,
+          maxWidth: 220.w,
+          icon:
+              widget.player.fed.trim().isEmpty
+                  ? null
+                  : FederationFlag(
                     federation: widget.player.fed,
                     width: 16.w,
                     height: 12.h,
                     borderRadius: BorderRadius.circular(2.br),
                   ),
-                  SizedBox(width: 6.w),
-                  Text(
-                    widget.player.fed,
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFA1A1AA),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
         ),
-        centerTitle: false,
       ),
-      body: Center(
+      content: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth:
@@ -129,7 +101,9 @@ class _GamebasePlayerGamesScreenState
 
   Widget _buildBody(GamebasePlayerGamesState state) {
     if (state.isLoading && state.games.isEmpty) {
-      return  Center(child: CircularProgressIndicator(color: context.colors.textPrimary));
+      return Center(
+        child: CircularProgressIndicator(color: context.colors.textPrimary),
+      );
     }
 
     if (state.error != null && state.games.isEmpty) {
@@ -141,7 +115,9 @@ class _GamebasePlayerGamesScreenState
             SizedBox(height: 16.h),
             Text(
               'Failed to load games',
-              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(height: 8.h),
             TextButton(
@@ -152,9 +128,12 @@ class _GamebasePlayerGamesScreenState
                             gamebasePlayerGamesProvider(widget.player).notifier,
                           )
                           .refreshGames(),
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
               child: Text(
                 'Retry',
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ],
@@ -169,19 +148,21 @@ class _GamebasePlayerGamesScreenState
           children: [
             Icon(
               Icons.sports_esports_outlined,
-              color: const Color(0xFFA1A1AA),
+              color: context.colors.iconSecondary,
               size: 48.sp,
             ),
             SizedBox(height: 16.h),
             Text(
               'No games found',
-              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(height: 4.h),
             Text(
               'This player has no recorded games',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.colors.textSecondary,
               ),
             ),
           ],
@@ -208,8 +189,10 @@ class _GamebasePlayerGamesScreenState
           if (index >= state.games.length) {
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 24.h),
-              child:  Center(
-                child: CircularProgressIndicator(color: context.colors.textPrimary),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: context.colors.textPrimary,
+                ),
               ),
             );
           }

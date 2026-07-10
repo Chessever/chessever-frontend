@@ -13,9 +13,15 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class GamebaseDatabaseSearchScreen extends ConsumerStatefulWidget {
   const GamebaseDatabaseSearchScreen({super.key});
@@ -40,28 +46,83 @@ class _GamebaseDatabaseSearchScreenState
   @override
   Widget build(BuildContext context) {
     final searchAsync = ref.watch(gamebaseDatabaseSearchProvider);
+    final state = searchAsync.valueOrNull;
 
-    return Scaffold(
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      appBar: AppBar(
-        backgroundColor: context.colors.background,
-        elevation: 0,
-        leading: IconButton(
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            Navigator.of(context).pop();
-          },
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: context.colors.textPrimary,
+      includeContentSafeArea: false,
+      contentPadding: EdgeInsets.only(
+        top: state == null ? 72 : 132,
+        bottom: state == null ? 24 : 76,
+      ),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      bottomOverlayPadding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      topOverlay: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: GlassIslandStack(
+            includeStatusBar: false,
+            gap: 4,
+            children: [
+              GlassIslandTopBar(
+                topPadding: 0,
+                height: 48,
+                leading: GlassBackButton(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.of(context).pop();
+                  },
+                ),
+                title: const GlassTitleChip(label: 'ChessEver Database'),
+              ),
+              if (state != null)
+                _SearchBar(
+                  controller: _queryController,
+                  focusNode: _queryFocusNode,
+                  query: state.query,
+                  hasActiveFilters: state.hasActiveFilters,
+                  onChanged:
+                      (value) => ref
+                          .read(gamebaseDatabaseSearchProvider.notifier)
+                          .setQuery(value),
+                  onClear: () {
+                    HapticFeedbackService.light();
+                    _queryController.clear();
+                    ref
+                        .read(gamebaseDatabaseSearchProvider.notifier)
+                        .setQuery('');
+                    _queryFocusNode.unfocus();
+                    setState(() {});
+                  },
+                  onFilterTap: _openFilters,
+                ),
+            ],
           ),
         ),
-        title: Text(
-          'ChessEver Database',
-          style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
-        ),
       ),
-      body: Center(
+      bottomOverlay:
+          state == null
+              ? null
+              : _PaginationBar(
+                canGoPrev: state.canGoPrev,
+                canGoNext: state.canGoNext,
+                pageNumber: state.pagination.pageNumber,
+                pageSize: state.pagination.pageSize,
+                totalCount: state.pagination.totalCount,
+                onPrev:
+                    () =>
+                        ref
+                            .read(gamebaseDatabaseSearchProvider.notifier)
+                            .prevPage(),
+                onNext:
+                    () =>
+                        ref
+                            .read(gamebaseDatabaseSearchProvider.notifier)
+                            .nextPage(),
+              ),
+      content: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth:
@@ -78,26 +139,6 @@ class _GamebaseDatabaseSearchScreenState
             data: (state) {
               return Column(
                 children: [
-                  _SearchBar(
-                    controller: _queryController,
-                    focusNode: _queryFocusNode,
-                    query: state.query,
-                    hasActiveFilters: state.hasActiveFilters,
-                    onChanged:
-                        (value) => ref
-                            .read(gamebaseDatabaseSearchProvider.notifier)
-                            .setQuery(value),
-                    onClear: () {
-                      HapticFeedbackService.light();
-                      _queryController.clear();
-                      ref
-                          .read(gamebaseDatabaseSearchProvider.notifier)
-                          .setQuery('');
-                      _queryFocusNode.unfocus();
-                      setState(() {});
-                    },
-                    onFilterTap: _openFilters,
-                  ),
                   _MetaRow(
                     state: state,
                     onRequestExactCount:
@@ -111,23 +152,6 @@ class _GamebaseDatabaseSearchScreenState
                       state: state,
                       onAdd: (game) => _showAddToFolderSheet(context, game),
                     ),
-                  ),
-                  _PaginationBar(
-                    canGoPrev: state.canGoPrev,
-                    canGoNext: state.canGoNext,
-                    pageNumber: state.pagination.pageNumber,
-                    pageSize: state.pagination.pageSize,
-                    totalCount: state.pagination.totalCount,
-                    onPrev:
-                        () =>
-                            ref
-                                .read(gamebaseDatabaseSearchProvider.notifier)
-                                .prevPage(),
-                    onNext:
-                        () =>
-                            ref
-                                .read(gamebaseDatabaseSearchProvider.notifier)
-                                .nextPage(),
                   ),
                 ],
               );
@@ -182,24 +206,28 @@ class _SearchBar extends StatelessWidget {
       );
     }
 
+    final controlExtent = MediaQuery.textScalerOf(context).scale(16) + 32;
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 6.h),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.08)),
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: GlassContainer(
+        useOwnLayer: true,
+        quality: GlassQuality.standard,
+        height: controlExtent.clamp(52, 72),
+        padding: EdgeInsets.only(left: 14.w),
+        shape: LiquidRoundedSuperellipse(
+          borderRadius: controlExtent.clamp(52, 72) / 2,
         ),
         child: Row(
           children: [
-            Icon(Icons.search, color: context.colors.textPrimary.withValues(alpha: 0.7)),
+            Icon(Icons.search, color: context.colors.iconSecondary),
             SizedBox(width: 10.w),
             Expanded(
               child: TextField(
                 controller: controller,
                 focusNode: focusNode,
-                style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textPrimary,
+                ),
                 onChanged: onChanged,
                 decoration: InputDecoration(
                   isDense: true,
@@ -212,43 +240,42 @@ class _SearchBar extends StatelessWidget {
               ),
             ),
             if (controller.text.isNotEmpty)
-              GestureDetector(
-                onTap: onClear,
-                child: Container(
-                  padding: EdgeInsets.all(6.sp),
-                  decoration: BoxDecoration(
-                    color: context.colors.textPrimary.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.close,
-                    size: 14.sp,
-                    color: context.colors.textPrimary.withValues(alpha: 0.7),
+              Semantics(
+                button: true,
+                label: 'Clear search',
+                child: ExcludeSemantics(
+                  child: IconButton(
+                    onPressed: onClear,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 48,
+                      height: 48,
+                    ),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 20,
+                      color: context.colors.iconSecondary,
+                    ),
                   ),
                 ),
               ),
-            SizedBox(width: 10.w),
-            GestureDetector(
-              onTap: onFilterTap,
-              child: Container(
-                padding: EdgeInsets.all(8.sp),
-                decoration: BoxDecoration(
-                  color:
-                      hasActiveFilters
-                          ? kPrimaryColor.withValues(alpha: 0.2)
-                          : context.colors.textPrimary.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10.br),
-                  border: Border.all(
+            Semantics(
+              button: true,
+              label: hasActiveFilters ? 'Filters active' : 'Filters',
+              child: ExcludeSemantics(
+                child: IconButton(
+                  onPressed: onFilterTap,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 48,
+                    height: 48,
+                  ),
+                  icon: Icon(
+                    Icons.tune_rounded,
+                    size: 20,
                     color:
                         hasActiveFilters
-                            ? kPrimaryColor.withValues(alpha: 0.55)
-                            : context.colors.textPrimary.withValues(alpha: 0.08),
+                            ? context.colors.brand
+                            : context.colors.iconSecondary,
                   ),
-                ),
-                child: Icon(
-                  Icons.tune_rounded,
-                  size: 18.ic,
-                  color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimary,
                 ),
               ),
             ),
@@ -521,69 +548,78 @@ class _PaginationBar extends StatelessWidget {
             ? 'Page $pageNumber'
             : 'Page $pageNumber • $pageSize / ${formatCompactCount(totalCount!)}';
 
-    return Container(
-      padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 10.h),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        border: Border(
-          top: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: GlassContainer(
+          useOwnLayer: true,
+          quality: GlassQuality.standard,
+          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4),
+          shape: const LiquidRoundedSuperellipse(borderRadius: 28),
+          child: Row(
+            children: [
+              _IconPillButton(
+                semanticLabel: 'Previous page',
+                icon: Icons.chevron_left_rounded,
+                onTap: canGoPrev ? onPrev : null,
+              ),
+              SizedBox(width: 4.w),
+              _IconPillButton(
+                semanticLabel: 'Next page',
+                icon: Icons.chevron_right_rounded,
+                onTap: canGoNext ? onNext : null,
+              ),
+              const Spacer(),
+              Flexible(
+                child: Text(
+                  rightText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: context.colors.textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          _IconPillButton(
-            icon: Icons.chevron_left_rounded,
-            onTap: canGoPrev ? onPrev : null,
-          ),
-          SizedBox(width: 10.w),
-          _IconPillButton(
-            icon: Icons.chevron_right_rounded,
-            onTap: canGoNext ? onNext : null,
-          ),
-          const Spacer(),
-          Text(
-            rightText,
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
 class _IconPillButton extends StatelessWidget {
-  const _IconPillButton({required this.icon, required this.onTap});
+  const _IconPillButton({
+    required this.semanticLabel,
+    required this.icon,
+    required this.onTap,
+  });
 
+  final String semanticLabel;
   final IconData icon;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44.w,
-        height: 36.h,
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(10.br),
-          border: Border.all(
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: semanticLabel,
+      child: ExcludeSemantics(
+        child: IconButton(
+          onPressed: onTap,
+          constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+          icon: Icon(
+            icon,
             color:
                 enabled
-                    ? context.colors.textPrimary.withValues(alpha: 0.12)
-                    : context.colors.textPrimary.withValues(alpha: 0.06),
+                    ? context.colors.iconPrimary
+                    : context.colors.iconSecondary.withValues(alpha: 0.45),
+            size: 22,
           ),
-        ),
-        child: Icon(
-          icon,
-          color:
-              enabled
-                  ? context.colors.textPrimary.withValues(alpha: 0.9)
-                  : context.colors.textPrimary.withValues(alpha: 0.35),
-          size: 22.ic,
         ),
       ),
     );
@@ -643,7 +679,9 @@ class _InlineError extends StatelessWidget {
       ),
       child: Text(
         message,
-        style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+        style: AppTypography.textSmRegular.copyWith(
+          color: context.colors.textPrimary,
+        ),
       ),
     );
   }
@@ -670,7 +708,9 @@ class _ErrorState extends StatelessWidget {
             SizedBox(height: 12.h),
             Text(
               'Something went wrong',
-              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(height: 6.h),
             Text(

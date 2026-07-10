@@ -5,7 +5,6 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dar
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -13,10 +12,16 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 @visibleForTesting
@@ -82,27 +87,22 @@ class _CalendarEventDetailScreenState
   Widget build(BuildContext context) {
     final event = widget.events[_currentIndex];
     final favoriteModel = calendarEventFavoriteModel(event);
-    return Scaffold(
+    return GlassFullScreenPage(
       key: e2eKey(E2eIds.calendarEventDetailRoot),
       backgroundColor: context.colors.background,
-      appBar: AppBar(
-        title: Text(
-          event.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.textLgBold.copyWith(
-            color: context.colors.textPrimary,
-          ),
-        ),
-        backgroundColor: context.colors.surface,
-        iconTheme: IconThemeData(color: context.colors.iconPrimary),
-        actions: [
-          _CalendarEventFavoriteStar(event: favoriteModel),
-          SizedBox(width: 8.w),
-        ],
+      includeContentSafeArea: false,
+      contentPadding: const EdgeInsets.only(top: 72, bottom: 72),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      bottomOverlayPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      topOverlay: GlassIslandTopBar(
+        topPadding: 0,
+        height: 48,
+        leading: const GlassBackButton(),
+        title: GlassTitleChip(label: event.name, maxWidth: 220.w),
+        trailing: [_CalendarEventFavoriteStar(event: favoriteModel)],
       ),
-      bottomNavigationBar: _EventBottomBar(event: event),
-      body: PageView.builder(
+      bottomOverlay: _EventBottomBar(event: event),
+      content: PageView.builder(
         controller: _controller,
         physics:
             _canSwipe
@@ -246,8 +246,14 @@ class _EventDetailBody extends StatelessWidget {
             (MediaQuery.sizeOf(context).width *
                     MediaQuery.devicePixelRatioOf(context))
                 .toInt(),
-        fadeInDuration: const Duration(milliseconds: 300),
-        fadeOutDuration: const Duration(milliseconds: 200),
+        fadeInDuration:
+            GlassMotion.reduceMotion(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 300),
+        fadeOutDuration:
+            GlassMotion.reduceMotion(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 200),
         alignment: Alignment.topCenter,
         placeholder: (context, url) => _buildPlaceholder(context),
         errorWidget: (context, url, error) => _buildPlaceholder(context),
@@ -317,36 +323,57 @@ class _EventBottomBar extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewPadding.bottom,
-      ),
-      child: GestureDetector(
-        onTap: _launchWebsite,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SvgWidget(
-              SvgAsset.websiteIcon,
-              height: 12.h,
-              width: 12.h,
-              colorFilter:
-                  context.isLightTheme
-                      ? const ColorFilter.mode(kPrimaryColor, BlendMode.srcIn)
-                      : null,
-            ),
-            SizedBox(width: 4.w),
-            Flexible(
-              child: Text(
-                domain,
-                maxLines: 1,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: kPrimaryColor,
-                  overflow: TextOverflow.ellipsis,
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360, minHeight: 48),
+        child: Semantics(
+          button: true,
+          label: 'Open event website, $domain',
+          child: ExcludeSemantics(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _launchWebsite,
+              child: GlassContainer(
+                useOwnLayer: true,
+                quality: GlassQuality.standard,
+                height: 48,
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SvgWidget(
+                      SvgAsset.websiteIcon,
+                      height: 16,
+                      width: 16,
+                      colorFilter: ColorFilter.mode(
+                        context.colors.brand,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Flexible(
+                      child: Text(
+                        domain,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: context.colors.brand,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.open_in_new_rounded,
+                      size: 16,
+                      color: context.colors.brand,
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -369,52 +396,60 @@ class _CalendarEventFavoriteStar extends ConsumerWidget {
     );
     final favoritesCount = favoritesAsync.valueOrNull?.length ?? 0;
 
-    return IconButton(
-      tooltip: isStarred ? 'Remove from favorites' : 'Add to favorites',
-      onPressed: () async {
-        final allowed = await requireFullAuthGuard(context);
-        if (!allowed || !context.mounted) return;
+    final label = isStarred ? 'Remove from favorites' : 'Add to favorites';
+    return Semantics(
+      button: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: GlassIconButton(
+          size: 48,
+          iconSize: 22,
+          useOwnLayer: true,
+          onPressed: () async {
+            final allowed = await requireFullAuthGuard(context);
+            if (!allowed || !context.mounted) return;
 
-        HapticFeedbackService.pin();
+            HapticFeedbackService.pin();
 
-        try {
-          final isFavorited = await ref
-              .read(favoriteEventsProvider.notifier)
-              .toggleFavorite(
-                eventId: event.id,
-                eventName: event.title,
-                timeControl: event.timeControl,
-                maxAvgElo: event.maxAvgElo > 0 ? event.maxAvgElo : null,
-                dates: event.dates.isNotEmpty ? event.dates : null,
+            try {
+              final isFavorited = await ref
+                  .read(favoriteEventsProvider.notifier)
+                  .toggleFavorite(
+                    eventId: event.id,
+                    eventName: event.title,
+                    timeControl: event.timeControl,
+                    maxAvgElo: event.maxAvgElo > 0 ? event.maxAvgElo : null,
+                    dates: event.dates.isNotEmpty ? event.dates : null,
+                  );
+              final nextCount =
+                  isFavorited
+                      ? favoritesCount + 1
+                      : (favoritesCount - 1).clamp(0, favoritesCount);
+              AnalyticsService.instance.trackEventDetached(
+                'Event Favorite Toggled',
+                properties: {
+                  'event_id': event.id,
+                  'event_name': event.title,
+                  'time_control': event.timeControl,
+                  'event_source': event.eventSource.name,
+                  'tour_category': event.tourEventCategory.name,
+                  'is_favorited': isFavorited,
+                  'new_favorites_total': nextCount,
+                  if (event.location != null && event.location!.isNotEmpty)
+                    'location': event.location,
+                },
               );
-          final nextCount =
-              isFavorited
-                  ? favoritesCount + 1
-                  : (favoritesCount - 1).clamp(0, favoritesCount);
-          AnalyticsService.instance.trackEventDetached(
-            'Event Favorite Toggled',
-            properties: {
-              'event_id': event.id,
-              'event_name': event.title,
-              'time_control': event.timeControl,
-              'event_source': event.eventSource.name,
-              'tour_category': event.tourEventCategory.name,
-              'is_favorited': isFavorited,
-              'new_favorites_total': nextCount,
-              if (event.location != null && event.location!.isNotEmpty)
-                'location': event.location,
-            },
-          );
-        } catch (e) {
-          debugPrint('[CalendarEventDetail] Error toggling favorite: $e');
-        }
-      },
-      icon: SvgWidget(
-        isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
-        semanticsLabel: 'Favorite Icon',
-        height: 22.h,
-        width: 22.w,
-        preserveOriginalColors: isStarred,
+            } catch (e) {
+              debugPrint('[CalendarEventDetail] Error toggling favorite: $e');
+            }
+          },
+          icon: SvgWidget(
+            isStarred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+            height: 22,
+            width: 22,
+            preserveOriginalColors: isStarred,
+          ),
+        ),
       ),
     );
   }
