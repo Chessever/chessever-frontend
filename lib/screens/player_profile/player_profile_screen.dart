@@ -35,8 +35,10 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -192,11 +194,15 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
       setState(() => _gamesTabCueCount = null);
     }
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    if (GlassMotion.reduceMotion(context)) {
+      _pageController.jumpToPage(index);
+    } else {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
     if (!_chromeCollapse.expanded) {
       setState(() {
         _chromeCollapse.reset();
@@ -696,10 +702,22 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
     final isTwicLoading = gamesState.isLoading || isTwicStatsLoading;
 
-    final scaffold = Scaffold(
+    final controlExtent = _profileControlExtent(context);
+    final contentTopInset = _profileContentTopInset(
+      context,
+      selectedTab: selectedTab,
+      showSecondaryActions:
+          _showHeaderExtras &&
+          (selectedTab == PlayerProfileTab.games ||
+              (selectedTab == PlayerProfileTab.about && hasPlayerExplorer)),
+    );
+
+    final page = GlassFullScreenPage(
       key: e2eKey(E2eIds.playerProfileRoot),
       backgroundColor: context.colors.background,
-      body: Center(
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth:
@@ -707,69 +725,63 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ? ResponsiveHelper.contentMaxWidth
                     : double.infinity,
           ),
-          child: Column(
-            children: [
-              // Island stack: back+title → floating tabs (chips when scrolled).
-              GlassIslandStack(
-                gap: 6,
-                children: [
-                  _buildAppBar(
-                    context,
-                    isFavorite,
-                    effectiveFederation: effectiveFederation,
-                    effectiveName: effectiveName,
-                    effectiveTitle: effectiveTitle,
-                  ),
-                  _buildTabSwitcher(selectedTab),
-                  _buildIndicatorBar(
-                    hasActiveFilter: hasActiveFilter,
-                    isTwicLoading: isTwicLoading,
-                  ),
-                  SingleMotionBuilder(
-                    motion: const CupertinoMotion.snappy(),
-                    value: _showHeaderExtras ? 1.0 : 0.0,
-                    builder: (context, progress, child) {
-                      final clamped = progress.clamp(0.0, 1.0);
-                      if (clamped == 0) return const SizedBox.shrink();
-                      return ClipRect(
-                        child: Align(
-                          heightFactor: clamped,
-                          alignment: Alignment.topCenter,
-                          child: Opacity(opacity: clamped, child: child),
-                        ),
-                      );
-                    },
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (hasPlayerExplorer &&
-                            selectedTab == PlayerProfileTab.about)
-                          _buildStudyOpeningRow(),
-                        if (selectedTab == PlayerProfileTab.games)
-                          _buildGamesActionButtons(
-                            showStudyOpening: hasPlayerExplorer,
-                            playerKey: activePlayerKey,
-                            hasActiveFilter: hasActiveFilter,
-                            knownTotalCount:
-                                twicSummaryAsync.valueOrNull?.totalGames,
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              // Tab content
-              Expanded(
-                child: NotificationListener<ScrollUpdateNotification>(
-                  onNotification: _handleScrollNotification,
-                  child: _buildTabContent(
-                    effectiveTitle: effectiveTitle,
-                    effectiveFederation: effectiveFederation,
-                  ),
+          child: Semantics(
+            container: true,
+            explicitChildNodes: true,
+            label: 'Player profile controls',
+            child: GlassIslandStack(
+              key: const ValueKey<String>('player-profile-floating-controls'),
+              includeStatusBar: false,
+              bottomPadding: 0,
+              gap: 6,
+              children: [
+                _buildAppBar(
+                  context,
+                  isFavorite,
+                  controlExtent: controlExtent,
+                  effectiveFederation: effectiveFederation,
+                  effectiveName: effectiveName,
+                  effectiveTitle: effectiveTitle,
                 ),
+                SizedBox(
+                  height: controlExtent,
+                  child: Center(child: _buildTabSwitcher(selectedTab)),
+                ),
+                _buildIndicatorBar(
+                  hasActiveFilter: hasActiveFilter,
+                  isTwicLoading: isTwicLoading,
+                ),
+                _buildSecondaryActions(
+                  selectedTab: selectedTab,
+                  hasPlayerExplorer: hasPlayerExplorer,
+                  playerKey: activePlayerKey,
+                  hasActiveFilter: hasActiveFilter,
+                  knownTotalCount: twicSummaryAsync.valueOrNull?.totalGames,
+                  controlExtent: controlExtent,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+          ),
+          child: ColoredBox(
+            color: context.colors.background,
+            child: NotificationListener<ScrollUpdateNotification>(
+              onNotification: _handleScrollNotification,
+              child: _buildTabContent(
+                contentTopInset: contentTopInset,
+                effectiveTitle: effectiveTitle,
+                effectiveFederation: effectiveFederation,
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -784,13 +796,86 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             effectiveTitle: effectiveTitle,
             effectiveFederation: effectiveFederation,
           ),
-      child: scaffold,
+      child: page,
+    );
+  }
+
+  double _profileControlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16) * 1.2;
+    return (scaledLabelHeight + 24).clamp(48.0, 72.0).toDouble();
+  }
+
+  double _profileActionExtent(BuildContext context) {
+    final twoLineTextHeight = MediaQuery.textScalerOf(context).scale(14) * 2.35;
+    return (twoLineTextHeight + 20).clamp(62.0, 92.0).toDouble();
+  }
+
+  double _profileContentTopInset(
+    BuildContext context, {
+    required PlayerProfileTab selectedTab,
+    required bool showSecondaryActions,
+  }) {
+    final controlExtent = _profileControlExtent(context);
+    final safeTop = MediaQuery.viewPaddingOf(context).top;
+    final primaryChrome =
+        safeTop + 4 + (controlExtent + 6) + 6 + controlExtent + 6 + 2;
+    if (!showSecondaryActions) return primaryChrome + 12;
+    final secondaryExtent =
+        selectedTab == PlayerProfileTab.games
+            ? _profileActionExtent(context) + 6
+            : controlExtent;
+    return primaryChrome + 6 + secondaryExtent + 12;
+  }
+
+  Widget _buildSecondaryActions({
+    required PlayerProfileTab selectedTab,
+    required bool hasPlayerExplorer,
+    required PlayerProfileKey playerKey,
+    required bool hasActiveFilter,
+    required double controlExtent,
+    int? knownTotalCount,
+  }) {
+    final child = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (hasPlayerExplorer && selectedTab == PlayerProfileTab.about)
+          _buildStudyOpeningRow(controlExtent: controlExtent),
+        if (selectedTab == PlayerProfileTab.games)
+          _buildGamesActionButtons(
+            showStudyOpening: hasPlayerExplorer,
+            playerKey: playerKey,
+            hasActiveFilter: hasActiveFilter,
+            knownTotalCount: knownTotalCount,
+          ),
+      ],
+    );
+
+    if (GlassMotion.reduceMotion(context)) {
+      return _showHeaderExtras ? child : const SizedBox.shrink();
+    }
+
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.snappy(),
+      value: _showHeaderExtras ? 1.0 : 0.0,
+      builder: (context, progress, child) {
+        final clamped = progress.clamp(0.0, 1.0);
+        if (clamped == 0) return const SizedBox.shrink();
+        return ClipRect(
+          child: Align(
+            heightFactor: clamped,
+            alignment: Alignment.topCenter,
+            child: Opacity(opacity: clamped, child: child),
+          ),
+        );
+      },
+      child: child,
     );
   }
 
   Widget _buildAppBar(
     BuildContext context,
     bool isFavorite, {
+    required double controlExtent,
     required String? effectiveFederation,
     required String effectiveName,
     required String? effectiveTitle,
@@ -809,9 +894,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     return GlassIslandTopBar(
       horizontalPadding: horizontalPadding,
       topPadding: 0,
-      leading: const GlassBackButton(),
+      height: controlExtent,
+      leading: GlassBackButton(size: controlExtent),
       title: GlassTitleChip(
         label: titleLabel,
+        height: controlExtent,
         maxWidth: 200.w,
         textStyle: AppTypography.textMdMedium.copyWith(
           color: context.colors.textPrimary,
@@ -819,37 +906,43 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         ),
       ),
       trailing: [
-        GlassIconButton(
-          icon: Icon(
-            Icons.ios_share,
-            color: context.colors.textPrimary,
-            semanticLabel: 'Share Profile',
+        Semantics(
+          label: 'Share profile',
+          button: true,
+          child: GlassIconButton(
+            icon: Icon(Icons.ios_share, color: context.colors.textPrimary),
+            onPressed:
+                () => _shareProfile(
+                  effectiveName: effectiveName,
+                  effectiveTitle: effectiveTitle,
+                  effectiveFederation: effectiveFederation,
+                ),
+            size: controlExtent,
+            iconSize: 18,
+            useOwnLayer: true,
           ),
-          onPressed:
-              () => _shareProfile(
-                effectiveName: effectiveName,
-                effectiveTitle: effectiveTitle,
-                effectiveFederation: effectiveFederation,
-              ),
-          size: 40,
-          iconSize: 18,
-          useOwnLayer: true,
         ),
-        GlassIconButton(
-          icon: ScaleTransition(
-            scale: _favoriteScaleAnimation,
-            child: SvgWidget(
-              isFavorite ? SvgAsset.favouriteRedIcon : SvgAsset.favouriteIcon2,
-              semanticsLabel: 'Favorite',
-              height: 18,
-              width: 18,
-              preserveOriginalColors: isFavorite,
+        Semantics(
+          label: isFavorite ? 'Remove favorite' : 'Add favorite',
+          button: true,
+          toggled: isFavorite,
+          child: GlassIconButton(
+            icon: ScaleTransition(
+              scale: _favoriteScaleAnimation,
+              child: SvgWidget(
+                isFavorite
+                    ? SvgAsset.favouriteRedIcon
+                    : SvgAsset.favouriteIcon2,
+                height: 18,
+                width: 18,
+                preserveOriginalColors: isFavorite,
+              ),
             ),
+            onPressed: _toggleFavorite,
+            size: controlExtent,
+            iconSize: 18,
+            useOwnLayer: true,
           ),
-          onPressed: _toggleFavorite,
-          size: 40,
-          iconSize: 18,
-          useOwnLayer: true,
         ),
       ],
     );
@@ -943,6 +1036,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   Widget _buildTabContent({
+    required double contentTopInset,
     String? effectiveTitle,
     String? effectiveFederation,
   }) {
@@ -953,53 +1047,52 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         itemCount: PlayerProfileTab.values.length,
         onPageChanged: _handlePageChanged,
         itemBuilder: (context, index) {
-          switch (PlayerProfileTab.values[index]) {
-            case PlayerProfileTab.about:
-              return PlayerAboutTab(
-                fideId: widget.fideId,
-                playerName: widget.playerName,
-                title: effectiveTitle,
-                federation: effectiveFederation,
-                fallbackRating: widget.rating,
-                dataSource: _source,
-                gamebasePlayerId: _currentGamebasePlayerId,
-                onOpenGames: _openGames,
-              );
-            case PlayerProfileTab.games:
-              return PlayerGamesTab(
-                fideId: widget.fideId,
-                playerName: widget.playerName,
-                dataSource: _source,
-                gamebasePlayerId: _currentGamebasePlayerId,
-              );
-            case PlayerProfileTab.events:
-              return PlayerEventsTab(
-                fideId: widget.fideId,
-                playerName: widget.playerName,
-                dataSource: _source,
-                gamebasePlayerId: _currentGamebasePlayerId,
-              );
-          }
+          final page = switch (PlayerProfileTab.values[index]) {
+            PlayerProfileTab.about => PlayerAboutTab(
+              fideId: widget.fideId,
+              playerName: widget.playerName,
+              title: effectiveTitle,
+              federation: effectiveFederation,
+              fallbackRating: widget.rating,
+              dataSource: _source,
+              gamebasePlayerId: _currentGamebasePlayerId,
+              onOpenGames: _openGames,
+            ),
+            PlayerProfileTab.games => PlayerGamesTab(
+              fideId: widget.fideId,
+              playerName: widget.playerName,
+              dataSource: _source,
+              gamebasePlayerId: _currentGamebasePlayerId,
+            ),
+            PlayerProfileTab.events => PlayerEventsTab(
+              fideId: widget.fideId,
+              playerName: widget.playerName,
+              dataSource: _source,
+              gamebasePlayerId: _currentGamebasePlayerId,
+            ),
+          };
+          return Padding(
+            padding: EdgeInsets.only(top: contentTopInset),
+            child: page,
+          );
         },
       ),
     );
   }
 
   /// Compact inline row for study opening on the About tab.
-  Widget _buildStudyOpeningRow() {
+  Widget _buildStudyOpeningRow({required double controlExtent}) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
     );
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        14.h,
-        horizontalPadding,
-        0,
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 0),
+      child: _StudyOpeningPill(
+        minimumExtent: controlExtent,
+        onTap: _openExplorer,
       ),
-      child: _StudyOpeningPill(onTap: _openExplorer),
     );
   }
 
@@ -1119,8 +1212,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
 /// Compact pill-style button for study opening on the About tab.
 class _StudyOpeningPill extends StatefulWidget {
-  const _StudyOpeningPill({required this.onTap});
+  const _StudyOpeningPill({required this.minimumExtent, required this.onTap});
 
+  final double minimumExtent;
   final VoidCallback onTap;
 
   @override
@@ -1132,54 +1226,70 @@ class _StudyOpeningPillState extends State<_StudyOpeningPill> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        HapticFeedbackService.light();
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: SingleMotionBuilder(
-        motion: const CupertinoMotion.snappy(),
-        value: _pressed ? 1.0 : 0.0,
-        builder: (context, pressProgress, _) {
-          return Transform.scale(
-            scale: 1.0 - 0.02 * pressProgress,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-              decoration: BoxDecoration(
-                color: kPrimaryColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10.br),
-                border: Border.all(
-                  color: kPrimaryColor.withValues(alpha: 0.24),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.account_tree_outlined,
-                    size: 16.ic,
-                    color: kPrimaryColor,
+    return Semantics(
+      label: 'Build opening tree',
+      button: true,
+      onTap: widget.onTap,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) {
+            setState(() => _pressed = false);
+            HapticFeedbackService.light();
+            widget.onTap();
+          },
+          onTapCancel: () => setState(() => _pressed = false),
+          child: SingleMotionBuilder(
+            motion: const CupertinoMotion.snappy(),
+            value: _pressed && !GlassMotion.reduceMotion(context) ? 1.0 : 0.0,
+            builder: (context, pressProgress, _) {
+              return Transform.scale(
+                scale: 1.0 - 0.02 * pressProgress,
+                child: Container(
+                  constraints: BoxConstraints(minHeight: widget.minimumExtent),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 8.h,
                   ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    'Build Tree',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.92),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10.br),
+                    border: Border.all(
+                      color: kPrimaryColor.withValues(alpha: 0.24),
                     ),
                   ),
-                  const Spacer(),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 18.ic,
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.account_tree_outlined,
+                        size: 16.ic,
+                        color: kPrimaryColor,
+                      ),
+                      SizedBox(width: 8.w),
+                      Text(
+                        'Build Tree',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.92,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18.ic,
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.5,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          );
-        },
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -1210,147 +1320,169 @@ class _ActionCardState extends State<_ActionCard> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        HapticFeedbackService.light();
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: SingleMotionBuilder(
-        motion: const CupertinoMotion.snappy(),
-        value: _pressed ? 1.0 : 0.0,
-        builder: (context, pressProgress, _) {
-          return Transform.scale(
-            scale: 1.0 - 0.03 * pressProgress,
-            child: SingleMotionBuilder(
-              motion: const CupertinoMotion.snappy(),
-              value: widget.isHighlighted ? 1.0 : 0.0,
-              builder: (context, h, _) {
-                // Idle: solid dark card. Highlighted: red-tinted.
-                final bg =
-                    Color.lerp(
-                      context.colors.surface,
-                      _filterRed.withValues(alpha: 0.10),
-                      h,
-                    )!;
-                final iconBg =
-                    Color.lerp(
-                      context.colors.textPrimary.withValues(alpha: 0.08),
-                      _filterRed.withValues(alpha: 0.18),
-                      h,
-                    )!;
-                final iconColor =
-                    Color.lerp(
-                      context.colors.textPrimary.withValues(alpha: 0.85),
-                      _filterRed,
-                      h,
-                    )!;
-                return Container(
-                  height: 62.h,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 10.w,
-                    vertical: 8.h,
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(12.br),
-                  ),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return OverflowBox(
-                        minWidth: 0,
-                        maxWidth: double.infinity,
-                        alignment: Alignment.centerLeft,
-                        child: SizedBox(
-                          width: constraints.maxWidth.clamp(
-                            160.w,
-                            double.infinity,
-                          ),
-                          child: Row(
-                            children: [
-                              // Icon badge
-                              Stack(
-                                clipBehavior: Clip.none,
+    final actionExtent =
+        (MediaQuery.textScalerOf(context).scale(14) * 2.35 + 20)
+            .clamp(62.0, 92.0)
+            .toDouble();
+    return Semantics(
+      label: '${widget.title}, ${widget.subtitle}',
+      button: true,
+      onTap: widget.onTap,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) {
+            setState(() => _pressed = false);
+            HapticFeedbackService.light();
+            widget.onTap();
+          },
+          onTapCancel: () => setState(() => _pressed = false),
+          child: SingleMotionBuilder(
+            motion: const CupertinoMotion.snappy(),
+            value: _pressed && !GlassMotion.reduceMotion(context) ? 1.0 : 0.0,
+            builder: (context, pressProgress, _) {
+              return Transform.scale(
+                scale: 1.0 - 0.03 * pressProgress,
+                child: SingleMotionBuilder(
+                  motion: const CupertinoMotion.snappy(),
+                  value: widget.isHighlighted ? 1.0 : 0.0,
+                  builder: (context, h, _) {
+                    // Idle: solid dark card. Highlighted: red-tinted.
+                    final bg =
+                        Color.lerp(
+                          context.colors.surface,
+                          _filterRed.withValues(alpha: 0.10),
+                          h,
+                        )!;
+                    final iconBg =
+                        Color.lerp(
+                          context.colors.textPrimary.withValues(alpha: 0.08),
+                          _filterRed.withValues(alpha: 0.18),
+                          h,
+                        )!;
+                    final iconColor =
+                        Color.lerp(
+                          context.colors.textPrimary.withValues(alpha: 0.85),
+                          _filterRed,
+                          h,
+                        )!;
+                    return Container(
+                      height: actionExtent,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 8.h,
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return OverflowBox(
+                            minWidth: 0,
+                            maxWidth: double.infinity,
+                            alignment: Alignment.centerLeft,
+                            child: SizedBox(
+                              width: constraints.maxWidth.clamp(
+                                160.w,
+                                double.infinity,
+                              ),
+                              child: Row(
                                 children: [
-                                  Container(
-                                    width: 34.w,
-                                    height: 34.h,
-                                    decoration: BoxDecoration(
-                                      color: iconBg,
-                                      borderRadius: BorderRadius.circular(9.br),
-                                    ),
-                                    child: Icon(
-                                      widget.icon,
-                                      size: 18.ic,
-                                      color: iconColor,
-                                    ),
-                                  ),
-                                  // Red dot badge when highlighted
-                                  if (widget.isHighlighted)
-                                    Positioned(
-                                      right: -3,
-                                      top: -3,
-                                      child: Container(
-                                        width: 9.w,
-                                        height: 9.w,
-                                        decoration: const BoxDecoration(
-                                          color: _filterRed,
-                                          shape: BoxShape.circle,
+                                  // Icon badge
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Container(
+                                        width: 34.w,
+                                        height: 34.h,
+                                        decoration: BoxDecoration(
+                                          color: iconBg,
+                                          borderRadius: BorderRadius.circular(
+                                            9.br,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          widget.icon,
+                                          size: 18.ic,
+                                          color: iconColor,
                                         ),
                                       ),
+                                      // Red dot badge when highlighted
+                                      if (widget.isHighlighted)
+                                        Positioned(
+                                          right: -3,
+                                          top: -3,
+                                          child: Container(
+                                            width: 9.w,
+                                            height: 9.w,
+                                            decoration: const BoxDecoration(
+                                              color: _filterRed,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          widget.title,
+                                          style: AppTypography.textSmBold
+                                              .copyWith(
+                                                color:
+                                                    context.colors.textPrimary,
+                                                height: 1.15,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        SizedBox(height: 2.h),
+                                        Text(
+                                          widget.subtitle,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppTypography.textXsRegular
+                                              .copyWith(
+                                                height: 1.15,
+                                                color:
+                                                    widget.isHighlighted
+                                                        ? _filterRed.withValues(
+                                                          alpha: 0.9,
+                                                        )
+                                                        : context
+                                                            .colors
+                                                            .textPrimary
+                                                            .withValues(
+                                                              alpha: 0.5,
+                                                            ),
+                                              ),
+                                        ),
+                                      ],
                                     ),
+                                  ),
                                 ],
                               ),
-                              SizedBox(width: 8.w),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      widget.title,
-                                      style: AppTypography.textSmBold.copyWith(
-                                        color: context.colors.textPrimary,
-                                        height: 1.15,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    SizedBox(height: 2.h),
-                                    Text(
-                                      widget.subtitle,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: AppTypography.textXsRegular
-                                          .copyWith(
-                                            height: 1.15,
-                                            color:
-                                                widget.isHighlighted
-                                                    ? _filterRed.withValues(
-                                                      alpha: 0.9,
-                                                    )
-                                                    : context.colors.textPrimary
-                                                        .withValues(alpha: 0.5),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
-          );
-        },
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
