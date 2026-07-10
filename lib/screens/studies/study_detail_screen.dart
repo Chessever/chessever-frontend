@@ -159,6 +159,11 @@ class _StudyDetailContent extends StatelessWidget {
       ..sort((left, right) => left.orderIndex.compareTo(right.orderIndex));
     final study = detail.study;
     final author = study.authorUsername?.trim();
+    final attribution =
+        study.sourceMetadata?.attribution ??
+        (author == null || author.isEmpty
+            ? 'Original source: Lichess'
+            : 'By $author on Lichess');
 
     return ListView(
       key: const PageStorageKey<String>('study-detail-content'),
@@ -184,9 +189,7 @@ class _StudyDetailContent extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               Text(
-                author == null || author.isEmpty
-                    ? 'Original source: Lichess'
-                    : 'By $author on Lichess',
+                attribution,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: context.colors.textSecondary,
                   fontWeight: FontWeight.w500,
@@ -215,7 +218,7 @@ class _StudyDetailContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const StudySourceNotice(),
+        StudySourceNotice(study: study),
         const SizedBox(height: 24),
         StudySectionTitle(
           title: 'Chapters',

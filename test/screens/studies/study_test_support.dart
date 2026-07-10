@@ -41,6 +41,10 @@ GamebaseStudySummary testStudy({
   int views = 840,
   int chapterCount = 2,
   double credibilityScore = 76.4,
+  GamebaseStudySourceMetadata? sourceMetadata,
+  GamebaseStudyValidation? validation,
+  GamebaseStudyContentCapabilities contentCapabilities =
+      GamebaseStudyContentCapabilities.unavailable,
 }) {
   return GamebaseStudySummary(
     lichessStudyId: id,
@@ -64,6 +68,9 @@ GamebaseStudySummary testStudy({
     passedGate: true,
     status: GamebaseStudyStatus.active,
     syncedAt: DateTime.utc(2026, 7, 10),
+    sourceMetadata: sourceMetadata,
+    validation: validation,
+    contentCapabilities: contentCapabilities,
   );
 }
 

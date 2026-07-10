@@ -641,11 +641,41 @@ enum GamebaseStudyStatus {
 
 enum GamebaseStudySource { lichess }
 
-/// Current redistribution knowledge for mirrored Study chapter content.
-///
-/// The existing API supplies no explicit rights metadata, so current responses
-/// always use [unknown]. A future backend contract must opt into any stronger
-/// capability explicitly.
+/// Public, display-safe provenance supplied by Gamebase.
+class GamebaseStudySourceMetadata {
+  const GamebaseStudySourceMetadata({
+    required this.source,
+    required this.sourceId,
+    required this.url,
+    required this.authorUsername,
+    required this.attribution,
+  });
+
+  final GamebaseStudySource source;
+  final String sourceId;
+  final Uri url;
+  final String? authorUsername;
+  final String attribution;
+}
+
+enum GamebaseStudyValidationStatus { valid }
+
+/// Trust facts for the exact publication returned by Gamebase.
+class GamebaseStudyValidation {
+  const GamebaseStudyValidation({
+    required this.status,
+    required this.validatorVersion,
+    required this.validatedAt,
+  });
+
+  final GamebaseStudyValidationStatus status;
+  final String validatorVersion;
+  final DateTime validatedAt;
+}
+
+/// Explicit redistribution knowledge for mirrored Study chapter content.
+/// Legacy payloads remain [unknown]; only the additive trust contract can opt
+/// into a stronger capability.
 enum GamebaseStudyRedistributionCapability { unknown, allowed, prohibited }
 
 /// Version and rights facts required before mirrored chapter content can open.
@@ -655,6 +685,7 @@ class GamebaseStudyContentCapabilities {
     required this.rights,
     required this.redistribution,
     required this.canOpenMirroredChapterInApp,
+    required this.canDownloadMirroredPgn,
   });
 
   static const unavailable = GamebaseStudyContentCapabilities(
@@ -662,12 +693,14 @@ class GamebaseStudyContentCapabilities {
     rights: null,
     redistribution: GamebaseStudyRedistributionCapability.unknown,
     canOpenMirroredChapterInApp: false,
+    canDownloadMirroredPgn: false,
   );
 
   final String? contentVersion;
   final String? rights;
   final GamebaseStudyRedistributionCapability redistribution;
   final bool canOpenMirroredChapterInApp;
+  final bool canDownloadMirroredPgn;
 }
 
 class GamebaseStudyContractException implements Exception {
@@ -823,6 +856,8 @@ class GamebaseStudySummary {
     required this.passedGate,
     required this.status,
     required this.syncedAt,
+    this.sourceMetadata,
+    this.validation,
     this.contentCapabilities = GamebaseStudyContentCapabilities.unavailable,
   });
 
@@ -847,6 +882,8 @@ class GamebaseStudySummary {
   final bool passedGate;
   final GamebaseStudyStatus status;
   final DateTime syncedAt;
+  final GamebaseStudySourceMetadata? sourceMetadata;
+  final GamebaseStudyValidation? validation;
   final GamebaseStudyContentCapabilities contentCapabilities;
 
   String get id => lichessStudyId;
@@ -858,14 +895,24 @@ class GamebaseStudySummary {
       contentCapabilities.redistribution;
   bool get canOpenMirroredChapterInApp =>
       contentCapabilities.canOpenMirroredChapterInApp;
-  Uri get sourceUrl => Uri(
-    scheme: 'https',
-    host: 'lichess.org',
-    pathSegments: <String>['study', lichessStudyId],
-  );
+  bool get canDownloadMirroredPgn => contentCapabilities.canDownloadMirroredPgn;
+  Uri get sourceUrl =>
+      sourceMetadata?.url ??
+      Uri(
+        scheme: 'https',
+        host: 'lichess.org',
+        pathSegments: <String>['study', lichessStudyId],
+      );
+  String get sourceAttribution =>
+      sourceMetadata?.attribution ??
+      (authorUsername == null
+          ? 'Study on Lichess'
+          : 'Study by $authorUsername on Lichess');
   Uri get canonicalSourceUrl => sourceUrl;
 
   factory GamebaseStudySummary.fromJson(Map<String, dynamic> json) {
+    final lichessStudyId = _readLichessStudyId(json['id']);
+    _validateOptionalStudyTrustBundle(json);
     final views = _readRequiredStudyInt(json['views'], 'views');
     final chapterCount = _readRequiredStudyInt(
       json['chapterCount'],
@@ -879,7 +926,7 @@ class GamebaseStudySummary {
     }
 
     return GamebaseStudySummary(
-      lichessStudyId: _readLichessStudyId(json['id']),
+      lichessStudyId: lichessStudyId,
       authorUsername: _readOptionalStudyString(
         json['authorUsername'],
         'authorUsername',
@@ -924,6 +971,13 @@ class GamebaseStudySummary {
       passedGate: _readRequiredStudyBool(json['passedGate'], 'passedGate'),
       status: GamebaseStudyStatus.fromApiValue(json['status']),
       syncedAt: _readRequiredStudyDate(json['syncedAt'], 'syncedAt'),
+      sourceMetadata: _readOptionalStudySourceMetadata(
+        json,
+        expectedSourceId: lichessStudyId,
+        expectedPathSegments: <String>['study', lichessStudyId],
+      ),
+      validation: _readOptionalStudyValidation(json),
+      contentCapabilities: _readOptionalStudyContentCapabilities(json),
     );
   }
 }
@@ -996,11 +1050,14 @@ class GamebaseStudyChapterMetadata {
     required this.result,
     required this.chapterMode,
     required this.isSetup,
+    this.startingFen,
     required this.whiteName,
     required this.blackName,
     required this.whiteElo,
     required this.blackElo,
     required this.hasAnnotations,
+    this.sourceMetadata,
+    this.validation,
     this.contentCapabilities = GamebaseStudyContentCapabilities.unavailable,
   });
 
@@ -1015,11 +1072,14 @@ class GamebaseStudyChapterMetadata {
   final String? result;
   final String? chapterMode;
   final bool isSetup;
+  final String? startingFen;
   final String? whiteName;
   final String? blackName;
   final int? whiteElo;
   final int? blackElo;
   final bool hasAnnotations;
+  final GamebaseStudySourceMetadata? sourceMetadata;
+  final GamebaseStudyValidation? validation;
   final GamebaseStudyContentCapabilities contentCapabilities;
 
   String get studyId => lichessStudyId;
@@ -1033,11 +1093,16 @@ class GamebaseStudyChapterMetadata {
       contentCapabilities.redistribution;
   bool get canOpenMirroredChapterInApp =>
       contentCapabilities.canOpenMirroredChapterInApp;
-  Uri get sourceUrl => Uri(
-    scheme: 'https',
-    host: 'lichess.org',
-    pathSegments: <String>['study', lichessStudyId, lichessChapterId],
-  );
+  bool get canDownloadMirroredPgn => contentCapabilities.canDownloadMirroredPgn;
+  Uri get sourceUrl =>
+      sourceMetadata?.url ??
+      Uri(
+        scheme: 'https',
+        host: 'lichess.org',
+        pathSegments: <String>['study', lichessStudyId, lichessChapterId],
+      );
+  String get sourceAttribution =>
+      sourceMetadata?.attribution ?? 'Study on Lichess';
   Uri get canonicalSourceUrl => sourceUrl;
 
   factory GamebaseStudyChapterMetadata.fromJson(
@@ -1046,6 +1111,13 @@ class GamebaseStudyChapterMetadata {
   }) {
     final plyCount = _readRequiredStudyInt(json['plyCount'], 'plyCount');
     final orderIndex = _readRequiredStudyInt(json['orderIndex'], 'orderIndex');
+    final lichessChapterId = _readLichessChapterId(json['chapterId']);
+    _validateOptionalStudyTrustBundle(json);
+    final isSetup = _readRequiredStudyBool(json['isSetup'], 'isSetup');
+    final startingFen = _readOptionalStudyString(
+      json['startingFen'],
+      'startingFen',
+    );
     if (plyCount < 0 || orderIndex < 0) {
       throw const GamebaseStudyContractException(
         'Invalid Study chapter: plyCount and orderIndex cannot be negative.',
@@ -1056,7 +1128,7 @@ class GamebaseStudyChapterMetadata {
     // read into this model; only the source chapterId is a user-facing identity.
     return GamebaseStudyChapterMetadata(
       lichessStudyId: lichessStudyId,
-      lichessChapterId: _readLichessChapterId(json['chapterId']),
+      lichessChapterId: lichessChapterId,
       name: _readOptionalStudyString(json['name'], 'name'),
       plyCount: plyCount,
       orderIndex: orderIndex,
@@ -1065,7 +1137,8 @@ class GamebaseStudyChapterMetadata {
       variant: _readOptionalStudyString(json['variant'], 'variant'),
       result: _readOptionalStudyString(json['result'], 'result'),
       chapterMode: _readOptionalStudyString(json['chapterMode'], 'chapterMode'),
-      isSetup: _readRequiredStudyBool(json['isSetup'], 'isSetup'),
+      isSetup: isSetup,
+      startingFen: startingFen,
       whiteName: _readOptionalStudyString(json['whiteName'], 'whiteName'),
       blackName: _readOptionalStudyString(json['blackName'], 'blackName'),
       whiteElo: _readOptionalStudyInt(json['whiteElo'], 'whiteElo'),
@@ -1074,6 +1147,17 @@ class GamebaseStudyChapterMetadata {
         json['hasAnnotations'],
         'hasAnnotations',
       ),
+      sourceMetadata: _readOptionalStudySourceMetadata(
+        json,
+        expectedSourceId: lichessChapterId,
+        expectedPathSegments: <String>[
+          'study',
+          lichessStudyId,
+          lichessChapterId,
+        ],
+      ),
+      validation: _readOptionalStudyValidation(json),
+      contentCapabilities: _readOptionalStudyContentCapabilities(json),
     );
   }
 }
@@ -1094,6 +1178,7 @@ class GamebaseStudyDetail {
       contentCapabilities.redistribution;
   bool get canOpenMirroredChapterInApp =>
       contentCapabilities.canOpenMirroredChapterInApp;
+  bool get canDownloadMirroredPgn => contentCapabilities.canDownloadMirroredPgn;
 
   factory GamebaseStudyDetail.fromJson(Map<String, dynamic> json) {
     final payload = _readStudyEnvelopeData(json, operation: 'get Study');
@@ -1124,6 +1209,32 @@ class GamebaseStudyDetail {
       }
     }
     chapters.sort((left, right) => left.orderIndex.compareTo(right.orderIndex));
+
+    if (study.validation != null) {
+      if (chapters.length != study.chapterCount) {
+        throw const GamebaseStudyContractException(
+          'Invalid Study detail: validated publication has incomplete chapters.',
+        );
+      }
+      for (final chapter in chapters) {
+        final chapterValidation = chapter.validation;
+        if (chapter.sourceMetadata == null ||
+            chapterValidation == null ||
+            chapterValidation.validatorVersion !=
+                study.validation!.validatorVersion ||
+            chapterValidation.validatedAt != study.validation!.validatedAt ||
+            chapter.redistribution != study.redistribution ||
+            chapter.rights != study.rights ||
+            chapter.canOpenMirroredChapterInApp !=
+                study.canOpenMirroredChapterInApp ||
+            chapter.canDownloadMirroredPgn != study.canDownloadMirroredPgn ||
+            chapter.isSetup != (chapter.startingFen != null)) {
+          throw const GamebaseStudyContractException(
+            'Invalid Study detail: chapter trust metadata does not match the publication.',
+          );
+        }
+      }
+    }
 
     return GamebaseStudyDetail(
       study: study,
@@ -1158,6 +1269,188 @@ Map<String, dynamic> _readStudyMap(Object? value, String field) {
       'Invalid Study field "$field": expected string keys.',
     );
   }
+}
+
+void _validateOptionalStudyTrustBundle(Map<String, dynamic> json) {
+  final present =
+      <String>[
+        'source',
+        'validation',
+        'contentCapabilities',
+      ].where(json.containsKey).length;
+  if (present != 0 && present != 3) {
+    throw const GamebaseStudyContractException(
+      'Invalid Study trust contract: source, validation, and contentCapabilities must be supplied together.',
+    );
+  }
+}
+
+GamebaseStudySourceMetadata? _readOptionalStudySourceMetadata(
+  Map<String, dynamic> parent, {
+  required String expectedSourceId,
+  required List<String> expectedPathSegments,
+}) {
+  if (!parent.containsKey('source')) return null;
+  final source = _readStudyMap(parent['source'], 'source');
+  final type = _readRequiredStudyString(source['type'], 'source.type');
+  if (type != 'lichess') {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "source.type": unsupported source "$type".',
+    );
+  }
+
+  final sourceId = _readRequiredStudyString(
+    source['sourceId'],
+    'source.sourceId',
+  );
+  if (sourceId != expectedSourceId) {
+    throw const GamebaseStudyContractException(
+      'Invalid Study source: source identity does not match the publication.',
+    );
+  }
+
+  final rawUrl = _readRequiredStudyString(source['url'], 'source.url');
+  final url = Uri.tryParse(rawUrl);
+  if (url == null ||
+      url.scheme != 'https' ||
+      url.host.toLowerCase() != 'lichess.org' ||
+      url.hasPort ||
+      url.userInfo.isNotEmpty ||
+      url.query.isNotEmpty ||
+      url.fragment.isNotEmpty ||
+      !_sameStudyPath(url.pathSegments, expectedPathSegments)) {
+    throw const GamebaseStudyContractException(
+      'Invalid Study field "source.url": expected the canonical Lichess URL.',
+    );
+  }
+
+  return GamebaseStudySourceMetadata(
+    source: GamebaseStudySource.lichess,
+    sourceId: sourceId,
+    url: url,
+    authorUsername: _readOptionalStudyString(
+      source['authorUsername'],
+      'source.authorUsername',
+    ),
+    attribution: _readRequiredStudyString(
+      source['attribution'],
+      'source.attribution',
+    ),
+  );
+}
+
+bool _sameStudyPath(List<String> actual, List<String> expected) {
+  if (actual.length != expected.length) return false;
+  for (var index = 0; index < actual.length; index++) {
+    if (actual[index] != expected[index]) return false;
+  }
+  return true;
+}
+
+GamebaseStudyValidation? _readOptionalStudyValidation(
+  Map<String, dynamic> parent,
+) {
+  if (!parent.containsKey('validation')) return null;
+  final validation = _readStudyMap(parent['validation'], 'validation');
+  final status = _readRequiredStudyString(
+    validation['status'],
+    'validation.status',
+  );
+  if (status != 'valid') {
+    throw GamebaseStudyContractException(
+      'Invalid Study field "validation.status": unsupported status "$status".',
+    );
+  }
+  return GamebaseStudyValidation(
+    status: GamebaseStudyValidationStatus.valid,
+    validatorVersion: _readRequiredStudyString(
+      validation['validatorVersion'],
+      'validation.validatorVersion',
+    ),
+    validatedAt: _readRequiredStudyDate(
+      validation['validatedAt'],
+      'validation.validatedAt',
+    ),
+  );
+}
+
+GamebaseStudyContentCapabilities _readOptionalStudyContentCapabilities(
+  Map<String, dynamic> parent,
+) {
+  if (!parent.containsKey('contentCapabilities')) {
+    return GamebaseStudyContentCapabilities.unavailable;
+  }
+  final capabilities = _readStudyMap(
+    parent['contentCapabilities'],
+    'contentCapabilities',
+  );
+  for (final requiredField in <String>[
+    'contentVersion',
+    'rights',
+    'redistribution',
+    'canOpenMirroredChapterInApp',
+    'canDownloadMirroredPgn',
+  ]) {
+    if (!capabilities.containsKey(requiredField)) {
+      throw GamebaseStudyContractException(
+        'Invalid Study field "contentCapabilities.$requiredField": missing required value.',
+      );
+    }
+  }
+
+  final contentVersion = _readRequiredStudyString(
+    capabilities['contentVersion'],
+    'contentCapabilities.contentVersion',
+  );
+  if (!RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(contentVersion)) {
+    throw const GamebaseStudyContractException(
+      'Invalid Study field "contentCapabilities.contentVersion": expected a canonical SHA-256 version.',
+    );
+  }
+
+  final rights = _readOptionalStudyString(
+    capabilities['rights'],
+    'contentCapabilities.rights',
+  );
+  final redistributionRaw = _readRequiredStudyString(
+    capabilities['redistribution'],
+    'contentCapabilities.redistribution',
+  );
+  final redistribution = switch (redistributionRaw) {
+    'unknown' => GamebaseStudyRedistributionCapability.unknown,
+    'allowed' => GamebaseStudyRedistributionCapability.allowed,
+    'prohibited' => GamebaseStudyRedistributionCapability.prohibited,
+    _ =>
+      throw GamebaseStudyContractException(
+        'Invalid Study field "contentCapabilities.redistribution": unsupported value "$redistributionRaw".',
+      ),
+  };
+  final canOpen = _readRequiredStudyBool(
+    capabilities['canOpenMirroredChapterInApp'],
+    'contentCapabilities.canOpenMirroredChapterInApp',
+  );
+  final canDownload = _readRequiredStudyBool(
+    capabilities['canDownloadMirroredPgn'],
+    'contentCapabilities.canDownloadMirroredPgn',
+  );
+  if (canOpen != canDownload ||
+      ((canOpen || canDownload) &&
+          (redistribution != GamebaseStudyRedistributionCapability.allowed ||
+              rights == null)) ||
+      (redistribution == GamebaseStudyRedistributionCapability.allowed &&
+          rights == null)) {
+    throw const GamebaseStudyContractException(
+      'Invalid Study content capabilities: mirrored PGN access is not backed by an explicit rights grant.',
+    );
+  }
+
+  return GamebaseStudyContentCapabilities(
+    contentVersion: contentVersion,
+    rights: rights,
+    redistribution: redistribution,
+    canOpenMirroredChapterInApp: canOpen,
+    canDownloadMirroredPgn: canDownload,
+  );
 }
 
 String _readRequiredStudyString(Object? value, String field) {

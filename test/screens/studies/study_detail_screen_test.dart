@@ -89,6 +89,41 @@ void main() {
   }
 
   testWidgets(
+    'shows additive source attribution and validation without PGN claims',
+    (tester) async {
+      final study = testStudy(
+        author: 'vetted_author',
+        sourceMetadata: GamebaseStudySourceMetadata(
+          source: GamebaseStudySource.lichess,
+          sourceId: 'AbCd1234',
+          url: Uri.parse('https://lichess.org/study/AbCd1234'),
+          authorUsername: 'vetted_author',
+          attribution: 'Study by vetted_author on Lichess',
+        ),
+        validation: GamebaseStudyValidation(
+          status: GamebaseStudyValidationStatus.valid,
+          validatorVersion: 'lichess-study-mainline-v1',
+          validatedAt: DateTime.utc(2026, 7, 10, 3),
+        ),
+      );
+      final repository = _repository(
+        detailHandler: (_) async => testStudyDetail(study: study),
+      );
+
+      await _pumpDetail(tester, repository: repository);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Study by vetted_author on Lichess'), findsOneWidget);
+      expect(
+        find.textContaining('replayed every mainline as legal chess moves'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('mirrored PGN'), findsNothing);
+      expect(find.text('Open Study on Lichess'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'opens only canonical Study and chapter URLs through the callback',
     (tester) async {
       final opened = <Uri>[];

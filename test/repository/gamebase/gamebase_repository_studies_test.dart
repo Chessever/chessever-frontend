@@ -40,6 +40,7 @@ Map<String, dynamic> _study({
   String id = 'AbCd1234',
   Object? authorUsername = 'example_author',
   Object? lichessCreatedAt = '2026-01-15T08:00:00.000Z',
+  int chapterCount = 2,
 }) {
   return <String, dynamic>{
     'id': id,
@@ -48,7 +49,7 @@ Map<String, dynamic> _study({
     'views': 840,
     'lichessCreatedAt': lichessCreatedAt,
     'lichessUpdatedAt': '2026-07-01T09:00:00.000Z',
-    'chapterCount': 2,
+    'chapterCount': chapterCount,
     'plyTotal': 112,
     'hasAnnotations': true,
     'ecos': ['B90', 'B91'],
@@ -67,6 +68,61 @@ Map<String, dynamic> _study({
     // not promoted to source identity or content-version fields by the client.
     'createdAt': '2026-06-01T00:00:00.000Z',
     'updatedAt': '2026-07-10T02:00:00.000Z',
+  };
+}
+
+Map<String, dynamic> _trustBundle({
+  required String sourceId,
+  required String url,
+  required String hashCharacter,
+  Object? authorUsername = 'example_author',
+  String? rights,
+  String redistribution = 'unknown',
+  bool allowMirroredPgn = false,
+}) {
+  return <String, dynamic>{
+    'source': <String, dynamic>{
+      'type': 'lichess',
+      'sourceId': sourceId,
+      'url': url,
+      'authorUsername': authorUsername,
+      'attribution':
+          authorUsername == null
+              ? 'Study on Lichess'
+              : 'Study by $authorUsername on Lichess',
+    },
+    'validation': <String, dynamic>{
+      'status': 'valid',
+      'validatorVersion': 'lichess-study-mainline-v1',
+      'validatedAt': '2026-07-10T03:00:00.000Z',
+    },
+    'contentCapabilities': <String, dynamic>{
+      'contentVersion': 'sha256:${List.filled(64, hashCharacter).join()}',
+      'rights': rights,
+      'redistribution': redistribution,
+      'canOpenMirroredChapterInApp': allowMirroredPgn,
+      'canDownloadMirroredPgn': allowMirroredPgn,
+    },
+  };
+}
+
+Map<String, dynamic> _trustedStudy({
+  String id = 'AbCd1234',
+  int chapterCount = 2,
+  String? rights,
+  String redistribution = 'unknown',
+  bool allowMirroredPgn = false,
+}) {
+  return <String, dynamic>{
+    ..._study(id: id, chapterCount: chapterCount),
+    ..._trustBundle(
+      sourceId: id,
+      url: 'https://lichess.org/study/$id',
+      hashCharacter: 'a',
+      rights: rights,
+      redistribution: redistribution,
+      allowMirroredPgn: allowMirroredPgn,
+    ),
   };
 }
 
@@ -93,6 +149,36 @@ Map<String, dynamic> _chapter({
     'whiteElo': 2500,
     'blackElo': 2450,
     'hasAnnotations': true,
+  };
+}
+
+Map<String, dynamic> _trustedChapter({
+  required String studyId,
+  required String chapterId,
+  required int orderIndex,
+  required String hashCharacter,
+  String? rights,
+  String redistribution = 'unknown',
+  bool allowMirroredPgn = false,
+  bool isSetup = false,
+  String? startingFen,
+}) {
+  return <String, dynamic>{
+    ..._chapter(
+      internalId: 'not-public-$chapterId',
+      chapterId: chapterId,
+      orderIndex: orderIndex,
+    ),
+    'isSetup': isSetup,
+    'startingFen': startingFen,
+    ..._trustBundle(
+      sourceId: chapterId,
+      url: 'https://lichess.org/study/$studyId/$chapterId',
+      hashCharacter: hashCharacter,
+      rights: rights,
+      redistribution: redistribution,
+      allowMirroredPgn: allowMirroredPgn,
+    ),
   };
 }
 
@@ -142,6 +228,37 @@ void main() {
       expect(study.ecos, ['B90', 'B91']);
       expect(study.source, GamebaseStudySource.lichess);
       expect(study.sourceUrl.toString(), 'https://lichess.org/study/AbCd1234');
+    });
+
+    test('decodes additive provenance, validation, and fail-closed rights', () {
+      final page = GamebaseStudiesPage.fromJson({
+        'status': 'success',
+        'data': {
+          'items': [_trustedStudy()],
+          'total': 1,
+          'limit': 30,
+          'offset': 0,
+        },
+      });
+
+      final study = page.items.single;
+      expect(study.sourceMetadata?.source, GamebaseStudySource.lichess);
+      expect(study.sourceMetadata?.sourceId, 'AbCd1234');
+      expect(
+        study.sourceMetadata?.url.toString(),
+        'https://lichess.org/study/AbCd1234',
+      );
+      expect(study.sourceAttribution, 'Study by example_author on Lichess');
+      expect(study.validation?.status, GamebaseStudyValidationStatus.valid);
+      expect(study.validation?.validatorVersion, 'lichess-study-mainline-v1');
+      expect(study.contentVersion, startsWith('sha256:'));
+      expect(study.rights, isNull);
+      expect(
+        study.redistribution,
+        GamebaseStudyRedistributionCapability.unknown,
+      );
+      expect(study.canOpenMirroredChapterInApp, isFalse);
+      expect(study.canDownloadMirroredPgn, isFalse);
     });
 
     test(
@@ -246,6 +363,37 @@ void main() {
         );
       },
     );
+
+    test('rejects partial, mismatched, or privilege-escalating trust data', () {
+      final partial = _trustedStudy()..remove('validation');
+      final mismatchedSource = _trustedStudy();
+      (mismatchedSource['source'] as Map<String, dynamic>)['url'] =
+          'https://lichess.org/study/Other123';
+      final elevated = _trustedStudy();
+      final elevatedCapabilities =
+          elevated['contentCapabilities'] as Map<String, dynamic>;
+      elevatedCapabilities['canOpenMirroredChapterInApp'] = true;
+      elevatedCapabilities['canDownloadMirroredPgn'] = true;
+
+      for (final invalid in <Map<String, dynamic>>[
+        partial,
+        mismatchedSource,
+        elevated,
+      ]) {
+        expect(
+          () => GamebaseStudiesPage.fromJson({
+            'status': 'success',
+            'data': {
+              'items': [invalid],
+              'total': 1,
+              'limit': 30,
+              'offset': 0,
+            },
+          }),
+          throwsA(isA<GamebaseStudyContractException>()),
+        );
+      }
+    });
   });
 
   group('Gamebase Study detail contract', () {
@@ -295,6 +443,65 @@ void main() {
         );
         expect(first.name, 'First chapter');
         expect(first.hasAnnotations, isTrue);
+      },
+    );
+
+    test(
+      'keeps a complete validated snapshot and explicit rights capabilities',
+      () {
+        const startingFen = '8/8/8/8/8/4k3/8/4K3 w - - 0 1';
+        final detail = GamebaseStudyDetail.fromJson({
+          'status': 'success',
+          'data': {
+            'study': _trustedStudy(
+              rights: 'CC-BY-4.0',
+              redistribution: 'allowed',
+              allowMirroredPgn: true,
+            ),
+            'chapters': [
+              _trustedChapter(
+                studyId: 'AbCd1234',
+                chapterId: 'Chapter2',
+                orderIndex: 1,
+                hashCharacter: 'c',
+                rights: 'CC-BY-4.0',
+                redistribution: 'allowed',
+                allowMirroredPgn: true,
+                isSetup: true,
+                startingFen: startingFen,
+              ),
+              _trustedChapter(
+                studyId: 'AbCd1234',
+                chapterId: 'Chapter1',
+                orderIndex: 0,
+                hashCharacter: 'b',
+                rights: 'CC-BY-4.0',
+                redistribution: 'allowed',
+                allowMirroredPgn: true,
+              ),
+            ],
+          },
+        });
+
+        expect(detail.canOpenMirroredChapterInApp, isTrue);
+        expect(detail.canDownloadMirroredPgn, isTrue);
+        expect(detail.rights, 'CC-BY-4.0');
+        expect(
+          detail.redistribution,
+          GamebaseStudyRedistributionCapability.allowed,
+        );
+        expect(
+          detail.chapters.map((chapter) => chapter.canonicalChapterId),
+          <String>['Chapter1', 'Chapter2'],
+        );
+        expect(detail.chapters.first.startingFen, isNull);
+        expect(detail.chapters.last.startingFen, startingFen);
+        expect(detail.chapters.last.isSetup, isTrue);
+        expect(
+          detail.chapters.last.sourceUrl.toString(),
+          'https://lichess.org/study/AbCd1234/Chapter2',
+        );
+        expect(detail.chapters.last.canOpenMirroredChapterInApp, isTrue);
       },
     );
 
@@ -365,7 +572,10 @@ void main() {
             GamebaseStudyRedistributionCapability.unknown,
           );
           expect(capabilities.canOpenMirroredChapterInApp, isFalse);
+          expect(capabilities.canDownloadMirroredPgn, isFalse);
         }
+        expect(detail.study.sourceMetadata, isNull);
+        expect(detail.study.validation, isNull);
         expect(detail.contentVersion, isNull);
         expect(detail.rights, isNull);
         expect(
@@ -408,6 +618,47 @@ void main() {
                 orderIndex: 0,
               ),
             ],
+          },
+        }),
+        throwsA(isA<GamebaseStudyContractException>()),
+      );
+    });
+
+    test('rejects incomplete or inconsistent validated chapter snapshots', () {
+      final incomplete = <String, dynamic>{
+        'status': 'success',
+        'data': {
+          'study': _trustedStudy(chapterCount: 2),
+          'chapters': [
+            _trustedChapter(
+              studyId: 'AbCd1234',
+              chapterId: 'Chapter1',
+              orderIndex: 0,
+              hashCharacter: 'b',
+            ),
+          ],
+        },
+      };
+      final inconsistentChapter = _trustedChapter(
+        studyId: 'AbCd1234',
+        chapterId: 'Chapter1',
+        orderIndex: 0,
+        hashCharacter: 'b',
+      );
+      (inconsistentChapter['validation']
+              as Map<String, dynamic>)['validatorVersion'] =
+          'different-validator';
+
+      expect(
+        () => GamebaseStudyDetail.fromJson(incomplete),
+        throwsA(isA<GamebaseStudyContractException>()),
+      );
+      expect(
+        () => GamebaseStudyDetail.fromJson({
+          'status': 'success',
+          'data': {
+            'study': _trustedStudy(chapterCount: 1),
+            'chapters': [inconsistentChapter],
           },
         }),
         throwsA(isA<GamebaseStudyContractException>()),

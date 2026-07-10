@@ -17,9 +17,10 @@ class StudySummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final author = study.authorUsername?.trim();
     final sourceCopy =
-        author == null || author.isEmpty
+        study.sourceMetadata?.attribution ??
+        (author == null || author.isEmpty
             ? 'Lichess Study'
-            : 'Lichess Study by $author';
+            : 'Lichess Study by $author');
 
     return Semantics(
       container: true,
@@ -195,14 +196,20 @@ class StudySignalSummary extends StatelessWidget {
 }
 
 class StudySourceNotice extends StatelessWidget {
-  const StudySourceNotice({super.key});
+  const StudySourceNotice({required this.study, super.key});
+
+  final GamebaseStudySummary study;
 
   @override
   Widget build(BuildContext context) {
+    final validation = study.validation;
+    final copy =
+        validation == null
+            ? 'Study and chapter actions open the original content on Lichess.'
+            : 'ChessEver replayed every mainline as legal chess moves with ${validation.validatorVersion}. Study and chapter actions still open the attributed original on Lichess.';
     return Semantics(
       container: true,
-      label:
-          'Source safety. Study and chapter actions open the original content on Lichess.',
+      label: 'Source safety. $copy',
       child: ExcludeSemantics(
         child: Container(
           padding: const EdgeInsets.all(14),
@@ -221,7 +228,7 @@ class StudySourceNotice extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Study and chapter actions open the original content on Lichess.',
+                  copy,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.colors.textPrimaryMuted,
                     height: 1.4,
