@@ -199,63 +199,70 @@ class _AppearanceCard extends ConsumerWidget {
     final mode = ref.watch(themeModeProvider);
     final isLight = mode == ThemeMode.light;
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(20.br),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40.w,
-            height: 40.h,
-            decoration: BoxDecoration(
-              color: context.colors.surfaceRecessed,
-              borderRadius: BorderRadius.circular(12.br),
-            ),
-            child: Icon(
-              isLight ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_fill,
-              color: context.colors.iconPrimary,
-              size: 22.ic,
+    // Composition rule: interactive GlassSwitch must NOT sit inside GlassCard
+    // / GlassGroupedSection (avoidsRefraction + jelly clip). Opaque row +
+    // standalone GlassSwitch.useOwnLayer is the package-correct pattern.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(left: 4.w, bottom: 6.h),
+          child: Text(
+            'APPEARANCE',
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textSecondary,
+              fontSize: 12.f,
+              letterSpacing: 0.4,
             ),
           ),
-          SizedBox(width: 14.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Appearance',
+        ),
+        Row(
+          children: [
+            Expanded(
+              // Standalone list tile for the label row (own glass layer).
+              child: GlassListTile.standalone(
+                leading: Icon(
+                  isLight
+                      ? CupertinoIcons.sun_max_fill
+                      : CupertinoIcons.moon_fill,
+                  color: context.colors.iconPrimary,
+                ),
+                title: Text(
+                  'Light mode',
                   style: AppTypography.textMdMedium.copyWith(
                     color: context.colors.textPrimary,
                     fontSize: 14.f,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                SizedBox(height: 2.h),
-                Text(
-                  isLight ? 'Light mode' : 'Dark mode',
+                subtitle: Text(
+                  isLight ? 'On' : 'Off',
                   style: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textSecondary,
                     fontSize: 12.f,
                   ),
                 ),
-              ],
+                onTap: () {
+                  HapticFeedbackService.selection();
+                  ref.read(themeModeProvider.notifier).toggleTheme();
+                },
+              ),
             ),
-          ),
-          GlassSwitch(
-            value: isLight,
-            useOwnLayer: true,
-            onChanged: (v) {
-              HapticFeedbackService.selection();
-              ref
-                  .read(themeModeProvider.notifier)
-                  .setTheme(v ? ThemeMode.light : ThemeMode.dark);
-            },
-          ),
-        ],
-      ),
+            SizedBox(width: 10.w),
+            // Sibling — not a child of the glass tile platter.
+            GlassSwitch(
+              value: isLight,
+              useOwnLayer: true,
+              onChanged: (v) {
+                HapticFeedbackService.selection();
+                ref
+                    .read(themeModeProvider.notifier)
+                    .setTheme(v ? ThemeMode.light : ThemeMode.dark);
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

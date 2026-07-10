@@ -7,6 +7,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_loading.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
@@ -204,7 +205,7 @@ class _PlayerList extends ConsumerWidget {
       child: playersState.when(
         loading:
             () =>  Center(
-              child: CircularProgressIndicator(color: context.colors.textPrimary),
+              child: const GlassLoading.circular(size: 28),
             ),
         error: (error, stack) {
           return RefreshIndicator(
@@ -279,7 +280,7 @@ class _PlayerList extends ConsumerWidget {
                 return  Center(
                   child: Padding(
                     padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(color: context.colors.textPrimary),
+                    child: const GlassLoading.circular(size: 28),
                   ),
                 );
               }

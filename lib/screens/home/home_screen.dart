@@ -20,6 +20,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_feedback.dart';
 import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
@@ -199,11 +200,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
 
       // Fully authenticated users: show logout confirmation
-      final confirmed = await showSmoothConfirmDialog(
+      final confirmed = await showGlassConfirmDialog(
         context: context,
         title: 'Logout',
         message: 'Are you sure you want to log out?',
         confirmText: 'Logout',
+        destructive: true,
       );
       if (confirmed == true) {
         await ref.read(authStateProvider.notifier).signOut();
@@ -252,6 +254,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: GlassScaffold(
         backgroundColor: context.colors.background,
         statusBarStyle: GlassStatusBarStyle.auto,
+        // Package: bars sample content scrolling underneath and flip icon colors.
+        contentAwareBrightness: true,
         extendBody: true,
         edgeFade: true,
         bottomBarHeight: BottomNavBar.barHeight + BottomNavBar.verticalPadding,

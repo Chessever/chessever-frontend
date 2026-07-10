@@ -282,44 +282,21 @@ class GroupEventScreen extends HookConsumerWidget {
                   onTap: () => Scaffold.maybeOf(context)?.openDrawer(),
                 ),
                 trailing: [
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      GlassIconButton(
-                        key: e2eKey(E2eIds.eventsFilterButton),
-                        icon: Icon(
-                          CupertinoIcons.slider_horizontal_3,
-                          color: context.colors.iconPrimary,
-                        ),
-                        onPressed: openFilter,
-                        size: 40,
-                        iconSize: 18,
-                        useOwnLayer: true,
+                  // Package GlassBadge over glass icon (notification-count island).
+                  GlassBadge(
+                    count: filterBadgeCount,
+                    backgroundColor: context.colors.brand,
+                    child: GlassIconButton(
+                      key: e2eKey(E2eIds.eventsFilterButton),
+                      icon: Icon(
+                        CupertinoIcons.slider_horizontal_3,
+                        color: context.colors.iconPrimary,
                       ),
-                      if (filterBadgeCount > 0)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.colors.brand,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '$filterBadgeCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                      onPressed: openFilter,
+                      size: 40,
+                      iconSize: 18,
+                      useOwnLayer: true,
+                    ),
                   ),
                 ],
               ),

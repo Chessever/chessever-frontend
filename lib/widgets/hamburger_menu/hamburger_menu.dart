@@ -15,6 +15,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_feedback.dart';
 import 'package:chessever2/widgets/paywall/manage_subscription_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -24,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:chessever2/main.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -101,17 +103,17 @@ class HamburgerMenu extends HookConsumerWidget {
               logarteTapCount.value = 0;
               if (logarte.isOverlayAttached) {
                 logarte.detachOverlay();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Logarte Debug Console Disabled'),
-                  ),
+                showGlassSnack(
+                  context,
+                  message: 'Logarte Debug Console Disabled',
+                  type: GlassToastType.info,
                 );
               } else {
                 logarte.attach(context: context, visible: true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Logarte Debug Console Enabled'),
-                  ),
+                showGlassSnack(
+                  context,
+                  message: 'Logarte Debug Console Enabled',
+                  type: GlassToastType.success,
                 );
               }
             }

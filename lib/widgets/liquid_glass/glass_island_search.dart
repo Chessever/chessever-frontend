@@ -1,14 +1,14 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/liquid_glass/search_expand_state.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-/// Collapsed glass search circle that expands horizontally into a field.
+/// Collapsed glass search circle that expands horizontally into package
+/// [GlassSearchBar] (not a permanent full-width slab).
 ///
-/// Designed for island top chrome — never permanently reserves a full-width
-/// search slab. Expand/collapse is horizontal-only.
+/// Expand/collapse is horizontal-only. Expanded mode uses the package
+/// search surface so we get native jelly cancel/clear affordances.
 class GlassIslandSearch extends StatefulWidget {
   const GlassIslandSearch({
     super.key,
@@ -22,7 +22,7 @@ class GlassIslandSearch extends StatefulWidget {
     this.onClear,
     this.textFieldKey,
     this.collapsedSize = 40,
-    this.expandedHeight = 40,
+    this.expandedHeight = 44,
     this.autofocusOnExpand = true,
   });
 
@@ -105,18 +105,27 @@ class _GlassIslandSearchState extends State<GlassIslandSearch> {
           duration: const Duration(milliseconds: 280),
           curve: Curves.easeOutCubic,
           width: targetW,
-          height: widget.expandedHeight,
+          height: widget.expanded ? widget.expandedHeight : widget.collapsedSize,
           child:
               widget.expanded
-                  ? _ExpandedField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    hintText: widget.hintText,
-                    colors: colors,
-                    textFieldKey: widget.textFieldKey,
-                    onChanged: widget.onChanged,
-                    onSubmitted: widget.onSubmitted,
-                    onCollapse: _collapse,
+                  ? KeyedSubtree(
+                    key: widget.textFieldKey,
+                    // Package GlassSearchBar owns glass + clear + cancel.
+                    child: GlassSearchBar(
+                      controller: widget.controller,
+                      focusNode: _focusNode,
+                      placeholder: widget.hintText,
+                      onChanged: widget.onChanged,
+                      onSubmitted: widget.onSubmitted,
+                      showsCancelButton: true,
+                      onCancel: _collapse,
+                      autofocus: widget.autofocusOnExpand,
+                      useOwnLayer: true,
+                      height: widget.expandedHeight,
+                      searchIconColor: colors.iconSecondary,
+                      clearIconColor: colors.iconSecondary,
+                      cancelButtonColor: colors.iconPrimary,
+                    ),
                   )
                   : Align(
                     alignment: Alignment.centerRight,
@@ -134,79 +143,6 @@ class _GlassIslandSearchState extends State<GlassIslandSearch> {
                   ),
         );
       },
-    );
-  }
-}
-
-class _ExpandedField extends StatelessWidget {
-  const _ExpandedField({
-    required this.controller,
-    required this.focusNode,
-    required this.hintText,
-    required this.colors,
-    required this.onCollapse,
-    this.onChanged,
-    this.onSubmitted,
-    this.textFieldKey,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final String hintText;
-  final AppColors colors;
-  final VoidCallback onCollapse;
-  final ValueChanged<String>? onChanged;
-  final ValueChanged<String>? onSubmitted;
-  final Key? textFieldKey;
-
-  @override
-  Widget build(BuildContext context) {
-    // Glass surface island wrapping a sharp text field (not nested glass
-    // controls inside glass — text field is opaque content).
-    return GlassContainer(
-      useOwnLayer: true,
-      shape: const LiquidRoundedSuperellipse(borderRadius: 22),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        children: [
-          Icon(CupertinoIcons.search, size: 18, color: colors.iconSecondary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              key: textFieldKey,
-              controller: controller,
-              focusNode: focusNode,
-              onChanged: onChanged,
-              onSubmitted: onSubmitted,
-              style: AppTypography.textSmMedium.copyWith(
-                color: colors.textPrimary,
-              ),
-              cursorColor: colors.brand,
-              decoration: InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                hintText: hintText,
-                hintStyle: AppTypography.textSmMedium.copyWith(
-                  color: colors.textTertiary,
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: onCollapse,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(
-                CupertinoIcons.xmark_circle_fill,
-                size: 18,
-                color: colors.iconSecondary,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
