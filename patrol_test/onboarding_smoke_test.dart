@@ -11,8 +11,11 @@ void main() {
 
       await expectVisible($, E2eIds.homeRoot);
       await expectVisible($, E2eIds.eventsRoot);
-      await expectVisible($, E2eIds.navCalendar);
+      await expectVisible($, E2eIds.navForYou);
+      await expectVisible($, E2eIds.navEvents);
       await expectVisible($, E2eIds.navLibrary);
+      await expectVisible($, E2eIds.navDiscovery);
+      await expectVisible($, E2eIds.navMySpace);
     },
     config: patrolE2eConfig,
   );

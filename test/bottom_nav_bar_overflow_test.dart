@@ -79,9 +79,11 @@ void main() {
       expect(find.byType(GlassTabBar), findsOneWidget);
       expect(find.byType(BottomNavBar), findsOneWidget);
       // Labels exist (GlassTabBar dual-paints selected/unselected layers).
+      expect(find.text('For You'), findsWidgets);
       expect(find.text('Events'), findsWidgets);
-      expect(find.text('Calendar'), findsWidgets);
       expect(find.text('Library'), findsWidgets);
+      expect(find.text('Discover'), findsWidgets);
+      expect(find.text('My Space'), findsWidgets);
     },
   );
 
@@ -124,28 +126,28 @@ void main() {
 
     expect(
       container.read(selectedBottomNavBarItemProvider),
-      BottomNavBarItem.tournaments,
+      BottomNavBarItem.forYou,
     );
     final before = container.read(bottomNavBarReTapRequestProvider);
 
     // Hit targets are sized to the compact pill (tabWidth × count), not the
     // full GlassTabBar rect (which includes the search circle gap).
-    await tester.tap(find.byKey(e2eKey(E2eIds.navEvents)));
+    await tester.tap(find.byKey(e2eKey(E2eIds.navForYou)));
     await tester.pump();
 
     expect(
       container.read(selectedBottomNavBarItemProvider),
-      BottomNavBarItem.tournaments,
+      BottomNavBarItem.forYou,
     );
     final after = container.read(bottomNavBarReTapRequestProvider);
-    expect(after.item, BottomNavBarItem.tournaments);
+    expect(after.item, BottomNavBarItem.forYou);
     expect(after.sequence, before.sequence + 1);
 
-    await tester.tap(find.byKey(e2eKey(E2eIds.navCalendar)));
+    await tester.tap(find.byKey(e2eKey(E2eIds.navEvents)));
     await tester.pump();
     expect(
       container.read(selectedBottomNavBarItemProvider),
-      BottomNavBarItem.calendar,
+      BottomNavBarItem.events,
     );
   });
 
@@ -182,10 +184,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    // Unique keys (not dual-painted) for Events/Calendar/Library.
+    // Unique keys (not dual-painted) for all five destinations.
+    expect(find.byKey(e2eKey(E2eIds.navForYou)), findsOneWidget);
     expect(find.byKey(e2eKey(E2eIds.navEvents)), findsOneWidget);
-    expect(find.byKey(e2eKey(E2eIds.navCalendar)), findsOneWidget);
     expect(find.byKey(e2eKey(E2eIds.navLibrary)), findsOneWidget);
+    expect(find.byKey(e2eKey(E2eIds.navDiscovery)), findsOneWidget);
+    expect(find.byKey(e2eKey(E2eIds.navMySpace)), findsOneWidget);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(BottomNavBar)),

@@ -14,8 +14,11 @@ class E2eIds {
   static const boardColorDialogRoot = 'e2e_board_color_dialog_root';
 
   static const navEvents = 'e2e_nav_events';
+  static const navForYou = 'e2e_nav_for_you';
   static const navCalendar = 'e2e_nav_calendar';
   static const navLibrary = 'e2e_nav_library';
+  static const navDiscovery = 'e2e_nav_discovery';
+  static const navMySpace = 'e2e_nav_my_space';
 
   static const drawerSettings = 'e2e_drawer_settings';
   static const drawerPlayers = 'e2e_drawer_players';
@@ -25,6 +28,8 @@ class E2eIds {
   static const drawerLogout = 'e2e_drawer_logout';
 
   static const eventsRoot = 'e2e_events_root';
+  static const discoveryRoot = 'e2e_discovery_root';
+  static const mySpaceRoot = 'e2e_my_space_root';
   static const calendarRoot = 'e2e_calendar_root';
   static const libraryRoot = 'e2e_library_root';
   static const playersRoot = 'e2e_players_root';

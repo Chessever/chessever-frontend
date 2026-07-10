@@ -122,12 +122,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       final bar = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
-      // package: pill width ≈ tabWidth × tabCount. 72×3 = 216 << screen width.
+      // The package receives a generous natural width and clamps five tabs to
+      // the remaining space beside the search pill.
       expect(bar.tabWidth, BottomNavBar.tabWidth);
       expect(bar.tabWidth!, lessThan(100));
       expect(
-        BottomNavBar.pillWidthFor(3),
-        BottomNavBar.tabWidth * 3,
+        BottomNavBar.pillWidthFor(BottomNavBarItem.values.length),
+        BottomNavBar.tabWidth * BottomNavBarItem.values.length,
       );
     },
   );
@@ -135,6 +136,9 @@ void main() {
   testWidgets(
     'e2e tab hit overlay matches pill width — taps past pill do not change tab',
     (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(393, 852);
+      addTearDown(tester.view.reset);
       late ProviderContainer container;
 
       await tester.pumpWidget(
@@ -174,37 +178,38 @@ void main() {
 
       expect(
         container.read(selectedBottomNavBarItemProvider),
-        BottomNavBarItem.tournaments,
+        BottomNavBarItem.forYou,
       );
 
-      // E2e Events hit target is the left third of the pill overlay.
-      final eventsKey = find.byKey(
-        const ValueKey<String>('e2e_nav_events'),
-      );
-      expect(eventsKey, findsOneWidget);
-      final eventsRect = tester.getRect(eventsKey);
+      // For You is the first of five accessible hit targets.
+      final forYouKey = find.byKey(const ValueKey<String>('e2e_nav_for_you'));
+      expect(forYouKey, findsOneWidget);
+      final forYouRect = tester.getRect(forYouKey);
 
-      // Overlay must be pill-sized: Events slot ≈ tabWidth (not 1/3 of screen).
-      // Cue shell scale may shrink layout by ~1–2% during settle — allow slack.
+      final effectivePillWidth = BottomNavBar.pillWidthFor(
+        BottomNavBarItem.values.length,
+        availableWidth: 393,
+      );
+      final effectiveSlotWidth =
+          effectivePillWidth / BottomNavBarItem.values.length;
       expect(
-        eventsRect.width,
-        closeTo(BottomNavBar.tabWidth, 3.0),
-        reason:
-            'e2e hit slots must match compact pill tabWidth, not full-bleed thirds',
+        forYouRect.width,
+        closeTo(effectiveSlotWidth, 3.0),
+        reason: 'e2e hit slots must match the package-clamped five-tab pill',
       );
 
-      // Library is the rightmost e2e slot — its right edge is the pill edge.
-      final libraryRect = tester.getRect(
-        find.byKey(const ValueKey<String>('e2e_nav_library')),
+      // My Space is the rightmost slot — its right edge is the pill edge.
+      final mySpaceRect = tester.getRect(
+        find.byKey(const ValueKey<String>('e2e_nav_my_space')),
       );
-      final pillRight = libraryRect.right;
+      final pillRight = mySpaceRect.right;
       final expectedPillRight =
-          BottomNavBar.horizontalPadding + BottomNavBar.pillWidthFor(3);
+          BottomNavBar.horizontalPadding + effectivePillWidth;
       expect(pillRight, closeTo(expectedPillRight, 6.0));
 
-      // Gap between pill and search: tap past the pill must not select Calendar.
-      final emptyX = pillRight + 40;
-      final emptyY = eventsRect.center.dy;
+      // The small gap between pill and search must not select a destination.
+      final emptyX = pillRight + BottomNavBar.spacing / 2;
+      final emptyY = forYouRect.center.dy;
       expect(emptyX, lessThan(393 - 20));
 
       await tester.tapAt(Offset(emptyX, emptyY));
@@ -212,10 +217,19 @@ void main() {
 
       expect(
         container.read(selectedBottomNavBarItemProvider),
-        BottomNavBarItem.tournaments,
+        BottomNavBarItem.forYou,
         reason:
             'Taps in the gap between compact pill and search circle must not '
             'change tabs (overlay must not span that gap)',
+      );
+
+      expect(
+        BottomNavBar.pillWidthFor(
+              BottomNavBarItem.values.length,
+              availableWidth: 320,
+            ) /
+            BottomNavBarItem.values.length,
+        greaterThanOrEqualTo(48),
       );
     },
   );

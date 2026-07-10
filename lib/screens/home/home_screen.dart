@@ -4,13 +4,14 @@ import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
-import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/discovery/discovery_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/home/home_destination_stack.dart';
+import 'package:chessever2/screens/my_space/my_space_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -328,12 +329,30 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
 
   Widget _buildScreen(BottomNavBarItem item) {
     switch (item) {
-      case BottomNavBarItem.tournaments:
-        return const GroupEventScreen();
-      case BottomNavBarItem.calendar:
-        return const CalendarScreen();
+      case BottomNavBarItem.forYou:
+        return ProviderScope(
+          overrides: [
+            selectedGroupCategoryProvider.overrideWith(
+              (ref) => GroupEventCategory.forYou,
+            ),
+          ],
+          child: const GroupEventScreen(mode: GroupEventScreenMode.forYou),
+        );
+      case BottomNavBarItem.events:
+        return ProviderScope(
+          overrides: [
+            selectedGroupCategoryProvider.overrideWith(
+              (ref) => GroupEventCategory.current,
+            ),
+          ],
+          child: const GroupEventScreen(mode: GroupEventScreenMode.events),
+        );
       case BottomNavBarItem.library:
         return const LibraryScreen();
+      case BottomNavBarItem.discovery:
+        return const DiscoveryScreen();
+      case BottomNavBarItem.mySpace:
+        return const MySpaceScreen();
     }
   }
 

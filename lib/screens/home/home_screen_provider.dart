@@ -19,14 +19,18 @@ class _HomeScreenController {
 
     // Handle refresh based on current screen
     switch (currentItem) {
-      case BottomNavBarItem.tournaments:
+      case BottomNavBarItem.forYou:
+      case BottomNavBarItem.events:
         ref.read(groupEventScreenProvider.notifier).onRefresh();
-        break;
-      case BottomNavBarItem.calendar:
-        debugPrint('Refreshing calendar...');
         break;
       case BottomNavBarItem.library:
         debugPrint('Refreshing library...');
+        break;
+      case BottomNavBarItem.discovery:
+        debugPrint('Refreshing discovery...');
+        break;
+      case BottomNavBarItem.mySpace:
+        debugPrint('Refreshing My Space...');
         break;
     }
   }

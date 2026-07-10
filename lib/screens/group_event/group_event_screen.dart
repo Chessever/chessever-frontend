@@ -23,8 +23,11 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_avatar_island.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/cupertino.dart';
@@ -35,6 +38,36 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 enum GroupEventCategory { past, current, forYou, search }
+
+/// Controls which event families a shell destination exposes.
+///
+/// [all] preserves the legacy routed screen. The home shell uses [forYou] and
+/// [events] as separate retained destinations so personalized games do not
+/// compete with current/past event discovery in one tab strip.
+enum GroupEventScreenMode { all, forYou, events }
+
+List<GroupEventCategory> groupEventCategoriesFor(
+  GroupEventScreenMode mode, {
+  required bool hasActiveSearch,
+}) {
+  final baseCategories = switch (mode) {
+    GroupEventScreenMode.all => const [
+      GroupEventCategory.forYou,
+      GroupEventCategory.current,
+      GroupEventCategory.past,
+    ],
+    GroupEventScreenMode.forYou => const [GroupEventCategory.forYou],
+    GroupEventScreenMode.events => const [
+      GroupEventCategory.current,
+      GroupEventCategory.past,
+    ],
+  };
+  return List<GroupEventCategory>.unmodifiable([
+    ...baseCategories,
+    if (hasActiveSearch && mode != GroupEventScreenMode.forYou)
+      GroupEventCategory.search,
+  ]);
+}
 
 /// Provider for the current search query used in search tab
 final searchTabQueryProvider = StateProvider<String>((ref) => '');
@@ -51,14 +84,16 @@ final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
 );
 
 class GroupEventScreen extends HookConsumerWidget {
-  const GroupEventScreen({super.key});
+  const GroupEventScreen({super.key, this.mode = GroupEventScreenMode.all});
+
+  final GroupEventScreenMode mode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final searchController = useTextEditingController();
     final searchTabDebounce = useRef<Timer?>(null);
     useEffect(() => () => searchTabDebounce.value?.cancel(), const []);
-    final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
+    final requestedCategory = ref.watch(selectedGroupCategoryProvider);
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
     final appliedFilterState = ref.watch(eventAppliedFilterProvider);
@@ -72,20 +107,27 @@ class GroupEventScreen extends HookConsumerWidget {
 
     final filterBadgeCount = activeFilterCount(appliedFilterState);
 
-    // Determine which categories to show (search tab only appears when searching)
-    final visibleCategories =
-        hasActiveSearch
-            ? [
-              GroupEventCategory.forYou,
-              GroupEventCategory.current,
-              GroupEventCategory.past,
-              GroupEventCategory.search,
-            ]
-            : [
-              GroupEventCategory.forYou,
-              GroupEventCategory.current,
-              GroupEventCategory.past,
-            ];
+    // Search remains destination-aware: Events can search current/past data,
+    // while the single-purpose For You feed leaves global search to the home
+    // search surface.
+    final visibleCategories = groupEventCategoriesFor(
+      mode,
+      hasActiveSearch: hasActiveSearch,
+    );
+    final fallbackCategory = visibleCategories.first;
+    final selectedTourEvent =
+        visibleCategories.contains(requestedCategory)
+            ? requestedCategory
+            : fallbackCategory;
+
+    useEffect(() {
+      if (requestedCategory == selectedTourEvent) return null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(selectedGroupCategoryProvider.notifier).state =
+            selectedTourEvent;
+      });
+      return null;
+    }, [requestedCategory, selectedTourEvent]);
 
     final pageController = usePageController(
       initialPage: visibleCategories
@@ -97,11 +139,15 @@ class GroupEventScreen extends HookConsumerWidget {
     final forYouScrollController = useScrollController();
     final searchScrollController = useScrollController();
     final isAnimating = useRef(false);
-    final isSearching = useState(false);
+    final isSearchExpanded = useState(false);
     final focusNode = useFocusNode();
+    final reduceMotion = GlassMotion.reduceMotion(context);
 
     useEffect(() {
-      void onFocus() => isSearching.value = focusNode.hasFocus;
+      void onFocus() {
+        if (focusNode.hasFocus) isSearchExpanded.value = true;
+      }
+
       focusNode.addListener(onFocus);
       return () => focusNode.removeListener(onFocus);
     }, [focusNode]);
@@ -121,6 +167,11 @@ class GroupEventScreen extends HookConsumerWidget {
       if (newIndex >= 0 &&
           pageController.hasClients &&
           pageController.page?.round() != newIndex) {
+        if (reduceMotion) {
+          isAnimating.value = false;
+          pageController.jumpToPage(newIndex);
+          return null;
+        }
         isAnimating.value = true;
         pageController
             .animateToPage(
@@ -131,7 +182,7 @@ class GroupEventScreen extends HookConsumerWidget {
             .then((_) => isAnimating.value = false);
       }
       return null;
-    }, [selectedTourEvent, visibleCategories]);
+    }, [selectedTourEvent, visibleCategories, reduceMotion]);
 
     ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (
       previous,
@@ -162,36 +213,48 @@ class GroupEventScreen extends HookConsumerWidget {
       });
     });
 
-    void scrollActiveEventsTabToTop() {
-      final ScrollController target;
-      if (selectedTourEvent == GroupEventCategory.forYou) {
-        target = forYouScrollController;
-      } else if (selectedTourEvent == GroupEventCategory.past) {
-        target = pastScrollController;
-      } else if (selectedTourEvent == GroupEventCategory.current) {
-        target = currentScrollController;
-      } else {
-        target = searchScrollController;
-      }
+    void scrollControllerToTop(ScrollController target) {
       if (!target.hasClients) return;
+      if (reduceMotion) {
+        target.jumpTo(target.position.minScrollExtent);
+        return;
+      }
       target.animateTo(
-        0,
+        target.position.minScrollExtent,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
       );
+    }
+
+    void scrollActiveEventsTabToTop() {
+      final target = switch (selectedTourEvent) {
+        GroupEventCategory.forYou => forYouScrollController,
+        GroupEventCategory.past => pastScrollController,
+        GroupEventCategory.current => currentScrollController,
+        GroupEventCategory.search => searchScrollController,
+      };
+      scrollControllerToTop(target);
     }
 
     ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
       previous,
       next,
     ) {
-      if (next.item == BottomNavBarItem.tournaments) {
+      final matchesDestination = switch (mode) {
+        GroupEventScreenMode.forYou => next.item == BottomNavBarItem.forYou,
+        GroupEventScreenMode.events => next.item == BottomNavBarItem.events,
+        GroupEventScreenMode.all =>
+          next.item == BottomNavBarItem.forYou ||
+              next.item == BottomNavBarItem.events,
+      };
+      if (matchesDestination) {
         scrollActiveEventsTabToTop();
       }
     });
 
     // Home bottom searchable morph drives Events search query.
     ref.listen<String>(homeBottomSearchTextProvider, (previous, next) {
+      if (mode == GroupEventScreenMode.forYou) return;
       final trimmed = next.trim();
       final prevQ = ref.read(searchTabQueryProvider);
       if (trimmed == prevQ) return;
@@ -223,6 +286,10 @@ class GroupEventScreen extends HookConsumerWidget {
       );
     });
 
+    void updateDestinationSearch(String value) {
+      ref.read(homeBottomSearchTextProvider.notifier).state = value;
+    }
+
     void onScroll() {
       if (!context.mounted || selectedTourEvent != GroupEventCategory.past) {
         return;
@@ -243,6 +310,12 @@ class GroupEventScreen extends HookConsumerWidget {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 12.sp,
       tablet: 24.sp,
+    );
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(14) * 1.2;
+    final controlHeight = (scaledLabelHeight + 20).clamp(48.0, 96.0);
+    final contentWidth = min(
+      MediaQuery.sizeOf(context).width,
+      ResponsiveHelper.contentMaxWidth,
     );
 
     final chromeCollapse = useMemoized(ChromeScrollCollapse.new);
@@ -267,275 +340,294 @@ class GroupEventScreen extends HookConsumerWidget {
       );
     }
 
-    // Island-only top: avatar circle + filter circle + compact category strip.
-    // Search expands from the home bottom searchable pill (Apple Music morph).
-    return Material(
+    // The event canvas owns the full viewport. Every management control is a
+    // discrete island over that opaque canvas; no header row reserves space.
+    return GlassFullScreenPage(
       key: e2eKey(E2eIds.eventsRoot),
-      color: context.colors.background,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
+      backgroundColor: context.colors.background,
+      contentPadding: EdgeInsets.only(top: controlHeight * 2 + 24, bottom: 8),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: contentWidth,
+          child: GlassIslandStack(
+            key: const ValueKey<String>('group-event-floating-controls'),
+            includeStatusBar: false,
+            gap: 6,
             children: [
-              GlassIslandStack(
-                gap: 6,
-                children: [
-                  GlassIslandTopBar(
-                    horizontalPadding: horizontalPadding,
-                    topPadding: 0,
-                    leading: GlassAvatarIsland(
-                      onTap: () => Scaffold.maybeOf(context)?.openDrawer(),
-                    ),
-                    trailing: [
-                      GlassBadge(
-                        count: filterBadgeCount,
-                        backgroundColor: context.colors.brand,
-                        child: GlassIconButton(
-                          key: e2eKey(E2eIds.eventsFilterButton),
-                          icon: Icon(
-                            CupertinoIcons.slider_horizontal_3,
-                            color: context.colors.iconPrimary,
+              GlassIslandTopBar(
+                horizontalPadding: horizontalPadding,
+                topPadding: 0,
+                height: controlHeight,
+                leading: GlassAvatarIsland(
+                  onTap: () => Scaffold.maybeOf(context)?.openDrawer(),
+                ),
+                center:
+                    mode == GroupEventScreenMode.forYou
+                        ? null
+                        : Semantics(
+                          label:
+                              isSearchExpanded.value
+                                  ? 'Search events field'
+                                  : 'Search events',
+                          button: !isSearchExpanded.value,
+                          textField: isSearchExpanded.value,
+                          child: GlassIslandSearch(
+                            controller: searchController,
+                            focusNode: focusNode,
+                            expanded: isSearchExpanded.value,
+                            onExpandedChanged:
+                                (expanded) => isSearchExpanded.value = expanded,
+                            hintText: 'Search events and players',
+                            textFieldKey: const ValueKey<String>(
+                              'group-event-search-control',
+                            ),
+                            collapsedSize: controlHeight,
+                            expandedHeight: controlHeight,
+                            onChanged: updateDestinationSearch,
+                            onSubmitted: updateDestinationSearch,
+                            onClear: () => updateDestinationSearch(''),
                           ),
-                          onPressed: openFilter,
-                          size: 40,
-                          iconSize: 18,
-                          useOwnLayer: true,
                         ),
+                trailing: [
+                  Semantics(
+                    label: 'Filter events',
+                    value:
+                        filterBadgeCount == 0
+                            ? 'No active filters'
+                            : '$filterBadgeCount active filters',
+                    button: true,
+                    child: GlassBadge(
+                      count: filterBadgeCount,
+                      backgroundColor: context.colors.brand,
+                      child: GlassIconButton(
+                        key: e2eKey(E2eIds.eventsFilterButton),
+                        icon: Icon(
+                          CupertinoIcons.slider_horizontal_3,
+                          color: context.colors.iconPrimary,
+                        ),
+                        onPressed: openFilter,
+                        size: controlHeight,
+                        iconSize: 18,
+                        useOwnLayer: true,
                       ),
-                    ],
-                  ),
-                  _SegmentedSwitcher(
-                    searchController: searchController,
-                    selectedTourEvent: selectedTourEvent,
-                    visibleCategories: visibleCategories,
-                    expanded: segmentsExpanded.value,
-                    onSelectedChanged: (index) {
-                      final newCategory = visibleCategories[index];
-                      final currentCategory = selectedTourEvent;
-
-                      if (newCategory == currentCategory) {
-                        ScrollController? controller;
-                        if (newCategory == GroupEventCategory.forYou) {
-                          controller = forYouScrollController;
-                        } else if (newCategory == GroupEventCategory.past) {
-                          controller = pastScrollController;
-                        } else if (newCategory == GroupEventCategory.current) {
-                          controller = currentScrollController;
-                        } else if (newCategory == GroupEventCategory.search) {
-                          controller = searchScrollController;
-                        }
-
-                        if (controller != null && controller.hasClients) {
-                          controller.animateTo(
-                            0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic,
-                          );
-                        }
-                        chromeCollapse.reset();
-                        segmentsExpanded.value = true;
-                        return;
-                      }
-
-                      ref.read(selectedGroupCategoryProvider.notifier).state =
-                          newCategory;
-                      chromeCollapse.reset();
-                      segmentsExpanded.value = true;
-                    },
+                    ),
                   ),
                 ],
               ),
-              Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    if (notification is! ScrollUpdateNotification) {
-                      return false;
-                    }
-                    if (chromeCollapse.onScrollUpdate(notification)) {
-                      segmentsExpanded.value = chromeCollapse.expanded;
-                    }
-                    return false;
-                  },
-                  child: PageView.builder(
-                  controller: pageController,
-                  itemCount: visibleCategories.length,
-                  onPageChanged: (index) {
-                    if (!isAnimating.value &&
-                        index < visibleCategories.length) {
-                      final newCategory = visibleCategories[index];
-                      ref.read(selectedGroupCategoryProvider.notifier).state =
-                          newCategory;
-                    }
-                  },
-                  itemBuilder: (context, index) {
-                    if (index >= visibleCategories.length) {
-                      return const SizedBox.shrink();
-                    }
-                    final currentCategory = visibleCategories[index];
-                    final isPast = currentCategory == GroupEventCategory.past;
-                    final isCurrent =
-                        currentCategory == GroupEventCategory.current;
-                    final isForYou =
-                        currentCategory == GroupEventCategory.forYou;
-                    final isSearch =
-                        currentCategory == GroupEventCategory.search;
-                    final scrollController =
-                        isPast
-                            ? pastScrollController
-                            : isCurrent
-                            ? currentScrollController
-                            : isForYou
-                            ? forYouScrollController
-                            : isSearch
-                            ? searchScrollController
-                            : null;
+              _SegmentedSwitcher(
+                selectedTourEvent: selectedTourEvent,
+                visibleCategories: visibleCategories,
+                controlHeight: controlHeight,
+                expanded: segmentsExpanded.value,
+                onSelectedChanged: (index) {
+                  final newCategory = visibleCategories[index];
+                  final currentCategory = selectedTourEvent;
 
-                    // Only load data for the currently selected tab. Heavy
-                    // tabs keep their provider caches, not their widget trees.
-                    if (currentCategory != selectedTourEvent) {
-                      return const SizedBox.shrink();
-                    }
+                  if (newCategory == currentCategory) {
+                    final controller = switch (newCategory) {
+                      GroupEventCategory.forYou => forYouScrollController,
+                      GroupEventCategory.past => pastScrollController,
+                      GroupEventCategory.current => currentScrollController,
+                      GroupEventCategory.search => searchScrollController,
+                    };
+                    scrollControllerToTop(controller);
+                    chromeCollapse.reset();
+                    segmentsExpanded.value = true;
+                    return;
+                  }
 
-                    // Special handling for "Search" tab - show search results
-                    if (isSearch) {
-                      return SearchResultsWidget(
-                        scrollController: searchScrollController,
-                        searchQuery: searchQuery,
-                      );
-                    }
-
-                    // Special handling for "For You" tab - show games instead of events
-                    if (isForYou) {
-                      return ForYouGamesWidget(
-                        scrollController: forYouScrollController,
-                      );
-                    }
-
-                    return ref
-                        .watch(groupEventScreenProvider)
-                        .when(
-                          data: (filteredEvents) {
-                            final isLoadingMore =
-                                isPast &&
-                                ref
-                                    .read(groupEventScreenProvider.notifier)
-                                    .isFetchingMore;
-
-                            // Get favorites from unified favorites system (Supabase + local cache)
-                            final favoritesAsync = ref.watch(
-                              favoriteEventsProvider,
-                            );
-                            final favoriteEvents =
-                                favoritesAsync.valueOrNull ?? [];
-
-                            // Extract event IDs from favorites
-                            final allFavorites =
-                                favoriteEvents
-                                    .map((e) => e.eventId)
-                                    .where((id) => id.isNotEmpty)
-                                    .toList();
-
-                            // Build timestamp map for sorting within groups
-                            final favoriteTimestamps = <String, DateTime>{};
-                            for (final fav in favoriteEvents) {
-                              favoriteTimestamps[fav.eventId] = fav.createdAt;
-                            }
-
-                            final isSearching =
-                                searchController.text.trim().isNotEmpty;
-
-                            // Get cached favorite player data (populated by event cards as they render)
-                            final cachedEventFavoritePlayers = ref.watch(
-                              eventFavoritePlayersCacheProvider,
-                            );
-
-                            // Disable favorite prioritization for past events
-                            final shouldApplyFavoriteSorting =
-                                currentCategory != GroupEventCategory.past;
-
-                            final finalEvents =
-                                isSearching || !shouldApplyFavoriteSorting
-                                    ? filteredEvents
-                                    : ref
-                                        .read(tournamentSortingServiceProvider)
-                                        .sortBasedOnFavorite(
-                                          tours: filteredEvents,
-                                          favorites: allFavorites,
-                                          eventFavoritePlayersMap:
-                                              cachedEventFavoritePlayers,
-                                          favoriteTimestamps:
-                                              favoriteTimestamps,
-                                        );
-                            final smartData =
-                                isCurrent
-                                    ? visibleSmartEventCardData(
-                                      SmartEventCardData.fromState(
-                                        filter: appliedFilterState,
-                                        events: finalEvents,
-                                        source: SmartEventSource.current,
-                                      ),
-                                      dismissedSmartEventCardKeys,
-                                    )
-                                    : null;
-
-                            return RefreshIndicator(
-                              onRefresh:
-                                  ref.read(homeScreenProvider).onPullRefresh,
-                              color: context.colors.textSecondary,
-                              backgroundColor: context.colors.surface,
-                              displacement: 60.h,
-                              strokeWidth: 3.w,
-                              child: AllEventsTabWidget(
-                                filteredEvents: finalEvents,
-                                smartData: smartData,
-                                onSelect:
-                                    (tourEventCardModel) => ref
-                                        .read(groupEventScreenProvider.notifier)
-                                        .onSelectTournament(
-                                          context: context,
-                                          id: tourEventCardModel.id,
-                                        ),
-                                isLoadingMore: isLoadingMore,
-                                scrollController: scrollController,
-                              ),
-                            );
-                          },
-                          loading:
-                              () => SkeletonWidget(
-                                child: AllEventsTabWidget(
-                                  onSelect: (_) {},
-                                  filteredEvents: List.generate(
-                                    10,
-                                    (index) => GroupEventCardModel(
-                                      id: 'tour_001',
-                                      title: 'World Chess Championship 2025',
-                                      dates: 'Mar 15 - 25,2025',
-                                      timeUntilStart: 'Starts in 8 months',
-                                      tourEventCategory:
-                                          TourEventCategory.values[Random()
-                                              .nextInt(
-                                                TourEventCategory.values.length,
-                                              )],
-                                      maxAvgElo: 0,
-                                      timeControl: 'Standard',
-                                      endDate: null,
-                                      startDate: null,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          error:
-                              (error, stackTrace) => const GenericErrorWidget(),
-                        );
-                  },
-                ),
-                ),
+                  ref.read(selectedGroupCategoryProvider.notifier).state =
+                      newCategory;
+                  chromeCollapse.reset();
+                  segmentsExpanded.value = true;
+                },
               ),
             ],
+          ),
+        ),
+      ),
+      content: Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: contentWidth,
+          height: double.infinity,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is! ScrollUpdateNotification) {
+                return false;
+              }
+              if (reduceMotion) return false;
+              if (chromeCollapse.onScrollUpdate(notification)) {
+                segmentsExpanded.value = chromeCollapse.expanded;
+              }
+              return false;
+            },
+            child: PageView.builder(
+              controller: pageController,
+              itemCount: visibleCategories.length,
+              onPageChanged: (index) {
+                if (!isAnimating.value && index < visibleCategories.length) {
+                  final newCategory = visibleCategories[index];
+                  ref.read(selectedGroupCategoryProvider.notifier).state =
+                      newCategory;
+                }
+              },
+              itemBuilder: (context, index) {
+                if (index >= visibleCategories.length) {
+                  return const SizedBox.shrink();
+                }
+                final currentCategory = visibleCategories[index];
+                final isPast = currentCategory == GroupEventCategory.past;
+                final isCurrent = currentCategory == GroupEventCategory.current;
+                final isForYou = currentCategory == GroupEventCategory.forYou;
+                final isSearch = currentCategory == GroupEventCategory.search;
+                final scrollController =
+                    isPast
+                        ? pastScrollController
+                        : isCurrent
+                        ? currentScrollController
+                        : isForYou
+                        ? forYouScrollController
+                        : isSearch
+                        ? searchScrollController
+                        : null;
+
+                // Only load data for the currently selected tab. Heavy
+                // tabs keep their provider caches, not their widget trees.
+                if (currentCategory != selectedTourEvent) {
+                  return const SizedBox.shrink();
+                }
+
+                // Special handling for "Search" tab - show search results
+                if (isSearch) {
+                  return SearchResultsWidget(
+                    scrollController: searchScrollController,
+                    searchQuery: searchQuery,
+                  );
+                }
+
+                // Special handling for "For You" tab - show games instead of events
+                if (isForYou) {
+                  return ForYouGamesWidget(
+                    scrollController: forYouScrollController,
+                  );
+                }
+
+                return ref
+                    .watch(groupEventScreenProvider)
+                    .when(
+                      data: (filteredEvents) {
+                        final isLoadingMore =
+                            isPast &&
+                            ref
+                                .read(groupEventScreenProvider.notifier)
+                                .isFetchingMore;
+
+                        // Get favorites from unified favorites system (Supabase + local cache)
+                        final favoritesAsync = ref.watch(
+                          favoriteEventsProvider,
+                        );
+                        final favoriteEvents = favoritesAsync.valueOrNull ?? [];
+
+                        // Extract event IDs from favorites
+                        final allFavorites =
+                            favoriteEvents
+                                .map((e) => e.eventId)
+                                .where((id) => id.isNotEmpty)
+                                .toList();
+
+                        // Build timestamp map for sorting within groups
+                        final favoriteTimestamps = <String, DateTime>{};
+                        for (final fav in favoriteEvents) {
+                          favoriteTimestamps[fav.eventId] = fav.createdAt;
+                        }
+
+                        final isSearching =
+                            searchController.text.trim().isNotEmpty;
+
+                        // Get cached favorite player data (populated by event cards as they render)
+                        final cachedEventFavoritePlayers = ref.watch(
+                          eventFavoritePlayersCacheProvider,
+                        );
+
+                        // Disable favorite prioritization for past events
+                        final shouldApplyFavoriteSorting =
+                            currentCategory != GroupEventCategory.past;
+
+                        final finalEvents =
+                            isSearching || !shouldApplyFavoriteSorting
+                                ? filteredEvents
+                                : ref
+                                    .read(tournamentSortingServiceProvider)
+                                    .sortBasedOnFavorite(
+                                      tours: filteredEvents,
+                                      favorites: allFavorites,
+                                      eventFavoritePlayersMap:
+                                          cachedEventFavoritePlayers,
+                                      favoriteTimestamps: favoriteTimestamps,
+                                    );
+                        final smartData =
+                            isCurrent
+                                ? visibleSmartEventCardData(
+                                  SmartEventCardData.fromState(
+                                    filter: appliedFilterState,
+                                    events: finalEvents,
+                                    source: SmartEventSource.current,
+                                  ),
+                                  dismissedSmartEventCardKeys,
+                                )
+                                : null;
+
+                        return RefreshIndicator(
+                          onRefresh: ref.read(homeScreenProvider).onPullRefresh,
+                          color: context.colors.textSecondary,
+                          backgroundColor: context.colors.surface,
+                          displacement: 60.h,
+                          strokeWidth: 3.w,
+                          child: AllEventsTabWidget(
+                            filteredEvents: finalEvents,
+                            smartData: smartData,
+                            onSelect:
+                                (tourEventCardModel) => ref
+                                    .read(groupEventScreenProvider.notifier)
+                                    .onSelectTournament(
+                                      context: context,
+                                      id: tourEventCardModel.id,
+                                    ),
+                            isLoadingMore: isLoadingMore,
+                            scrollController: scrollController,
+                          ),
+                        );
+                      },
+                      loading:
+                          () => SkeletonWidget(
+                            child: AllEventsTabWidget(
+                              onSelect: (_) {},
+                              filteredEvents: List.generate(
+                                10,
+                                (index) => GroupEventCardModel(
+                                  id: 'tour_001',
+                                  title: 'World Chess Championship 2025',
+                                  dates: 'Mar 15 - 25,2025',
+                                  timeUntilStart: 'Starts in 8 months',
+                                  tourEventCategory:
+                                      TourEventCategory.values[Random().nextInt(
+                                        TourEventCategory.values.length,
+                                      )],
+                                  maxAvgElo: 0,
+                                  timeControl: 'Standard',
+                                  endDate: null,
+                                  startDate: null,
+                                ),
+                              ),
+                            ),
+                          ),
+                      error: (error, stackTrace) => const GenericErrorWidget(),
+                    );
+              },
+            ),
           ),
         ),
       ),
@@ -545,16 +637,16 @@ class GroupEventScreen extends HookConsumerWidget {
 
 class _SegmentedSwitcher extends ConsumerWidget {
   const _SegmentedSwitcher({
-    required this.searchController,
     required this.selectedTourEvent,
     required this.visibleCategories,
+    required this.controlHeight,
     required this.onSelectedChanged,
     this.expanded = true,
   });
 
-  final TextEditingController searchController;
   final GroupEventCategory selectedTourEvent;
   final List<GroupEventCategory> visibleCategories;
+  final double controlHeight;
   final ValueChanged<int> onSelectedChanged;
   final bool expanded;
 
@@ -632,16 +724,29 @@ class _SegmentedSwitcher extends ConsumerWidget {
           return Text(baseLabel);
         }).toList();
 
-    // Full segment island at top → floating chips when scrolled.
-    return GlassFloatingSegments(
-      options: options,
-      optionLabels: optionLabels,
-      selectedIndex: visibleCategories
-          .indexOf(selectedTourEvent)
-          .clamp(0, visibleCategories.length - 1),
-      onSelected: onSelectedChanged,
-      expanded: expanded,
-      notifyOnReselect: true,
+    // Full segment island at top → floating chips when scrolled. The outer
+    // envelope remains a 48pt-or-larger semantic target at every text scale.
+    return Semantics(
+      key: const ValueKey<String>('group-event-category-segments'),
+      container: true,
+      label: 'Event categories',
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: controlHeight),
+        child: GlassFloatingSegments(
+          options: options,
+          optionLabels: optionLabels,
+          selectedIndex: visibleCategories
+              .indexOf(selectedTourEvent)
+              .clamp(0, visibleCategories.length - 1),
+          onSelected: onSelectedChanged,
+          expanded: expanded,
+          notifyOnReselect: true,
+          isScrollable:
+              visibleCategories.length > 3 ||
+              MediaQuery.sizeOf(context).width < 360 ||
+              MediaQuery.textScalerOf(context).scale(14) > 18,
+        ),
+      ),
     );
   }
 }

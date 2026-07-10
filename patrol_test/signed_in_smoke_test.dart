@@ -45,11 +45,9 @@ void main() {
       try {
         await expectVisible($, E2eIds.eventsRoot);
 
-        await tapBottomNavRoot(
-          $,
-          navId: E2eIds.navCalendar,
-          expectedRoot: E2eIds.calendarRoot,
-        );
+        await pushNamedRoute($, '/calendar_screen');
+        await expectVisible($, E2eIds.calendarRoot);
+        await popRoute($);
         await tapBottomNavRoot(
           $,
           navId: E2eIds.navLibrary,
@@ -61,6 +59,21 @@ void main() {
         await tapBottomNavRoot(
           $,
           navId: E2eIds.navEvents,
+          expectedRoot: E2eIds.eventsRoot,
+        );
+        await tapBottomNavRoot(
+          $,
+          navId: E2eIds.navDiscovery,
+          expectedRoot: E2eIds.discoveryRoot,
+        );
+        await tapBottomNavRoot(
+          $,
+          navId: E2eIds.navMySpace,
+          expectedRoot: E2eIds.mySpaceRoot,
+        );
+        await tapBottomNavRoot(
+          $,
+          navId: E2eIds.navForYou,
           expectedRoot: E2eIds.eventsRoot,
         );
 
@@ -245,11 +258,8 @@ void main() {
           timeout: const Duration(seconds: 45),
         );
 
-        await tapBottomNavRoot(
-          $,
-          navId: E2eIds.navCalendar,
-          expectedRoot: E2eIds.calendarRoot,
-        );
+        await pushNamedRoute($, '/calendar_screen');
+        await expectVisible($, E2eIds.calendarRoot);
         if (calendarQuery != null && calendarQuery.isNotEmpty) {
           await searchFor(
             $,
@@ -264,6 +274,7 @@ void main() {
             reason: 'calendar search query',
           );
         }
+        await popRoute($);
 
         await pushNamedRoute($, '/player_list_screen');
         await expectVisible($, E2eIds.playersRoot);

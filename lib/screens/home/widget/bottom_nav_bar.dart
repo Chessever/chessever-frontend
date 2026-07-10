@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
@@ -16,7 +17,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:motor/motor.dart';
 
-enum BottomNavBarItem { tournaments, calendar, library }
+enum BottomNavBarItem { forYou, events, library, discovery, mySpace }
 
 /// Emitted whenever the user taps the already-selected bottom nav item.
 /// Screens that own a scrollable surface for [item] should listen and
@@ -35,7 +36,7 @@ class BottomNavBarReTapRequestNotifier
   BottomNavBarReTapRequestNotifier()
     : super(
         const BottomNavBarReTapRequest(
-          item: BottomNavBarItem.tournaments,
+          item: BottomNavBarItem.forYou,
           sequence: 0,
         ),
       );
@@ -51,20 +52,24 @@ final bottomNavBarReTapRequestProvider = StateNotifierProvider<
 >((ref) => BottomNavBarReTapRequestNotifier());
 
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
-  BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
-  BottomNavBarItem.calendar: SvgAsset.calendarNavIcon,
+  BottomNavBarItem.forYou: SvgAsset.favouriteIcon2,
+  BottomNavBarItem.events: SvgAsset.tournamentIcon,
   BottomNavBarItem.library: SvgAsset.libraryNavIcon,
+  BottomNavBarItem.discovery: SvgAsset.openingExplorer,
+  BottomNavBarItem.mySpace: SvgAsset.playersIcon,
 };
 
 final namesBottomNavBarIcons = {
-  BottomNavBarItem.tournaments: 'Events',
-  BottomNavBarItem.calendar: 'Calendar',
+  BottomNavBarItem.forYou: 'For You',
+  BottomNavBarItem.events: 'Events',
   BottomNavBarItem.library: 'Library',
+  BottomNavBarItem.discovery: 'Discover',
+  BottomNavBarItem.mySpace: 'My Space',
 };
 
 final selectedBottomNavBarItemProvider =
     StateProvider.autoDispose<BottomNavBarItem>(
-      (ref) => BottomNavBarItem.tournaments,
+      (ref) => BottomNavBarItem.forYou,
     );
 
 /// Floating liquid-glass searchable bottom island (Apple Music morph).
@@ -74,15 +79,26 @@ final selectedBottomNavBarItemProvider =
 class BottomNavBar extends ConsumerStatefulWidget {
   const BottomNavBar({super.key});
 
-  static const double barHeight = 64;
+  static const double barHeight = 60;
   static const double verticalPadding = 12;
-  static const double horizontalPadding = 16;
+  static const double horizontalPadding = 8;
+  static const double spacing = 4;
 
   /// Per-tab slot width for [GlassTabBar.searchable] (pill ≈ this × tab count).
   static const double tabWidth = 72;
 
   /// Visual width of the compact tab pill island (not full-bleed).
-  static double pillWidthFor(int tabCount) => tabWidth * tabCount;
+  static double pillWidthFor(int tabCount, {double? availableWidth}) {
+    final naturalWidth = tabWidth * tabCount;
+    if (availableWidth == null) return naturalWidth;
+
+    // Mirror liquid_glass_widgets' collapsed layout calculation so the
+    // transparent e2e/accessibility hit overlay never extends into the search
+    // pill. At 320 pt this resolves to exactly five 48 pt destinations.
+    final contentWidth = math.max(0.0, availableWidth - horizontalPadding * 2);
+    final maxPillWidth = math.max(0.0, contentWidth - barHeight - spacing);
+    return math.min(naturalWidth, maxPillWidth);
+  }
 
   @override
   ConsumerState<BottomNavBar> createState() => _BottomNavBarState();
@@ -246,8 +262,10 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       searchBarHeight: 50,
       verticalPadding: BottomNavBar.verticalPadding,
       horizontalPadding: BottomNavBar.horizontalPadding,
-      // Per-tab slot width (package: pill ≈ tabWidth × tabCount). Keep ~70–88
-      // so 3 tabs stay a compact floating island, not a full-bleed slab.
+      spacing: BottomNavBar.spacing,
+      // The package clamps this natural per-tab width to the remaining space.
+      // Five destinations therefore stay compact while preserving 48 pt slots
+      // down to the supported 320 pt phone width.
       tabWidth: BottomNavBar.tabWidth,
       tabPillAnchor: GlassTabPillAnchor.start,
       enableBlend: false,
@@ -256,8 +274,8 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       unselectedIconColor: inactiveColor,
       selectedLabelColor: selectedColor,
       unselectedLabelColor: inactiveColor,
-      iconSize: 22,
-      labelFontSize: 11,
+      iconSize: 21,
+      labelFontSize: 10,
       quality: GlassQuality.standard,
     );
 
@@ -265,38 +283,51 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
     // only (tabWidth × tabCount). Must NOT span the gap between pill and
     // search circle — otherwise taps in empty space change tabs.
     final tabCount = BottomNavBarItem.values.length;
-    final pillW = BottomNavBar.pillWidthFor(tabCount);
-    final island = Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        bar,
-        if (!searchActive)
-          Positioned(
-            left: BottomNavBar.horizontalPadding,
-            width: pillW,
-            bottom: BottomNavBar.verticalPadding,
-            height: BottomNavBar.barHeight,
-            child: Row(
-              children: [
-                for (var i = 0; i < tabCount; i++)
-                  Expanded(
-                    child: GestureDetector(
-                      key: switch (BottomNavBarItem.values[i]) {
-                        BottomNavBarItem.tournaments => e2eKey(
-                          E2eIds.navEvents,
+    final island = LayoutBuilder(
+      builder: (context, constraints) {
+        final pillW = BottomNavBar.pillWidthFor(
+          tabCount,
+          availableWidth: constraints.maxWidth,
+        );
+        return Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            bar,
+            if (!searchActive)
+              Positioned(
+                left: BottomNavBar.horizontalPadding,
+                width: pillW,
+                bottom: BottomNavBar.verticalPadding,
+                height: BottomNavBar.barHeight,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < tabCount; i++)
+                      Expanded(
+                        child: GestureDetector(
+                          key: switch (BottomNavBarItem.values[i]) {
+                            BottomNavBarItem.forYou => e2eKey(E2eIds.navForYou),
+                            BottomNavBarItem.events => e2eKey(E2eIds.navEvents),
+                            BottomNavBarItem.library => e2eKey(
+                              E2eIds.navLibrary,
+                            ),
+                            BottomNavBarItem.discovery => e2eKey(
+                              E2eIds.navDiscovery,
+                            ),
+                            BottomNavBarItem.mySpace => e2eKey(
+                              E2eIds.navMySpace,
+                            ),
+                          },
+                          behavior: HitTestBehavior.translucent,
+                          onTap: () => _onTabSelected(i),
+                          child: const SizedBox.expand(),
                         ),
-                        BottomNavBarItem.calendar => e2eKey(E2eIds.navCalendar),
-                        BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
-                      },
-                      behavior: HitTestBehavior.translucent,
-                      onTap: () => _onTabSelected(i),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
 
     if (reduceMotion) return island;
