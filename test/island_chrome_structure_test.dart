@@ -65,8 +65,13 @@ void main() {
 
   test('bottom nav tabWidth is compact per-tab slot (~72, not 210)', () {
     final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
-    expect(nav, contains('tabWidth: 72'));
+    expect(nav, contains('static const double tabWidth = 72'));
+    expect(nav, contains('tabWidth: BottomNavBar.tabWidth'));
     expect(nav, isNot(contains('tabWidth: 210')));
+    // E2e overlay sized to pill, not full-bleed right: pad+64.
+    expect(nav, contains('width: pillW'));
+    expect(nav, contains('pillWidthFor'));
+    expect(nav, isNot(contains('right: BottomNavBar.horizontalPadding + 64')));
   });
 
   test('Settings exposes appearance switch and root watches themeModeProvider', () {

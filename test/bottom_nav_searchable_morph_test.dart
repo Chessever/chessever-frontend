@@ -123,9 +123,99 @@ void main() {
 
       final bar = tester.widget<GlassTabBar>(find.byType(GlassTabBar));
       // package: pill width ≈ tabWidth × tabCount. 72×3 = 216 << screen width.
-      expect(bar.tabWidth, isNotNull);
+      expect(bar.tabWidth, BottomNavBar.tabWidth);
       expect(bar.tabWidth!, lessThan(100));
-      expect(bar.tabWidth! * 3, lessThan(400));
+      expect(
+        BottomNavBar.pillWidthFor(3),
+        BottomNavBar.tabWidth * 3,
+      );
+    },
+  );
+
+  testWidgets(
+    'e2e tab hit overlay matches pill width — taps past pill do not change tab',
+    (tester) async {
+      late ProviderContainer container;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: LiquidGlassWidgets.wrap(
+            child: MaterialApp(
+              theme: AppTheme.darkTheme,
+              home: MediaQuery(
+                data: const MediaQueryData(size: Size(393, 852)),
+                child: Builder(
+                  builder: (context) {
+                    ResponsiveHelper.init(context);
+                    container = ProviderScope.containerOf(context);
+                    return const Scaffold(
+                      extendBody: true,
+                      backgroundColor: Colors.black,
+                      body: Stack(
+                        children: [
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: BottomNavBar(),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(
+        container.read(selectedBottomNavBarItemProvider),
+        BottomNavBarItem.tournaments,
+      );
+
+      // E2e Events hit target is the left third of the pill overlay.
+      final eventsKey = find.byKey(
+        const ValueKey<String>('e2e_nav_events'),
+      );
+      expect(eventsKey, findsOneWidget);
+      final eventsRect = tester.getRect(eventsKey);
+
+      // Overlay must be pill-sized: Events slot ≈ tabWidth (not 1/3 of screen).
+      expect(
+        eventsRect.width,
+        closeTo(BottomNavBar.tabWidth, 1.0),
+        reason:
+            'e2e hit slots must match compact pill tabWidth, not full-bleed thirds',
+      );
+
+      // Library is the rightmost e2e slot — its right edge is the pill edge.
+      final libraryRect = tester.getRect(
+        find.byKey(const ValueKey<String>('e2e_nav_library')),
+      );
+      final pillRight = libraryRect.right;
+      final expectedPillRight =
+          BottomNavBar.horizontalPadding + BottomNavBar.pillWidthFor(3);
+      expect(pillRight, closeTo(expectedPillRight, 2.0));
+
+      // Gap between pill and search: tap past the pill must not select Calendar.
+      final emptyX = pillRight + 40;
+      final emptyY = eventsRect.center.dy;
+      expect(emptyX, lessThan(393 - 20));
+
+      await tester.tapAt(Offset(emptyX, emptyY));
+      await tester.pump();
+
+      expect(
+        container.read(selectedBottomNavBarItemProvider),
+        BottomNavBarItem.tournaments,
+        reason:
+            'Taps in the gap between compact pill and search circle must not '
+            'change tabs (overlay must not span that gap)',
+      );
     },
   );
 }

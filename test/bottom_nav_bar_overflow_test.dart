@@ -128,13 +128,9 @@ void main() {
     );
     final before = container.read(bottomNavBarReTapRequestProvider);
 
-    // GlassTabBar dual-paints labels; hit the floating pill by geometry so
-    // the package GestureDetector receives the event (not a faded layer).
-    final barRect = tester.getRect(find.byType(GlassTabBar));
-    // Events is the left third of the pill.
-    await tester.tapAt(
-      Offset(barRect.left + barRect.width * 0.18, barRect.center.dy),
-    );
+    // Hit targets are sized to the compact pill (tabWidth × count), not the
+    // full GlassTabBar rect (which includes the search circle gap).
+    await tester.tap(find.byKey(e2eKey(E2eIds.navEvents)));
     await tester.pump();
 
     expect(
@@ -145,10 +141,7 @@ void main() {
     expect(after.item, BottomNavBarItem.tournaments);
     expect(after.sequence, before.sequence + 1);
 
-    // Calendar is the middle third.
-    await tester.tapAt(
-      Offset(barRect.left + barRect.width * 0.5, barRect.center.dy),
-    );
+    await tester.tap(find.byKey(e2eKey(E2eIds.navCalendar)));
     await tester.pump();
     expect(
       container.read(selectedBottomNavBarItemProvider),

@@ -75,6 +75,12 @@ class BottomNavBar extends ConsumerStatefulWidget {
   static const double verticalPadding = 12;
   static const double horizontalPadding = 16;
 
+  /// Per-tab slot width for [GlassTabBar.searchable] (pill ≈ this × tab count).
+  static const double tabWidth = 72;
+
+  /// Visual width of the compact tab pill island (not full-bleed).
+  static double pillWidthFor(int tabCount) => tabWidth * tabCount;
+
   @override
   ConsumerState<BottomNavBar> createState() => _BottomNavBarState();
 }
@@ -203,7 +209,7 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       horizontalPadding: BottomNavBar.horizontalPadding,
       // Per-tab slot width (package: pill ≈ tabWidth × tabCount). Keep ~70–88
       // so 3 tabs stay a compact floating island, not a full-bleed slab.
-      tabWidth: 72,
+      tabWidth: BottomNavBar.tabWidth,
       tabPillAnchor: GlassTabPillAnchor.start,
       enableBlend: false,
       showIndicator: true,
@@ -216,8 +222,11 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       quality: GlassQuality.standard,
     );
 
-    // Unique e2e keys on translucent hit targets over the tab pill only
-    // (search morph owns the right circle).
+    // Unique e2e keys on translucent hit targets sized to the compact pill
+    // only (tabWidth × tabCount). Must NOT span the gap between pill and
+    // search circle — otherwise taps in empty space change tabs.
+    final tabCount = BottomNavBarItem.values.length;
+    final pillW = BottomNavBar.pillWidthFor(tabCount);
     final island = Stack(
       alignment: Alignment.bottomCenter,
       children: [
@@ -225,13 +234,12 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
         if (!searchActive)
           Positioned(
             left: BottomNavBar.horizontalPadding,
-            // Leave room for the search circle on the right.
-            right: BottomNavBar.horizontalPadding + 64,
+            width: pillW,
             bottom: BottomNavBar.verticalPadding,
             height: BottomNavBar.barHeight,
             child: Row(
               children: [
-                for (var i = 0; i < BottomNavBarItem.values.length; i++)
+                for (var i = 0; i < tabCount; i++)
                   Expanded(
                     child: GestureDetector(
                       key: switch (BottomNavBarItem.values[i]) {
