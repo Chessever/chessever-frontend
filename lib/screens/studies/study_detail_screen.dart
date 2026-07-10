@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/studies/providers/studies_provider.dart';
+import 'package:chessever2/screens/studies/study_public_link.dart';
 import 'package:chessever2/screens/studies/widgets/study_metadata.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
@@ -11,11 +12,35 @@ import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 typedef StudyExternalLinkOpener = Future<bool> Function(Uri uri);
+typedef StudyLinkSharer =
+    Future<void> Function(BuildContext context, String text);
+typedef StudyLinkCopier = Future<void> Function(String text);
+
+@visibleForTesting
+Future<void> shareStudyPublicLink(BuildContext context, String text) async {
+  final renderBox = context.findRenderObject();
+  final origin =
+      renderBox is RenderBox && renderBox.hasSize
+          ? renderBox.localToGlobal(Offset.zero) & renderBox.size
+          : null;
+  await Share.share(
+    text,
+    subject: 'ChessEver Study',
+    sharePositionOrigin: origin,
+  );
+}
+
+@visibleForTesting
+Future<void> copyStudyPublicLink(String text) {
+  return Clipboard.setData(ClipboardData(text: text));
+}
 
 @visibleForTesting
 Future<bool> openCanonicalLichessStudyUrl(Uri uri) async {
@@ -36,11 +61,21 @@ class StudyDetailScreen extends ConsumerStatefulWidget {
     super.key,
     this.openExternalLink,
     this.onBack,
+    this.chapterId,
+    this.contentVersion,
+    this.ply,
+    this.shareLink,
+    this.copyLink,
   });
 
   final String lichessStudyId;
   final StudyExternalLinkOpener? openExternalLink;
   final VoidCallback? onBack;
+  final String? chapterId;
+  final String? contentVersion;
+  final int? ply;
+  final StudyLinkSharer? shareLink;
+  final StudyLinkCopier? copyLink;
 
   @override
   ConsumerState<StudyDetailScreen> createState() => _StudyDetailScreenState();
@@ -91,10 +126,15 @@ class _StudyDetailScreenState extends ConsumerState<StudyDetailScreen> {
                 key: const ValueKey<String>('study-detail-data-state'),
                 detail: value,
                 openingUri: _openingUri,
+                requestedChapterId: widget.chapterId,
+                requestedContentVersion: widget.contentVersion,
+                requestedPly: widget.ply,
                 onOpenStudy: () => unawaited(_openExternal(value.sourceUrl)),
                 onOpenChapter:
                     (chapter) =>
                         unawaited(_openExternal(chapter.canonicalSourceUrl)),
+                onShare: _share,
+                onCopy: _copy,
               ),
           loading:
               () => const _StudyDetailLoading(
@@ -137,14 +177,78 @@ class _StudyDetailScreenState extends ConsumerState<StudyDetailScreen> {
       if (mounted) setState(() => _openingUri = null);
     }
   }
+
+  Future<void> _share(
+    BuildContext actionContext,
+    StudyPublicLink link,
+    String title, {
+    String? chapterName,
+  }) async {
+    final text = studyShareText(
+      link: link,
+      title: title,
+      chapterName: chapterName,
+    );
+    try {
+      await (widget.shareLink ?? shareStudyPublicLink)(actionContext, text);
+    } catch (_) {
+      if (mounted) {
+        showGlassSnack(context, message: 'This Study could not be shared.');
+      }
+    }
+  }
+
+  Future<void> _copy(
+    StudyPublicLink link,
+    String title, {
+    String? chapterName,
+  }) async {
+    final text = studyShareText(
+      link: link,
+      title: title,
+      chapterName: chapterName,
+    );
+    try {
+      await (widget.copyLink ?? copyStudyPublicLink)(text);
+      if (mounted) {
+        showGlassSnack(context, message: 'Study share text copied.');
+      }
+    } catch (_) {
+      if (mounted) {
+        showGlassSnack(
+          context,
+          message: 'This Study link could not be copied.',
+        );
+      }
+    }
+  }
 }
 
-class _StudyDetailContent extends StatelessWidget {
+typedef _StudyShareCallback =
+    Future<void> Function(
+      BuildContext context,
+      StudyPublicLink link,
+      String title, {
+      String? chapterName,
+    });
+typedef _StudyCopyCallback =
+    Future<void> Function(
+      StudyPublicLink link,
+      String title, {
+      String? chapterName,
+    });
+
+class _StudyDetailContent extends StatefulWidget {
   const _StudyDetailContent({
     required this.detail,
     required this.openingUri,
     required this.onOpenStudy,
     required this.onOpenChapter,
+    required this.onShare,
+    required this.onCopy,
+    this.requestedChapterId,
+    this.requestedContentVersion,
+    this.requestedPly,
     super.key,
   });
 
@@ -152,12 +256,45 @@ class _StudyDetailContent extends StatelessWidget {
   final Uri? openingUri;
   final VoidCallback onOpenStudy;
   final ValueChanged<GamebaseStudyChapterMetadata> onOpenChapter;
+  final _StudyShareCallback onShare;
+  final _StudyCopyCallback onCopy;
+  final String? requestedChapterId;
+  final String? requestedContentVersion;
+  final int? requestedPly;
+
+  @override
+  State<_StudyDetailContent> createState() => _StudyDetailContentState();
+}
+
+class _StudyDetailContentState extends State<_StudyDetailContent> {
+  final Map<String, GlobalKey> _chapterKeys = <String, GlobalKey>{};
+  final ScrollController _scrollController = ScrollController();
+  bool _didRevealRequestedContext = false;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StudyDetailContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.requestedChapterId != widget.requestedChapterId ||
+        oldWidget.requestedContentVersion != widget.requestedContentVersion ||
+        oldWidget.requestedPly != widget.requestedPly ||
+        oldWidget.detail.contentVersion != widget.detail.contentVersion) {
+      _didRevealRequestedContext = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final chapters = detail.chapters.toList(growable: false)
+    final chapters = widget.detail.chapters.toList(growable: false)
       ..sort((left, right) => left.orderIndex.compareTo(right.orderIndex));
-    final study = detail.study;
+    final study = widget.detail.study;
+    final requestedChapter = _chapterById(chapters, widget.requestedChapterId);
+    _revealRequestedContext(requestedChapter);
     final author = study.authorUsername?.trim();
     final attribution =
         study.sourceMetadata?.attribution ??
@@ -165,8 +302,14 @@ class _StudyDetailContent extends StatelessWidget {
             ? 'Original source: Lichess'
             : 'By $author on Lichess');
 
+    final studyLink = StudyPublicLink(
+      studyId: study.canonicalStudyId,
+      contentVersion: study.contentVersion,
+    );
+
     return ListView(
       key: const PageStorageKey<String>('study-detail-content'),
+      controller: _scrollController,
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
@@ -209,16 +352,39 @@ class _StudyDetailContent extends StatelessWidget {
               StudyExternalButton(
                 key: const ValueKey<String>('open-study-on-lichess'),
                 label:
-                    openingUri == study.sourceUrl
+                    widget.openingUri == study.sourceUrl
                         ? 'Opening Lichess…'
                         : 'Open Study on Lichess',
-                onPressed: openingUri == null ? onOpenStudy : null,
+                onPressed:
+                    widget.openingUri == null ? widget.onOpenStudy : null,
+              ),
+              const SizedBox(height: 10),
+              _PublicLinkActions(
+                key: const ValueKey<String>('share-study-actions'),
+                shareLabel: 'Share Study',
+                copyLabel: 'Copy Study share text',
+                onShare:
+                    (actionContext) =>
+                        widget.onShare(actionContext, studyLink, study.name),
+                onCopy: () => widget.onCopy(studyLink, study.name),
               ),
             ],
           ),
         ),
         const SizedBox(height: 12),
         StudySourceNotice(study: study),
+        if (widget.requestedChapterId != null ||
+            widget.requestedContentVersion != null ||
+            widget.requestedPly != null) ...[
+          const SizedBox(height: 12),
+          _SharedContextNotice(
+            detail: widget.detail,
+            requestedChapterId: widget.requestedChapterId,
+            requestedChapter: requestedChapter,
+            requestedContentVersion: widget.requestedContentVersion,
+            requestedPly: widget.requestedPly,
+          ),
+        ],
         const SizedBox(height: 24),
         StudySectionTitle(
           title: 'Chapters',
@@ -231,18 +397,273 @@ class _StudyDetailContent extends StatelessWidget {
         else
           for (var index = 0; index < chapters.length; index++) ...[
             _ChapterMetadataCard(
+              chapterKey: _chapterKeys.putIfAbsent(
+                chapters[index].canonicalChapterId,
+                GlobalKey.new,
+              ),
               key: ValueKey<String>(
                 'study-chapter-${chapters[index].canonicalChapterId}',
               ),
               chapter: chapters[index],
               displayIndex: index + 1,
-              isOpening: openingUri == chapters[index].canonicalSourceUrl,
-              interactionsEnabled: openingUri == null,
-              onOpen: () => onOpenChapter(chapters[index]),
+              isOpening:
+                  widget.openingUri == chapters[index].canonicalSourceUrl,
+              interactionsEnabled: widget.openingUri == null,
+              isRequested:
+                  requestedChapter?.canonicalChapterId ==
+                  chapters[index].canonicalChapterId,
+              onOpen: () => widget.onOpenChapter(chapters[index]),
+              onShare: (actionContext) {
+                final chapter = chapters[index];
+                final requestedPly =
+                    chapter.canonicalChapterId ==
+                            requestedChapter?.canonicalChapterId
+                        ? _nearestPly(widget.requestedPly, chapter.plyCount)
+                        : null;
+                final link = StudyPublicLink(
+                  studyId: study.canonicalStudyId,
+                  chapterId: chapter.canonicalChapterId,
+                  ply: requestedPly,
+                  contentVersion: study.contentVersion,
+                );
+                return widget.onShare(
+                  actionContext,
+                  link,
+                  study.name,
+                  chapterName: chapter.name,
+                );
+              },
+              onCopy: () {
+                final chapter = chapters[index];
+                final link = StudyPublicLink(
+                  studyId: study.canonicalStudyId,
+                  chapterId: chapter.canonicalChapterId,
+                  ply:
+                      chapter.canonicalChapterId ==
+                              requestedChapter?.canonicalChapterId
+                          ? _nearestPly(widget.requestedPly, chapter.plyCount)
+                          : null,
+                  contentVersion: study.contentVersion,
+                );
+                return widget.onCopy(
+                  link,
+                  study.name,
+                  chapterName: chapter.name,
+                );
+              },
             ),
             if (index != chapters.length - 1) const SizedBox(height: 10),
           ],
       ],
+    );
+  }
+
+  void _revealRequestedContext(GamebaseStudyChapterMetadata? chapter) {
+    if (_didRevealRequestedContext || chapter == null) return;
+    _didRevealRequestedContext = true;
+    _scrollToChapter(chapter);
+  }
+
+  void _scrollToChapter(
+    GamebaseStudyChapterMetadata chapter, {
+    int attempt = 0,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final chapterContext =
+          _chapterKeys[chapter.canonicalChapterId]?.currentContext;
+      if (chapterContext != null) {
+        unawaited(
+          Scrollable.ensureVisible(
+            chapterContext,
+            alignment: 0.18,
+            duration: GlassMotion.resolveDuration(
+              context,
+              const Duration(milliseconds: 320),
+            ),
+            curve: Curves.easeOutCubic,
+          ),
+        );
+        return;
+      }
+      if (!_scrollController.hasClients || attempt >= 3) return;
+
+      final ordered = widget.detail.chapters.toList(growable: false)
+        ..sort((left, right) => left.orderIndex.compareTo(right.orderIndex));
+      final index = ordered.indexWhere(
+        (candidate) =>
+            candidate.canonicalChapterId == chapter.canonicalChapterId,
+      );
+      if (index < 0) return;
+      // Metadata cards can grow substantially with Dynamic Type. Overshoot
+      // toward the requested index, then let ensureVisible perform the precise
+      // reduced-motion-aware alignment once the lazy child is mounted.
+      final target = (600.0 + index * 560).clamp(
+        0.0,
+        _scrollController.position.maxScrollExtent,
+      );
+      _scrollController.jumpTo(target);
+      _scrollToChapter(chapter, attempt: attempt + 1);
+    });
+  }
+}
+
+class _SharedContextNotice extends StatelessWidget {
+  const _SharedContextNotice({
+    required this.detail,
+    required this.requestedChapterId,
+    required this.requestedChapter,
+    required this.requestedContentVersion,
+    required this.requestedPly,
+  });
+
+  final GamebaseStudyDetail detail;
+  final String? requestedChapterId;
+  final GamebaseStudyChapterMetadata? requestedChapter;
+  final String? requestedContentVersion;
+  final int? requestedPly;
+
+  @override
+  Widget build(BuildContext context) {
+    final messages = <String>[];
+    if (requestedContentVersion != null &&
+        requestedContentVersion != detail.contentVersion) {
+      messages.add(
+        detail.contentVersion == null
+            ? 'The exact shared content version cannot be verified. Showing the nearest current Study context.'
+            : 'This Study has changed since the link was shared. Showing the nearest current context.',
+      );
+    }
+    if (requestedChapterId != null && requestedChapter == null) {
+      messages.add(
+        'The shared chapter is no longer available. Showing the current Study instead.',
+      );
+    } else if (requestedChapter != null) {
+      final nearestPly = _nearestPly(requestedPly, requestedChapter!.plyCount);
+      if (requestedPly != null && nearestPly != requestedPly) {
+        messages.add(
+          'The shared ply $requestedPly is beyond the current chapter. Chapter ${requestedChapter!.orderIndex + 1} is highlighted at the nearest available ply $nearestPly.',
+        );
+      } else if (requestedPly != null) {
+        messages.add(
+          'Shared chapter ${requestedChapter!.orderIndex + 1} is highlighted at ply $requestedPly.',
+        );
+      } else {
+        messages.add(
+          'Shared chapter ${requestedChapter!.orderIndex + 1} is highlighted below.',
+        );
+      }
+    }
+    if (messages.isEmpty) {
+      messages.add('This public link matches the current Study metadata.');
+    }
+
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: messages.join(' '),
+      child: Container(
+        key: const ValueKey<String>('study-shared-context-notice'),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: context.colors.brand.withValues(alpha: 0.5),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.link_rounded, size: 21, color: context.colors.brand),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                messages.join(' '),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: context.colors.textPrimary,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PublicLinkActions extends StatelessWidget {
+  const _PublicLinkActions({
+    required this.shareLabel,
+    required this.copyLabel,
+    required this.onShare,
+    required this.onCopy,
+    super.key,
+  });
+
+  final String shareLabel;
+  final String copyLabel;
+  final Future<void> Function(BuildContext context) onShare;
+  final Future<void> Function() onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = OutlinedButton.styleFrom(
+      minimumSize: const Size(0, 48),
+      foregroundColor: context.colors.textPrimary,
+      side: BorderSide(color: context.colors.divider),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked =
+            constraints.maxWidth < 320 ||
+            MediaQuery.textScalerOf(context).scale(16) > 22;
+        final share = Builder(
+          builder:
+              (actionContext) => Semantics(
+                button: true,
+                label: shareLabel,
+                child: ExcludeSemantics(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey<String>('study-share-button'),
+                    onPressed: () => unawaited(onShare(actionContext)),
+                    style: style,
+                    icon: const Icon(Icons.ios_share_rounded, size: 20),
+                    label: Text(shareLabel),
+                  ),
+                ),
+              ),
+        );
+        final copy = Semantics(
+          button: true,
+          label: copyLabel,
+          child: ExcludeSemantics(
+            child: OutlinedButton.icon(
+              key: const ValueKey<String>('study-copy-link-button'),
+              onPressed: () => unawaited(onCopy()),
+              style: style,
+              icon: const Icon(Icons.link_rounded, size: 20),
+              label: Text(copyLabel),
+            ),
+          ),
+        );
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [share, const SizedBox(height: 8), copy],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: share),
+            const SizedBox(width: 8),
+            Expanded(child: copy),
+          ],
+        );
+      },
     );
   }
 }
@@ -305,19 +726,27 @@ class _CredibilityDetail extends StatelessWidget {
 
 class _ChapterMetadataCard extends StatelessWidget {
   const _ChapterMetadataCard({
+    required this.chapterKey,
     required this.chapter,
     required this.displayIndex,
     required this.isOpening,
     required this.interactionsEnabled,
+    required this.isRequested,
     required this.onOpen,
+    required this.onShare,
+    required this.onCopy,
     super.key,
   });
 
+  final GlobalKey chapterKey;
   final GamebaseStudyChapterMetadata chapter;
   final int displayIndex;
   final bool isOpening;
   final bool interactionsEnabled;
+  final bool isRequested;
   final VoidCallback onOpen;
+  final Future<void> Function(BuildContext context) onShare;
+  final Future<void> Function() onCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -331,13 +760,17 @@ class _ChapterMetadataCard extends StatelessWidget {
     return Semantics(
       container: true,
       label:
-          'Chapter $displayIndex, ${name == null || name.isEmpty ? 'untitled' : name}',
+          '${isRequested ? 'Shared context, ' : ''}Chapter $displayIndex, ${name == null || name.isEmpty ? 'untitled' : name}',
       child: Container(
+        key: chapterKey,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: context.colors.divider),
+          border: Border.all(
+            color: isRequested ? context.colors.brand : context.colors.divider,
+            width: isRequested ? 2 : 1,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,6 +861,16 @@ class _ChapterMetadataCard extends StatelessWidget {
               ),
               label: isOpening ? 'Opening Lichess…' : 'Open chapter on Lichess',
               onPressed: interactionsEnabled ? onOpen : null,
+            ),
+            const SizedBox(height: 10),
+            _PublicLinkActions(
+              key: ValueKey<String>(
+                'share-chapter-actions-${chapter.canonicalChapterId}',
+              ),
+              shareLabel: 'Share chapter',
+              copyLabel: 'Copy chapter share text',
+              onShare: onShare,
+              onCopy: onCopy,
             ),
           ],
         ),
@@ -666,4 +1109,20 @@ String _chapterPlayerLine(GamebaseStudyChapterMetadata chapter) {
   final black = side(chapter.blackName, chapter.blackElo);
   if (white.isNotEmpty && black.isNotEmpty) return '$white vs $black';
   return white.isNotEmpty ? white : black;
+}
+
+GamebaseStudyChapterMetadata? _chapterById(
+  Iterable<GamebaseStudyChapterMetadata> chapters,
+  String? chapterId,
+) {
+  if (chapterId == null) return null;
+  for (final chapter in chapters) {
+    if (chapter.canonicalChapterId == chapterId) return chapter;
+  }
+  return null;
+}
+
+int? _nearestPly(int? requestedPly, int chapterPlyCount) {
+  if (requestedPly == null) return null;
+  return requestedPly.clamp(0, chapterPlyCount);
 }

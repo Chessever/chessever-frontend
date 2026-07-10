@@ -22,6 +22,8 @@ import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
 import 'package:chessever2/screens/library/book_preview_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
+import 'package:chessever2/screens/studies/study_detail_screen.dart';
+import 'package:chessever2/screens/studies/study_public_link.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -200,6 +202,7 @@ class DeepLinkService {
       int? playerFideId;
       String? teamName;
       int? profileFideId;
+      final studyLink = StudyPublicLink.tryParse(uri);
 
       // Universal link: https://chessever.com/games/<id>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
@@ -307,10 +310,25 @@ class DeepLinkService {
           'folderId': _maskedValue(folderId),
           'broadcastId': _maskedValue(broadcastId),
           'teamName': teamName,
+          'studyId': _maskedValue(studyLink?.studyId),
+          'hasStudyChapter': studyLink?.chapterId != null,
+          'hasStudyPly': studyLink?.ply != null,
+          'hasStudyVersion': studyLink?.contentVersion != null,
         },
       );
 
-      if (gameId != null && gameId.isNotEmpty) {
+      if (studyLink != null) {
+        _addBreadcrumb(
+          'routing to public Study',
+          data: {
+            'studyId': _maskedValue(studyLink.studyId),
+            'hasChapter': studyLink.chapterId != null,
+            'hasPly': studyLink.ply != null,
+            'hasVersion': studyLink.contentVersion != null,
+          },
+        );
+        unawaited(_navigateToStudy(studyLink, navigatorKey));
+      } else if (gameId != null && gameId.isNotEmpty) {
         if (uri.queryParameters['stop_live'] == '1') {
           _stopLiveUpdates(gameId, ref);
         }
@@ -379,12 +397,7 @@ class DeepLinkService {
             'teamName': teamName,
           },
         );
-        _navigateToTeamScorecard(
-          broadcastId,
-          teamName,
-          navigatorKey,
-          ref,
-        );
+        _navigateToTeamScorecard(broadcastId, teamName, navigatorKey, ref);
       } else if (broadcastId != null && broadcastId.isNotEmpty) {
         // `?tab=standings` opens the event on its Standings tab (the same link
         // that renders standings on the web). Absent/other values open Games.
@@ -414,6 +427,56 @@ class DeepLinkService {
         stage: 'parse_handle_deep_link',
         extras: _sanitizedUriData(uri),
       );
+    }
+  }
+
+  /// Opens public Study metadata after splash navigation has settled.
+  ///
+  /// Study metadata is intentionally public and is fetched by
+  /// [studyDetailProvider] inside [StudyDetailScreen]. No authentication or
+  /// premium gate is consulted, and no mirrored chapter PGN is requested.
+  Future<void> _navigateToStudy(
+    StudyPublicLink link,
+    GlobalKey<NavigatorState> navigatorKey,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    try {
+      await _appReadyCompleter.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          debugPrint(
+            'DeepLinkService: Timed out waiting for app ready, proceeding',
+          );
+        },
+      );
+      navigatorKey.currentState?.push(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/study_detail'),
+          builder:
+              (_) => StudyDetailScreen(
+                lichessStudyId: link.studyId,
+                chapterId: link.chapterId,
+                contentVersion: link.contentVersion,
+                ply: link.ply,
+              ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('DeepLinkService: Failed to open public Study: $error');
+      _captureDeepLinkException(
+        error,
+        stackTrace,
+        stage: 'navigate_to_public_study',
+        extras: {
+          'studyId': _maskedValue(link.studyId),
+          'hasChapter': link.chapterId != null,
+          'hasPly': link.ply != null,
+          'hasVersion': link.contentVersion != null,
+        },
+      );
+    } finally {
+      _isNavigating = false;
     }
   }
 
@@ -867,10 +930,7 @@ class DeepLinkService {
         ChessboardView.forYou;
     ref.read(shouldStreamProvider.notifier).state = false;
 
-    _addBreadcrumb(
-      'navigating to gamebase game',
-      data: {'gameId': gameId},
-    );
+    _addBreadcrumb('navigating to gamebase game', data: {'gameId': gameId});
     unawaited(
       _captureDeepLinkMessage(
         'deep link gamebase game loaded',
@@ -1448,10 +1508,7 @@ class DeepLinkService {
         e,
         stackTrace,
         stage: 'navigate_to_team_scorecard',
-        extras: {
-          'groupBroadcastId': groupBroadcastId,
-          'teamName': teamName,
-        },
+        extras: {'groupBroadcastId': groupBroadcastId, 'teamName': teamName},
       );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',

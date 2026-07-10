@@ -10,6 +10,11 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'study_test_support.dart';
 
 void main() {
+  const contentVersion =
+      'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const olderVersion =
+      'sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+
   for (final entry in <(String, ThemeData)>[
     ('light', AppTheme.lightTheme),
     ('dark', AppTheme.darkTheme),
@@ -168,6 +173,193 @@ void main() {
       expect(find.textContaining('Open chapter in ChessEver'), findsNothing);
     },
   );
+
+  testWidgets('shares and copies canonical public Study and chapter links', (
+    tester,
+  ) async {
+    final shared = <String>[];
+    final copied = <String>[];
+    final study = testStudy(
+      contentCapabilities: const GamebaseStudyContentCapabilities(
+        contentVersion: contentVersion,
+        rights: null,
+        redistribution: GamebaseStudyRedistributionCapability.unknown,
+        canOpenMirroredChapterInApp: false,
+        canDownloadMirroredPgn: false,
+      ),
+    );
+    final repository = _repository(
+      detailHandler: (_) async => testStudyDetail(study: study),
+    );
+
+    await _pumpDetail(
+      tester,
+      repository: repository,
+      screen: StudyDetailScreen(
+        lichessStudyId: 'AbCd1234',
+        shareLink: (_, text) async => shared.add(text),
+        copyLink: (text) async => copied.add(text),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final studyActions = find.byKey(
+      const ValueKey<String>('share-study-actions'),
+    );
+    await tester.tap(
+      find.descendant(
+        of: studyActions,
+        matching: find.bySemanticsLabel('Share Study'),
+      ),
+    );
+    await tester.tap(
+      find.descendant(
+        of: studyActions,
+        matching: find.bySemanticsLabel('Copy Study share text'),
+      ),
+    );
+    await tester.pump();
+
+    final chapterActions = find.byKey(
+      const ValueKey<String>('share-chapter-actions-Chapter1'),
+    );
+    await tester.ensureVisible(chapterActions);
+    await tester.pump();
+    await tester.tap(
+      find.descendant(
+        of: chapterActions,
+        matching: find.bySemanticsLabel('Share chapter'),
+      ),
+    );
+    await tester.tap(
+      find.descendant(
+        of: chapterActions,
+        matching: find.bySemanticsLabel('Copy chapter share text'),
+      ),
+    );
+    await tester.pump();
+
+    expect(shared, hasLength(2));
+    expect(shared.first, contains('Source: Lichess · Shared via ChessEver'));
+    expect(
+      shared.first,
+      endsWith(
+        'https://chessever.com/studies/AbCd1234?v=sha256%3A0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      ),
+    );
+    expect(
+      shared.last,
+      endsWith(
+        'https://chessever.com/studies/AbCd1234/chapters/Chapter1?v=sha256%3A0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      ),
+    );
+    expect(copied, hasLength(2));
+    expect(copied.first, contains('Source: Lichess · Shared via ChessEver'));
+    expect(
+      copied.first,
+      endsWith(
+        'https://chessever.com/studies/AbCd1234?v=sha256%3A0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      ),
+    );
+    expect(copied.last, contains('/chapters/Chapter1'));
+  });
+
+  testWidgets('highlights nearest current context and explains version drift', (
+    tester,
+  ) async {
+    final study = testStudy(
+      contentCapabilities: const GamebaseStudyContentCapabilities(
+        contentVersion: contentVersion,
+        rights: null,
+        redistribution: GamebaseStudyRedistributionCapability.unknown,
+        canOpenMirroredChapterInApp: false,
+        canDownloadMirroredPgn: false,
+      ),
+    );
+    final repository = _repository(
+      detailHandler: (_) async => testStudyDetail(study: study),
+    );
+
+    await _pumpDetail(
+      tester,
+      repository: repository,
+      screen: const StudyDetailScreen(
+        lichessStudyId: 'AbCd1234',
+        chapterId: 'Chapter1',
+        ply: 99,
+        contentVersion: olderVersion,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('changed since the link was shared'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('nearest available ply 56'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp('Shared context, Chapter 1')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('mirrored PGN'), findsNothing);
+  });
+
+  testWidgets('explains a missing shared chapter without failing silently', (
+    tester,
+  ) async {
+    final repository = _repository(
+      detailHandler: (_) async => testStudyDetail(),
+    );
+
+    await _pumpDetail(
+      tester,
+      repository: repository,
+      screen: const StudyDetailScreen(
+        lichessStudyId: 'AbCd1234',
+        chapterId: 'Missing1',
+        ply: 3,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('shared chapter is no longer available'),
+      findsOneWidget,
+    );
+    expect(find.text('Annotated Sicilian Model Games'), findsOneWidget);
+  });
+
+  testWidgets('reveals a requested chapter outside the initial viewport', (
+    tester,
+  ) async {
+    final chapters = List<GamebaseStudyChapterMetadata>.generate(
+      18,
+      (index) => testChapter(
+        chapterId: 'Chapter${index.toString().padLeft(2, '0')}',
+        orderIndex: index,
+        name: 'Chapter number ${index + 1}',
+      ),
+    );
+    final repository = _repository(
+      detailHandler: (_) async => testStudyDetail(chapters: chapters),
+    );
+
+    await _pumpDetail(
+      tester,
+      repository: repository,
+      screen: const StudyDetailScreen(
+        lichessStudyId: 'AbCd1234',
+        chapterId: 'Chapter17',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final requested = find.bySemanticsLabel(
+      RegExp('Shared context, Chapter 18'),
+    );
+    expect(requested, findsOneWidget);
+    expect(tester.getTopLeft(requested).dy, lessThan(1100));
+  });
 
   testWidgets('shows a removed or private Study tombstone', (tester) async {
     final repository = _repository(
