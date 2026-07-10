@@ -12,6 +12,7 @@ import 'package:dio/dio.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/player_profile/utils/player_rating_source.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -1697,7 +1698,10 @@ final playerProfileDataKeyProvider = FutureProvider.family
                   (supabasePlayer?.country?.trim().isNotEmpty ?? false)
                       ? supabasePlayer!.country
                       : player.fed,
-              classicalRating: player.ratingClassical ?? supabasePlayer?.rating,
+              classicalRating: preferCanonicalFideRating(
+                canonicalRating: supabasePlayer?.rating,
+                gamebaseRating: player.ratingClassical,
+              ),
               rapidRating: player.ratingRapid,
               blitzRating: player.ratingBlitz,
             );
