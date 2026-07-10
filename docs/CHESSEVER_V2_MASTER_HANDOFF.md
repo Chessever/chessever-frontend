@@ -2,7 +2,9 @@
 
 **Purpose:** Single source of truth for the v2 product modernization, data quality work, desktop Player Workspace, and parallel agent execution.
 
-**Status:** Planning and discovery. No production implementation is authorized by this document alone.
+**Status:** Active local implementation and integration. Core mobile, desktop, and
+Gamebase slices are implemented; production migrations, deployment, source sync,
+and release remain explicitly gated.
 
 **Primary repositories:**
 
@@ -13,6 +15,108 @@
 - `/Users/berkay/projects/obsidian/mindmap/Chessever` — product notes and prior decisions
 
 Do not put passwords, API keys, database URLs, SSH commands containing secrets, or private account details in this file. Use secret-manager references and environment-variable names only.
+
+## 0. Current execution state — 2026-07-10
+
+This section is the operational checkpoint for the next coding agent. It
+supersedes older “planning only” wording elsewhere in the document where the
+corresponding implementation has now landed.
+
+### Repositories and accepted local commits
+
+| Repository | Local state | Implemented checkpoint |
+|---|---|---|
+| `chessever-frontend` | `feature/liquid-glass-redesign` | Five-destination shell, full-screen glass contract, Miniatures, quality-first Studies, Discovery, premium My Space, Calendar, Library, collections, Chess Board, combined-game/detail routes, and Player Profile Games |
+| `chessever_gamebase` | `main` | `3097033` — validated-only Study publication, complete-candidate legality checks, last-known-good retention, sanitized quarantine, explicit DTO provenance/version fields, and fail-closed PGN rights |
+| `chessever_frontend_desktop` | `main` | `123308fb` — Player account ownership; `be08a54c` — opening-tree position identity/transposition correctness |
+
+Important mobile implementation commits, newest first:
+
+```text
+a3fc3c0c  Tournament Detail full-screen floating controls
+8b2699b6  secure Saved Studies references and progress foundation
+74821320  canonical Study sharing and public deep links
+087738c0  Calendar month-results floating controls
+e37c15be  Player Profile parent-shell floating controls
+50364958  Players directory floating controls
+a8a8ba0c  Player Profile Games floating controls
+6672ad0f  Chess Board floating analysis controls
+8645c40a  Favorites/Countrymen full-screen collection hubs
+5d70d75f  Library root floating workspace controls
+cea77d25  premium, layout-driven My Space
+4732f21c  five-destination shell and composed Discovery
+ad935564  validated Study publication client contract
+df9ae000  Calendar full-screen floating controls
+29b5092f  Smart Event, My Likes, Premium Games, and scorecard chrome
+0e14ed21  quality-first Studies browse/detail
+cd96c50e  mobile Miniatures discovery surface
+74707a35  Board Editor, game lists, and Gamebase explorer chrome
+02dc344f  Library detail chrome
+ecda613b  event detail and Gamebase library chrome
+26d09d9d  combined-game chrome
+fefa04c5  revision-aware My Space state
+5593a5d8  server-authorized My Space client
+a102abf3  My Space persistence migration contract
+```
+
+### Verified behavior
+
+- Mobile changed paths pass scoped `flutter analyze --no-pub`.
+- The expanded mobile contract/widget matrix passes **199 tests**, covering
+  Gamebase Study trust decoding, Studies, Discovery, My Space, Events/For You,
+  Library, collections, Chess Board, Player Profile Games, five-tab navigation,
+  destination retention, Calendar, Tournament Detail, and navigation hydration.
+- The focused Study public-link/detail/deep-link suite passes **17 tests**. The
+  Saved Studies repository/provider/migration suite passes **15 tests**.
+- A structural audit finds no `appBar:`, `SliverAppBar`, or
+  `SliverPersistentHeader` usage under `lib/screens`; primary route controls now
+  use floating overlays above full-screen content.
+- Gamebase passes 11 focused legality/rights tests, Prisma schema validation,
+  TypeScript compilation, alias rewriting, and the repository build.
+- Desktop opening-tree/player changes passed scoped analysis and 86 focused tests
+  when accepted. The desktop worktree currently also contains unrelated active
+  local edits; a continuation agent must preserve and separately reconcile them.
+- No Flutter build or runtime was used. On-device visual and interaction checks
+  remain an explicit owner task under the repository rules.
+
+### Deployment and release gates
+
+Nothing in this checkpoint has been deployed or applied to production.
+
+1. `supabase/migrations/20260710150000_my_space_layouts.sql` is committed but
+   unapplied. `MY_SPACE_PERSISTENCE_ENABLED` remains false by default, so the
+   useful curated My Space performs no layout-network request.
+2. `supabase/migrations/20260710193409_study_bookmark_references.sql` is
+   committed but unapplied. `STUDY_BOOKMARKS_ENABLED` remains false by default,
+   performs zero bookmark/Gamebase requests, and leaves Saved Studies safely
+   empty until the owner-only RLS contract is reviewed and deployed.
+3. `chessever_gamebase/sql/lichess-studies-trust-quality.sql` is committed but
+   unapplied. Rollout requires pausing Study API/sync traffic, applying the
+   additive SQL, deploying the new binary, running one operations-controlled
+   full sync, verifying validated publications, then restoring traffic.
+4. Mirrored Study PGN remains unavailable unless redistribution has an explicit
+   verified basis, timestamp, and operator enablement. Mobile continues to use
+   canonical Lichess actions and never invents chapter PGN.
+5. Cloudflare services and credits are canceled/out of scope for this program.
+6. Runtime checks are still required for phone/tablet light and dark modes,
+   Dynamic Type, Reduce Motion, navigation morphs, Board portrait/landscape,
+   My Space editing, and full-game opening.
+7. Any credentials previously pasted into conversation must be rotated before
+   production or broad agent access. They must never be copied into this file,
+   source, logs, fixtures, commits, or prompts.
+
+### Remaining work at this checkpoint
+
+- The final full-screen route wave is complete: Tournament Detail, Player
+  Profile parent shell, Players directory, and Calendar month results all use
+  floating glass controls over full-screen content.
+- Perform owner-run device/runtime verification; record defects and screenshots.
+- Review migrations and rollout runbooks, rotate credentials, and obtain explicit
+  production authorization before applying any migration or triggering sync.
+- Build the public web fallback/Open Graph surface for canonical Study links.
+- Calibrate instructional Study quality with a labeled editorial corpus; legal
+  move validation and publication trust are implemented, but editorial value is
+  not something the current legality checks can prove.
 
 ---
 
@@ -2022,16 +2126,28 @@ All relevant items below must be true; completion of one repository is not compl
 
 ## 15. Immediate next actions
 
-1. Perform a security preflight and rotate any credential that has previously appeared in plaintext before giving a large agent fleet access.
-2. Complete the read-only production ownership map for Miniatures, Studies, Events, My Space, and web share fallbacks.
-3. Export safe, representative current API fixtures and create a labeled Study review corpus.
-4. Pin/review `liquid_glass_widgets` 0.21.3 and freeze the shared visual/token/adaptor direction.
-5. Implement the legality-aware Study validator and lifecycle corrections behind non-serving/internal paths.
-6. Freeze the v2 Study DTO/OpenAPI/error/cache contract from validated data.
-7. Agree on My Space ownership, Study progress identity, premium search/filter boundary, and canonical web route owner.
-8. Build the tracer slice: Study rail → detail → chapter → Board → My Space progress/bookmark → share.
-9. Run the tracer’s contract, accessibility, performance, and user-device checks.
-10. Only then launch the remaining fleet workstreams in section 10.
+1. Perform owner-run device checks for the five-tab shell, light/dark modes,
+   Dynamic Type, Reduce Motion, Board portrait/landscape, My Space editing,
+   Miniature hydration/opening, Study source/share actions, public Study links,
+   and the Tournament Detail floating overlay.
+2. Review the My Space, Study bookmark, and Study trust SQL migrations with
+   backup, rollback, traffic-pause, and feature-flag owners. Do not apply them
+   during coding.
+3. Rotate every credential previously exposed in plaintext and move runtime
+   secrets to the approved secret manager before production access.
+4. After explicit authorization, roll out Gamebase trust fields first, run the
+   operations-controlled full Study sync, and verify a non-empty validated set
+   before enabling clients that depend on the additive contract.
+5. Enable My Space and Study bookmark persistence only after the corresponding
+   Supabase migration, RLS/RPC review, entitlement checks, and rollback drill.
+6. Create and review a labeled Study quality corpus; legality validation is now
+   implemented, but instructional/editorial quality still requires calibration.
+7. Implement the public web fallback/Open Graph route for canonical Study and
+   chapter links, matching the strict mobile URL contract and exposing no PGN.
+8. Continue the remaining product definition-of-done work—richer Study
+   progress/offline snapshots, global search interoperability, observability,
+   and staged release—without reintroducing canceled Cloudflare
+   work or inventing unavailable source rights.
 
 ---
 
