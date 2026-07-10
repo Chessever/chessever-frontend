@@ -5,13 +5,16 @@ import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_nav_icon.dart';
 import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
 import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
+import 'package:cue/cue.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:motor/motor.dart';
 
 enum BottomNavBarItem { tournaments, calendar, library }
 
@@ -170,13 +173,14 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
         ),
     ];
 
-    // Package searchable morph: search circle + tab pill jelly expand.
-    // tabWidth keeps the pill a tight island (avoids full-width left slab).
+    // Package searchable morph: search circle (right) + tab pill (left).
+    // springDescription matches GlassMotion (motor-tuned jelly widen/back).
     final bar = GlassTabBar.searchable(
       tabs: tabs,
       selectedIndex: selectedIndex.clamp(0, tabs.length - 1),
       onTabSelected: _onTabSelected,
       isSearchActive: searchActive,
+      springDescription: GlassMotion.searchMorphSpring,
       searchConfig: GlassSearchBarConfig(
         onSearchToggle: _setSearchActive,
         hintText: 'Search',
@@ -260,12 +264,27 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       ],
     );
 
-    return AnimatedScale(
-      scale: chrome.scale,
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.bottomCenter,
-      child: island,
+    // cue: subtle shell pulse when search expands/collapses (Apple Music feel).
+    // motor: scroll-minimize scale with physics spring (not linear AnimatedScale).
+    return Cue.onToggle(
+      toggled: searchActive,
+      motion: const CueMotion.smooth(dampingRatio: 0.82),
+      reverseMotion: const CueMotion.snappy(dampingRatio: 0.96),
+      acts: [
+        Act.scale(from: 0.985, to: 1.0),
+      ],
+      child: SingleMotionBuilder(
+        motion: GlassMotion.scrollChrome,
+        value: chrome.scale,
+        builder: (context, scale, child) {
+          return Transform.scale(
+            scale: scale,
+            alignment: Alignment.bottomCenter,
+            child: child,
+          );
+        },
+        child: island,
+      ),
     );
   }
 }

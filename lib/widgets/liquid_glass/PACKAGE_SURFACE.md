@@ -54,6 +54,15 @@ Import path for modernized screens: `package:chessever2/widgets/liquid_glass/gla
 | `GlassModalSheet` / `GlassPopover` / `GlassMenu` | Available via kit |
 | `GlassProgressIndicator` | `GlassLoading` |
 
+## Motion stack (cue + motor + liquid_glass)
+| Layer | Role |
+|-------|------|
+| **cue** `Cue.onToggle` + `Act.sizedClip` / `Act.scale` | Boolean morphs: search widen forward / snappy back; shell pulse |
+| **motor** `SingleMotionBuilder` + `CupertinoMotion` | Continuous values: scroll-chrome scale, shell scale settle |
+| **liquid_glass** `springDescription` on `GlassTabBar.searchable` | Package pill morph physics (`GlassMotion.searchMorphSpring`) |
+
+Presets live in `glass_motion.dart`. Island search uses cue sizedClip (expand from trailing edge); bottom nav uses package morph spring + motor scroll scale + cue shell pulse.
+
 ## Composition rules (enforced)
 1. Glass = control layer only; content stays opaque.
 2. Never put `GlassSwitch` / `GlassButton` / `GlassSegmentedControl` / `GlassChip` inside `GlassCard` / `GlassContainer` / `GlassGroupedSection`.

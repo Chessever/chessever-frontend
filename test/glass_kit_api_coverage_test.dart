@@ -72,8 +72,27 @@ void main() {
       'GlassPopover',
       'GlassTextField',
       'GlassSlider',
+      'cue',
+      'motor',
+      'sizedClip',
     ]) {
       expect(doc, contains(name), reason: 'catalog missing $name');
     }
+  });
+
+  test('bottom nav + island search wire cue and motor for widen morph', () {
+    final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
+    final search = read('lib/widgets/liquid_glass/glass_island_search.dart');
+    final motion = read('lib/widgets/liquid_glass/glass_motion.dart');
+    expect(nav, contains('package:cue/cue.dart'));
+    expect(nav, contains('package:motor/motor.dart'));
+    expect(nav, contains('Cue.onToggle'));
+    expect(nav, contains('SingleMotionBuilder'));
+    expect(nav, contains('GlassMotion.searchMorphSpring'));
+    expect(search, contains('Cue.onToggle'));
+    expect(search, contains('Act.sizedClip'));
+    expect(search, contains('SingleMotionBuilder'));
+    expect(motion, contains('CupertinoMotion'));
+    expect(motion, contains('searchMorphSpring'));
   });
 }
