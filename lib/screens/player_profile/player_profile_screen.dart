@@ -32,12 +32,14 @@ import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -117,33 +119,24 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   int? _gamesTabCueCount;
 
   bool _showHeaderExtras = true;
-  double _scrollAccumulator = 0.0;
-  static const _scrollCollapseThreshold = 40.0;
+  final ChromeScrollCollapse _chromeCollapse = ChromeScrollCollapse();
 
   bool _handleScrollNotification(ScrollUpdateNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
 
-    final delta = notification.scrollDelta ?? 0.0;
-    final offset = notification.metrics.pixels;
-
-    if (offset <= 0) {
-      if (!_showHeaderExtras) setState(() => _showHeaderExtras = true);
-      _scrollAccumulator = 0.0;
-      return false;
+    var changed = false;
+    if (_chromeCollapse.onScrollUpdate(notification)) {
+      changed = true;
     }
 
-    if ((delta > 0 && _scrollAccumulator < 0) ||
-        (delta < 0 && _scrollAccumulator > 0)) {
-      _scrollAccumulator = 0.0;
+    // Secondary tools (study opening / games actions) follow the same expand.
+    final extras = _chromeCollapse.expanded;
+    if (extras != _showHeaderExtras) {
+      _showHeaderExtras = extras;
+      changed = true;
     }
-    _scrollAccumulator += delta;
 
-    if (_scrollAccumulator > _scrollCollapseThreshold && _showHeaderExtras) {
-      setState(() => _showHeaderExtras = false);
-    } else if (_scrollAccumulator < -_scrollCollapseThreshold &&
-        !_showHeaderExtras) {
-      setState(() => _showHeaderExtras = true);
-    }
+    if (changed && mounted) setState(() {});
     return false;
   }
 
@@ -187,6 +180,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final currentTab = ref.read(selectedPlayerProfileTabProvider);
     if (nextTab == currentTab) {
       _scrollToTopBus.request();
+      if (!_chromeCollapse.expanded) {
+        setState(() {
+          _chromeCollapse.reset();
+          _showHeaderExtras = true;
+        });
+      }
       return;
     }
     ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
@@ -198,6 +197,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
+    if (!_chromeCollapse.expanded) {
+      setState(() {
+        _chromeCollapse.reset();
+        _showHeaderExtras = true;
+      });
+    }
   }
 
   void _handlePageChanged(int index) {
@@ -208,6 +213,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
       setState(() => _gamesTabCueCount = null);
+    }
+    if (!_chromeCollapse.expanded) {
+      setState(() {
+        _chromeCollapse.reset();
+        _showHeaderExtras = true;
+      });
     }
   }
 
@@ -698,58 +709,54 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           ),
           child: Column(
             children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-
-              // App bar
-              _buildAppBar(
-                context,
-                isFavorite,
-                effectiveFederation: effectiveFederation,
-                effectiveName: effectiveName,
-                effectiveTitle: effectiveTitle,
-              ),
-
-              SizedBox(height: 8.h),
-
-              // Tab switcher
-              _buildTabSwitcher(selectedTab),
-
-              // Filter/loading indicator bar — adjacent to tab
-              _buildIndicatorBar(
-                hasActiveFilter: hasActiveFilter,
-                isTwicLoading: isTwicLoading,
-              ),
-
-              SingleMotionBuilder(
-                motion: const CupertinoMotion.snappy(),
-                value: _showHeaderExtras ? 1.0 : 0.0,
-                builder: (context, progress, child) {
-                  final clamped = progress.clamp(0.0, 1.0);
-                  if (clamped == 0) return const SizedBox.shrink();
-                  return ClipRect(
-                    child: Align(
-                      heightFactor: clamped,
-                      alignment: Alignment.topCenter,
-                      child: Opacity(opacity: clamped, child: child),
+              // Island stack: back+title → floating tabs (chips when scrolled).
+              GlassIslandStack(
+                gap: 6,
+                children: [
+                  _buildAppBar(
+                    context,
+                    isFavorite,
+                    effectiveFederation: effectiveFederation,
+                    effectiveName: effectiveName,
+                    effectiveTitle: effectiveTitle,
+                  ),
+                  _buildTabSwitcher(selectedTab),
+                  _buildIndicatorBar(
+                    hasActiveFilter: hasActiveFilter,
+                    isTwicLoading: isTwicLoading,
+                  ),
+                  SingleMotionBuilder(
+                    motion: const CupertinoMotion.snappy(),
+                    value: _showHeaderExtras ? 1.0 : 0.0,
+                    builder: (context, progress, child) {
+                      final clamped = progress.clamp(0.0, 1.0);
+                      if (clamped == 0) return const SizedBox.shrink();
+                      return ClipRect(
+                        child: Align(
+                          heightFactor: clamped,
+                          alignment: Alignment.topCenter,
+                          child: Opacity(opacity: clamped, child: child),
+                        ),
+                      );
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasPlayerExplorer &&
+                            selectedTab == PlayerProfileTab.about)
+                          _buildStudyOpeningRow(),
+                        if (selectedTab == PlayerProfileTab.games)
+                          _buildGamesActionButtons(
+                            showStudyOpening: hasPlayerExplorer,
+                            playerKey: activePlayerKey,
+                            hasActiveFilter: hasActiveFilter,
+                            knownTotalCount:
+                                twicSummaryAsync.valueOrNull?.totalGames,
+                          ),
+                      ],
                     ),
-                  );
-                },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (hasPlayerExplorer &&
-                        selectedTab == PlayerProfileTab.about)
-                      _buildStudyOpeningRow(),
-                    if (selectedTab == PlayerProfileTab.games)
-                      _buildGamesActionButtons(
-                        showStudyOpening: hasPlayerExplorer,
-                        playerKey: activePlayerKey,
-                        hasActiveFilter: hasActiveFilter,
-                        knownTotalCount:
-                            twicSummaryAsync.valueOrNull?.totalGames,
-                      ),
-                  ],
-                ),
+                  ),
+                ],
               ),
 
               // Tab content
@@ -849,11 +856,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   Widget _buildTabSwitcher(PlayerProfileTab selectedTab) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
-
     final tabOptions = PlayerProfileTab.values
         .map((tab) {
           if (tab == PlayerProfileTab.games &&
@@ -866,15 +868,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         })
         .toList(growable: false);
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: SegmentedSwitcher(
-        options: tabOptions,
-        initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
-        currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
-        onSelectionChanged: _handleTabSelection,
-        notifyOnReselect: true,
-      ),
+    return GlassFloatingSegments(
+      options: tabOptions,
+      selectedIndex: PlayerProfileTab.values.indexOf(selectedTab),
+      onSelected: _handleTabSelection,
+      expanded: _chromeCollapse.expanded,
+      notifyOnReselect: true,
     );
   }
 

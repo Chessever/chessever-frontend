@@ -84,6 +84,37 @@ void main() {
     expect(main, isNot(contains('const themeMode = ThemeMode.dark')));
   });
 
+  test('tabs morph to floating chips on scroll (no sticky dead strip)', () {
+    final floating = read(
+      'lib/widgets/liquid_glass/glass_floating_segments.dart',
+    );
+    final stack = read('lib/widgets/liquid_glass/glass_island_stack.dart');
+    final collapse = read(
+      'lib/widgets/liquid_glass/chrome_scroll_collapse.dart',
+    );
+    final favorites = read('lib/screens/favorites/favorites_tab_screen.dart');
+    final countrymen = read('lib/screens/countrymen/countrymen_tab_screen.dart');
+    final events = read('lib/screens/group_event/group_event_screen.dart');
+    final profile = read(
+      'lib/screens/player_profile/player_profile_screen.dart',
+    );
+    final tour = read(
+      'lib/screens/tour_detail/tournament_detail_screen.dart',
+    );
+
+    expect(floating, contains('class GlassFloatingSegments'));
+    expect(floating, contains('GlassChip'));
+    expect(floating, contains('SegmentedSwitcher'));
+    expect(stack, contains('class GlassIslandStack'));
+    expect(collapse, contains('class ChromeScrollCollapse'));
+
+    for (final src in [favorites, countrymen, events, profile, tour]) {
+      expect(src, contains('GlassFloatingSegments'));
+      expect(src, contains('GlassIslandStack'));
+      expect(src, contains('ChromeScrollCollapse'));
+    }
+  });
+
   test('page titles are compact GlassTitleChip beside back (not full-line)', () {
     final favorites = read('lib/screens/favorites/favorites_tab_screen.dart');
     final countrymen = read('lib/screens/countrymen/countrymen_tab_screen.dart');

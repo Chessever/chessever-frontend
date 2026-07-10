@@ -43,8 +43,9 @@ import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -101,6 +102,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   late SmartEventRequest _baselineRequest = widget.request;
 
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+  final ChromeScrollCollapse _chromeCollapse = ChromeScrollCollapse();
 
   static String _initialTier(SmartEventRequest request) {
     final first = request.tierLabel.split(' ').first;
@@ -120,12 +122,18 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   void _select(int i) {
     if (_index == i) {
       _scrollToTopBus.request();
+      if (!_chromeCollapse.expanded) {
+        setState(_chromeCollapse.reset);
+      }
       return;
     }
     // Drop the keyboard when switching tabs so the field and the keyboard
     // collapse together instead of the keyboard hovering over About.
     _searchFocusNode.unfocus();
-    setState(() => _index = i);
+    setState(() {
+      _index = i;
+      _chromeCollapse.reset();
+    });
     _page.animateToPage(
       i,
       duration: const Duration(milliseconds: 300),
@@ -377,33 +385,44 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                       child: _buildSearchFilterBar(context),
                     ),
                   ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: horizontalPadding,
-                    ),
-                    child: SegmentedSwitcher(
-                      options: _tabs,
-                      initialSelection: _index,
-                      currentSelection: _index,
-                      onSelectionChanged: _select,
-                      notifyOnReselect: true,
-                    ),
+                  GlassFloatingSegments(
+                    options: _tabs,
+                    selectedIndex: _index,
+                    onSelected: _select,
+                    expanded: _chromeCollapse.expanded,
+                    notifyOnReselect: true,
+                    horizontalPadding: horizontalPadding,
                   ),
-                  SizedBox(height: 8.h),
+                  SizedBox(height: 6.h),
                   Expanded(
-                    child: ScrollToTopScope(
-                      bus: _scrollToTopBus,
-                      child: PageView(
-                        controller: _page,
-                        onPageChanged: (i) {
-                          if (_index != i) _searchFocusNode.unfocus();
-                          setState(() => _index = i);
-                        },
-                        children: const [
-                          _AboutTab(),
-                          _GamesTab(),
-                          _StandingsTab(),
-                        ],
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: (notification) {
+                        if (notification is! ScrollUpdateNotification) {
+                          return false;
+                        }
+                        if (_chromeCollapse.onScrollUpdate(notification) &&
+                            mounted) {
+                          setState(() {});
+                        }
+                        return false;
+                      },
+                      child: ScrollToTopScope(
+                        bus: _scrollToTopBus,
+                        child: PageView(
+                          controller: _page,
+                          onPageChanged: (i) {
+                            if (_index != i) _searchFocusNode.unfocus();
+                            setState(() {
+                              _index = i;
+                              _chromeCollapse.reset();
+                            });
+                          },
+                          children: const [
+                            _AboutTab(),
+                            _GamesTab(),
+                            _StandingsTab(),
+                          ],
+                        ),
                       ),
                     ),
                   ),

@@ -9,13 +9,15 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
+import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -31,6 +33,7 @@ class CountrymenTabScreen extends ConsumerStatefulWidget {
 class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   late PageController _pageController;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+  final ChromeScrollCollapse _chromeCollapse = ChromeScrollCollapse();
 
   @override
   void initState() {
@@ -61,6 +64,9 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       );
       if (index == currentIndex) {
         _scrollToTopBus.request();
+        if (!_chromeCollapse.expanded) {
+          setState(_chromeCollapse.reset);
+        }
         return;
       }
       ref
@@ -71,6 +77,9 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
+      if (!_chromeCollapse.expanded) {
+        setState(_chromeCollapse.reset);
+      }
     } catch (e) {
       debugPrint('Error handling tab selection: $e');
     }
@@ -86,9 +95,20 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
             .read(selectedCountrymenModeProvider.notifier)
             .update((_) => CountrymenScreenMode.values[index]);
       }
+      if (!_chromeCollapse.expanded) {
+        setState(_chromeCollapse.reset);
+      }
     } catch (e) {
       debugPrint('Error handling page change: $e');
     }
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification is! ScrollUpdateNotification) return false;
+    if (_chromeCollapse.onScrollUpdate(notification) && mounted) {
+      setState(() {});
+    }
+    return false;
   }
 
   void _pinCurrentCountry() {
@@ -149,36 +169,54 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
             ),
             child: Column(
               children: [
-                SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-                _buildAppBar(context, effectiveCountryAsync, selectedMode),
-                SizedBox(height: 8.h),
-                _buildSegmentedSwitcher(selectedMode),
+                GlassIslandStack(
+                  gap: 6,
+                  children: [
+                    _buildAppBar(
+                      context,
+                      effectiveCountryAsync,
+                      selectedMode,
+                    ),
+                    GlassFloatingSegments(
+                      options: countrymenModeNames.values.toList(),
+                      selectedIndex: CountrymenScreenMode.values
+                          .indexOf(selectedMode)
+                          .clamp(0, countrymenModeNames.length - 1),
+                      onSelected: _handleTabSelection,
+                      expanded: _chromeCollapse.expanded,
+                      notifyOnReselect: true,
+                    ),
+                  ],
+                ),
                 Expanded(
-                  child: ScrollToTopScope(
-                    bus: _scrollToTopBus,
-                    child: PageView.builder(
-                      controller: _pageController,
-                      itemCount: 3,
-                      onPageChanged: _handlePageChanged,
-                      itemBuilder: (context, index) {
-                        switch (index) {
-                          case 0:
-                            return const CountrymenEventsTab();
-                          case 1:
-                            return const CountrymenGamesTab();
-                          case 2:
-                            return const CountrymenPlayersTab();
-                          default:
-                            return Center(
-                              child: Text(
-                                'Invalid page index: $index',
-                                style: TextStyle(
-                                  color: context.colors.textPrimary,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _onScroll,
+                    child: ScrollToTopScope(
+                      bus: _scrollToTopBus,
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: 3,
+                        onPageChanged: _handlePageChanged,
+                        itemBuilder: (context, index) {
+                          switch (index) {
+                            case 0:
+                              return const CountrymenEventsTab();
+                            case 1:
+                              return const CountrymenGamesTab();
+                            case 2:
+                              return const CountrymenPlayersTab();
+                            default:
+                              return Center(
+                                child: Text(
+                                  'Invalid page index: $index',
+                                  style: TextStyle(
+                                    color: context.colors.textPrimary,
+                                  ),
                                 ),
-                              ),
-                            );
-                        }
-                      },
+                              );
+                          }
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -256,25 +294,6 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       },
       requireAuthToChange: false,
       compact: true,
-    );
-  }
-
-  Widget _buildSegmentedSwitcher(CountrymenScreenMode selectedMode) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: SegmentedSwitcher(
-        options: countrymenModeNames.values.toList(),
-        initialSelection: countrymenModeNames.values.toList().indexOf(
-          countrymenModeNames[selectedMode]!,
-        ),
-        currentSelection: CountrymenScreenMode.values.indexOf(selectedMode),
-        onSelectionChanged: _handleTabSelection,
-        notifyOnReselect: true,
-      ),
     );
   }
 }

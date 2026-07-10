@@ -29,10 +29,12 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
+import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -50,6 +52,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   late PageController pageController;
   late final String _scrollScopeId;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+  final ChromeScrollCollapse _chromeCollapse = ChromeScrollCollapse();
 
   /// Latched once a team event is detected. Team-ness is structural, so the
   /// tab layout (3 vs 4 tabs) must NOT flip back when `tourDetailScreenProvider`
@@ -277,12 +280,28 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                             ),
                       ),
                       Expanded(
-                        child: ScrollToTopScope(
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (notification is! ScrollUpdateNotification) {
+                              return false;
+                            }
+                            if (_chromeCollapse.onScrollUpdate(notification) &&
+                                mounted) {
+                              setState(() {});
+                            }
+                            return false;
+                          },
+                          child: ScrollToTopScope(
                           bus: _scrollToTopBus,
                           child: PageView.builder(
                             controller: pageController,
                             itemCount: visibleModes.length,
-                            onPageChanged: _handlePageChanged,
+                            onPageChanged: (index) {
+                              _handlePageChanged(index);
+                              if (!_chromeCollapse.expanded) {
+                                setState(_chromeCollapse.reset);
+                              }
+                            },
                             itemBuilder: (context, index) {
                               if (index >= visibleModes.length) {
                                 return const SizedBox.shrink();
@@ -328,6 +347,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                             },
                           ),
                         ),
+                        ),
                       ),
                     ],
                   ),
@@ -345,12 +365,14 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     TournamentDetailScreenMode selectedTourMode,
     bool isTeam,
   ) {
-    return Column(
+    return GlassIslandStack(
+      gap: 6,
+      includeStatusBar: false,
+      topPadding: 0,
       children: [
         selectedTourMode == TournamentDetailScreenMode.games
             ? const GamesAppBarWidget()
             : _TourDetailDropDownAppBar(data: data),
-        SizedBox(height: 8.h),
         _PinnedEventSearchBar(
           pageController: pageController,
           fallbackPage: selectedTourMode.index.toDouble(),
@@ -365,10 +387,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   }
 
   Widget _buildErrorAppBar(Object error) {
-    return Column(
+    return GlassIslandStack(
+      gap: 6,
+      includeStatusBar: false,
+      topPadding: 0,
       children: [
         _LoadingAppBarWithTitle(title: userFacingError(error)),
-        SizedBox(height: 8.h),
         _buildSegmentedSwitcher(
           TournamentDetailScreenMode.games,
           false,
@@ -383,28 +407,18 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     bool isTeam,
     ValueChanged<int> onChanged,
   ) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
     final modes = _visibleModes(isTeam);
     final options = modes.map((m) => _mappedName[m]!).toList();
     final selectedIndex = modes.indexOf(selectedTourMode);
     final safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: SegmentedSwitcher(
-        // Team layouts scroll; keying by count keeps a stable element per
-        // layout while `currentSelection` drives the selected tab (and its
-        // auto-centering) without a per-frame UniqueKey rebuild.
-        key: ValueKey('tab_switcher_${options.length}'),
-        options: options,
-        initialSelection: safeIndex,
-        currentSelection: safeIndex,
-        onSelectionChanged: onChanged,
-        notifyOnReselect: true,
-        isScrollable: isTeam,
-      ),
+    return GlassFloatingSegments(
+      key: ValueKey('tab_switcher_${options.length}'),
+      options: options,
+      selectedIndex: safeIndex,
+      onSelected: onChanged,
+      expanded: _chromeCollapse.expanded,
+      notifyOnReselect: true,
+      isScrollable: isTeam,
     );
   }
 
@@ -415,7 +429,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       );
       if (index == currentIndex) {
         _scrollToTopBus.request();
+        if (!_chromeCollapse.expanded) {
+          setState(_chromeCollapse.reset);
+        }
         return;
+      }
+      if (!_chromeCollapse.expanded) {
+        setState(_chromeCollapse.reset);
       }
       // Drop the keyboard when leaving the search-enabled tabs so the field
       // and the keyboard collapse together, instead of the keyboard hovering

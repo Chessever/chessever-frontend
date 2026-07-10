@@ -20,7 +20,10 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_avatar_island.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -29,7 +32,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 enum GroupEventCategory { past, current, forYou, search }
@@ -243,6 +245,9 @@ class GroupEventScreen extends HookConsumerWidget {
       tablet: 24.sp,
     );
 
+    final chromeCollapse = useMemoized(ChromeScrollCollapse.new);
+    final segmentsExpanded = useState(true);
+
     void openFilter() {
       ref.read(filterPopupProvider.notifier).setState(appliedFilterState);
       showAlertModal<void>(
@@ -276,74 +281,86 @@ class GroupEventScreen extends HookConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              GlassIslandTopBar(
-                horizontalPadding: horizontalPadding,
-                leading: GlassAvatarIsland(
-                  onTap: () => Scaffold.maybeOf(context)?.openDrawer(),
-                ),
-                trailing: [
-                  // Package GlassBadge over glass icon (notification-count island).
-                  GlassBadge(
-                    count: filterBadgeCount,
-                    backgroundColor: context.colors.brand,
-                    child: GlassIconButton(
-                      key: e2eKey(E2eIds.eventsFilterButton),
-                      icon: Icon(
-                        CupertinoIcons.slider_horizontal_3,
-                        color: context.colors.iconPrimary,
-                      ),
-                      onPressed: openFilter,
-                      size: 40,
-                      iconSize: 18,
-                      useOwnLayer: true,
+              GlassIslandStack(
+                gap: 6,
+                children: [
+                  GlassIslandTopBar(
+                    horizontalPadding: horizontalPadding,
+                    topPadding: 0,
+                    leading: GlassAvatarIsland(
+                      onTap: () => Scaffold.maybeOf(context)?.openDrawer(),
                     ),
+                    trailing: [
+                      GlassBadge(
+                        count: filterBadgeCount,
+                        backgroundColor: context.colors.brand,
+                        child: GlassIconButton(
+                          key: e2eKey(E2eIds.eventsFilterButton),
+                          icon: Icon(
+                            CupertinoIcons.slider_horizontal_3,
+                            color: context.colors.iconPrimary,
+                          ),
+                          onPressed: openFilter,
+                          size: 40,
+                          iconSize: 18,
+                          useOwnLayer: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _SegmentedSwitcher(
+                    searchController: searchController,
+                    selectedTourEvent: selectedTourEvent,
+                    visibleCategories: visibleCategories,
+                    expanded: segmentsExpanded.value,
+                    onSelectedChanged: (index) {
+                      final newCategory = visibleCategories[index];
+                      final currentCategory = selectedTourEvent;
+
+                      if (newCategory == currentCategory) {
+                        ScrollController? controller;
+                        if (newCategory == GroupEventCategory.forYou) {
+                          controller = forYouScrollController;
+                        } else if (newCategory == GroupEventCategory.past) {
+                          controller = pastScrollController;
+                        } else if (newCategory == GroupEventCategory.current) {
+                          controller = currentScrollController;
+                        } else if (newCategory == GroupEventCategory.search) {
+                          controller = searchScrollController;
+                        }
+
+                        if (controller != null && controller.hasClients) {
+                          controller.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
+                        }
+                        chromeCollapse.reset();
+                        segmentsExpanded.value = true;
+                        return;
+                      }
+
+                      ref.read(selectedGroupCategoryProvider.notifier).state =
+                          newCategory;
+                      chromeCollapse.reset();
+                      segmentsExpanded.value = true;
+                    },
                   ),
                 ],
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  0,
-                  horizontalPadding,
-                  6,
-                ),
-                child: _SegmentedSwitcher(
-                  searchController: searchController,
-                  selectedTourEvent: selectedTourEvent,
-                  visibleCategories: visibleCategories,
-                  onSelectedChanged: (index) {
-                    final newCategory = visibleCategories[index];
-                    final currentCategory = selectedTourEvent;
-
-                    if (newCategory == currentCategory) {
-                      ScrollController? controller;
-                      if (newCategory == GroupEventCategory.forYou) {
-                        controller = forYouScrollController;
-                      } else if (newCategory == GroupEventCategory.past) {
-                        controller = pastScrollController;
-                      } else if (newCategory == GroupEventCategory.current) {
-                        controller = currentScrollController;
-                      } else if (newCategory == GroupEventCategory.search) {
-                        controller = searchScrollController;
-                      }
-
-                      if (controller != null && controller.hasClients) {
-                        controller.animateTo(
-                          0,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOutCubic,
-                        );
-                      }
-                      return;
-                    }
-
-                    ref.read(selectedGroupCategoryProvider.notifier).state =
-                        newCategory;
-                  },
-                ),
-              ),
               Expanded(
-                child: PageView.builder(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification is! ScrollUpdateNotification) {
+                      return false;
+                    }
+                    if (chromeCollapse.onScrollUpdate(notification)) {
+                      segmentsExpanded.value = chromeCollapse.expanded;
+                    }
+                    return false;
+                  },
+                  child: PageView.builder(
                   controller: pageController,
                   itemCount: visibleCategories.length,
                   onPageChanged: (index) {
@@ -516,6 +533,7 @@ class GroupEventScreen extends HookConsumerWidget {
                         );
                   },
                 ),
+                ),
               ),
             ],
           ),
@@ -531,12 +549,14 @@ class _SegmentedSwitcher extends ConsumerWidget {
     required this.selectedTourEvent,
     required this.visibleCategories,
     required this.onSelectedChanged,
+    this.expanded = true,
   });
 
   final TextEditingController searchController;
   final GroupEventCategory selectedTourEvent;
   final List<GroupEventCategory> visibleCategories;
   final ValueChanged<int> onSelectedChanged;
+  final bool expanded;
 
   /// Formats search query for tab display with title casing and smart truncation.
   /// Examples:
@@ -612,14 +632,15 @@ class _SegmentedSwitcher extends ConsumerWidget {
           return Text(baseLabel);
         }).toList();
 
-    // Floating glass island (no opaque full-width slab). Package owns surface.
-    return SegmentedSwitcher(
+    // Full segment island at top → floating chips when scrolled.
+    return GlassFloatingSegments(
       options: options,
       optionLabels: optionLabels,
-      currentSelection: visibleCategories
+      selectedIndex: visibleCategories
           .indexOf(selectedTourEvent)
           .clamp(0, visibleCategories.length - 1),
-      onSelectionChanged: onSelectedChanged,
+      onSelected: onSelectedChanged,
+      expanded: expanded,
       notifyOnReselect: true,
     );
   }

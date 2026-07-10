@@ -12,11 +12,14 @@ library;
 
 export 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+export 'chrome_scroll_collapse.dart';
 export 'glass_avatar_island.dart';
 export 'glass_back_button.dart';
 export 'glass_detail_app_bar.dart';
 export 'glass_feedback.dart';
+export 'glass_floating_segments.dart';
 export 'glass_island_search.dart';
+export 'glass_island_stack.dart';
 export 'glass_island_top_bar.dart';
 export 'glass_loading.dart';
 export 'glass_motion.dart';
