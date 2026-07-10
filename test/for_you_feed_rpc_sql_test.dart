@@ -86,6 +86,48 @@ void main() {
         expect(categoryEloOrder, greaterThan(sourceRoundTimeOrder));
       },
     );
+
+    test(
+      'latest get_for_you_top_games deduplicates logical boards before limiting',
+      () {
+        final migration = _latestMigrationDefining(
+          'create or replace function public.get_for_you_top_games',
+        );
+        final sql = migration.readAsStringSync();
+
+        final identityStart = sql.indexOf('identified_games as (');
+        final duplicateRankingStart = sql.indexOf(
+          'duplicate_ranked_games as (',
+        );
+        final uniqueGamesStart = sql.indexOf('deduplicated_games as (');
+        final eventRankingStart = sql.indexOf('\n  ranked_games as (');
+
+        expect(identityStart, isNonNegative);
+        expect(duplicateRankingStart, greaterThan(identityStart));
+        expect(uniqueGamesStart, greaterThan(duplicateRankingStart));
+        expect(eventRankingStart, greaterThan(uniqueGamesStart));
+
+        final duplicateRankingSql = sql.substring(
+          duplicateRankingStart,
+          uniqueGamesStart,
+        );
+        expect(duplicateRankingSql, contains('ig.event_id'));
+        expect(duplicateRankingSql, contains('ig.logical_round_key'));
+        expect(duplicateRankingSql, contains('ig.logical_round_time'));
+        expect(duplicateRankingSql, contains('ig.white_key'));
+        expect(duplicateRankingSql, contains('ig.black_key'));
+        expect(duplicateRankingSql, contains('ig.logical_game_discriminator'));
+
+        final identitySql = sql.substring(identityStart, duplicateRankingStart);
+        expect(identitySql, contains('pgn-round:'));
+        expect(identitySql, contains('from \'(?m)^[[]Round "([^"]+)"[]]\''));
+        expect(identitySql, contains("then 'fen:' || cg.fen"));
+        expect(identitySql, contains("else 'game-id:' || cg.id"));
+
+        final eventRankingSql = sql.substring(eventRankingStart);
+        expect(eventRankingSql, contains('from deduplicated_games cg'));
+      },
+    );
   });
 }
 

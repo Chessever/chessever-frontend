@@ -10,11 +10,11 @@ preview when Lichess publishes that game through both a category broadcast
 
 ## Root cause
 
-The data hub already attempts to merge duplicate combined-broadcast games, but
-its cross-tour safety path matches on `lichess_id`. Lichess assigns a different
-game ID to each broadcast copy, so both rows remain valid database games. The
-For You RPC currently ranks those rows independently because their tour average
-Elo values place them in separate event categories.
+The event views correctly keep their source-tour game rows separate. The For
+You RPC then combines category and Combined tours into one event preview and
+ranks those equivalent rows independently because their tour average Elo values
+place them in separate event categories. Lichess assigns a different game ID to
+each broadcast copy, so ID-level uniqueness cannot detect the overlap.
 
 For Dutch Championship 2026, one RPC call returns duplicate logical boards for
 Tiviakov–Vrolijk and Van Foreest–Kazarian from the Combined and category tours.
