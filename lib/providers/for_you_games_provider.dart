@@ -169,8 +169,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   bool _pendingFavoritePlayerOrderHydration = false;
   final Set<String> _handledUnknownLiveEventIds = <String>{};
   bool _isRefreshingTopGames = false;
-  bool _queuedTopGamesRefresh = false;
   bool _liveFeedRefreshScheduled = false;
+  bool _liveFeedRefreshPending = false;
+  bool _resumeRefreshPending = false;
   final Set<String> _handledFinishedTopGameRefreshes = <String>{};
 
   ForYouNotifier(this.ref) : super(const ForYouState(isLoading: true)) {
@@ -179,6 +180,20 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   void _setupListeners() {
+    ref.listen<bool>(forYouSurfaceVisibleProvider, (_, isVisible) {
+      if (!isVisible) return;
+      if (_liveFeedRefreshPending) {
+        _liveFeedRefreshPending = false;
+        _resumeRefreshPending = false;
+        _refreshFeedForLiveChange();
+        return;
+      }
+      if (_resumeRefreshPending) {
+        _resumeRefreshPending = false;
+        unawaited(refreshIfStale());
+      }
+    });
+
     // Match the Current tab's behavior: when a tour transitions ongoing→live
     // (or live→completed), re-derive tourEventCategory on every existing card
     // so the _NextRoundLine flips from "starts in…" to "LIVE" without waiting
@@ -216,7 +231,11 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     // Catch up on events that started while the app was backgrounded; the
     // 5-minute staleness gate keeps quick app switches cheap.
     ref.listen<int>(appResumedSignalProvider, (_, __) {
-      unawaited(refreshIfStale());
+      if (ref.read(forYouSurfaceVisibleProvider)) {
+        unawaited(refreshIfStale());
+      } else {
+        _resumeRefreshPending = true;
+      }
     });
 
     ref.listen(favoritePlayersProviderNew, (_, next) {
@@ -313,7 +332,12 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> refreshForVisibility({
     Duration maxFeedAge = _kForYouStaleThreshold,
   }) async {
-    if (_isFetching || state.isLoading) return;
+    if (_isFetching ||
+        state.isLoading ||
+        _liveFeedRefreshPending ||
+        _liveFeedRefreshScheduled) {
+      return;
+    }
 
     final refresh = resolveForYouVisibilityRefresh(
       lastFeedRefreshAt: _lastRefreshAt,
@@ -338,37 +362,38 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   void _refreshFeedForLiveChange() {
     _sessionEventOrder.clear();
     _nextSessionEventOrder = 0;
+    if (!ref.read(forYouSurfaceVisibleProvider)) {
+      _liveFeedRefreshPending = true;
+      return;
+    }
+    _liveFeedRefreshPending = false;
     if (_liveFeedRefreshScheduled) return;
     _liveFeedRefreshScheduled = true;
     Future.microtask(() {
       _liveFeedRefreshScheduled = false;
-      if (mounted) {
-        unawaited(refresh());
+      if (!mounted) return;
+      if (!ref.read(forYouSurfaceVisibleProvider)) {
+        _liveFeedRefreshPending = true;
+        return;
       }
+      unawaited(refresh());
     });
   }
 
   Future<void> refreshVisibleTopGames() async {
     if (state.events.isEmpty) return;
-
-    if (_isRefreshingTopGames) {
-      _queuedTopGamesRefresh = true;
-      return;
-    }
+    if (_isRefreshingTopGames) return;
 
     _isRefreshingTopGames = true;
     try {
-      do {
-        _queuedTopGamesRefresh = false;
-        final visibleEvents = _topGamesRefreshCandidates(state.events);
-        if (visibleEvents.isNotEmpty) {
-          await _prefetchTopGames(
-            visibleEvents,
-            replace: false,
-            refreshFavoritePlayerCounts: false,
-          );
-        }
-      } while (mounted && _queuedTopGamesRefresh);
+      final visibleEvents = _topGamesRefreshCandidates(state.events);
+      if (visibleEvents.isNotEmpty) {
+        await _prefetchTopGames(
+          visibleEvents,
+          replace: false,
+          refreshFavoritePlayerCounts: false,
+        );
+      }
     } finally {
       _isRefreshingTopGames = false;
     }
@@ -820,6 +845,11 @@ final forYouEventsProvider =
       ref.keepAlive();
       return ForYouNotifier(ref);
     });
+
+/// True only while the personalized For You surface is the selected tab on the
+/// current foreground route. The notifier keeps its cache alive, but expensive
+/// catch-up work must wait for this signal instead of running behind any screen.
+final forYouSurfaceVisibleProvider = StateProvider<bool>((ref) => false);
 
 final forYouEventToursCacheProvider = StateProvider<Map<String, List<Tour>>>(
   (ref) => const <String, List<Tour>>{},

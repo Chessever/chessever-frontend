@@ -15,9 +15,11 @@ final class ChessPipController: NSObject {
   private var renderTimer: DispatchSourceTimer?
   private var pollTimer: DispatchSourceTimer?
   private let pollQueue = DispatchQueue(label: "com.chessever.pip.poll")
-  // Foreground keeps the layer "playing" with a cached frame; we only redraw the
-  // 720x720 board when content changed or PiP is actually visible (ticking clock).
-  private var cachedImage: CGImage?
+  // Foreground keeps the layer "playing" with a cached frame. Keep the already
+  // converted pixel buffer too: recreating and drawing a 720x720 buffer every
+  // second on the main queue caused visible Flutter frame stalls.
+  private var cachedPixelBuffer: CVPixelBuffer?
+  private var cachedFormatDescription: CMVideoFormatDescription?
   private var renderDirty = true
   // Native move SFX for PiP: Dart/SoLoud is suspended in the background, so the
   // poll plays these directly when a new move arrives while PiP is active.
@@ -196,6 +198,9 @@ final class ChessPipController: NSObject {
   private func clear() {
     payload = nil
     lastSoundedMove = nil
+    cachedPixelBuffer = nil
+    cachedFormatDescription = nil
+    renderDirty = true
     stopNativePolling()
     stopRenderLoop()
     if pipController?.isPictureInPictureActive == true {
@@ -318,24 +323,25 @@ final class ChessPipController: NSObject {
       displayLayer.flush()
     }
     let isActive = pipController?.isPictureInPictureActive == true
-    let image: CGImage
-    if !renderDirty, !isActive, let cached = cachedImage {
-      // Foreground & invisible: re-enqueue the cached frame just to keep the
-      // layer actively playing (cheap), skipping the Core Graphics redraw.
-      image = cached
-    } else {
+    if renderDirty || isActive || cachedPixelBuffer == nil || cachedFormatDescription == nil {
       guard let rendered = ChessPipRenderer.render(payload: payload, size: CGSize(width: 720, height: 720)) else {
         return
       }
-      image = rendered
-      cachedImage = rendered
+      guard cachePixelBuffer(image: rendered) else { return }
       renderDirty = false
     }
-    guard let sampleBuffer = makeSampleBuffer(image: image) else { return }
+    guard
+      let pixelBuffer = cachedPixelBuffer,
+      let formatDescription = cachedFormatDescription,
+      let sampleBuffer = makeSampleBuffer(
+        pixelBuffer: pixelBuffer,
+        formatDescription: formatDescription
+      )
+    else { return }
     displayLayer.enqueue(sampleBuffer)
   }
 
-  private func makeSampleBuffer(image: CGImage) -> CMSampleBuffer? {
+  private func cachePixelBuffer(image: CGImage) -> Bool {
     let width = image.width
     let height = image.height
     var pixelBuffer: CVPixelBuffer?
@@ -352,7 +358,7 @@ final class ChessPipController: NSObject {
       attrs as CFDictionary,
       &pixelBuffer
     )
-    guard status == kCVReturnSuccess, let pixelBuffer else { return nil }
+    guard status == kCVReturnSuccess, let pixelBuffer else { return false }
 
     CVPixelBufferLockBaseAddress(pixelBuffer, [])
     defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
@@ -367,7 +373,7 @@ final class ChessPipController: NSObject {
         space: CGColorSpaceCreateDeviceRGB(),
         bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
       )
-    else { return nil }
+    else { return false }
 
     context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
 
@@ -377,8 +383,17 @@ final class ChessPipController: NSObject {
       imageBuffer: pixelBuffer,
       formatDescriptionOut: &formatDescription
     )
-    guard let formatDescription else { return nil }
+    guard let formatDescription else { return false }
 
+    cachedPixelBuffer = pixelBuffer
+    cachedFormatDescription = formatDescription
+    return true
+  }
+
+  private func makeSampleBuffer(
+    pixelBuffer: CVPixelBuffer,
+    formatDescription: CMVideoFormatDescription
+  ) -> CMSampleBuffer? {
     let pts = CMTime(value: frameIndex, timescale: 2)
     frameIndex += 1
     var timing = CMSampleTimingInfo(

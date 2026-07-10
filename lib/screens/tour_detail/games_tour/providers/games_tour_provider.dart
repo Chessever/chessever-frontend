@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -53,10 +55,11 @@ final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
 
 /// Notifier that manages the list of games for a tournament.
 ///
-/// **Architecture (Post-Revert):**
+/// **Architecture:**
 /// - This provider holds ALL games in memory as a list
 /// - It does NOT maintain individual Supabase Realtime streams per game
-/// - Instead, it uses periodic polling (every 5 seconds) to fetch updates
+/// - Its safety net periodically fetches only game IDs, round IDs, and status;
+///   a full snapshot is fetched only when game membership changes
 /// - Individual game cards use `liveGameCardProvider` with `.autoDispose`
 ///   to get realtime updates only for VISIBLE games
 /// - When a game card scrolls out of view, its stream is disposed
@@ -73,19 +76,43 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       previous,
       next,
     ) {
-      if (next) {
+      if (next && _isGamesTabVisible) {
         _startPeriodicRefresh();
       } else {
         _stopPeriodicRefresh();
       }
     });
+    _selectedModeListener = ref.listen<TournamentDetailScreenMode>(
+      selectedTourModeProvider,
+      (_, next) {
+        if (next == TournamentDetailScreenMode.games &&
+            ref.read(shouldStreamProvider)) {
+          _startPeriodicRefresh();
+        } else {
+          _stopPeriodicRefresh();
+        }
+      },
+    );
+    _primaryTourListener = ref.listen<String?>(
+      tourDetailScreenProvider.select(
+        (value) => value.valueOrNull?.aboutTourModel.id,
+      ),
+      (previous, next) {
+        if (previous == next || !_shouldRunSafetyNet) return;
+        _startPeriodicRefresh();
+      },
+    );
   }
 
   final Ref ref;
   final String tourId;
   ProviderSubscription? _shouldStreamListener;
+  ProviderSubscription? _selectedModeListener;
+  ProviderSubscription? _primaryTourListener;
   Timer? _refreshTimer;
   bool _refreshLoopActive = false;
+  bool _safetyNetRefreshInFlight = false;
+  int _refreshGeneration = 0;
 
   Future<void> _loadInitialGames() async {
     try {
@@ -123,8 +150,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         state = AsyncValue.data(games);
 
         // Only start periodic refresh if streaming is enabled
-        final shouldStream = ref.read(shouldStreamProvider);
-        if (shouldStream) {
+        if (_shouldRunSafetyNet) {
           _startPeriodicRefresh();
         }
       }
@@ -150,10 +176,16 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   bool get _isPrimaryTour {
     final primaryTourId =
         ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel.id;
-    return primaryTourId == null ||
-        primaryTourId.isEmpty ||
+    return primaryTourId != null &&
+        primaryTourId.isNotEmpty &&
         primaryTourId == tourId;
   }
+
+  bool get _isGamesTabVisible =>
+      ref.read(selectedTourModeProvider) == TournamentDetailScreenMode.games;
+
+  bool get _shouldRunSafetyNet =>
+      ref.read(shouldStreamProvider) && _isGamesTabVisible;
 
   int get _stableTourJitterSeconds {
     var hash = 0;
@@ -175,21 +207,26 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   void _startPeriodicRefresh() {
     // Gamebase-only events are finished with no live feed; never poll Supabase
     // for them (it would return nothing and wipe the synthesized games).
-    if (isVirtualGamebaseId(tourId)) return;
+    if (isVirtualGamebaseId(tourId) ||
+        !_shouldRunSafetyNet ||
+        state.valueOrNull == null) {
+      return;
+    }
 
     _stopPeriodicRefresh();
 
     final interval = _safetyNetInterval;
     final firstDelay = _firstSafetyNetDelay;
     _refreshLoopActive = true;
+    final generation = ++_refreshGeneration;
 
     _refreshTimer = Timer(firstDelay, () async {
-      await _checkForNewGames();
-      if (!mounted || !_refreshLoopActive) return;
+      await _checkForNewGames(generation);
+      if (!_isRefreshActive(generation)) return;
 
       _refreshTimer = Timer.periodic(interval, (_) async {
-        if (!_refreshLoopActive) return;
-        await _checkForNewGames();
+        if (!_isRefreshActive(generation)) return;
+        await _checkForNewGames(generation);
       });
     });
 
@@ -202,6 +239,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   void _stopPeriodicRefresh() {
     _refreshLoopActive = false;
+    _refreshGeneration += 1;
     _refreshTimer?.cancel();
     _refreshTimer = null;
     debugPrint(
@@ -209,78 +247,103 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     );
   }
 
-  Future<void> _checkForNewGames() async {
-    if (!mounted) return;
+  bool _isRefreshActive(int generation) =>
+      mounted &&
+      _refreshLoopActive &&
+      generation == _refreshGeneration &&
+      _shouldRunSafetyNet;
+
+  Future<void> _checkForNewGames(int generation) async {
+    if (!_isRefreshActive(generation) || _safetyNetRefreshInFlight) return;
+    _safetyNetRefreshInFlight = true;
     try {
       final currentGames = state.valueOrNull;
       if (currentGames == null) return;
 
-      // Fetch fresh games from the server
-      final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
-      final freshGames = await gamesLocalStorageProvider.fetchAndSaveGames(
-        tourId,
-        forceRefresh: true,
-      );
-      if (!mounted) return;
+      final safetySnapshots = await ref
+          .read(gameRepositoryProvider)
+          .getTourGamesSafetyNet(tourId);
+      if (!_isRefreshActive(generation)) return;
 
       final currentById = {for (final game in currentGames) game.id: game};
-      final freshIds = <String>{};
-      bool hasChanges = freshGames.length != currentGames.length;
-      final mergedGames = <Games>[];
+      final safetyById = {
+        for (final snapshot in safetySnapshots) snapshot.id: snapshot,
+      };
+      final membershipChanged =
+          safetyById.length != currentById.length ||
+          safetyById.keys.any((id) => !currentById.containsKey(id));
 
-      if (freshGames.length != currentGames.length) {
-        debugPrint(
-          '🔥 GamesTourNotifier: Detected game count change! Current: ${currentGames.length}, Fresh: ${freshGames.length}',
-        );
+      if (membershipChanged) {
+        await _refreshAfterMembershipChange(currentGames, generation);
+        return;
       }
 
-      for (final fresh in freshGames) {
-        freshIds.add(fresh.id);
-        final current = currentById[fresh.id];
-
-        if (current == null) {
-          // New game added
-          hasChanges = true;
-          mergedGames.add(fresh);
-          continue;
-        }
-
+      var hasChanges = false;
+      final mergedGames = <Games>[];
+      for (final current in currentGames) {
+        final fresh = safetyById[current.id];
+        if (fresh == null) continue;
         if (_hasSafetyNetChange(current, fresh)) {
           hasChanges = true;
         }
-
         mergedGames.add(_mergeSafetyNetSnapshot(current, fresh));
       }
 
-      // Check for removed games
-      for (final removedId in currentById.keys) {
-        if (!freshIds.contains(removedId)) {
-          hasChanges = true;
-        }
-      }
-
-      if (hasChanges && mounted) {
+      if (hasChanges && _isRefreshActive(generation)) {
         state = AsyncValue.data(mergedGames);
       }
     } catch (error, _) {
       // Suppress noise from races where the notifier is disposed mid-await.
       if (!mounted) return;
       debugPrint('🔥 GamesTourNotifier: Error checking for new games: $error');
+    } finally {
+      _safetyNetRefreshInFlight = false;
     }
   }
 
-  bool _hasSafetyNetChange(Games current, Games fresh) {
+  Future<void> _refreshAfterMembershipChange(
+    List<Games> currentGames,
+    int generation,
+  ) async {
+    final freshGames = await ref
+        .read(gamesLocalStorage)
+        .fetchAndSaveGames(tourId, forceRefresh: true);
+    if (!_isRefreshActive(generation)) return;
+
+    debugPrint(
+      '🔥 GamesTourNotifier: Detected game count change! Current: '
+      '${currentGames.length}, Fresh: ${freshGames.length}',
+    );
+    final currentById = {for (final game in currentGames) game.id: game};
+    final mergedGames = freshGames
+        .map((fresh) {
+          final current = currentById[fresh.id];
+          if (current == null) return fresh;
+          return current.copyWith(
+            roundId: fresh.roundId,
+            roundSlug: fresh.roundSlug,
+            status: fresh.status ?? current.status,
+          );
+        })
+        .toList(growable: false);
+    state = AsyncValue.data(mergedGames);
+  }
+
+  bool _hasSafetyNetChange(Games current, TourGameSafetyNetSnapshot fresh) {
     // Per-move fields (FEN/PGN/last_move/clocks) are intentionally excluded
     // here. Visible cards receive those through batched realtime streams; if
-    // the poll writes them into the parent list every 10s, the whole Games tab
-    // rebuilds and can disturb scrolling. The poll only owns set-level changes
-    // plus status/round movement for off-screen cards.
+    // the poll writes them into the parent list on every safety-net tick, the
+    // whole Games tab rebuilds and can disturb scrolling. The poll only owns
+    // set-level changes plus status/round movement for off-screen cards.
     return (fresh.status != null && current.status != fresh.status) ||
         current.roundId != fresh.roundId ||
         current.roundSlug != fresh.roundSlug;
   }
 
-  Games _mergeSafetyNetSnapshot(Games current, Games fresh) {
+  Games _mergeSafetyNetSnapshot(
+    Games current,
+    TourGameSafetyNetSnapshot fresh,
+  ) {
     return current.copyWith(
       roundId: fresh.roundId,
       roundSlug: fresh.roundSlug,
@@ -296,6 +359,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   void dispose() {
     _stopPeriodicRefresh();
     _shouldStreamListener?.close();
+    _selectedModeListener?.close();
+    _primaryTourListener?.close();
     super.dispose();
   }
 }

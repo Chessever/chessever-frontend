@@ -746,6 +746,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ChessBoardProviderParams? _pipParams;
   bool _didInitialBoardBootstrap = false;
   bool _isLifecycleBackgrounded = false;
+  bool _isRouteCovered = false;
   bool _pipSessionMayNeedRecovery = false;
   int _pipRecoveryGeneration = 0;
 
@@ -1474,6 +1475,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     AsyncValue<ChessBoardStateNew>? prev,
     AsyncValue<ChessBoardStateNew> next,
   ) {
+    if (_isRouteCovered) return;
     final state = next.valueOrNull;
     if (state == null) return;
     unawaited(_syncPipState(state));
@@ -1486,6 +1488,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     if (!mounted) return;
+    if (_isRouteCovered) return;
     _scheduleAndroidPipBoardRecovery();
     unawaited(_syncCurrentPipState());
   }
@@ -1517,6 +1520,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   Future<void> _syncCurrentPipState() async {
     if (!mounted || widget.games.isEmpty) return;
+    if (_isRouteCovered) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final game = _resolveGameForIndex(safeIndex);
     final params = _createParams(game, safeIndex);
@@ -1529,6 +1533,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _syncPipState(ChessBoardStateNew state) async {
+    if (_isRouteCovered) return;
     if (!_isPipEligible(state.game)) {
       // PiP off / ineligible: clear the native side ONCE, then no-op on every
       // subsequent provider tick. Previously this fired a native clearActiveGame
@@ -1588,6 +1593,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _syncPipGameSnapshot(GamesTourModel game) async {
+    if (_isRouteCovered) return;
     if (!_isPipEligible(game)) {
       await PipService.instance.clearActiveGame();
       return;
@@ -1913,7 +1919,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _enterPipForCurrentGameIfEligible() async {
-    if (!mounted || widget.games.isEmpty) return;
+    if (!mounted || _isRouteCovered || widget.games.isEmpty) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
@@ -2041,15 +2047,23 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   @override
   void didPushNext() {
+    _isRouteCovered = true;
     // Another route pushed on top (e.g. Player Profile, Explorer).
     // Pause Stockfish so it doesn't compete with the foreground screen.
     _handleLifecyclePaused();
+    // Stop the native iOS PiP priming loop behind every route pushed above this
+    // board. Provider emissions are gated while covered, and didPopNext
+    // re-primes from the latest state through the normal resume path.
+    _lastPipSig = null;
+    _pipCleared = true;
+    unawaited(PipService.instance.clearActiveGame());
     super.didPushNext();
   }
 
   @override
   void didPopNext() {
     // Route on top was popped — board is visible again.
+    _isRouteCovered = false;
     _scheduleLifecycleResume();
     super.didPopNext();
   }
@@ -2081,7 +2095,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       ForegroundTaskScheduler.cancel('chessboard_resume_$hashCode');
       if (_isLifecycleBackgrounded) return;
       _isLifecycleBackgrounded = true;
-      unawaited(_enterPipForCurrentGameIfEligible());
+      if (!_isRouteCovered) {
+        unawaited(_enterPipForCurrentGameIfEligible());
+      }
       _handleLifecyclePaused();
     } else {
       // inactive/hidden are transient focus or visibility states. Flutter also

@@ -8,12 +8,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class _FakeGamebaseRepository extends GamebaseRepository {
-  _FakeGamebaseRepository({this.treeFails = false})
-    : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
+  _FakeGamebaseRepository({
+    this.treeFails = false,
+    this.treeStaysBuilding = false,
+  }) : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
 
   final bool treeFails;
+  final bool treeStaysBuilding;
   int aggregateCalls = 0;
   int buildCalls = 0;
+  int statusCalls = 0;
+  int treeCalls = 0;
 
   @override
   Future<GamebaseResponse> getMoveAggregates({
@@ -58,10 +63,12 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     required String playerId,
     required String treeId,
   }) async {
+    statusCalls += 1;
     return {
       'status': 'success',
       'data': {
-        'status': treeFails ? 'error' : 'complete',
+        'status':
+            treeFails ? 'error' : (treeStaysBuilding ? 'building' : 'complete'),
         if (treeFails) 'error': 'boom',
       },
     };
@@ -72,6 +79,7 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     required String playerId,
     required String treeId,
   }) async {
+    treeCalls += 1;
     if (treeFails) return null;
     return {'status': 'success', 'data': _snapshotJson()};
   }
@@ -173,6 +181,29 @@ void main() {
       container.read(gamebaseExplorerProvider).moveAggregates.single.uci,
       'e2e4',
     );
+  });
+
+  test('building tree polls status without probing the full tree', () async {
+    final repo = _FakeGamebaseRepository(treeStaysBuilding: true);
+    final container = ProviderContainer(
+      overrides: [gamebaseRepositoryProvider.overrideWithValue(repo)],
+    );
+    final provider = playerOpeningTreeProvider('player-uuid');
+    final subscription = container.listen(
+      provider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+    addTearDown(container.dispose);
+
+    container.read(provider.notifier).start();
+    for (var i = 0; i < 20 && repo.statusCalls == 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
+    expect(repo.statusCalls, 1);
+    expect(repo.treeCalls, 0);
   });
 }
 

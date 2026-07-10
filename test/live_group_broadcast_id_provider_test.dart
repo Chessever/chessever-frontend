@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -39,9 +40,11 @@ class _StreamingSettingsRepository implements SettingsRepository {
       StreamController<Settings?>.broadcast();
 
   Settings? currentSettings;
+  Completer<Settings?>? pendingGetSettings;
 
   @override
-  Future<Settings?> getSettings() async => currentSettings;
+  Future<Settings?> getSettings() async =>
+      pendingGetSettings?.future ?? currentSettings;
 
   @override
   Stream<Settings?> subscribeToSettings() => _controller.stream;
@@ -129,19 +132,20 @@ class _FakeRoundRepository implements RoundRepository {
 }
 
 class _FakeGameRepository implements GameRepository {
-  _FakeGameRepository({this.latestMoveTimesByRoundId = const {}});
+  _FakeGameRepository({this.strictLiveIds = const <String>[]});
 
-  final Map<String, DateTime> latestMoveTimesByRoundId;
+  List<String> strictLiveIds;
+  Object? strictLiveError;
+  int strictLiveResolveCallCount = 0;
 
   @override
-  Future<Map<String, DateTime>> getLatestLastMoveTimesByRoundIds(
-    List<String> roundIds,
-  ) async {
-    return {
-      for (final roundId in roundIds)
-        if (latestMoveTimesByRoundId[roundId] != null)
-          roundId: latestMoveTimesByRoundId[roundId]!,
-    };
+  Future<List<String>> getStrictLiveGroupBroadcastIds({
+    required List<String> liveRoundIds,
+    int staleAfterSeconds = 7200,
+  }) async {
+    strictLiveResolveCallCount += 1;
+    if (strictLiveError case final error?) throw error;
+    return liveRoundIds.isEmpty ? const <String>[] : strictLiveIds;
   }
 
   @override
@@ -231,6 +235,18 @@ Future<void> _pumpUntil(
 
 void main() {
   group('liveGroupBroadcastIdsProvider', () {
+    test('uses one compact RPC for recurring strict-live resolution', () {
+      final source =
+          File(
+            'lib/screens/group_event/providers/live_group_broadcast_id_provider.dart',
+          ).readAsStringSync();
+
+      expect(source, contains('Timer.periodic(_liveIndicatorRefreshInterval'));
+      expect(source, contains('getStrictLiveGroupBroadcastIds('));
+      expect(source, isNot(contains('getLatestLastMoveTimesByRoundIds(')));
+      expect(source, isNot(contains('getToursByGroupBroadcastIds(')));
+    });
+
     test(
       'emits a fallback immediately before settings snapshots arrive',
       () async {
@@ -288,11 +304,7 @@ void main() {
               _FakeRoundRepository(rounds: [round]),
             ),
             gameRepositoryProvider.overrideWithValue(
-              _FakeGameRepository(
-                latestMoveTimesByRoundId: {
-                  round.id: now.subtract(const Duration(minutes: 5)),
-                },
-              ),
+              _FakeGameRepository(strictLiveIds: [broadcast.id]),
             ),
           ],
         );
@@ -339,6 +351,148 @@ void main() {
         expect(emittedIds.last, [broadcast.id]);
       },
     );
+
+    test('ignores settings replays when live inputs are unchanged', () async {
+      final now = DateTime.now();
+      final broadcast = _broadcast(
+        id: 'event-1',
+        name: 'Event One',
+        start: now.subtract(const Duration(days: 1)),
+        end: now.add(const Duration(days: 1)),
+      );
+      final tour = _tour(id: 'tour-1', groupBroadcastId: broadcast.id);
+      final round = _round(
+        id: 'round-1',
+        tourId: tour.id,
+        startsAt: now.subtract(const Duration(minutes: 45)),
+      );
+      final settings = _settings(
+        liveGroupBroadcastIds: [broadcast.id],
+        liveRoundIds: [round.id],
+      );
+      final settingsRepository =
+          _StreamingSettingsRepository()..currentSettings = settings;
+      final gameRepository = _FakeGameRepository(strictLiveIds: [broadcast.id]);
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider.overrideWithValue(settingsRepository),
+          groupBroadcastRepositoryProvider.overrideWithValue(
+            _FakeGroupBroadcastRepository(broadcasts: [broadcast]),
+          ),
+          tourRepositoryProvider.overrideWithValue(
+            _FakeTourRepository(tours: [tour]),
+          ),
+          roundRepositoryProvider.overrideWithValue(
+            _FakeRoundRepository(rounds: [round]),
+          ),
+          gameRepositoryProvider.overrideWithValue(gameRepository),
+        ],
+      );
+      final subscription = container.listen<AsyncValue<List<String>>>(
+        liveGroupBroadcastIdsProvider,
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      addTearDown(container.dispose);
+      addTearDown(settingsRepository.dispose);
+
+      await _pumpUntil(
+        () => gameRepository.strictLiveResolveCallCount == 1,
+        reason: () => 'initial strict-live resolution did not run exactly once',
+      );
+
+      settingsRepository.add(settings);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(gameRepository.strictLiveResolveCallCount, 1);
+    });
+
+    test(
+      'unchanged realtime replay does not cancel a forced resume refresh',
+      () async {
+        final settings = _settings(liveRoundIds: const ['round-1']);
+        final settingsRepository =
+            _StreamingSettingsRepository()..currentSettings = settings;
+        final gameRepository = _FakeGameRepository(
+          strictLiveIds: const ['event-1'],
+        );
+        final container = ProviderContainer(
+          overrides: [
+            settingsRepositoryProvider.overrideWithValue(settingsRepository),
+            gameRepositoryProvider.overrideWithValue(gameRepository),
+          ],
+        );
+        final subscription = container.listen<AsyncValue<List<String>>>(
+          liveGroupBroadcastIdsProvider,
+          (_, __) {},
+          fireImmediately: true,
+        );
+        addTearDown(subscription.close);
+        addTearDown(container.dispose);
+        addTearDown(settingsRepository.dispose);
+
+        await _pumpUntil(
+          () => gameRepository.strictLiveResolveCallCount == 1,
+          reason: () => 'startup strict-live resolution did not complete',
+        );
+
+        final delayedSnapshot = Completer<Settings?>();
+        settingsRepository.pendingGetSettings = delayedSnapshot;
+        container.read(appResumedSignalProvider.notifier).state += 1;
+        await Future<void>.delayed(Duration.zero);
+
+        settingsRepository.add(settings);
+        await Future<void>.delayed(Duration.zero);
+        expect(gameRepository.strictLiveResolveCallCount, 1);
+
+        delayedSnapshot.complete(settings);
+        await _pumpUntil(
+          () => gameRepository.strictLiveResolveCallCount == 2,
+          reason: () => 'unchanged realtime replay canceled the resume refresh',
+        );
+      },
+    );
+
+    test('transient heartbeat failure preserves the last live ids', () async {
+      final settings = _settings(liveRoundIds: const ['round-1']);
+      final settingsRepository =
+          _StreamingSettingsRepository()..currentSettings = settings;
+      final gameRepository = _FakeGameRepository(
+        strictLiveIds: const ['event-1'],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider.overrideWithValue(settingsRepository),
+          gameRepositoryProvider.overrideWithValue(gameRepository),
+        ],
+      );
+      final subscription = container.listen<AsyncValue<List<String>>>(
+        liveGroupBroadcastIdsProvider,
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      addTearDown(container.dispose);
+      addTearDown(settingsRepository.dispose);
+
+      await _pumpUntil(
+        () =>
+            container
+                .read(liveGroupBroadcastIdsProvider)
+                .valueOrNull
+                ?.contains('event-1') ==
+            true,
+      );
+
+      gameRepository.strictLiveError = NetworkException('Request timeout');
+      container.read(appResumedSignalProvider.notifier).state += 1;
+      await _pumpUntil(() => gameRepository.strictLiveResolveCallCount == 2);
+
+      expect(container.read(liveGroupBroadcastIdsProvider).valueOrNull, [
+        'event-1',
+      ]);
+    });
 
     test('classifies Supabase realtime subscribe errors as recoverable', () {
       expect(

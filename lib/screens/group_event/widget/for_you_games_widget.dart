@@ -90,7 +90,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refreshRealtimeGamesNow();
+      _publishSurfaceVisibility();
+      Future<void>.microtask(_refreshRealtimeGamesNow);
     });
   }
 
@@ -111,6 +112,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   @override
   void dispose() {
     _isDisposing = true;
+    ref.read(forYouSurfaceVisibleProvider.notifier).state = false;
     widget.scrollController.removeListener(_onScroll);
     if (_routeSubscribed) {
       pageRouteObserver.unsubscribe(this);
@@ -154,7 +156,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     _setAppResumed(true);
     ForegroundTaskScheduler.schedule(
       key: 'for_you_games_resume_$hashCode',
-      task: () => _refreshRealtimeGamesNow(forceFeedRefresh: true),
+      task: _refreshRealtimeGamesNow,
     );
   }
 
@@ -168,6 +170,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     if (_routeIsCurrent != isActive) {
       setState(() => _routeIsCurrent = isActive);
     }
+    _publishSurfaceVisibility();
     if (!isActive) {
       _stopTransientWork();
     } else if (refreshNow) {
@@ -183,6 +186,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     if (_appIsResumed != isResumed) {
       setState(() => _appIsResumed = isResumed);
     }
+    _publishSurfaceVisibility();
     if (!isResumed) {
       _stopTransientWork();
     }
@@ -193,10 +197,22 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
   }
 
-  void _refreshRealtimeGamesNow({
-    bool forceFeedRefresh = false,
-    bool resetStreams = true,
-  }) {
+  void _publishSurfaceVisibility() {
+    if (!mounted || _isDisposing) return;
+    final routeIsCurrent = ModalRoute.of(context)?.isCurrent == true;
+    final selected = ref.read(selectedGroupCategoryProvider);
+    final isVisible =
+        _routeIsCurrent &&
+        routeIsCurrent &&
+        _appIsResumed &&
+        selected == GroupEventCategory.forYou;
+    final notifier = ref.read(forYouSurfaceVisibleProvider.notifier);
+    if (notifier.state != isVisible) {
+      notifier.state = isVisible;
+    }
+  }
+
+  void _refreshRealtimeGamesNow({bool resetStreams = true}) {
     if (!mounted || _isDisposing) return;
     if (!_routeIsCurrent || !_appIsResumed) return;
     final route = ModalRoute.of(context);
@@ -213,11 +229,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         ref.invalidate(gameUpdatesBatchStreamProvider);
       }
       final notifier = ref.read(forYouEventsProvider.notifier);
-      unawaited(
-        forceFeedRefresh
-            ? notifier.refreshForVisibility(maxFeedAge: Duration.zero)
-            : notifier.refreshForVisibility(),
-      );
+      unawaited(notifier.refreshForVisibility());
     }
   }
 
@@ -241,6 +253,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     // If PageView keeps this page around briefly while swiping, drop all
     // expensive provider subscriptions until For You is visible again.
     final selectedCategory = ref.watch(selectedGroupCategoryProvider);
+    ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (_, __) {
+      _publishSurfaceVisibility();
+    });
     if (selectedCategory != GroupEventCategory.forYou || !_isActiveOnScreen) {
       return const SizedBox.shrink();
     }

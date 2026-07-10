@@ -44,6 +44,30 @@ int? _parseRpcInt(Object? value) {
   return null;
 }
 
+@immutable
+class TourGameSafetyNetSnapshot {
+  const TourGameSafetyNetSnapshot({
+    required this.id,
+    this.roundId,
+    this.roundSlug,
+    this.status,
+  });
+
+  factory TourGameSafetyNetSnapshot.fromJson(Map<String, dynamic> json) {
+    return TourGameSafetyNetSnapshot(
+      id: json['id'] as String,
+      roundId: json['round_id'] as String?,
+      roundSlug: json['round_slug'] as String?,
+      status: json['status'] as String?,
+    );
+  }
+
+  final String id;
+  final String? roundId;
+  final String? roundSlug;
+  final String? status;
+}
+
 const String _gameListSelectColumns = '''
           id,
           round_id,
@@ -402,6 +426,41 @@ class GameRepository extends BaseRepository {
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
       return games;
+    });
+  }
+
+  /// Lightweight set/status snapshot used by the tournament safety net.
+  /// Full game rows contain PGN, FEN, players, clocks, and joined tour data;
+  /// downloading all of that every few seconds caused avoidable UI-isolate
+  /// encode/decode and cache work even when nothing changed.
+  Future<List<TourGameSafetyNetSnapshot>> getTourGamesSafetyNet(
+    String tourId,
+  ) async {
+    return handleApiCall(() async {
+      final snapshots = <TourGameSafetyNetSnapshot>[];
+      var pageOffset = 0;
+
+      while (true) {
+        final response = await supabase
+            .from('games')
+            .select('id,round_id,round_slug,status')
+            .eq('tour_id', tourId)
+            .order('id', ascending: true)
+            .range(pageOffset, pageOffset + _tourGamesFetchPageSize - 1);
+        final responseList = response as List;
+        snapshots.addAll(
+          responseList.map(
+            (row) => TourGameSafetyNetSnapshot.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          ),
+        );
+
+        if (!shouldFetchAnotherTourGamesPage(responseList.length)) break;
+        pageOffset += responseList.length;
+      }
+
+      return snapshots;
     });
   }
 
@@ -1488,6 +1547,30 @@ class GameRepository extends BaseRepository {
       }
 
       return latestByRoundId;
+    });
+  }
+
+  Future<List<String>> getStrictLiveGroupBroadcastIds({
+    required List<String> liveRoundIds,
+    int staleAfterSeconds = 7200,
+  }) async {
+    if (liveRoundIds.isEmpty) return const <String>[];
+
+    return handleApiCall(() async {
+      final response = await supabase.rpc(
+        'get_strict_live_group_broadcast_ids',
+        params: {
+          'p_live_round_ids': liveRoundIds,
+          'p_stale_after_seconds': staleAfterSeconds,
+        },
+      );
+
+      return [
+        for (final row in response as List)
+          if ((row as Map)['group_broadcast_id'] case final String id
+              when id.isNotEmpty)
+            id,
+      ];
     });
   }
 

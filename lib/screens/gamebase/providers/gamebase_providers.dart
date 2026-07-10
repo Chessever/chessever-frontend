@@ -1355,11 +1355,10 @@ PlayerOpeningTreeFilterCriteria _localTreeCriteria(
   );
 }
 
-final playerOpeningTreeProvider = StateNotifierProvider.family<
-  PlayerOpeningTreeBuildController,
-  PlayerOpeningTreeState,
-  String
->((ref, playerId) => PlayerOpeningTreeBuildController(ref, playerId));
+final playerOpeningTreeProvider = StateNotifierProvider.autoDispose
+    .family<PlayerOpeningTreeBuildController, PlayerOpeningTreeState, String>(
+      (ref, playerId) => PlayerOpeningTreeBuildController(ref, playerId),
+    );
 
 class PlayerOpeningTreeBuildController
     extends StateNotifier<PlayerOpeningTreeState> {
@@ -1367,7 +1366,9 @@ class PlayerOpeningTreeBuildController
     : super(PlayerOpeningTreeState(playerId: _playerId));
 
   static const int _maxPly = 24;
-  static const Duration _pollInterval = Duration(seconds: 1);
+  static const Duration _initialPollInterval = Duration(seconds: 1);
+  static const Duration _maxPollInterval = Duration(seconds: 5);
+  static const Duration _maxBuildWait = Duration(minutes: 5);
 
   final Ref _ref;
   final String _playerId;
@@ -1418,8 +1419,17 @@ class PlayerOpeningTreeBuildController
       }
 
       state = state.copyWith(treeId: treeId);
+      final buildStartedAt = DateTime.now();
+      var pollInterval = _initialPollInterval;
 
       while (mounted && generation == _generation) {
+        if (DateTime.now().difference(buildStartedAt) >= _maxBuildWait) {
+          throw TimeoutException(
+            'Player opening tree build timed out after '
+            '${_maxBuildWait.inMinutes} minutes.',
+          );
+        }
+
         final statusResponse = await repository.getPlayerOpeningTreeStatus(
           playerId: _playerId,
           treeId: treeId,
@@ -1437,14 +1447,21 @@ class PlayerOpeningTreeBuildController
           );
         }
 
-        final treeResponse = await repository.getPlayerOpeningTree(
-          playerId: _playerId,
-          treeId: treeId,
-        );
-        if (!mounted || generation != _generation) return;
-        if (treeResponse != null) {
-          _completeFromTreeResponse(treeId, treeResponse);
-          return;
+        final treeIsReady =
+            status == 'complete' ||
+            status == 'completed' ||
+            status == 'ready' ||
+            status == 'done';
+        if (treeIsReady) {
+          final treeResponse = await repository.getPlayerOpeningTree(
+            playerId: _playerId,
+            treeId: treeId,
+          );
+          if (!mounted || generation != _generation) return;
+          if (treeResponse != null) {
+            _completeFromTreeResponse(treeId, treeResponse);
+            return;
+          }
         }
 
         state = state.copyWith(
@@ -1453,7 +1470,12 @@ class PlayerOpeningTreeBuildController
             status: PlayerOpeningTreeStatus.building,
           ),
         );
-        await Future<void>.delayed(_pollInterval);
+        await Future<void>.delayed(pollInterval);
+        final doubledPollInterval = pollInterval * 2;
+        pollInterval =
+            doubledPollInterval > _maxPollInterval
+                ? _maxPollInterval
+                : doubledPollInterval;
       }
     } catch (e) {
       if (!mounted || generation != _generation) return;

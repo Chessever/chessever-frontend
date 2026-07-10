@@ -52,7 +52,6 @@ import 'package:chessever2/repository/local_storage/supabase_safe_storage.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:terminate_restart/terminate_restart.dart';
-import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:heroine/heroine.dart';
 import 'package:upgrader/upgrader.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -199,10 +198,6 @@ const Map<String, String> _releaseEnvValues = {
     defaultValue: '',
   ),
   'SENTRY_FLUTTER': String.fromEnvironment('SENTRY_FLUTTER', defaultValue: ''),
-  'CLARITY_PROJECT_ID': String.fromEnvironment(
-    'CLARITY_PROJECT_ID',
-    defaultValue: '',
-  ),
   'RevenueCatAPIKey': String.fromEnvironment(
     'RevenueCatAPIKey',
     defaultValue: '',
@@ -1209,27 +1204,6 @@ class MyApp extends HookConsumerWidget {
             }
           },
         );
-
-        if (!kDebugMode) {
-          ForegroundTaskScheduler.schedule(
-            key: 'startup_clarity',
-            delay: kStartupWarmupDelay,
-            task: () {
-              if (!context.mounted) return;
-              try {
-                final clarityConfig = ClarityConfig(
-                  projectId: _getEnv('CLARITY_PROJECT_ID'),
-                );
-
-                final initialized = Clarity.initialize(context, clarityConfig);
-                debugPrint('Clarity initialized: $initialized');
-              } catch (e, st) {
-                debugPrint('Failed to initialize Clarity: $e');
-                debugPrintStack(stackTrace: st);
-              }
-            },
-          );
-        }
       });
 
       return () {
@@ -1275,8 +1249,7 @@ class MyApp extends HookConsumerWidget {
           '/library_screen': (context) => const LibraryScreen(),
           '/favorites_screen': (context) => const FavoritesTabScreen(),
           '/scorecard_screen': (context) => const ScoreCardScreen(),
-          '/team_scorecard_screen':
-              (context) => const TeamScoreCardScreen(),
+          '/team_scorecard_screen': (context) => const TeamScoreCardScreen(),
           '/player_list_screen': (context) => const PlayerListScreen(),
           '/countryman_games_screen':
               (context) => const CountrymanGamesScreen(),

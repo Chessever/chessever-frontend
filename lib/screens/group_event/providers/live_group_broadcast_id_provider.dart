@@ -5,13 +5,10 @@ import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
-import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
-import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/settings/settings.dart';
 import 'package:chessever2/repository/supabase/settings/settings_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
-import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -29,9 +26,6 @@ final configuredLiveGroupBroadcastIdsProvider =
 final _strictLiveGroupBroadcastResolverProvider =
     AutoDisposeProvider<_StrictLiveGroupBroadcastResolver>(
       (ref) => _StrictLiveGroupBroadcastResolver(
-        groupBroadcastRepository: ref.read(groupBroadcastRepositoryProvider),
-        tourRepository: ref.read(tourRepositoryProvider),
-        roundRepository: ref.read(roundRepositoryProvider),
         gameRepository: ref.read(gameRepositoryProvider),
       ),
     );
@@ -43,11 +37,11 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
   final settingsRepository = ref.read(settingsRepositoryProvider);
   final controller = StreamController<List<String>>();
   final settingsStream = settingsRepository.subscribeToSettings();
-  var configuredLiveEntries = const <String>[];
   var liveRoundIds = const <String>[];
   var hasSettingsSnapshot = false;
   var refreshedAfterRealtimeInterruption = false;
-  var resolveRequestId = 0;
+  var resolveInFlight = false;
+  var resolveQueued = false;
   var settingsSnapshotVersion = 0;
   List<String>? lastResolvedIds;
 
@@ -65,18 +59,12 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
     controller.add(stableIds);
   }
 
-  Future<List<String>> resolve({
-    required List<String> configuredLiveEntries,
-    required List<String> liveRoundIds,
-  }) async {
+  Future<List<String>?> resolve({required List<String> liveRoundIds}) async {
     try {
-      return await resolver.resolve(
-        configuredLiveEntries: configuredLiveEntries,
-        liveRoundIds: liveRoundIds,
-      );
+      return await resolver.resolve(liveRoundIds: liveRoundIds);
     } catch (error, stackTrace) {
       _logStrictLiveResolveIssue('resolve live event IDs', error, stackTrace);
-      return const <String>[];
+      return null;
     }
   }
 
@@ -84,30 +72,45 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
     if (!hasSettingsSnapshot) {
       return;
     }
-
-    final currentRequestId = ++resolveRequestId;
-    final resolvedIds = await resolve(
-      configuredLiveEntries: List<String>.of(configuredLiveEntries),
-      liveRoundIds: List<String>.of(liveRoundIds),
-    );
-
-    if (controller.isClosed || currentRequestId != resolveRequestId) {
+    if (resolveInFlight) {
+      resolveQueued = true;
       return;
     }
 
-    emit(resolvedIds);
+    resolveInFlight = true;
+    try {
+      do {
+        resolveQueued = false;
+        final resolvedIds = await resolve(
+          liveRoundIds: List<String>.of(liveRoundIds),
+        );
+        if (controller.isClosed) return;
+        if (!resolveQueued && resolvedIds != null) {
+          emit(resolvedIds);
+        }
+      } while (resolveQueued && !controller.isClosed);
+    } finally {
+      resolveInFlight = false;
+    }
   }
 
-  void applySettingsSnapshot(Settings? settings) {
-    settingsSnapshotVersion += 1;
-    configuredLiveEntries = List<String>.unmodifiable(
-      settings?.liveGroupBroadcastIds ?? const <String>[],
-    );
-    liveRoundIds = List<String>.unmodifiable(
+  void applySettingsSnapshot(Settings? settings, {bool forceResolve = false}) {
+    final nextLiveRoundIds = List<String>.unmodifiable(
       settings?.liveRoundIds ?? const <String>[],
     );
+    final liveInputsChanged =
+        !hasSettingsSnapshot ||
+        !setEquals(liveRoundIds.toSet(), nextLiveRoundIds.toSet());
+    if (liveInputsChanged) {
+      settingsSnapshotVersion += 1;
+    }
+
+    liveRoundIds = nextLiveRoundIds;
     hasSettingsSnapshot = true;
     refreshedAfterRealtimeInterruption = false;
+    if (!forceResolve && !liveInputsChanged) {
+      return;
+    }
     unawaited(emitResolvedIds());
   }
 
@@ -119,7 +122,10 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
           requestSnapshotVersion != settingsSnapshotVersion) {
         return;
       }
-      applySettingsSnapshot(settings);
+      // Explicit snapshot pulls happen only on startup, recovery, and app
+      // resume. Force those to re-check activity even when settings IDs are
+      // unchanged; ordinary Realtime row replays are deduplicated above.
+      applySettingsSnapshot(settings, forceResolve: true);
     } catch (error, stackTrace) {
       if (_isRecoverableRealtimeSettingsStreamError(error)) {
         debugPrint(
@@ -161,6 +167,9 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
     },
   );
 
+  // Keep the time-based activity cutoff accurate during long foreground
+  // sessions. The heartbeat now performs one compact IDs-only RPC instead of
+  // the previous multi-table client sweep, and unchanged sets do not emit.
   final refreshTimer = Timer.periodic(_liveIndicatorRefreshInterval, (_) {
     unawaited(emitResolvedIds());
   });
@@ -193,72 +202,14 @@ bool _isRecoverableRealtimeSettingsStreamError(Object error) {
 }
 
 class _StrictLiveGroupBroadcastResolver {
-  const _StrictLiveGroupBroadcastResolver({
-    required this.groupBroadcastRepository,
-    required this.tourRepository,
-    required this.roundRepository,
-    required this.gameRepository,
-  });
+  const _StrictLiveGroupBroadcastResolver({required this.gameRepository});
 
-  final GroupBroadcastRepository groupBroadcastRepository;
-  final TourRepository tourRepository;
-  final RoundRepository roundRepository;
   final GameRepository gameRepository;
 
-  Future<List<String>> resolve({
-    required List<String> configuredLiveEntries,
-    required List<String> liveRoundIds,
-  }) async {
-    if (liveRoundIds.isEmpty) {
-      return const <String>[];
-    }
-
-    final liveRounds = await roundRepository.getRoundsByIds(liveRoundIds);
-    if (liveRounds.isEmpty) {
-      return const <String>[];
-    }
-
-    final liveTours = await tourRepository.getToursByIds(
-      liveRounds.map((round) => round.tourId).toSet().toList(growable: false),
-    );
-    final candidateLiveEntries = {
-      ...configuredLiveEntries,
-      ...liveTours
-          .map((tour) => tour.groupBroadcastId)
-          .whereType<String>()
-          .where((id) => id.isNotEmpty),
-    }.toList(growable: false);
-    if (candidateLiveEntries.isEmpty) {
-      return const <String>[];
-    }
-
-    final configuredBroadcasts = await groupBroadcastRepository
-        .getGroupBroadcastsByIdsOrNames(candidateLiveEntries);
-    if (configuredBroadcasts.isEmpty) {
-      return const <String>[];
-    }
-
-    final toursByGroupBroadcastId = await tourRepository
-        .getToursByGroupBroadcastIds(
-          configuredBroadcasts
-              .map((broadcast) => broadcast.id)
-              .toList(growable: false),
-        );
-    if (toursByGroupBroadcastId.isEmpty) {
-      return const <String>[];
-    }
-
-    final latestMoveTimesByRoundId = await gameRepository
-        .getLatestLastMoveTimesByRoundIds(
-          liveRounds.map((round) => round.id).toList(growable: false),
-        );
-
-    return computeStrictLiveGroupBroadcastIds(
-      broadcasts: configuredBroadcasts,
-      configuredLiveEntries: candidateLiveEntries,
-      toursByGroupBroadcastId: toursByGroupBroadcastId,
-      liveRounds: liveRounds,
-      latestMoveTimesByRoundId: latestMoveTimesByRoundId,
+  Future<List<String>> resolve({required List<String> liveRoundIds}) async {
+    return gameRepository.getStrictLiveGroupBroadcastIds(
+      liveRoundIds: liveRoundIds,
+      staleAfterSeconds: liveIndicatorStaleAfter.inSeconds,
     );
   }
 }
@@ -266,12 +217,9 @@ class _StrictLiveGroupBroadcastResolver {
 /// Whether [error] is an expected connectivity hiccup (offline / timeout)
 /// rather than a genuine defect.
 ///
-/// The live-event resolver and its source streams run on a 1-minute refresh
-/// timer, so without this distinction a single offline moment dumps a full
-/// stack trace to the console every cycle. Connectivity errors are an expected,
-/// gracefully-handled state (the resolver falls back to an empty live list), so
-/// they are logged tersely and without a stack trace; everything else keeps the
-/// full diagnostic.
+/// Connectivity errors are an expected, gracefully-handled state (the resolver
+/// preserves its last good live list), so they are logged tersely and without
+/// a stack trace; everything else keeps the full diagnostic.
 @visibleForTesting
 bool isExpectedLiveResolveError(Object error) {
   return error is NetworkException ||

@@ -56,13 +56,14 @@ The event feed remains personalized on-device. Starred events and favorite-
 player counts are user-specific, so the existing client ranking stays intact;
 they are not passed into or recomputed by the feed RPC.
 
-The existing strict-live resolver keeps its own timer solely for live-indicator
-resolution. For You does not listen to that timer and performs no periodic RPC,
-cache replacement, sorting, or widget work. This avoids decoding and merging a
-large top-games payload on Flutter's main isolate while the user is scrolling.
+The existing one-minute strict-live heartbeat now performs one compact backend
+RPC that returns only event IDs, keeping the time-based activity cutoff fresh.
+For You does not perform periodic top-games RPCs, cache replacement, sorting,
+or widget work. This avoids decoding and merging a large top-games payload on
+Flutter's main isolate while the user is scrolling.
 
 Tab activation and route return immediately refresh top-game membership, using
-the full feed only when it is stale. App resume forces the full catch-up path.
+the full feed only when it is stale. App resume uses the same five-minute gate.
 An actual live event, tour, or round-set change clears the session-order cache
 and re-runs the existing client personalization once, allowing newly eligible
 starred/hearted events to bubble without continuous sorting.
@@ -82,8 +83,8 @@ boards changed rebuild. Card FEN/position and clock streams are unchanged.
   numbers.
 - Run Supabase security and performance advisors and confirm this function
   remains `security invoker` and executable only by `authenticated`.
-- Test visibility refresh decisions and enforce that the periodic live resolver
-  cannot trigger For You RPC work.
+- Test visibility refresh decisions and enforce that unchanged heartbeat
+  results cannot trigger For You top-games or full-feed RPC work.
 - Test that equivalent refreshed snapshots preserve cache identity and changed
   events replace only their own cache entry.
 - Run scoped `flutter analyze --no-pub` on every touched Flutter/test file.
@@ -93,5 +94,6 @@ boards changed rebuild. Card FEN/position and clock streams are unchanged.
 - No new frontend ranking algorithm or backend event personalization.
 - No replacement of the existing user-specific client ranking.
 - No changes to game-card streaming, clocks, or position updates.
-- No per-move, timer-driven, background, or off-route RPC refresh work.
+- No per-move or timer-driven top-games/full-feed RPC work, and no background
+  or off-route personalized-feed refresh work.
 - No schema, RLS, index, or response-shape changes.

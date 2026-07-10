@@ -87,9 +87,10 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 }
 
 class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
-    with RouteAware {
+    with RouteAware, WidgetsBindingObserver {
   bool _isFlipped = false;
   bool _routeActive = true;
+  bool _appIsResumed = true;
   Timer? _backwardLongPressTimer;
   Timer? _forwardLongPressTimer;
 
@@ -153,6 +154,25 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         hasDifferentPlayerScope;
   }
 
+  void _pauseScopedOpeningTree() {
+    final scopedPlayerId = widget.initialPlayer?.id;
+    if (scopedPlayerId == null || scopedPlayerId.isEmpty) return;
+    final treeState = ref.read(playerOpeningTreeProvider(scopedPlayerId));
+    if (treeState.progress.isRunning) {
+      ref.read(playerOpeningTreeProvider(scopedPlayerId).notifier).cancel();
+    }
+  }
+
+  void _resumeScopedOpeningTree() {
+    if (!_routeActive || !_appIsResumed) return;
+    final scopedPlayerId = widget.initialPlayer?.id;
+    if (scopedPlayerId == null || scopedPlayerId.isEmpty) return;
+    final treeState = ref.read(playerOpeningTreeProvider(scopedPlayerId));
+    if (treeState.progress.status == PlayerOpeningTreeStatus.canceled) {
+      ref.read(playerOpeningTreeProvider(scopedPlayerId).notifier).start();
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -166,6 +186,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     // explorer (which also uses isCurrentPosition: true). Multiple background
     // explorers retrying after cancellation cause an infinite preemption cycle.
     setState(() => _routeActive = false);
+    _pauseScopedOpeningTree();
     super.didPushNext();
   }
 
@@ -174,12 +195,25 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     // The route on top was popped — this explorer is visible again.
     // Re-enable its engine so the eval restarts.
     setState(() => _routeActive = true);
+    _resumeScopedOpeningTree();
     super.didPopNext();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    _appIsResumed = state == AppLifecycleState.resumed;
+    if (_appIsResumed) {
+      _resumeScopedOpeningTree();
+    } else {
+      _pauseScopedOpeningTree();
+    }
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Riverpod best practice: never modify providers synchronously in widget
     // lifecycles (can happen while the widget tree is building).
@@ -194,6 +228,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     _stopLongPressBackward();
     _stopLongPressForward();
@@ -900,7 +935,10 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                           ref.read(gamebaseExplorerProvider).currentMoveNumber;
                       if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
                         if (!context.mounted) return;
-                        final unlocked = await requirePremiumGuard(context, ref);
+                        final unlocked = await requirePremiumGuard(
+                          context,
+                          ref,
+                        );
                         if (!unlocked) return;
                       }
                     }

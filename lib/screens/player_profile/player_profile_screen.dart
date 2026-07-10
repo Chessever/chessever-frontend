@@ -110,7 +110,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   /// merged backend-side, so TWIC is the single source of truth.
   static const _source = PlayerProfileDataSource.twic;
   String? _currentGamebasePlayerId;
-  bool _didPrefetchExplorerRoot = false;
   int? _gamesTabCueCount;
 
   bool _showHeaderExtras = true;
@@ -368,8 +367,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final uuid = _resolveGamebasePlayerId();
     if (uuid == null) return;
 
-    _startExplorerTreeForPlayer(uuid);
-
     final initialPlayer = _buildExplorerFallbackPlayer(uuid);
     if (!mounted) return;
 
@@ -399,13 +396,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     // Warm/update cache in background without blocking navigation.
     unawaited(ref.read(playerByIdProvider(uuid).future));
-  }
-
-  void _startExplorerTreeForPlayer(String playerId) {
-    if (_didPrefetchExplorerRoot) return;
-    _didPrefetchExplorerRoot = true;
-
-    ref.read(playerOpeningTreeProvider(playerId).notifier).start();
   }
 
   Future<void> _toggleFavorite() async {
@@ -594,15 +584,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
     final hasPlayerExplorer = _resolveGamebasePlayerId() != null;
-    if (hasPlayerExplorer && !_didPrefetchExplorerRoot) {
-      final playerId = _resolveGamebasePlayerId();
-      if (playerId != null && playerId.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _startExplorerTreeForPlayer(playerId);
-        });
-      }
-    }
 
     final activePlayerKey = PlayerProfileKey(
       fideId: widget.fideId,

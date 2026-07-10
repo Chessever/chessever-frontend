@@ -109,7 +109,6 @@ Required application env vars:
 - `RevenueCatAPIKey`
 - `SENTRY_FLUTTER`
 - `AMPLITUDE`
-- `CLARITY_PROJECT_ID`
 - `ONESIGNAL_APP_ID`
 
 Required E2E account vars:
@@ -195,7 +194,6 @@ patrol test \
   --dart-define="RevenueCatAPIKey=$RevenueCatAPIKey" \
   --dart-define="SENTRY_FLUTTER=$SENTRY_FLUTTER" \
   --dart-define="AMPLITUDE=$AMPLITUDE" \
-  --dart-define="CLARITY_PROJECT_ID=$CLARITY_PROJECT_ID" \
   --dart-define="ONESIGNAL_APP_ID=$ONESIGNAL_APP_ID" \
   -d "$PATROL_DEVICE" \
   -t patrol_test/signed_in_deep_test.dart
@@ -252,7 +250,6 @@ Flutter build steps in Codemagic should pass the app env vars through
 --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" \
 --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" \
 --dart-define=AMPLITUDE="$AMPLITUDE" \
---dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
 --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
 --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY"
 ```

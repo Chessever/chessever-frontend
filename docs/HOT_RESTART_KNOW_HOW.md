@@ -119,7 +119,7 @@ Because of the concurrency pattern in the tournaments flow:
 | `_ForYouEventGamesController._performRefreshLoop` | 20+ concurrent async chains | Each kicks off in constructor |
 | `ref.listen(...)` callbacks per controller | **9** (live ids, favorites, country, pins, etc.) | Re-triggers refresh on any dependency change |
 | `liveTourIdProvider` / `liveRoundsIdProvider` | 2 `AutoDisposeStreamProvider`s backed by Supabase `.from('settings').stream()` | Live-round tracking |
-| `liveGroupBroadcastIdsProvider` | Custom `AutoDisposeStreamProvider` with 2 Supabase streams + 1-minute `Timer.periodic` + `StreamController` | Resolves live events |
+| `liveGroupBroadcastIdsProvider` | Custom `AutoDisposeStreamProvider` with a settings stream + one-minute compact strict-live RPC + `StreamController` | Resolves live events |
 | `gameUpdatesStreamProvider(gameId)` | One per live game card on screen (can be 15–40) | Live board updates |
 | `gamePgnStreamProvider(gameId)` | One per open chess board | Live PGN |
 | `game_clock_stream_provider` | One per visible clock | Live clocks |
