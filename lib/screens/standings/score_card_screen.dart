@@ -24,12 +24,17 @@ import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:heroine/heroine.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -288,10 +293,22 @@ class ScoreCardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final controlExtent = _controlExtent(context);
+    final topContentInset = _topContentInset(context, controlExtent);
     final selectedPlayer = ref.watch(selectedPlayerProvider);
 
     if (selectedPlayer == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return GlassFullScreenPage(
+        backgroundColor: context.colors.background,
+        includeContentSafeArea: false,
+        topOverlayPadding: const EdgeInsets.only(top: 4),
+        topOverlay: GlassIslandTopBar(
+          topPadding: 0,
+          height: controlExtent,
+          leading: GlassBackButton(size: controlExtent),
+        ),
+        content: const Center(child: CircularProgressIndicator()),
+      );
     }
     final backfilledPlayerAsync = ref.watch(
       backfilledStandingPlayerProvider(selectedPlayer),
@@ -723,301 +740,310 @@ class ScoreCardScreen extends ConsumerWidget {
       ref.read(selectedPlayerProvider.notifier).state = nextPlayer;
     }
 
-    final scoreCardScaffold = Scaffold(
+    final scoreCardScaffold = GlassFullScreenPage(
       key: e2eKey(E2eIds.scorecardRoot),
       backgroundColor: context.colors.background,
-      body: SafeArea(
-        // No bottom inset — bottom safe area shrinks the scroll viewport and
-        // cuts off the last games during scroll. Clearance is restored via a
-        // trailing padding sliver below instead.
-        bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
-            ),
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragEnd: (details) {
-                final velocity = details.primaryVelocity ?? 0;
-                if (velocity.abs() < 250) return;
-                selectAdjacentPlayer(
-                  velocity < 0
-                      ? ScoreCardSwipeDirection.next
-                      : ScoreCardSwipeDirection.previous,
-                );
-              },
-              child: CustomScrollView(
-                slivers: [
-                  _SliverScoreboardAppBar(onShareProfile: sharePlayerProfile),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(height: 10.h),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _PlayerAvatarTile(
-                                photoFuture: photoFuture,
-                                initials: initials,
-                                title: player.title,
-                                fideId: player.fideId?.toString(),
-                              ),
-                              SizedBox(width: avatarRatingGap),
-                              Expanded(
-                                child: IntrinsicHeight(
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: _RatingDisplay(
-                                          label: 'Classical',
-                                          playerName: player.name,
-                                          fideId: player.fideId,
-                                          timeControlType: "standard",
-                                          assetPath: PngAsset.classicalIcon,
-                                          onTap:
-                                              () => _navigateToPlayerProfile(
-                                                context,
-                                                ref,
-                                                player,
-                                              ),
-                                        ),
-                                      ),
-                                      SizedBox(width: ratingBoxGap),
-                                      Expanded(
-                                        child: _RatingDisplay(
-                                          label: 'Rapid',
-                                          playerName: player.name,
-                                          fideId: player.fideId,
-                                          timeControlType: "rapid",
-                                          assetPath: PngAsset.rapidIcon,
-                                          onTap:
-                                              () => _navigateToPlayerProfile(
-                                                context,
-                                                ref,
-                                                player,
-                                              ),
-                                        ),
-                                      ),
-                                      SizedBox(width: ratingBoxGap),
-                                      Expanded(
-                                        child: _RatingDisplay(
-                                          label: 'Blitz',
-                                          playerName: player.name,
-                                          fideId: player.fideId,
-                                          timeControlType: "blitz",
-                                          assetPath: PngAsset.blitzIcon,
-                                          onTap:
-                                              () => _navigateToPlayerProfile(
-                                                context,
-                                                ref,
-                                                player,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 12.h),
-                          GestureDetector(
-                            onTap:
-                                () => _navigateToPlayerProfile(
-                                  context,
-                                  ref,
-                                  player,
-                                ),
-                            child: PerformanceStatsRow(
-                              performanceRating: performanceRating,
-                              score: eventScore,
-                              totalGames: eventTotalGames,
-                              // Prefer server-provided ratingDiff (accounts for FIDE K-factor history);
-                              // fall back to locally calculated sum when server value is unavailable.
-                              ratingDiff:
-                                  hasEventContext
-                                      ? (player.scoreChange != 0
-                                          ? player.scoreChange
-                                          : (totalRatingDiff != 0.0
-                                              ? totalRatingDiff.round()
-                                              : null))
-                                      : null,
-                            ),
-                          ),
-                          SizedBox(height: 10.h),
-                          _ProfileNavigationButton(
-                            onTap:
-                                () => _navigateToPlayerProfile(
-                                  context,
-                                  ref,
-                                  player,
-                                ),
-                          ),
-                        ],
-                      ),
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: _ScoreboardTopBar(
+            onShareProfile: sharePlayerProfile,
+            controlExtent: controlExtent,
+          ),
+        ),
+      ),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: (details) {
+              final velocity = details.primaryVelocity ?? 0;
+              if (velocity.abs() < 250) return;
+              selectAdjacentPlayer(
+                velocity < 0
+                    ? ScoreCardSwipeDirection.next
+                    : ScoreCardSwipeDirection.previous,
+              );
+            },
+            child: CustomScrollView(
+              slivers: [
+                // This clearance scrolls away with the page, keeping the
+                // first opaque content readable without creating a top bar.
+                SliverToBoxAdapter(child: SizedBox(height: topContentInset)),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
                     ),
-                  ),
-                  SliverToBoxAdapter(child: SizedBox(height: 12.h)),
-                  if (isLoadingGames ||
-                      // On a deep-linked cold-start the games-tour provider
-                      // can briefly emit AsyncData([]) before tourDetail
-                      // resolves; treat that window as still loading so we
-                      // don't flash "No games in this tournament" between the
-                      // push and the real data arriving.
-                      (hasEventContext &&
-                          playerGames.isEmpty &&
-                          ref
-                                  .watch(tourDetailScreenProvider)
-                                  .valueOrNull
-                                  ?.aboutTourModel
-                                  .id
-                                  .isNotEmpty !=
-                              true))
-                    const SliverFillRemaining(
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (playerGames.isEmpty)
-                    SliverFillRemaining(
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(height: 10.h),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 40.ic,
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.5,
-                              ),
+                            _PlayerAvatarTile(
+                              photoFuture: photoFuture,
+                              initials: initials,
+                              title: player.title,
+                              fideId: player.fideId?.toString(),
                             ),
-                            SizedBox(height: 12.h),
-                            Text(
-                              hasEventContext
-                                  ? 'No games in this tournament'
-                                  : 'No games available',
-                              style: AppTypography.textSmMedium.copyWith(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.7,
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: 6.h),
-                            Text(
-                              hasEventContext
-                                  ? 'This player has not played in this tournament yet'
-                                  : 'Games will appear once they are played',
-                              textAlign: TextAlign.center,
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.5,
+                            SizedBox(width: avatarRatingGap),
+                            Expanded(
+                              child: IntrinsicHeight(
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _RatingDisplay(
+                                        label: 'Classical',
+                                        playerName: player.name,
+                                        fideId: player.fideId,
+                                        timeControlType: "standard",
+                                        assetPath: PngAsset.classicalIcon,
+                                        onTap:
+                                            () => _navigateToPlayerProfile(
+                                              context,
+                                              ref,
+                                              player,
+                                            ),
+                                      ),
+                                    ),
+                                    SizedBox(width: ratingBoxGap),
+                                    Expanded(
+                                      child: _RatingDisplay(
+                                        label: 'Rapid',
+                                        playerName: player.name,
+                                        fideId: player.fideId,
+                                        timeControlType: "rapid",
+                                        assetPath: PngAsset.rapidIcon,
+                                        onTap:
+                                            () => _navigateToPlayerProfile(
+                                              context,
+                                              ref,
+                                              player,
+                                            ),
+                                      ),
+                                    ),
+                                    SizedBox(width: ratingBoxGap),
+                                    Expanded(
+                                      child: _RatingDisplay(
+                                        label: 'Blitz',
+                                        playerName: player.name,
+                                        fideId: player.fideId,
+                                        timeControlType: "blitz",
+                                        assetPath: PngAsset.blitzIcon,
+                                        onTap:
+                                            () => _navigateToPlayerProfile(
+                                              context,
+                                              ref,
+                                              player,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    )
-                  else
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final game = playerGames[index];
-                        // Fide-first, fuzzy-name-fallback match — see note in
-                        // the performance loop above.
-                        final isWhite = playerUtils.isSamePlayerWithFideId(
-                          game.whitePlayer.name,
-                          player.name,
-                          fideId1: game.whitePlayer.fideId,
-                          fideId2: player.fideId,
-                        );
-                        final opponent =
-                            isWhite ? game.blackPlayer : game.whitePlayer;
-                        final result = _getPlayerResult(game, isWhite);
-
-                        final playerRating = _getPlayerRatingForSide(
-                          game,
-                          isWhite,
-                        );
-                        final opponentRating = _getPlayerRatingForSide(
-                          game,
-                          !isWhite,
-                        );
-
-                        double ratingChange = 0.0;
-                        if (playerRating > 0 && opponentRating > 0) {
-                          final tc = game.timeControl;
-                          final fideK =
-                              tc != null ? playerRatings?.getK(tc) : null;
-                          final fidePlayerRating =
-                              tc != null
-                                  ? playerRatings?.getRating(tc)?.toDouble()
-                                  : null;
-                          ratingChange = _calculateFideRatingChange(
-                            playerRating,
-                            opponentRating,
-                            game.gameStatus,
-                            isWhite,
-                            game,
-                            fideK: fideK,
-                            playerRatingOverride: fidePlayerRating,
-                          );
-                        }
-
-                        return Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: horizontalPadding,
+                        SizedBox(height: 12.h),
+                        GestureDetector(
+                          onTap:
+                              () => _navigateToPlayerProfile(
+                                context,
+                                ref,
+                                player,
+                              ),
+                          child: PerformanceStatsRow(
+                            performanceRating: performanceRating,
+                            score: eventScore,
+                            totalGames: eventTotalGames,
+                            // Prefer server-provided ratingDiff (accounts for FIDE K-factor history);
+                            // fall back to locally calculated sum when server value is unavailable.
+                            ratingDiff:
+                                hasEventContext
+                                    ? (player.scoreChange != 0
+                                        ? player.scoreChange
+                                        : (totalRatingDiff != 0.0
+                                            ? totalRatingDiff.round()
+                                            : null))
+                                    : null,
                           ),
-                          child: ScoreboardCardWidget(
-                            roundLabel:
-                                hasEventContext ? _buildRoundLabel(game) : null,
-                            countryCode: opponent.countryCode,
-                            title: opponent.title,
-                            name: opponent.name,
-                            score: opponent.rating,
-                            scoreChange:
-                                ratingChange != 0.0 ? ratingChange : null,
-                            matchScore: result,
-                            isWhite: isWhite,
-                            index: index,
-                            isFirst: index == 0,
-                            isLast: index == playerGames.length - 1,
-                            onTap: () {
-                              final viewSource =
-                                  ref.read(selectedBroadcastModelProvider) ==
-                                          null
-                                      ? ChessboardView.favScorecard
-                                      : ChessboardView.tour;
-
-                              // Pass playerGames (filtered for this player) instead of allGames
-                              // so swiping in chessboard only shows this player's games
-                              ref
-                                  .read(gameCardWrapperProvider)
-                                  .navigateToChessBoard(
-                                    context: context,
-                                    orderedGames: playerGames,
-                                    gameIndex: index,
-                                    onReturnFromChessboard: (_) {},
-                                    viewSource: viewSource,
-                                    playerProfileDataSource: profileDataSource,
-                                  );
-                            },
-                          ),
-                        );
-                      }, childCount: playerGames.length),
-                    ),
-                  // Bottom breathing room + restored home-indicator clearance
-                  // (SafeArea bottom was disabled to stop scroll cutoffs).
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 24.h + MediaQuery.of(context).padding.bottom,
+                        ),
+                        SizedBox(height: 10.h),
+                        _ProfileNavigationButton(
+                          onTap:
+                              () => _navigateToPlayerProfile(
+                                context,
+                                ref,
+                                player,
+                              ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                SliverToBoxAdapter(child: SizedBox(height: 12.h)),
+                if (isLoadingGames ||
+                    // On a deep-linked cold-start the games-tour provider
+                    // can briefly emit AsyncData([]) before tourDetail
+                    // resolves; treat that window as still loading so we
+                    // don't flash "No games in this tournament" between the
+                    // push and the real data arriving.
+                    (hasEventContext &&
+                        playerGames.isEmpty &&
+                        ref
+                                .watch(tourDetailScreenProvider)
+                                .valueOrNull
+                                ?.aboutTourModel
+                                .id
+                                .isNotEmpty !=
+                            true))
+                  const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (playerGames.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 40.ic,
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.5,
+                            ),
+                          ),
+                          SizedBox(height: 12.h),
+                          Text(
+                            hasEventContext
+                                ? 'No games in this tournament'
+                                : 'No games available',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.7,
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 6.h),
+                          Text(
+                            hasEventContext
+                                ? 'This player has not played in this tournament yet'
+                                : 'Games will appear once they are played',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final game = playerGames[index];
+                      // Fide-first, fuzzy-name-fallback match — see note in
+                      // the performance loop above.
+                      final isWhite = playerUtils.isSamePlayerWithFideId(
+                        game.whitePlayer.name,
+                        player.name,
+                        fideId1: game.whitePlayer.fideId,
+                        fideId2: player.fideId,
+                      );
+                      final opponent =
+                          isWhite ? game.blackPlayer : game.whitePlayer;
+                      final result = _getPlayerResult(game, isWhite);
+
+                      final playerRating = _getPlayerRatingForSide(
+                        game,
+                        isWhite,
+                      );
+                      final opponentRating = _getPlayerRatingForSide(
+                        game,
+                        !isWhite,
+                      );
+
+                      double ratingChange = 0.0;
+                      if (playerRating > 0 && opponentRating > 0) {
+                        final tc = game.timeControl;
+                        final fideK =
+                            tc != null ? playerRatings?.getK(tc) : null;
+                        final fidePlayerRating =
+                            tc != null
+                                ? playerRatings?.getRating(tc)?.toDouble()
+                                : null;
+                        ratingChange = _calculateFideRatingChange(
+                          playerRating,
+                          opponentRating,
+                          game.gameStatus,
+                          isWhite,
+                          game,
+                          fideK: fideK,
+                          playerRatingOverride: fidePlayerRating,
+                        );
+                      }
+
+                      return Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding,
+                        ),
+                        child: ScoreboardCardWidget(
+                          roundLabel:
+                              hasEventContext ? _buildRoundLabel(game) : null,
+                          countryCode: opponent.countryCode,
+                          title: opponent.title,
+                          name: opponent.name,
+                          score: opponent.rating,
+                          scoreChange:
+                              ratingChange != 0.0 ? ratingChange : null,
+                          matchScore: result,
+                          isWhite: isWhite,
+                          index: index,
+                          isFirst: index == 0,
+                          isLast: index == playerGames.length - 1,
+                          onTap: () {
+                            final viewSource =
+                                ref.read(selectedBroadcastModelProvider) == null
+                                    ? ChessboardView.favScorecard
+                                    : ChessboardView.tour;
+
+                            // Pass playerGames (filtered for this player) instead of allGames
+                            // so swiping in chessboard only shows this player's games
+                            ref
+                                .read(gameCardWrapperProvider)
+                                .navigateToChessBoard(
+                                  context: context,
+                                  orderedGames: playerGames,
+                                  gameIndex: index,
+                                  onReturnFromChessboard: (_) {},
+                                  viewSource: viewSource,
+                                  playerProfileDataSource: profileDataSource,
+                                );
+                          },
+                        ),
+                      );
+                    }, childCount: playerGames.length),
+                  ),
+                // Bottom breathing room + restored home-indicator clearance
+                // (SafeArea bottom was disabled to stop scroll cutoffs).
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 24.h + MediaQuery.of(context).padding.bottom,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1030,6 +1056,16 @@ class ScoreCardScreen extends ConsumerWidget {
       onShare: sharePlayerProfile,
       child: scoreCardScaffold,
     );
+  }
+
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(BuildContext context, double controlExtent) {
+    return MediaQuery.viewPaddingOf(context).top + 4 + controlExtent + 6 + 12;
   }
 
   (double?, int?) _parseScoreValues(String scoreText) {
@@ -1464,65 +1500,6 @@ class _ProfileNavigationButtonState extends State<_ProfileNavigationButton> {
   }
 }
 
-class _PlayerHeaderRow extends StatelessWidget {
-  final String countryCode;
-  final String rawCountryCode;
-  final String? title;
-  final String name;
-  const _PlayerHeaderRow({
-    required this.countryCode,
-    required this.rawCountryCode,
-    required this.title,
-    required this.name,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasFederation =
-        rawCountryCode.trim().isNotEmpty || countryCode.trim().isNotEmpty;
-    final titleText = (title ?? '').trim();
-
-    return Row(
-      children: [
-        if (hasFederation)
-          FederationFlag(
-            federation:
-                rawCountryCode.trim().isNotEmpty ? rawCountryCode : countryCode,
-            height: 16.h,
-            width: 22.w,
-            borderRadius: BorderRadius.circular(2.br),
-          )
-        else
-          SizedBox(width: 22.w, height: 16.h),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: RichText(
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            text: TextSpan(
-              children: [
-                if (titleText.isNotEmpty)
-                  TextSpan(
-                    text: '$titleText ',
-                    style: AppTypography.textMdBold.copyWith(
-                      color: kLightYellowColor,
-                    ),
-                  ),
-                TextSpan(
-                  text: name,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _PlayerAvatarTile extends StatelessWidget {
   final Future<String?>? photoFuture;
   final String initials;
@@ -1575,18 +1552,17 @@ class _PlayerAvatarTile extends StatelessWidget {
   }
 }
 
-class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
-  const _SliverScoreboardAppBar({this.onShareProfile});
+class _ScoreboardTopBar extends ConsumerStatefulWidget {
+  const _ScoreboardTopBar({required this.controlExtent, this.onShareProfile});
 
   final Future<void> Function()? onShareProfile;
+  final double controlExtent;
 
   @override
-  ConsumerState<_SliverScoreboardAppBar> createState() =>
-      _SliverScoreboardAppBarState();
+  ConsumerState<_ScoreboardTopBar> createState() => _ScoreboardTopBarState();
 }
 
-class _SliverScoreboardAppBarState
-    extends ConsumerState<_SliverScoreboardAppBar>
+class _ScoreboardTopBarState extends ConsumerState<_ScoreboardTopBar>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -1649,7 +1625,8 @@ class _SliverScoreboardAppBarState
               rating: player.score,
               title: player.title,
             );
-        if (isNowFavorite) {
+        if (!mounted) return;
+        if (isNowFavorite && !GlassMotion.reduceMotion(context)) {
           _animationController.forward().then(
             (_) => _animationController.reverse(),
           );
@@ -1700,7 +1677,7 @@ class _SliverScoreboardAppBarState
   @override
   Widget build(BuildContext context) {
     final selectedPlayer = ref.watch(selectedPlayerProvider);
-    if (selectedPlayer == null) return const SliverAppBar();
+    if (selectedPlayer == null) return const SizedBox.shrink();
     final backfilledPlayerAsync = ref.watch(
       backfilledStandingPlayerProvider(selectedPlayer),
     );
@@ -1714,6 +1691,8 @@ class _SliverScoreboardAppBarState
     final validCountryCode = ref
         .read(locationServiceProvider)
         .getValidCountryCode(player.countryCode);
+    final hasFederation =
+        player.countryCode.trim().isNotEmpty || validCountryCode.isNotEmpty;
 
     bool isFavorite = false;
     if (isForYouView) {
@@ -1728,72 +1707,96 @@ class _SliverScoreboardAppBarState
       );
     }
 
-    final headerRow = _PlayerHeaderRow(
-      countryCode: validCountryCode,
-      rawCountryCode: player.countryCode,
-      title: player.title,
-      name: player.name,
-    );
-
-    return SliverAppBar(
-      pinned: true,
-      backgroundColor: context.colors.background,
-      elevation: 0,
-      centerTitle: false,
-      leading: IconButton(
-        icon: Icon(
-          Icons.arrow_back_ios_new_outlined,
-          color: context.colors.textPrimary,
-          size: 22.ic,
-        ),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title:
-          hasTournamentContext
-              ? GestureDetector(
-                onTap: () => _showPlayerSelectionSheet(context),
-                behavior: HitTestBehavior.opaque,
-                child: headerRow,
+    final titleChip = GlassTitleChip(
+      label: [
+        if (player.title != null && player.title!.trim().isNotEmpty)
+          player.title!.trim(),
+        player.name,
+      ].where((s) => s.isNotEmpty).join(' '),
+      icon:
+          hasFederation
+              ? FederationFlag(
+                federation:
+                    player.countryCode.trim().isNotEmpty
+                        ? player.countryCode
+                        : validCountryCode,
+                height: 16.h,
+                width: 22.w,
+                borderRadius: BorderRadius.circular(2.br),
               )
-              : headerRow,
-      actions: [
+              : null,
+      height: widget.controlExtent,
+      maxWidth: 180.w,
+    );
+    final Widget title =
+        hasTournamentContext
+            ? Semantics(
+              label: 'Choose player',
+              button: true,
+              onTap: () => _showPlayerSelectionSheet(context),
+              child: ExcludeSemantics(
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    onTap: () => _showPlayerSelectionSheet(context),
+                    borderRadius: BorderRadius.circular(
+                      widget.controlExtent / 2,
+                    ),
+                    child: titleChip,
+                  ),
+                ),
+              ),
+            )
+            : titleChip;
+
+    return GlassIslandTopBar(
+      topPadding: 0,
+      height: widget.controlExtent,
+      horizontalPadding: ResponsiveHelper.adaptive(phone: 12, tablet: 24),
+      leading: GlassBackButton(size: widget.controlExtent),
+      title: title,
+      trailing: [
         if (widget.onShareProfile != null)
-          InkWell(
+          Semantics(
+            label: 'Share player profile',
+            button: true,
             onTap: () => widget.onShareProfile!(),
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: Icon(
-                Icons.ios_share,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-                semanticLabel: 'Share Profile',
+            child: ExcludeSemantics(
+              child: GlassIconButton(
+                icon: Icon(Icons.ios_share, color: context.colors.iconPrimary),
+                onPressed: () => widget.onShareProfile!(),
+                size: widget.controlExtent,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
             ),
           ),
         if (isForYouView)
-          InkWell(
+          Semantics(
+            label: isFavorite ? 'Remove favorite player' : 'Favorite player',
+            button: true,
             onTap: _toggleFavorite,
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: SvgWidget(
-                  isFavorite
-                      ? SvgAsset.favouriteRedIcon
-                      : SvgAsset.favouriteIcon2,
-                  semanticsLabel: 'Favorite Icon',
-                  height: 20.h,
-                  width: 20.w,
-                  // Red heart keeps its fill; outline heart is auto-tinted
-                  // by SvgWidget so it stays visible on light surfaces.
-                  preserveOriginalColors: isFavorite,
+            child: ExcludeSemantics(
+              child: GlassIconButton(
+                icon: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: SvgWidget(
+                    isFavorite
+                        ? SvgAsset.favouriteRedIcon
+                        : SvgAsset.favouriteIcon2,
+                    semanticsLabel: 'Favorite Icon',
+                    height: 18,
+                    width: 18,
+                    preserveOriginalColors: isFavorite,
+                  ),
                 ),
+                onPressed: _toggleFavorite,
+                size: widget.controlExtent,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
             ),
           ),
-        SizedBox(width: 8.w),
       ],
     );
   }

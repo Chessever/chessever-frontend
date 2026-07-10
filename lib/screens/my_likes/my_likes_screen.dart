@@ -17,9 +17,15 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
-import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -201,70 +207,137 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     if (viewAsync.valueOrNull != null) {
       _lastData = viewAsync.valueOrNull;
     }
+    final controlExtent = _controlExtent(context);
+    final selectedTags = ref.watch(myLikesFilterProvider).selectedTags;
+    final liveTagCounts = ref.watch(myLikesTagCountsProvider).valueOrNull;
+    if (liveTagCounts != null) {
+      _lastTagCounts = liveTagCounts;
+    }
+    final tagCounts = liveTagCounts ?? _lastTagCounts;
+    final showDataControls = data != null && !data.isEmpty;
+    final showTagFilters =
+        showDataControls &&
+        (selectedTags.isNotEmpty || tagCounts.values.any((count) => count > 0));
+    final overlayRowCount =
+        1 + (showDataControls ? 1 : 0) + (showTagFilters ? 1 : 0);
+    final topContentInset = _topContentInset(
+      context,
+      controlExtent: controlExtent,
+      rowCount: overlayRowCount,
+    );
 
     final Widget body;
     if (data != null) {
-      body = _buildBody(data);
+      body = _buildBody(data, topContentInset: topContentInset);
     } else if (viewAsync.hasError) {
       body = _buildErrorState(userFacingError(viewAsync.error));
     } else {
       body = _buildLoadingState();
     }
 
-    return Scaffold(
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(child: body),
-          ],
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: GlassIslandStack(
+            includeStatusBar: false,
+            gap: 8,
+            children: [
+              _buildHeader(
+                controlExtent: controlExtent,
+                totalLiked: data?.totalLiked ?? 0,
+              ),
+              if (showDataControls)
+                _buildSearchBar(controlExtent: controlExtent),
+              if (showTagFilters)
+                _buildTagQuickFilters(
+                  counts: tagCounts,
+                  selectedTags: selectedTags,
+                  controlExtent: controlExtent,
+                ),
+            ],
+          ),
         ),
       ),
+      content: body,
     );
   }
 
-  Widget _buildHeader() {
-    final totalLiked =
-        ref.watch(myLikesViewProvider).valueOrNull?.totalLiked ?? 0;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(8.w, 8.h, 16.w, 4.h),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: context.colors.textPrimary,
-              size: 20.sp,
-            ),
-          ),
-          Icon(
-            Icons.favorite_rounded,
-            color: context.colors.danger,
-            size: 20.sp,
-          ),
-          SizedBox(width: 8.w),
-          Text(
-            'My Likes',
-            style: AppTypography.textLgBold.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          const Spacer(),
-          if (totalLiked > 0)
-            IconButton(
-              onPressed: _handleExportPgn,
-              tooltip: 'Export as PGN',
-              icon: Icon(
-                Icons.ios_share_rounded,
-                color: context.colors.textPrimary,
-                size: 20.sp,
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(
+    BuildContext context, {
+    required double controlExtent,
+    required int rowCount,
+  }) {
+    const overlayTopPadding = 4.0;
+    const topBarBottomPadding = 6.0;
+    const rowGap = 8.0;
+    const stackBottomPadding = 4.0;
+    const contentGap = 8.0;
+    return MediaQuery.viewPaddingOf(context).top +
+        overlayTopPadding +
+        (controlExtent * rowCount) +
+        topBarBottomPadding +
+        (rowGap * (rowCount - 1)) +
+        stackBottomPadding +
+        contentGap;
+  }
+
+  double _bottomContentInset(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return media.viewPadding.bottom + media.viewInsets.bottom + 24.h;
+  }
+
+  Widget _buildHeader({
+    required double controlExtent,
+    required int totalLiked,
+  }) {
+    return GlassIslandTopBar(
+      topPadding: 0,
+      height: controlExtent,
+      horizontalPadding: ResponsiveHelper.adaptive(phone: 12, tablet: 24),
+      leading: GlassBackButton(size: controlExtent),
+      title: GlassTitleChip(
+        label: totalLiked > 0 ? 'My Likes · $totalLiked' : 'My Likes',
+        height: controlExtent,
+        maxWidth: 210.w,
+        icon: Icon(
+          Icons.favorite_rounded,
+          color: context.colors.danger,
+          size: 16,
+        ),
+      ),
+      trailing: [
+        if (totalLiked > 0)
+          Semantics(
+            label: 'Export likes as PGN',
+            button: true,
+            onTap: _handleExportPgn,
+            child: ExcludeSemantics(
+              child: GlassIconButton(
+                icon: Icon(
+                  Icons.ios_share_rounded,
+                  color: context.colors.iconPrimary,
+                ),
+                onPressed: _handleExportPgn,
+                size: controlExtent,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -290,7 +363,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         ),
         action: SnackBarAction(
           label: 'Upgrade',
-          textColor: const Color(0xFFFFB300),
+          textColor: context.colors.brand,
           onPressed: () async {
             if (completer.isCompleted) return;
             final unlocked = await requirePremiumGuard(context, ref);
@@ -381,7 +454,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
               color: context.colors.textPrimary,
             ),
           ),
-          backgroundColor: const Color(0xFFEF4444),
+          backgroundColor: context.colors.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -433,19 +506,22 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            userFacingError(e, fallback: 'Could not share this. Please try again.'),
+            userFacingError(
+              e,
+              fallback: 'Could not share this. Please try again.',
+            ),
             style: AppTypography.textSmMedium.copyWith(
               color: context.colors.textPrimary,
             ),
           ),
-          backgroundColor: const Color(0xFFEF4444),
+          backgroundColor: context.colors.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 
-  Widget _buildBody(MyLikesData data) {
+  Widget _buildBody(MyLikesData data, {required double topContentInset}) {
     if (data.isEmpty) return _buildEmptyState();
 
     final selectedTags = ref.watch(myLikesFilterProvider).selectedTags;
@@ -456,24 +532,9 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
         parent: BouncingScrollPhysics(),
       ),
       slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(0, 12.h, 0, 8.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: _buildSearchBar(),
-                ),
-                // Filter row is edge-to-edge so the horizontal scroll runs
-                // under the screen edges instead of being clipped by parent
-                // padding.
-                _buildTagQuickFilters(),
-              ],
-            ),
-          ),
-        ),
+        // Scroll-away clearance protects the first row at rest while the
+        // entire page remains behind the floating search and filter islands.
+        SliverToBoxAdapter(child: SizedBox(height: topContentInset)),
         if (data.hasNoMatches)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -486,7 +547,9 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           )
         else
           _buildSectionsSliver(data),
-        SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        SliverToBoxAdapter(
+          child: SizedBox(height: _bottomContentInset(context)),
+        ),
       ],
     );
 
@@ -504,32 +567,122 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     return content;
   }
 
-  Widget _buildSearchBar() {
-    return GameSearchFilterBar(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      currentFilter: ref.watch(myLikesFilterProvider).filter,
-      onChanged: _onSearchChanged,
-      onClear: _clearSearch,
-      onFilterTap: _showFilterDialog,
+  Widget _buildSearchBar({required double controlExtent}) {
+    final filter = ref.watch(myLikesFilterProvider).filter;
+    final hasActiveFilters = filter.hasActiveFilters || filter.hasActiveSorts;
+    final activeFilterCount = filter.activeFilterCount + filter.activeSortCount;
+    final filterLabel =
+        hasActiveFilters
+            ? 'Filters and sorting, $activeFilterCount active'
+            : 'Filters and sorting';
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Row(
+        children: [
+          Expanded(
+            child: GlassContainer(
+              useOwnLayer: true,
+              quality: GlassQuality.standard,
+              height: controlExtent,
+              padding: EdgeInsets.only(left: 14.w),
+              shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Icon(
+                      Icons.search_rounded,
+                      size: 20.sp,
+                      color: context.colors.iconSecondary,
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      textInputAction: TextInputAction.search,
+                      textAlignVertical: TextAlignVertical.center,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                      onChanged: _onSearchChanged,
+                      onSubmitted: _onSearchChanged,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Search likes',
+                        hintStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                  AnimatedBuilder(
+                    animation: _searchController,
+                    builder: (context, _) {
+                      if (_searchController.text.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return SizedBox.square(
+                        dimension: controlExtent,
+                        child: IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: _clearSearch,
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: context.colors.iconSecondary,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Semantics(
+            label: filterLabel,
+            button: true,
+            onTap: _showFilterDialog,
+            child: ExcludeSemantics(
+              child: GlassBadge(
+                count: hasActiveFilters ? activeFilterCount : 0,
+                backgroundColor: context.colors.danger,
+                child: GlassIconButton(
+                  icon: Icon(
+                    Icons.tune_rounded,
+                    color:
+                        hasActiveFilters
+                            ? context.colors.danger
+                            : context.colors.iconPrimary,
+                  ),
+                  onPressed: _showFilterDialog,
+                  size: controlExtent,
+                  iconSize: 20,
+                  useOwnLayer: true,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildTagQuickFilters() {
-    final selectedTags = ref.watch(myLikesFilterProvider).selectedTags;
-    // Retain the last counts through a reload so the chip row doesn't collapse
-    // and snap back when a swipe-remove re-derives the tag counts.
-    final liveCounts = ref.watch(myLikesTagCountsProvider).valueOrNull;
-    if (liveCounts != null) {
-      _lastTagCounts = liveCounts;
-    }
-    final counts = liveCounts ?? _lastTagCounts;
+  Widget _buildTagQuickFilters({
+    required Map<String, int> counts,
+    required Set<String> selectedTags,
+    required double controlExtent,
+  }) {
     if (counts.isEmpty && selectedTags.isEmpty) {
       return const SizedBox.shrink();
     }
 
     // No "All" chip — empty selection IS "all" (PM removed it). Total-liked
-    // count remains visible via the date headers / sticky title.
+    // count remains visible via the date headers / floating title.
     final chips = <Widget>[];
 
     for (final tag in kLikeTags) {
@@ -537,31 +690,41 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       final isSelected = selectedTags.contains(tag.label);
       if (count == 0 && !isSelected) continue;
       chips.add(
-        _LikeTagFilterChip(
-          label: tag.label,
-          count: count,
+        Semantics(
+          label: '${tag.label}, $count games',
+          button: true,
           selected: isSelected,
-          color: tag.color,
           onTap: () => _toggleTagFilter(tag.label),
+          child: ExcludeSemantics(
+            child: GlassChip(
+              label: '${tag.label} · $count',
+              selected: isSelected,
+              selectedColor: tag.color.withValues(alpha: 0.28),
+              useOwnLayer: true,
+              labelStyle: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+              onTap: () => _toggleTagFilter(tag.label),
+            ),
+          ),
         ),
       );
     }
 
-    // 48h gives the chip's 40h pill room for the selected-state 1.03 scale
-    // without vertical clipping. ListView eats the horizontal padding so the
-    // strip itself can run from screen edge to screen edge.
-    return Padding(
-      padding: EdgeInsets.only(top: 12.h),
-      child: SizedBox(
-        height: 48.h,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          physics: const BouncingScrollPhysics(),
-          itemCount: chips.length,
-          separatorBuilder: (_, __) => SizedBox(width: 8.w),
-          itemBuilder: (_, i) => Center(child: chips[i]),
-        ),
+    return SizedBox(
+      height: controlExtent,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 16.w),
+        physics: const BouncingScrollPhysics(),
+        itemCount: chips.length,
+        separatorBuilder: (_, __) => SizedBox(width: 8.w),
+        itemBuilder:
+            (_, i) => ConstrainedBox(
+              constraints: BoxConstraints(minHeight: controlExtent),
+              child: Center(child: chips[i]),
+            ),
       ),
     );
   }
@@ -635,47 +798,52 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   }
 
   Widget _buildEmptyState() {
+    final motionDuration = GlassMotion.resolveDuration(context, 300.ms);
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80.w,
-            height: 80.h,
-            decoration: BoxDecoration(
-              color: context.colors.danger.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20.br),
-            ),
-            child: Icon(
-              Icons.favorite_rounded,
-              color: context.colors.danger.withValues(alpha: 0.8),
-              size: 40.ic,
-            ),
-          ),
-          SizedBox(height: 20.h),
-          Text(
-            'No likes yet',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 40.w),
-            child: Text(
-              'Double-tap a game on the board to add it to your likes.',
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80.w,
+                height: 80.h,
+                decoration: BoxDecoration(
+                  color: context.colors.danger.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20.br),
+                ),
+                child: Icon(
+                  Icons.favorite_rounded,
+                  color: context.colors.danger.withValues(alpha: 0.8),
+                  size: 40.ic,
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
+              SizedBox(height: 20.h),
+              Text(
+                'No likes yet',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+              SizedBox(height: 8.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 40.w),
+                child: Text(
+                  'Double-tap a game on the board to add it to your likes.',
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
+        )
+        .animate()
+        .fadeIn(duration: motionDuration)
+        .scale(duration: motionDuration, begin: const Offset(0.95, 0.95));
   }
 
   Widget _buildNoMatchesState({String? subtitle}) {
+    final motionDuration = GlassMotion.resolveDuration(context, 300.ms);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -702,7 +870,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    ).animate().fadeIn(duration: motionDuration);
   }
 
   Widget _buildLoadingState() {
@@ -727,7 +895,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           children: [
             Icon(
               Icons.error_outline_rounded,
-              color: const Color(0xFFEF4444),
+              color: context.colors.danger,
               size: 32.ic,
             ),
             SizedBox(height: 12.h),
@@ -760,106 +928,6 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LikeTagFilterChip extends StatelessWidget {
-  const _LikeTagFilterChip({
-    required this.label,
-    required this.count,
-    required this.selected,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final t = selected ? 1.0 : 0.0;
-    // No dot anymore — chip carries its tag identity via a low-key tinted
-    // fill + colored border. Unselected sits quiet; selected pops with a
-    // brighter fill and a stronger border.
-    final background =
-        Color.lerp(
-          color.withValues(alpha: 0.08),
-          color.withValues(alpha: 0.22),
-          t,
-        )!;
-    final borderColor =
-        Color.lerp(
-          color.withValues(alpha: 0.32),
-          color.withValues(alpha: 0.85),
-          t,
-        )!;
-
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOutCubic,
-      scale: selected ? 1.03 : 1,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20.br),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            height: 40.h,
-            padding: EdgeInsets.symmetric(horizontal: 12.w),
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(20.br),
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color:
-                        selected
-                            ? colors.textPrimary
-                            : colors.textPrimary.withValues(alpha: 0.72),
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-                SizedBox(width: 7.w),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                  decoration: BoxDecoration(
-                    color:
-                        selected
-                            ? color.withValues(alpha: 0.18)
-                            : colors.textPrimary.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(999.br),
-                  ),
-                  child: Text(
-                    count.toString(),
-                    style: AppTypography.textXsMedium.copyWith(
-                      color:
-                          selected
-                              ? colors.textPrimary
-                              : colors.textPrimary.withValues(alpha: 0.55),
-                      fontSize: 10.sp,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

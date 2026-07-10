@@ -39,12 +39,16 @@ import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
-import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
-import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -75,8 +79,8 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   int _index = 1;
   late final PageController _page = PageController(initialPage: _index);
 
-  // Search lives on the screen (not the Games tab) so the field can sit
-  // pinned above the tab switcher like the regular event view, and so the
+  // Search lives on the screen (not the Games tab) so the field can float
+  // with the outer controls above every relevant page, and so the
   // one query drives both the Games and Standings tabs.
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -102,7 +106,6 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   late SmartEventRequest _baselineRequest = widget.request;
 
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
-  final ChromeScrollCollapse _chromeCollapse = ChromeScrollCollapse();
 
   static String _initialTier(SmartEventRequest request) {
     final first = request.tierLabel.split(' ').first;
@@ -122,23 +125,21 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   void _select(int i) {
     if (_index == i) {
       _scrollToTopBus.request();
-      if (!_chromeCollapse.expanded) {
-        setState(_chromeCollapse.reset);
-      }
       return;
     }
     // Drop the keyboard when switching tabs so the field and the keyboard
     // collapse together instead of the keyboard hovering over About.
     _searchFocusNode.unfocus();
-    setState(() {
-      _index = i;
-      _chromeCollapse.reset();
-    });
-    _page.animateToPage(
-      i,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    setState(() => _index = i);
+    if (GlassMotion.reduceMotion(context)) {
+      _page.jumpToPage(i);
+    } else {
+      _page.animateToPage(
+        i,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   /// The request as the user currently sees it: the saved one re-keyed by
@@ -256,55 +257,154 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     navigator.pop();
   }
 
-  /// The pinned row: search field + filter button (+ view-mode toggle).
-  /// Lives at the screen level so it renders above the tab switcher; the
-  /// committed query travels to the tabs through [_SmartTierFilterScope].
-  Widget _buildSearchFilterBar(BuildContext context) {
-    return GameSearchFilterBar(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      // The badge counts every root/override criterion that's narrowing the
-      // list — including the tier threshold picked in the app bar dropdown —
-      // so the red indicator mirrors the smart event's full active config.
-      currentFilter: _mergeTierIntoFilter(_filter, _tier) ?? _filter,
-      hintText: 'Search games',
-      onChanged: (value) {
-        // Debounce: every committed query is a server-side search across ALL
-        // games of the included events, so don't fire one per keystroke.
-        _searchDebounce?.cancel();
-        _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-          if (mounted) setState(() => _query = value.trim());
-        });
-      },
-      onClear: () {
-        _searchDebounce?.cancel();
-        setState(() {
-          _query = '';
-          _searchController.clear();
-        });
-      },
-      onFilterTap: _openFilterDialog,
-      trailing: GestureDetector(
-        onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-        child: Container(
-          decoration: BoxDecoration(
-            color: context.colors.background,
-            borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(color: context.colors.surfaceRecessed),
+  /// Floating search + filter + view-mode islands. The committed query
+  /// travels to the tabs through [_SmartTierFilterScope].
+  Widget _buildSearchFilterBar(
+    BuildContext context, {
+    required double controlExtent,
+  }) {
+    final effectiveFilter = _mergeTierIntoFilter(_filter, _tier) ?? _filter;
+    final hasActiveFilters =
+        effectiveFilter.hasActiveFilters || effectiveFilter.hasActiveSorts;
+    final activeFilterCount =
+        effectiveFilter.activeFilterCount + effectiveFilter.activeSortCount;
+
+    void commitSearch(String value) {
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+        if (mounted) setState(() => _query = value.trim());
+      });
+    }
+
+    void clearSearch() {
+      _searchDebounce?.cancel();
+      setState(() {
+        _query = '';
+        _searchController.clear();
+      });
+      _searchFocusNode.unfocus();
+    }
+
+    final filterLabel =
+        hasActiveFilters
+            ? 'Filters and sorting, $activeFilterCount active'
+            : 'Filters and sorting';
+    void toggleViewMode() =>
+        ref.read(gamesListViewModeSwitcher).toggleViewMode();
+
+    return Row(
+      children: [
+        Expanded(
+          child: GlassContainer(
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            height: controlExtent,
+            padding: EdgeInsets.only(left: 14.w),
+            shape: LiquidRoundedSuperellipse(borderRadius: controlExtent / 2),
+            child: Row(
+              children: [
+                ExcludeSemantics(
+                  child: Icon(
+                    Icons.search_rounded,
+                    size: 20.sp,
+                    color: context.colors.iconSecondary,
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    textInputAction: TextInputAction.search,
+                    textAlignVertical: TextAlignVertical.center,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                    onChanged: commitSearch,
+                    onSubmitted: commitSearch,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Search games',
+                      hintStyle: AppTypography.textSmRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                AnimatedBuilder(
+                  animation: _searchController,
+                  builder: (context, _) {
+                    if (_searchController.text.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return SizedBox.square(
+                      dimension: controlExtent,
+                      child: IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: clearSearch,
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: context.colors.iconSecondary,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-          child: Center(
-            child: SvgPicture.asset(
-              SvgAsset.chase_grid,
-              width: 20.sp,
-              height: 20.sp,
-              colorFilter: ColorFilter.mode(
-                context.colors.textSecondary,
-                BlendMode.srcIn,
+        ),
+        SizedBox(width: 8.w),
+        Semantics(
+          label: filterLabel,
+          button: true,
+          onTap: _openFilterDialog,
+          child: ExcludeSemantics(
+            child: GlassBadge(
+              count: hasActiveFilters ? activeFilterCount : 0,
+              backgroundColor: context.colors.danger,
+              child: GlassIconButton(
+                icon: Icon(
+                  Icons.tune_rounded,
+                  color:
+                      hasActiveFilters
+                          ? context.colors.danger
+                          : context.colors.iconPrimary,
+                ),
+                onPressed: _openFilterDialog,
+                size: controlExtent,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
             ),
           ),
         ),
-      ),
+        SizedBox(width: 8.w),
+        Semantics(
+          label: 'Change game view',
+          button: true,
+          onTap: toggleViewMode,
+          child: ExcludeSemantics(
+            child: GlassIconButton(
+              icon: SvgPicture.asset(
+                SvgAsset.chase_grid,
+                width: 20.sp,
+                height: 20.sp,
+                colorFilter: ColorFilter.mode(
+                  context.colors.iconPrimary,
+                  BlendMode.srcIn,
+                ),
+              ),
+              onPressed: toggleViewMode,
+              size: controlExtent,
+              iconSize: 20,
+              useOwnLayer: true,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -339,6 +439,12 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   Widget build(BuildContext context) {
     final horizontalPadding =
         ResponsiveHelper.isTablet ? 24.sp.toDouble() : 16.sp.toDouble();
+    final controlExtent = _controlExtent(context);
+    final topContentInset = _topContentInset(
+      context,
+      controlExtent: controlExtent,
+      includeSearch: _index != 0,
+    );
 
     return _SmartEventRequestScope(
       request: widget.request,
@@ -349,6 +455,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         onFilterChanged: _setFilter,
         tabIndex: _index,
         searchQuery: _query,
+        topContentInset: topContentInset,
         child: PopScope(
           // A dirty config intercepts the pop (back button, system back,
           // swipe-back) so the changes can be confirmed-applied or discarded.
@@ -356,83 +463,94 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop) _confirmLeaveWithChanges();
           },
-          child: Scaffold(
+          child: GlassFullScreenPage(
             backgroundColor: context.colors.background,
-            body: SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  _AppBar(
-                    request: _effectiveRequest,
-                    savedRequest: _baselineRequest,
-                    isDirty: _isConfigDirty,
-                    onApplyChanges: _applyConfigChanges,
-                  ),
-                  SizedBox(height: 8.h),
-                  // Search + filter pinned ABOVE the tab switcher — identical
-                  // placement to the regular event view, with the smart
-                  // event's extra filter button kept on the row.
-                  _PinnedSearchFilterBar(
-                    pageController: _page,
-                    fallbackPage: _index.toDouble(),
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        left: horizontalPadding,
-                        right: horizontalPadding,
-                        top: 4.h,
-                        bottom: 8.h,
-                      ),
-                      child: _buildSearchFilterBar(context),
+            includeContentSafeArea: false,
+            topOverlayPadding: const EdgeInsets.only(top: 4),
+            topOverlay: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: ResponsiveHelper.contentMaxWidth,
+                ),
+                child: GlassIslandStack(
+                  includeStatusBar: false,
+                  gap: 8,
+                  children: [
+                    _AppBar(
+                      request: _effectiveRequest,
+                      savedRequest: _baselineRequest,
+                      isDirty: _isConfigDirty,
+                      onApplyChanges: _applyConfigChanges,
+                      controlExtent: controlExtent,
                     ),
-                  ),
-                  GlassFloatingSegments(
-                    options: _tabs,
-                    selectedIndex: _index,
-                    onSelected: _select,
-                    expanded: _chromeCollapse.expanded,
-                    notifyOnReselect: true,
-                    horizontalPadding: horizontalPadding,
-                  ),
-                  SizedBox(height: 6.h),
-                  Expanded(
-                    child: NotificationListener<ScrollNotification>(
-                      onNotification: (notification) {
-                        if (notification is! ScrollUpdateNotification) {
-                          return false;
-                        }
-                        if (_chromeCollapse.onScrollUpdate(notification) &&
-                            mounted) {
-                          setState(() {});
-                        }
-                        return false;
-                      },
-                      child: ScrollToTopScope(
-                        bus: _scrollToTopBus,
-                        child: PageView(
-                          controller: _page,
-                          onPageChanged: (i) {
-                            if (_index != i) _searchFocusNode.unfocus();
-                            setState(() {
-                              _index = i;
-                              _chromeCollapse.reset();
-                            });
-                          },
-                          children: const [
-                            _AboutTab(),
-                            _GamesTab(),
-                            _StandingsTab(),
-                          ],
+                    _FloatingSearchFilterBar(
+                      pageController: _page,
+                      fallbackPage: _index.toDouble(),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding,
+                        ),
+                        child: _buildSearchFilterBar(
+                          context,
+                          controlExtent: controlExtent,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    _SmartEventSegments(
+                      options: _tabs,
+                      selectedIndex: _index,
+                      onSelected: _select,
+                      height: controlExtent,
+                      horizontalPadding: horizontalPadding,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            content: ScrollToTopScope(
+              bus: _scrollToTopBus,
+              child: PageView(
+                controller: _page,
+                onPageChanged: (i) {
+                  if (_index != i) _searchFocusNode.unfocus();
+                  if (_index != i) setState(() => _index = i);
+                },
+                children: const [_AboutTab(), _GamesTab(), _StandingsTab()],
               ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(
+    BuildContext context, {
+    required double controlExtent,
+    required bool includeSearch,
+  }) {
+    final rowCount = includeSearch ? 3 : 2;
+    const overlayTopPadding = 4.0;
+    const topBarBottomPadding = 6.0;
+    // The animated search wrapper remains the middle stack child on About,
+    // even while its rendered height is zero, so both stack gaps remain.
+    const stackGapCount = 2;
+    const stackBottomPadding = 4.0;
+    const contentGap = 8.0;
+    return MediaQuery.viewPaddingOf(context).top +
+        overlayTopPadding +
+        (controlExtent * rowCount) +
+        topBarBottomPadding +
+        (8.0 * stackGapCount) +
+        stackBottomPadding +
+        contentGap;
   }
 }
 
@@ -450,6 +568,7 @@ class _SmartTierFilterScope extends InheritedWidget {
     required this.onFilterChanged,
     required this.tabIndex,
     required this.searchQuery,
+    required this.topContentInset,
     required super.child,
   });
 
@@ -463,6 +582,7 @@ class _SmartTierFilterScope extends InheritedWidget {
   /// tab keys its server query on it; the Standings tab narrows player rows
   /// by name with it.
   final String searchQuery;
+  final double topContentInset;
 
   static _SmartTierFilterScope of(BuildContext context) {
     final scope =
@@ -476,15 +596,16 @@ class _SmartTierFilterScope extends InheritedWidget {
     return tier != oldWidget.tier ||
         filter != oldWidget.filter ||
         tabIndex != oldWidget.tabIndex ||
-        searchQuery != oldWidget.searchQuery;
+        searchQuery != oldWidget.searchQuery ||
+        topContentInset != oldWidget.topContentInset;
   }
 }
 
-/// Mirrors the regular event view's pinned search bar: hidden on About
+/// Floating search island: hidden on About
 /// (page 0), fully shown on Games/Standings (page 1+), with height and
 /// opacity following the swipe progress between them.
-class _PinnedSearchFilterBar extends StatelessWidget {
-  const _PinnedSearchFilterBar({
+class _FloatingSearchFilterBar extends StatelessWidget {
+  const _FloatingSearchFilterBar({
     required this.pageController,
     required this.fallbackPage,
     required this.child,
@@ -516,6 +637,84 @@ class _PinnedSearchFilterBar extends StatelessWidget {
         );
       },
       child: child,
+    );
+  }
+}
+
+/// Three independently focusable glass tabs with a controlled package
+/// segmented surface beneath them. The transparent action layer preserves
+/// reselect-to-scroll-to-top while keeping every target at least 48px tall.
+class _SmartEventSegments extends StatelessWidget {
+  const _SmartEventSegments({
+    required this.options,
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.height,
+    required this.horizontalPadding,
+  });
+
+  final List<String> options;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final double height;
+  final double horizontalPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final index = selectedIndex.clamp(0, options.length - 1);
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ExcludeSemantics(
+              child: IgnorePointer(
+                child: GlassSegmentedControl(
+                  segments: [
+                    for (final option in options) GlassSegment(label: option),
+                  ],
+                  selectedIndex: index,
+                  onSegmentSelected: (_) {},
+                  height: height,
+                  selectedTextStyle: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                  unselectedTextStyle: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.tabInactive,
+                  ),
+                  useOwnLayer: true,
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                for (var i = 0; i < options.length; i++)
+                  Expanded(
+                    child: Semantics(
+                      label: options[i],
+                      button: true,
+                      selected: i == index,
+                      onTap: () => onSelected(i),
+                      child: ExcludeSemantics(
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: SizedBox.expand(
+                            child: InkWell(
+                              onTap: () => onSelected(i),
+                              borderRadius: BorderRadius.circular(12.br),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -584,6 +783,7 @@ class _AppBar extends ConsumerWidget {
     required this.savedRequest,
     required this.isDirty,
     required this.onApplyChanges,
+    required this.controlExtent,
   });
 
   /// The request with the user's current tier + filter overrides folded in.
@@ -594,6 +794,7 @@ class _AppBar extends ConsumerWidget {
   final SmartEventRequest savedRequest;
   final bool isDirty;
   final Future<void> Function() onApplyChanges;
+  final double controlExtent;
 
   Future<bool> _confirmFavoriteChange(
     BuildContext context, {
@@ -645,42 +846,36 @@ class _AppBar extends ConsumerWidget {
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
     );
+    final actionLabel =
+        isSaved
+            ? (isDirty
+                ? 'Apply changes to ${request.displayName}'
+                : 'Remove ${request.displayName}')
+            : 'Save ${request.displayName}';
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(8.w, 8.h, 16.w, 0),
-      child: Row(
-        children: [
-          IconButton(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            iconSize: 24.ic,
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 24.ic,
-              color: context.colors.textPrimary,
-            ),
-            // maybePop so the screen's PopScope can intercept a dirty config
-            // and offer to apply + save it.
-            onPressed: () => Navigator.of(context).maybePop(),
-          ),
-          Expanded(child: Center(child: _AppBarTitle(request: request))),
-          IconButton(
-            tooltip:
-                isSaved
-                    ? (isDirty
-                        ? 'Apply changes to ${request.displayName}'
-                        : 'Remove ${request.displayName}')
-                    : 'Save ${request.displayName}',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            iconSize: 26.ic,
+    return GlassIslandTopBar(
+      topPadding: 0,
+      height: controlExtent,
+      horizontalPadding: ResponsiveHelper.adaptive(phone: 12, tablet: 24),
+      leading: GlassBackButton(
+        // maybePop so the screen's PopScope can intercept a dirty config
+        // and offer to apply + save it.
+        onPressed: () => Navigator.of(context).maybePop(),
+        size: controlExtent,
+      ),
+      title: _AppBarTitle(request: request, controlExtent: controlExtent),
+      trailing: [
+        Semantics(
+          label: actionLabel,
+          button: true,
+          child: GlassIconButton(
             icon: Icon(
               isSaved
                   ? (isDirty
                       ? Icons.check_circle_outline_rounded
                       : Icons.remove_circle_outline_rounded)
                   : Icons.add_circle_outline_rounded,
-              color: context.colors.textPrimary,
+              color: context.colors.iconPrimary,
             ),
             onPressed: () async {
               final allowed = await requireFullAuthGuard(context);
@@ -747,9 +942,12 @@ class _AppBar extends ConsumerWidget {
               // a later delete can't resurrect it from session state.
               resetSmartEventSessionHidden(ref, request.dismissScopeId);
             },
+            size: controlExtent,
+            iconSize: 22,
+            useOwnLayer: true,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -764,37 +962,38 @@ class _AppBar extends ConsumerWidget {
 /// selected tier into [_SmartTierFilterScope] so the visible games / events
 /// re-filter without leaving the screen.
 class _AppBarTitle extends StatelessWidget {
-  const _AppBarTitle({required this.request});
+  const _AppBarTitle({required this.request, required this.controlExtent});
 
   final SmartEventRequest request;
+  final double controlExtent;
 
   @override
   Widget build(BuildContext context) {
     final scope = _SmartTierFilterScope.of(context);
+    final duration = GlassMotion.resolveDuration(
+      context,
+      const Duration(milliseconds: 220),
+    );
 
     if (scope.tabIndex == 0) {
       return AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
+        duration: duration,
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
         transitionBuilder:
             (child, animation) =>
                 FadeTransition(opacity: animation, child: child),
-        child: Text(
-          request.displayName,
+        child: GlassTitleChip(
           key: const ValueKey('smart_title_static'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.textMdMedium.copyWith(
-            color: context.colors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
+          label: request.displayName,
+          height: controlExtent,
+          maxWidth: 180.w,
         ),
       );
     }
 
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
+      duration: duration,
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder:
@@ -804,6 +1003,7 @@ class _AppBarTitle extends StatelessWidget {
         key: const ValueKey('smart_title_dropdown'),
         selectedTier: scope.tier,
         onSelected: scope.onTierChanged,
+        height: controlExtent,
       ),
     );
   }
@@ -817,11 +1017,13 @@ class _TitleSelector extends StatefulWidget {
   const _TitleSelector({
     required this.selectedTier,
     required this.onSelected,
+    required this.height,
     super.key,
   });
 
   final String selectedTier;
   final ValueChanged<String> onSelected;
+  final double height;
 
   @override
   State<_TitleSelector> createState() => _TitleSelectorState();
@@ -841,10 +1043,21 @@ class _TitleSelectorState extends State<_TitleSelector>
   late final AnimationController _shimmerController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3000),
-  )..repeat();
+  );
 
   OverlayEntry? _overlay;
   bool _isOpen = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (GlassMotion.reduceMotion(context)) {
+      _shimmerController.stop();
+      _shimmerController.value = 0;
+    } else if (!_isOpen && !_shimmerController.isAnimating) {
+      _shimmerController.repeat();
+    }
+  }
 
   @override
   void dispose() {
@@ -862,7 +1075,11 @@ class _TitleSelectorState extends State<_TitleSelector>
     HapticFeedbackService.selection();
     setState(() => _isOpen = true);
     _shimmerController.stop();
-    _controller.forward();
+    if (GlassMotion.reduceMotion(context)) {
+      _controller.value = 1;
+    } else {
+      _controller.forward();
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -892,26 +1109,36 @@ class _TitleSelectorState extends State<_TitleSelector>
 
   void _close() {
     if (!_isOpen) return;
-    _controller.reverse().then((_) {
+    _reverseSelector().then((_) {
       if (!mounted) return;
       _overlay?.remove();
       _overlay = null;
       if (mounted) {
         setState(() => _isOpen = false);
-        _shimmerController.repeat();
+        if (!GlassMotion.reduceMotion(context)) {
+          _shimmerController.repeat();
+        }
       }
     });
   }
 
   void _onSelect(String next) {
     HapticFeedbackService.selection();
-    _controller.reverse().then((_) {
+    _reverseSelector().then((_) {
       if (!mounted) return;
       _overlay?.remove();
       _overlay = null;
       if (mounted) setState(() => _isOpen = false);
       if (next != widget.selectedTier) widget.onSelected(next);
     });
+  }
+
+  Future<void> _reverseSelector() async {
+    if (GlassMotion.reduceMotion(context)) {
+      _controller.value = 0;
+      return;
+    }
+    await _controller.reverse();
   }
 
   String _triggerLabel() {
@@ -923,71 +1150,98 @@ class _TitleSelectorState extends State<_TitleSelector>
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _isOpen ? _close() : _open(),
-      child: AnimatedBuilder(
-        animation: _shimmerController,
-        builder: (context, child) {
-          return CustomPaint(
-            painter:
-                _isOpen
-                    ? null
-                    : FluidShimmerPainter(
-                      progress: _shimmerController.value,
-                      shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                      borderRadius: 14.br,
-                    ),
-            child: child,
-          );
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14.br),
-            color:
-                _isOpen
-                    ? kPrimaryColor.withValues(alpha: 0.15)
-                    : context.colors.textPrimary.withValues(alpha: 0.06),
-            border: Border.all(
-              color:
-                  _isOpen
-                      ? kPrimaryColor.withValues(alpha: 0.4)
-                      : context.colors.textPrimary.withValues(alpha: 0.12),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  _triggerLabel(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: _isOpen ? kPrimaryColor : context.colors.textPrimary,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
+    final reduceMotion = GlassMotion.reduceMotion(context);
+    final toggle = _isOpen ? _close : _open;
+    final stateDuration = GlassMotion.resolveDuration(
+      context,
+      const Duration(milliseconds: 220),
+    );
+    final rotationDuration = GlassMotion.resolveDuration(
+      context,
+      const Duration(milliseconds: 250),
+    );
+
+    return Semantics(
+      label: 'Rating level ${_triggerLabel()}',
+      button: true,
+      onTap: toggle,
+      child: ExcludeSemantics(
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: toggle,
+            borderRadius: BorderRadius.circular(widget.height / 2),
+            child: AnimatedBuilder(
+              animation: _shimmerController,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter:
+                      _isOpen || reduceMotion
+                          ? null
+                          : FluidShimmerPainter(
+                            progress: _shimmerController.value,
+                            shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                            borderRadius: widget.height / 2,
+                          ),
+                  child: child,
+                );
+              },
+              child: GlassContainer(
+                useOwnLayer: true,
+                quality: GlassQuality.standard,
+                height: widget.height,
+                padding: EdgeInsets.zero,
+                shape: LiquidRoundedSuperellipse(
+                  borderRadius: widget.height / 2,
+                ),
+                child: AnimatedContainer(
+                  duration: stateDuration,
+                  curve: Curves.easeOutCubic,
+                  padding: EdgeInsets.symmetric(horizontal: 14.sp),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(widget.height / 2),
+                    color:
+                        _isOpen
+                            ? kPrimaryColor.withValues(alpha: 0.15)
+                            : Colors.transparent,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _triggerLabel(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color:
+                                _isOpen
+                                    ? kPrimaryColor
+                                    : context.colors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 6.sp),
+                      AnimatedRotation(
+                        turns: _isOpen ? 0.5 : 0,
+                        duration: rotationDuration,
+                        curve: Curves.easeOutCubic,
+                        child: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 18.ic,
+                          color:
+                              _isOpen
+                                  ? kPrimaryColor
+                                  : context.colors.iconSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              SizedBox(width: 6.sp),
-              AnimatedRotation(
-                turns: _isOpen ? 0.5 : 0,
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 18.ic,
-                  color:
-                      _isOpen
-                          ? kPrimaryColor
-                          : context.colors.textPrimary.withValues(alpha: 0.7),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1060,7 +1314,7 @@ class _TierOverlay extends StatelessWidget {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
+                        color: context.colors.shadow.withValues(alpha: 0.18),
                         blurRadius: 24,
                         spreadRadius: -6,
                         offset: const Offset(0, 8),
@@ -1245,8 +1499,14 @@ class _GamesShimmerList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scope = _SmartTierFilterScope.of(context);
     return ListView(
-      padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+      padding: EdgeInsets.fromLTRB(
+        16.sp,
+        scope.topContentInset,
+        16.sp,
+        MediaQuery.viewPaddingOf(context).bottom + 24.sp,
+      ),
       physics: const NeverScrollableScrollPhysics(),
       children: const [_GameCardShimmerColumn(cardCount: 8)],
     );
@@ -1349,7 +1609,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   /// tab reads and writes it through the scope.
   GameFilter get _filter => _SmartTierFilterScope.of(context).filter;
 
-  /// Search is owned by the screen too (the field sits pinned above the tab
+  /// Search is owned by the screen too (the field floats above the tab
   /// switcher); this tab keys its server query on the committed text.
   String get _query => _SmartTierFilterScope.of(context).searchQuery;
 
@@ -1556,7 +1816,12 @@ class _GamesTabState extends ConsumerState<_GamesTab>
             key: PageStorageKey<String>('smart_event_games_${request.scopeId}'),
             controller: _scrollController,
             scrollCacheExtent: kListScrollCacheExtent,
-            padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+            padding: EdgeInsets.fromLTRB(
+              16.sp,
+              tabScope.topContentInset,
+              16.sp,
+              MediaQuery.viewPaddingOf(context).bottom + 24.sp,
+            ),
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
@@ -1572,7 +1837,10 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                 // may filter down to nothing. That's "loading", not "no
                 // results" — shimmer instead of a false empty state.
                 return AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
+                  duration: GlassMotion.resolveDuration(
+                    context,
+                    const Duration(milliseconds: 250),
+                  ),
                   switchInCurve: Curves.easeOut,
                   switchOutCurve: Curves.easeIn,
                   child:
@@ -1672,18 +1940,24 @@ class _GamesTabState extends ConsumerState<_GamesTab>
         child: buildLoaded(event),
       );
     } else if (async.hasError) {
-      content = GenericErrorWidget(
+      content = Padding(
         key: const ValueKey('smart_games_error'),
-        onRetry:
-            () => ref.invalidate(
-              smartAggregateEventRepositoryProvider(smartQuery),
-            ),
+        padding: EdgeInsets.only(top: tabScope.topContentInset),
+        child: GenericErrorWidget(
+          onRetry:
+              () => ref.invalidate(
+                smartAggregateEventRepositoryProvider(smartQuery),
+              ),
+        ),
       );
     } else {
       content = const _GamesShimmerList(key: ValueKey('smart_games_loading'));
     }
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
+      duration: GlassMotion.resolveDuration(
+        context,
+        const Duration(milliseconds: 250),
+      ),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       child: content,
@@ -1972,7 +2246,7 @@ class _DateHeader extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: context.colors.shadow.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -2099,13 +2373,20 @@ class _AboutTabState extends ConsumerState<_AboutTab>
 
     if (event == null) {
       if (async.hasError) {
-        return GenericErrorWidget(
-          onRetry:
-              () =>
-                  ref.invalidate(smartAggregateEventRepositoryProvider(query)),
+        return Padding(
+          padding: EdgeInsets.only(top: scope.topContentInset),
+          child: GenericErrorWidget(
+            onRetry:
+                () => ref.invalidate(
+                  smartAggregateEventRepositoryProvider(query),
+                ),
+          ),
         );
       }
-      return const Center(child: CircularProgressIndicator());
+      return Padding(
+        padding: EdgeInsets.only(top: scope.topContentInset),
+        child: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     if (event.events.isEmpty) {
@@ -2113,14 +2394,17 @@ class _AboutTabState extends ConsumerState<_AboutTab>
           scope.searchQuery.isNotEmpty ||
           scope.filter.hasActiveFilters ||
           scope.tier != 'All';
-      return _EmptyState(
-        message:
-            hasNarrowingControls
-                ? 'No tournaments match your filters'
-                : hiddenCount > 0
-                ? 'You hid every tournament from this view'
-                : 'No games right now',
-        action: hiddenCount > 0 ? buildShowHiddenButton() : null,
+      return Padding(
+        padding: EdgeInsets.only(top: scope.topContentInset),
+        child: _EmptyState(
+          message:
+              hasNarrowingControls
+                  ? 'No tournaments match your filters'
+                  : hiddenCount > 0
+                  ? 'You hid every tournament from this view'
+                  : 'No games right now',
+          action: hiddenCount > 0 ? buildShowHiddenButton() : null,
+        ),
       );
     }
 
@@ -2128,7 +2412,12 @@ class _AboutTabState extends ConsumerState<_AboutTab>
 
     return ListView(
       controller: _scrollController,
-      padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 24.sp),
+      padding: EdgeInsets.fromLTRB(
+        16.sp,
+        scope.topContentInset,
+        16.sp,
+        MediaQuery.viewPaddingOf(context).bottom + 24.sp,
+      ),
       children: [
         Container(
           padding: EdgeInsets.all(16.sp),
@@ -2313,7 +2602,8 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
   Widget build(BuildContext context) {
     super.build(context);
     final request = _SmartEventRequestScope.of(context);
-    final tier = _SmartTierFilterScope.of(context).tier;
+    final scope = _SmartTierFilterScope.of(context);
+    final tier = scope.tier;
     // Neutral Elo range: the tier dropdown classifies per game below, and any
     // tier — including ones below the saved floor — must find its games.
     final query = SmartEventGamesQuery(request: request.withNeutralEloRange());
@@ -2326,11 +2616,17 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
       skipLoadingOnReload: true,
       data: (event) {
         if (event.events.isEmpty) {
-          return const _EmptyState();
+          return Padding(
+            padding: EdgeInsets.only(top: scope.topContentInset),
+            child: const _EmptyState(),
+          );
         }
         final visibleEvents = _filterEventsByTier(event, tier);
         if (visibleEvents.isEmpty) {
-          return const _EmptyState(message: 'No games match this level');
+          return Padding(
+            padding: EdgeInsets.only(top: scope.topContentInset),
+            child: const _EmptyState(message: 'No games match this level'),
+          );
         }
         final rows = _buildRows(visibleEvents, request.scopeId);
         final horizontalPadding = ResponsiveHelper.adaptive(
@@ -2347,9 +2643,9 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
               scrollCacheExtent: kListScrollCacheExtent,
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
-                8.sp,
+                scope.topContentInset,
                 horizontalPadding,
-                24.sp,
+                MediaQuery.viewPaddingOf(context).bottom + 24.sp,
               ),
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
@@ -2360,13 +2656,20 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading:
+          () => Padding(
+            padding: EdgeInsets.only(top: scope.topContentInset),
+            child: const Center(child: CircularProgressIndicator()),
+          ),
       error:
-          (e, _) => GenericErrorWidget(
-            onRetry:
-                () => ref.invalidate(
-                  smartAggregateEventRepositoryProvider(query),
-                ),
+          (e, _) => Padding(
+            padding: EdgeInsets.only(top: scope.topContentInset),
+            child: GenericErrorWidget(
+              onRetry:
+                  () => ref.invalidate(
+                    smartAggregateEventRepositoryProvider(query),
+                  ),
+            ),
           ),
     );
   }
@@ -2417,7 +2720,7 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
 
   List<Widget> _buildStandingsRows(GroupEventCardModel event) {
     final standingsAsync = ref.watch(smartEventStandingsProvider(event.id));
-    // Same pinned search field as the Games tab — here it narrows the
+    // Same floating search field as the Games tab — here it narrows the
     // player rows by name, like the regular event view's standings search.
     final query =
         _SmartTierFilterScope.of(context).searchQuery.trim().toLowerCase();

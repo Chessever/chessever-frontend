@@ -15,13 +15,16 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-
-const Color _drawGrey = Color(0xFF9AA0A6);
 
 /// Team score card — the team analogue of the individual score card. Keeps the
 /// same structure (avatar + stat boxes, then a list of result rows) but for a
@@ -32,9 +35,21 @@ class TeamScoreCardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final controlExtent = _controlExtent(context);
+    final topContentInset = _topContentInset(context, controlExtent);
     final team = ref.watch(selectedTeamStandingProvider);
     if (team == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return GlassFullScreenPage(
+        backgroundColor: context.colors.background,
+        includeContentSafeArea: false,
+        topOverlayPadding: const EdgeInsets.only(top: 4),
+        topOverlay: GlassIslandTopBar(
+          topPadding: 0,
+          height: controlExtent,
+          leading: GlassBackButton(size: controlExtent),
+        ),
+        content: const Center(child: CircularProgressIndicator()),
+      );
     }
     final matches = ref.watch(teamMatchesProvider);
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -59,103 +74,83 @@ class TeamScoreCardScreen extends ConsumerWidget {
             )
             : null;
 
-    return Scaffold(
+    return GlassFullScreenPage(
       backgroundColor: context.colors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: GlassIslandTopBar(
+            topPadding: 0,
+            height: controlExtent,
+            horizontalPadding: ResponsiveHelper.adaptive(phone: 12, tablet: 24),
+            leading: GlassBackButton(size: controlExtent),
+            title: GlassTitleChip(
+              label: team.teamName,
+              height: controlExtent,
+              maxWidth: 180.w,
             ),
-            child: CustomScrollView(
-              slivers: [
-                SliverAppBar(
-                  pinned: true,
-                  backgroundColor: context.colors.background,
-                  elevation: 0,
-                  centerTitle: false,
-                  leading: IconButton(
-                    icon: Icon(
-                      Icons.arrow_back_ios_new_outlined,
-                      color: context.colors.textPrimary,
-                      size: 22.ic,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  title: Text(
-                    team.teamName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textMdBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                  actions: [
-                    // Average roster Elo for the event's time control
-                    // (standard / rapid / blitz) — not board-point average.
-                    Padding(
-                      padding: EdgeInsets.only(right: 4.w),
-                      child: _TeamAvgEloLabel(team: team),
-                    ),
-                    if (shareUrl != null)
-                      InkWell(
-                        onTap:
-                            () => _shareTeamScorecard(
-                              context: context,
-                              ref: ref,
-                              team: team,
-                              matches: matches,
-                              eventName: eventName,
-                              shareUrl: shareUrl,
-                            ),
-                        child: Container(
-                          width: 48.w,
-                          padding: EdgeInsets.all(8.sp),
-                          child: Icon(
-                            Icons.ios_share,
-                            color: context.colors.textPrimary,
-                            size: 20.ic,
-                            semanticLabel: 'Share team scorecard',
-                          ),
-                        ),
+            trailing: [
+              _TeamAvgEloLabel(team: team, height: controlExtent),
+              if (shareUrl != null)
+                Semantics(
+                  label: 'Share team scorecard',
+                  button: true,
+                  onTap:
+                      () => _shareTeamScorecard(
+                        context: context,
+                        ref: ref,
+                        team: team,
+                        matches: matches,
+                        eventName: eventName,
+                        shareUrl: shareUrl,
                       ),
-                    SizedBox(width: 8.w),
-                  ],
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: horizontalPadding,
+                  child: ExcludeSemantics(
+                    child: GlassIconButton(
+                      icon: Icon(
+                        Icons.ios_share,
+                        color: context.colors.iconPrimary,
+                      ),
+                      onPressed:
+                          () => _shareTeamScorecard(
+                            context: context,
+                            ref: ref,
+                            team: team,
+                            matches: matches,
+                            eventName: eventName,
+                            shareUrl: shareUrl,
+                          ),
+                      size: controlExtent,
+                      iconSize: 20,
+                      useOwnLayer: true,
                     ),
-                    child: _TeamHeader(team: team),
                   ),
                 ),
-                if (team.players.isNotEmpty)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        horizontalPadding,
-                        18.h,
-                        horizontalPadding,
-                        10.h,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'TEAM',
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: context.colors.textTertiary,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          SizedBox(height: 10.h),
-                          TeamPlayerChipsGrid(players: team.players),
-                        ],
-                      ),
-                    ),
-                  ),
+            ],
+          ),
+        ),
+      ),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: CustomScrollView(
+            slivers: [
+              // Scroll-away clearance keeps the first opaque card readable at
+              // rest while allowing the page to continue behind the islands.
+              SliverToBoxAdapter(child: SizedBox(height: topContentInset)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: _TeamHeader(team: team),
+                ),
+              ),
+              if (team.players.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -164,56 +159,89 @@ class TeamScoreCardScreen extends ConsumerWidget {
                       horizontalPadding,
                       10.h,
                     ),
-                    child: Text(
-                      'MATCHES',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: context.colors.textTertiary,
-                        letterSpacing: 1.2,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'TEAM',
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: context.colors.textTertiary,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        SizedBox(height: 10.h),
+                        TeamPlayerChipsGrid(players: team.players),
+                      ],
                     ),
                   ),
                 ),
-                if (matches.isEmpty)
-                  SliverToBoxAdapter(
-                    child: Padding(
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    18.h,
+                    horizontalPadding,
+                    10.h,
+                  ),
+                  child: Text(
+                    'MATCHES',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.colors.textTertiary,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+              if (matches.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                      vertical: 24.h,
+                    ),
+                    child: Text(
+                      'No matches played yet',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    return Padding(
                       padding: EdgeInsets.symmetric(
                         horizontal: horizontalPadding,
-                        vertical: 24.h,
                       ),
-                      child: Text(
-                        'No matches played yet',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
+                      child: TeamRoundGroup(
+                        match: matches[index],
+                        teamName: team.teamName,
+                        index: index,
                       ),
-                    ),
-                  )
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      return Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: horizontalPadding,
-                        ),
-                        child: TeamRoundGroup(
-                          match: matches[index],
-                          teamName: team.teamName,
-                          index: index,
-                        ),
-                      );
-                    }, childCount: matches.length),
-                  ),
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 24.h + MediaQuery.of(context).padding.bottom,
-                  ),
+                    );
+                  }, childCount: matches.length),
                 ),
-              ],
-            ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 24.h + MediaQuery.of(context).padding.bottom,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(BuildContext context, double controlExtent) {
+    return MediaQuery.viewPaddingOf(context).top + 4 + controlExtent + 6 + 12;
   }
 }
 
@@ -365,7 +393,7 @@ class _RecordLine extends StatelessWidget {
         children: [
           seg('$won W', context.colors.brand),
           const TextSpan(text: '   ·   '),
-          seg('$drawn D', _drawGrey),
+          seg('$drawn D', context.colors.textSecondary),
           const TextSpan(text: '   ·   '),
           seg('$lost L', kRedColor),
         ],
@@ -375,33 +403,51 @@ class _RecordLine extends StatelessWidget {
 }
 
 class _TeamAvgEloLabel extends ConsumerWidget {
-  const _TeamAvgEloLabel({required this.team});
+  const _TeamAvgEloLabel({required this.team, required this.height});
 
   final TeamStandingModel team;
+  final double height;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(teamAvgEloProvider(team.teamName));
     final avg = async.valueOrNull ?? teamAverageEloFromStandings(team);
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          'AVG ELO',
-          style: AppTypography.textXsMedium.copyWith(
-            color: context.colors.textTertiary,
-            fontSize: 9.sp,
-            letterSpacing: 0.6,
+    final label = formatTeamAvgElo(avg);
+    return Semantics(
+      label: 'Average Elo $label',
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 68, maxWidth: 88),
+          child: GlassContainer(
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            height: height,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            shape: LiquidRoundedSuperellipse(borderRadius: height / 2),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'AVG ELO',
+                  maxLines: 1,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: context.colors.textTertiary,
+                    fontSize: 9.sp,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        Text(
-          formatTeamAvgElo(avg),
-          style: AppTypography.textSmBold.copyWith(
-            color: context.colors.textPrimary,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

@@ -8,9 +8,15 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 /// Screen displaying premium games (favorites or countrymen).
 /// Features TWIC-style game cards with filtering and pagination.
@@ -49,12 +55,24 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
   @override
   Widget build(BuildContext context) {
     final gamesAsync = ref.watch(premiumGamesProvider(widget.type));
+    final controlExtent = _controlExtent(context);
+    final topContentInset = _topContentInset(context, controlExtent);
 
-    return Scaffold(
+    return GlassFullScreenPage(
       key: e2eKey(E2eIds.premiumGamesRoot),
-      backgroundColor: context.colors.surface,
-      appBar: _buildAppBar(),
-      body: gamesAsync.when(
+      backgroundColor: context.colors.background,
+      includeContentSafeArea: false,
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: _buildAppBar(controlExtent),
+        ),
+      ),
+      content: gamesAsync.when(
         loading: () => const _LoadingState(),
         error:
             (error, _) => _ErrorState(
@@ -80,6 +98,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
           return RefreshIndicator(
             color: kPrimaryColor,
             backgroundColor: context.colors.surface,
+            edgeOffset: topContentInset,
             onRefresh:
                 () =>
                     ref
@@ -94,7 +113,12 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
                     isTablet
                         ? GridView.builder(
                           controller: _scrollController,
-                          padding: EdgeInsets.all(horizontalPadding),
+                          padding: EdgeInsets.fromLTRB(
+                            horizontalPadding,
+                            topContentInset,
+                            horizontalPadding,
+                            _bottomContentInset(context),
+                          ),
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount:
@@ -121,7 +145,12 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
                         )
                         : ListView.builder(
                           controller: _scrollController,
-                          padding: EdgeInsets.all(horizontalPadding),
+                          padding: EdgeInsets.fromLTRB(
+                            horizontalPadding,
+                            topContentInset,
+                            horizontalPadding,
+                            _bottomContentInset(context),
+                          ),
                           itemCount: itemCount,
                           itemBuilder: (context, index) {
                             if (index == state.games.length) {
@@ -145,57 +174,72 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  double _controlExtent(BuildContext context) {
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(16);
+    final dynamicExtent = scaledLabelHeight + 28;
+    return dynamicExtent < 48 ? 48 : dynamicExtent;
+  }
+
+  double _topContentInset(BuildContext context, double controlExtent) {
+    return MediaQuery.viewPaddingOf(context).top + 4 + controlExtent + 6 + 12;
+  }
+
+  double _bottomContentInset(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return media.viewPadding.bottom + media.viewInsets.bottom + 24.sp;
+  }
+
+  Widget _buildAppBar(double controlExtent) {
     final filter = ref.watch(premiumGamesFilterProvider(widget.type));
     final hasActiveFilters = filter.hasActiveFilters;
+    final filterLabel = hasActiveFilters ? 'Filters, active' : 'Filters';
 
-    return AppBar(
-      backgroundColor: context.colors.background,
-      surfaceTintColor: Colors.transparent,
-      leading: IconButton(
+    void openFilters() => _showFilterDialog();
+
+    return GlassIslandTopBar(
+      topPadding: 0,
+      height: controlExtent,
+      horizontalPadding: ResponsiveHelper.adaptive(phone: 12, tablet: 24),
+      leading: GlassBackButton(
         onPressed: () {
           HapticFeedbackService.buttonPress();
           Navigator.pop(context);
         },
-        icon: Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: context.colors.textPrimary,
-          size: 20.ic,
-        ),
+        size: controlExtent,
       ),
-      title: Text(
-        _getTitle(),
-        style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+      title: GlassTitleChip(
+        label: _getTitle(),
+        height: controlExtent,
+        maxWidth: 210.w,
       ),
-      centerTitle: true,
-      actions: [
-        Stack(
-          children: [
-            IconButton(
+      trailing: [
+        Semantics(
+          label: filterLabel,
+          button: true,
+          onTap: openFilters,
+          child: ExcludeSemantics(
+            child: KeyedSubtree(
               key: e2eKey(E2eIds.premiumGamesFilterButton),
-              onPressed: _showFilterDialog,
-              icon: Icon(
-                Icons.tune_rounded,
-                color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimary,
-                size: 22.ic,
-              ),
-            ),
-            if (hasActiveFilters)
-              Positioned(
-                right: 10.sp,
-                top: 10.sp,
-                child: Container(
-                  width: 8.sp,
-                  height: 8.sp,
-                  decoration: const BoxDecoration(
-                    color: kPrimaryColor,
-                    shape: BoxShape.circle,
+              child: GlassBadge(
+                count: hasActiveFilters ? 1 : 0,
+                backgroundColor: kPrimaryColor,
+                child: GlassIconButton(
+                  icon: Icon(
+                    Icons.tune_rounded,
+                    color:
+                        hasActiveFilters
+                            ? kPrimaryColor
+                            : context.colors.iconPrimary,
                   ),
+                  onPressed: openFilters,
+                  size: controlExtent,
+                  iconSize: 20,
+                  useOwnLayer: true,
                 ),
               ),
-          ],
+            ),
+          ),
         ),
-        SizedBox(width: 4.sp),
       ],
     );
   }
@@ -298,7 +342,9 @@ class _ErrorState extends StatelessWidget {
             SizedBox(height: 16.sp),
             Text(
               'Something went wrong',
-              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(height: 8.sp),
             Text(
@@ -339,6 +385,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final motionDuration = GlassMotion.resolveDuration(context, 300.ms);
     final (icon, title, subtitle) = switch (type) {
       PremiumGamesType.favorites => (
         Icons.star_outline_rounded,
@@ -364,10 +411,7 @@ class _EmptyState extends StatelessWidget {
               decoration: BoxDecoration(
                 color: context.colors.surface,
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: context.colors.divider,
-                  width: 1,
-                ),
+                border: Border.all(color: context.colors.divider, width: 1),
               ),
               child: Center(
                 child: Icon(
@@ -380,7 +424,9 @@ class _EmptyState extends StatelessWidget {
             SizedBox(height: 24.sp),
             Text(
               title,
-              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(height: 8.sp),
             Text(
@@ -391,7 +437,7 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ],
-        ).animate().fadeIn(duration: 300.ms),
+        ).animate().fadeIn(duration: motionDuration),
       ),
     );
   }
