@@ -15,7 +15,6 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
@@ -681,9 +680,8 @@ class _SegmentedSwitcher extends ConsumerWidget {
           return Text(baseLabel);
         }).toList();
 
+    // Floating glass island (no opaque full-width slab). Package owns surface.
     return SegmentedSwitcher(
-      backgroundColor: kBlackColor,
-      selectedBackgroundColor: kBlackColor,
       options: options,
       optionLabels: optionLabels,
       currentSelection: visibleCategories

@@ -14,6 +14,7 @@ import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class CountrymenTabScreen extends ConsumerStatefulWidget {
   const CountrymenTabScreen({super.key});
@@ -192,22 +193,15 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Row(
         children: [
-          // Back button
-          GestureDetector(
-            onTap: _handleBackPressed,
-            child: Container(
-              width: 36.w,
-              height: 36.h,
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Icon(
-                Icons.arrow_back_ios_new_outlined,
-                size: 18.ic,
-                color: context.colors.textPrimary,
-              ),
+          // Glass back island
+          GlassIconButton(
+            icon: Icon(
+              Icons.arrow_back_ios_new_outlined,
+              color: context.colors.textPrimary,
             ),
+            onPressed: _handleBackPressed,
+            size: 40,
+            iconSize: 18,
           ),
           SizedBox(width: 10.w),
           // Country dropdown - flexible but not full width
@@ -317,8 +311,6 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        backgroundColor: context.colors.popup,
-        selectedBackgroundColor: context.colors.popup,
         options: countrymenModeNames.values.toList(),
         initialSelection: countrymenModeNames.values.toList().indexOf(
           countrymenModeNames[selectedMode]!,

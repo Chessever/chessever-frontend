@@ -905,8 +905,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        backgroundColor: context.colors.popup,
-        selectedBackgroundColor: context.colors.popup,
         options: tabOptions,
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
         currentSelection: PlayerProfileTab.values.indexOf(selectedTab),

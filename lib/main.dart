@@ -66,6 +66,25 @@ import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/notification_permission_prompt_provider.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
+/// Root widget tree: Riverpod + liquid-glass theming / accessibility / quality.
+///
+/// [LiquidGlassWidgets.wrap] must enclose the app so glass surfaces inherit
+/// theme, Reduce Motion / Reduce Transparency, and optional adaptive quality.
+Widget _buildRootApp() {
+  return ProviderScope(
+    child: LiquidGlassWidgets.wrap(
+      child: const StartupGate(),
+      adaptiveQuality: true,
+      theme: GlassThemeData.simple(
+        blur: 10,
+        thickness: 30,
+        quality: GlassQuality.standard,
+      ),
+    ),
+  );
+}
 
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
@@ -268,6 +287,14 @@ Future<void> main() async {
 
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
       _e2eStartupLog('native splash preserved');
+      // Pre-warm liquid-glass shaders so first glass paint is not a white flash.
+      try {
+        await LiquidGlassWidgets.initialize();
+        _e2eStartupLog('LiquidGlassWidgets.initialize completed');
+      } catch (e) {
+        _e2eStartupLog('LiquidGlassWidgets.initialize failed: $e');
+        debugPrint('⚠️ LiquidGlassWidgets.initialize failed: $e');
+      }
       await _preloadStartupChessgroundAssets();
 
       FlutterError.onError = (details) {
@@ -358,7 +385,7 @@ Future<void> main() async {
           },
           // Don't use SentryWidget - it adds performance monitoring overhead
           // Just run the app directly
-          appRunner: () => runApp(ProviderScope(child: StartupGate())),
+          appRunner: () => runApp(_buildRootApp()),
         ).timeout(
           const Duration(seconds: 5),
           onTimeout: () {
@@ -368,14 +395,14 @@ Future<void> main() async {
             debugPrint(
               '⚠️ SentryFlutter.init() timed out - starting app anyway',
             );
-            runApp(ProviderScope(child: StartupGate()));
+            runApp(_buildRootApp());
           },
         );
         _e2eStartupLog('SentryFlutter.init completed');
       } catch (e) {
         _e2eStartupLog('Sentry init failed: $e');
         debugPrint('⚠️ Sentry init failed: $e - starting app anyway');
-        runApp(ProviderScope(child: StartupGate()));
+        runApp(_buildRootApp());
       }
     },
     (error, stackTrace) {

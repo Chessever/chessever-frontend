@@ -152,6 +152,7 @@ dependencies:
   receive_sharing_intent: ^1.8.1
   lottie: ^3.3.3
   flutter_screenshot_detect: ^0.1.7
+  liquid_glass_widgets: ^0.21.3
 
 dev_dependencies:
   flutter_test:

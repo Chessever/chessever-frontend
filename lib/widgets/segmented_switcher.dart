@@ -1,8 +1,14 @@
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
-import '../utils/app_typography.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+/// Floating liquid-glass segment control used as outer category / mode tabs.
+///
+/// Backed by package [GlassSegmentedControl] (fixed or scrollable). Callers keep
+/// the same API as before; the solid full-width strip is gone — the control is
+/// a glass island sized to its content height only.
 class SegmentedSwitcher extends StatefulWidget {
   final List<String> options;
   final int initialSelection;
@@ -54,23 +60,10 @@ class SegmentedSwitcher extends StatefulWidget {
 class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
   late int _selectedIndex;
 
-  // Scroll state for the scrollable (team) variant, so the selected tab is
-  // kept centered in the strip — revealing the tabs on either side.
-  final ScrollController _scrollController = ScrollController();
-  double _segmentWidth = 0;
-  double _viewportWidth = 0;
-  int? _lastCenteredIndex;
-
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.currentSelection ?? widget.initialSelection;
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
   }
 
   @override
@@ -79,35 +72,13 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
     if (widget.currentSelection != null &&
         widget.currentSelection != _selectedIndex &&
         mounted) {
-      _onSelectionChanged(widget.currentSelection!, fromExternal: true);
+      setState(() {
+        _selectedIndex = widget.currentSelection!;
+      });
     }
   }
 
-  /// Scrolls so the selected segment sits centered in the strip. Jumps on the
-  /// first pass (avoids a 0→target flash), animates on later selections.
-  void _centerSelectedSegment() {
-    if (!_scrollController.hasClients || _segmentWidth <= 0) return;
-    if (_lastCenteredIndex == _selectedIndex) return;
-    final target = (_selectedIndex * _segmentWidth + _segmentWidth / 2) -
-        _viewportWidth / 2;
-    final clamped = target.clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
-    final first = _lastCenteredIndex == null;
-    _lastCenteredIndex = _selectedIndex;
-    if (first) {
-      _scrollController.jumpTo(clamped);
-    } else {
-      _scrollController.animateTo(
-        clamped,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOutCubic,
-      );
-    }
-  }
-
-  void _onSelectionChanged(int index, {bool fromExternal = false}) {
+  void _onSelectionChanged(int index) {
     if (!mounted) return;
     final isReselect = index == _selectedIndex;
 
@@ -117,174 +88,77 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
       });
     }
 
-    if (fromExternal) return;
     if (isReselect && !widget.notifyOnReselect) return;
     widget.onSelectionChanged(index);
   }
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = widget.backgroundColor ?? context.colors.background;
-    final selectedBackgroundColor =
-        widget.selectedBackgroundColor ?? context.colors.background;
     final textColor = widget.textColor ?? context.colors.tabInactive;
-    final selectedTextColor = widget.selectedTextColor ?? context.colors.textPrimary;
-    final borderRadius = widget.borderRadius ?? 8.br;
+    final selectedTextColor =
+        widget.selectedTextColor ?? context.colors.textPrimary;
 
-    final defaultTextStyle =
+    final unselectedStyle =
         widget.textStyle ??
         AppTypography.textSmMedium.copyWith(color: textColor);
-    final defaultSelectedTextStyle =
+    final selectedStyle =
         widget.selectedTextStyle ??
         AppTypography.textSmMedium.copyWith(color: selectedTextColor);
 
-    if (widget.isScrollable) {
-      // Each segment is exactly one third of the strip width, so the visible
-      // area always shows 3 tabs — identical to the fixed layout — and any
-      // extra tab (the team "Players" tab) is revealed by horizontal scroll.
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final segmentWidth = constraints.maxWidth / 3;
-          _segmentWidth = segmentWidth;
-          _viewportWidth = constraints.maxWidth;
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => _centerSelectedSegment(),
-          );
-          return Container(
-            height: 40.h,
-            decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(borderRadius),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SingleChildScrollView(
-              controller: _scrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(),
-              child: Row(
-                children: List.generate(widget.options.length, (index) {
-                  final isSelected = index == _selectedIndex;
-                  final textOpacity = isSelected ? 1.0 : 0.7;
-                  final style = (isSelected
-                          ? defaultSelectedTextStyle
-                          : defaultTextStyle)
-                      .copyWith(
-                        color: (isSelected ? selectedTextColor : textColor)
-                            .withOpacity(textOpacity),
-                      );
+    final segments = <GlassSegment>[
+      for (final option in widget.options) GlassSegment(label: option),
+    ];
 
-                  return GestureDetector(
-                    onTap: () => _onSelectionChanged(index),
-                    behavior: HitTestBehavior.opaque,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeInOutCubic,
-                      width: segmentWidth,
-                      alignment: Alignment.center,
-                      padding: EdgeInsets.symmetric(vertical: 8.h),
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected
-                                ? selectedBackgroundColor
-                                : Colors.transparent,
-                        borderRadius: BorderRadius.circular(borderRadius),
-                      ),
-                      child:
-                          widget.optionLabels != null
-                              ? DefaultTextStyle.merge(
-                                style: style,
-                                child: widget.optionLabels![index],
-                              )
-                              : Text(
-                                widget.options[index],
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: style,
-                              ),
-                    ),
-                  );
-                }),
-              ),
-            ),
-          );
-        },
+    if (segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Single option → floating glass chip (not a segmented control).
+    if (segments.length == 1) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: GlassChip(
+          label: widget.options.first,
+          selected: true,
+          onTap: () => _onSelectionChanged(0),
+          useOwnLayer: true,
+          labelStyle: selectedStyle,
+        ),
       );
     }
 
-    return Container(
+    // Package fixed control supports 2–5 well; 6+ must be scrollable.
+    final useScrollable = widget.isScrollable || segments.length > 5;
+    final index = _selectedIndex.clamp(0, segments.length - 1);
+
+    // GlassSegmentedControl is itself a glass surface — do NOT wrap in
+    // GlassCard/GlassContainer (package composition rule).
+    if (useScrollable) {
+      return GlassSegmentedControl.scrollable(
+        segments: segments,
+        selectedIndex: index,
+        onSegmentSelected: _onSelectionChanged,
+        height: 40.h,
+        borderRadius: widget.borderRadius ?? 12.br,
+        backgroundColor: widget.backgroundColor,
+        indicatorColor: widget.selectedBackgroundColor,
+        selectedTextStyle: selectedStyle,
+        unselectedTextStyle: unselectedStyle,
+        useOwnLayer: true,
+      );
+    }
+
+    return GlassSegmentedControl(
+      segments: segments,
+      selectedIndex: index,
+      onSegmentSelected: _onSelectionChanged,
       height: 40.h,
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(borderRadius),
-      ),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Row(
-              children: List.generate(widget.options.length, (index) {
-                final isSelected = index == _selectedIndex;
-                final isFirst = index == 0;
-                final isLast = index == widget.options.length - 1;
-
-                return Expanded(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeInOutCubic,
-                    decoration: BoxDecoration(
-                      color:
-                          isSelected
-                              ? selectedBackgroundColor
-                              : Colors.transparent,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(isFirst ? 12.0.br : 0.0),
-                        bottomLeft: Radius.circular(isFirst ? 12.0.br : 0.0),
-                        bottomRight: Radius.circular(isLast ? 12.0.br : 0.0),
-                        topRight: Radius.circular(isLast ? 12.0.br : 0.0),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          Row(
-            children: List.generate(widget.options.length, (index) {
-              final isSelected = index == _selectedIndex;
-              final textOpacity = isSelected ? 1.0 : 0.7;
-              final style = (isSelected
-                      ? defaultSelectedTextStyle
-                      : defaultTextStyle)
-                  .copyWith(
-                    color: (isSelected ? selectedTextColor : textColor)
-                        .withOpacity(textOpacity),
-                  );
-
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => _onSelectionChanged(index),
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    alignment: Alignment.center,
-                    padding: EdgeInsets.symmetric(vertical: 8.h),
-                    child:
-                        widget.optionLabels != null
-                            ? DefaultTextStyle.merge(
-                              style: style,
-                              child: widget.optionLabels![index],
-                            )
-                            : Text(
-                              widget.options[index],
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: style,
-                            ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
+      borderRadius: widget.borderRadius ?? 12.br,
+      backgroundColor: widget.backgroundColor,
+      indicatorColor: widget.selectedBackgroundColor,
+      selectedTextStyle: selectedStyle,
+      unselectedTextStyle: unselectedStyle,
+      useOwnLayer: true,
     );
   }
 }

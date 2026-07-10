@@ -35,6 +35,7 @@ import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
@@ -397,8 +398,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         // layout while `currentSelection` drives the selected tab (and its
         // auto-centering) without a per-frame UniqueKey rebuild.
         key: ValueKey('tab_switcher_${options.length}'),
-        backgroundColor: context.colors.popup,
-        selectedBackgroundColor: context.colors.popup,
         options: options,
         initialSelection: safeIndex,
         currentSelection: safeIndex,
@@ -529,32 +528,43 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(width: 20.ic),
-        IconButton(
-          iconSize: 24.ic,
-          padding: EdgeInsets.zero,
-          onPressed: () {
-            try {
-              Navigator.of(context).pop();
-            } catch (e) {
-              debugPrint('Error navigating back from loading state: $e');
-            }
-          },
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-        ),
-        SizedBox(width: 44.w),
-        SkeletonWidget(
-          child: Text(
-            title,
-            style: AppTypography.textMdRegular.copyWith(
-              color: context.colors.textPrimary,
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      child: SizedBox(
+        height: 44,
+        child: Row(
+          children: [
+            GlassIconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_new_outlined,
+                color: context.colors.iconPrimary,
+              ),
+              onPressed: () {
+                try {
+                  Navigator.of(context).pop();
+                } catch (e) {
+                  debugPrint('Error navigating back from loading state: $e');
+                }
+              },
+              size: 40,
+              iconSize: 18,
             ),
-          ),
+            Expanded(
+              child: Center(
+                child: SkeletonWidget(
+                  child: Text(
+                    title,
+                    style: AppTypography.textMdRegular.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 40),
+          ],
         ),
-        SizedBox(width: 44.w),
-      ],
+      ),
     );
   }
 }

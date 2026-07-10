@@ -20,6 +20,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
@@ -27,6 +28,7 @@ import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../group_event/group_event_screen.dart';
@@ -214,7 +216,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Listen for favorite signals (must be in build method)
     _listenForFavoriteSignals();
 
-    // Tablet layout: NavigationRail on the side
+    // Tablet layout: NavigationRail on the side (unchanged — phone island is primary)
     if (ResponsiveHelper.isTablet) {
       return Scaffold(
         key: _scaffoldKey,
@@ -240,16 +242,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    // Phone layout: Bottom navigation bar
+    // Phone layout: GlassScaffold + floating GlassTabBar island.
+    // Outer Scaffold only owns the drawer (GlassScaffold has no drawer slot).
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: false,
+      backgroundColor: context.colors.background,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
-      bottomNavigationBar: BottomNavBar(),
-      body: BillingIssueGate(
-        child: KeyedSubtree(
-          key: e2eKey(E2eIds.homeRoot),
-          child: BottomNavBarView(),
+      body: GlassScaffold(
+        backgroundColor: context.colors.background,
+        statusBarStyle: GlassStatusBarStyle.auto,
+        extendBody: true,
+        edgeFade: true,
+        bottomBarHeight: BottomNavBar.barHeight + BottomNavBar.verticalPadding,
+        resizeToAvoidBottomInset: false,
+        bottomBar: const BottomNavBar(),
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            // Drive bottom-island shrink/expand from primary feed scrolls.
+            // Vertical lists only (ignore PageView / horizontal carousels).
+            if (notification is ScrollUpdateNotification &&
+                notification.metrics.axis == Axis.vertical) {
+              final delta = notification.scrollDelta;
+              if (delta != null && delta != 0) {
+                ref
+                    .read(homeScrollChromeProvider.notifier)
+                    .applyScrollDelta(delta);
+              }
+            }
+            return false; // let children keep receiving notifications
+          },
+          child: BillingIssueGate(
+            child: KeyedSubtree(
+              key: e2eKey(E2eIds.homeRoot),
+              child: const BottomNavBarView(),
+            ),
+          ),
         ),
       ),
     );

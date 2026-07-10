@@ -4,13 +4,13 @@ import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class FavoritesTabScreen extends ConsumerStatefulWidget {
   const FavoritesTabScreen({super.key, this.initialMode});
@@ -143,43 +143,46 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   }
 
   Widget _buildAppBar(BuildContext context, FavoritesScreenMode selectedMode) {
+    // Transparent top row + glass back island (no solid app-bar slab).
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
-      child: Row(
-        children: [
-          IconButton(
-            iconSize: 24.ic,
-            padding: EdgeInsets.zero,
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              size: 24.ic,
-              color: context.colors.textPrimary,
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      child: SizedBox(
+        height: 44,
+        child: Row(
+          children: [
+            GlassIconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_new_outlined,
+                color: context.colors.textPrimary,
+              ),
+              onPressed: () => Navigator.of(context).pop(),
+              size: 40,
+              iconSize: 18,
             ),
-          ),
-          Expanded(
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.favorite,
-                    color: const Color(0xFFEF4444),
-                    size: 20.ic,
-                  ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    'Favorites',
-                    style: AppTypography.textLgBold.copyWith(
-                      color: context.colors.textPrimary,
+            Expanded(
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.favorite,
+                      color: const Color(0xFFEF4444),
+                      size: 20.ic,
                     ),
-                  ),
-                ],
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Favorites',
+                      style: AppTypography.textLgBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          SizedBox(width: 48.w), // Placeholder for symmetry
-        ],
+            const SizedBox(width: 40),
+          ],
+        ),
       ),
     );
   }
@@ -192,8 +195,6 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
-        backgroundColor: context.colors.popup,
-        selectedBackgroundColor: context.colors.popup,
         options: favoritesModeNames.values.toList(),
         initialSelection: favoritesModeNames.values.toList().indexOf(
           favoritesModeNames[selectedMode]!,
