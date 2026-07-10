@@ -166,9 +166,9 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
     _setSearchActive(false);
     if (!mounted) return;
     unawaited(
-      Navigator.of(context).push<void>(
-        GlobalSearchScreen.route(initialQuery: query),
-      ),
+      Navigator.of(
+        context,
+      ).push<void>(GlobalSearchScreen.route(initialQuery: query)),
     );
   }
 
@@ -189,12 +189,12 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
     final chrome = ref.watch(homeScrollChromeProvider);
     final searchActive = ref.watch(homeBottomSearchExpandedProvider);
+    final reduceMotion = GlassMotion.reduceMotion(context);
     final isLight = context.isLightTheme;
     final selectedIndex = BottomNavBarItem.values.indexOf(selectedItem);
 
     final selectedColor = isLight ? kPrimaryColor : context.colors.textPrimary;
-    final inactiveColor =
-        isLight ? context.colors.textTertiary : context.colors.tabInactive;
+    final inactiveColor = context.colors.tabInactive;
 
     final tabs = <GlassTab>[
       for (final item in BottomNavBarItem.values)
@@ -212,7 +212,10 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
       selectedIndex: selectedIndex.clamp(0, tabs.length - 1),
       onTabSelected: _onTabSelected,
       isSearchActive: searchActive,
-      springDescription: GlassMotion.searchMorphSpring,
+      springDescription:
+          reduceMotion
+              ? GlassMotion.reduceMotionSpring
+              : GlassMotion.searchMorphSpring,
       searchConfig: GlassSearchBarConfig(
         onSearchToggle: _setSearchActive,
         hintText: 'Search',
@@ -233,11 +236,7 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
         },
         searchIcon: KeyedSubtree(
           key: e2eKey(E2eIds.eventsSearchField),
-          child: Icon(
-            CupertinoIcons.search,
-            color: inactiveColor,
-            size: 22,
-          ),
+          child: Icon(CupertinoIcons.search, color: inactiveColor, size: 22),
         ),
         textColor: context.colors.textPrimary,
         cursorColor: selectedColor,
@@ -283,10 +282,10 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
                   Expanded(
                     child: GestureDetector(
                       key: switch (BottomNavBarItem.values[i]) {
-                        BottomNavBarItem.tournaments =>
-                          e2eKey(E2eIds.navEvents),
-                        BottomNavBarItem.calendar =>
-                          e2eKey(E2eIds.navCalendar),
+                        BottomNavBarItem.tournaments => e2eKey(
+                          E2eIds.navEvents,
+                        ),
+                        BottomNavBarItem.calendar => e2eKey(E2eIds.navCalendar),
                         BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
                       },
                       behavior: HitTestBehavior.translucent,
@@ -299,6 +298,8 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
           ),
       ],
     );
+
+    if (reduceMotion) return island;
 
     // Motion stack (Apple Music widen forward / snappy back):
     // 1) cue — mid-morph scale pulse (1 → peak → 1; both rests identity)
@@ -316,14 +317,11 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
         // Soft inflate mid-open; ends match so collapsed layout is unscaled.
         ScaleAct.keyframed(
           alignment: Alignment.bottomCenter,
-          frames: Keyframes.fractional(
-            const [
-              FKeyframe.key(1.0, at: 0.0),
-              FKeyframe.key(1.04, at: 0.42),
-              FKeyframe.key(1.0, at: 1.0),
-            ],
-            duration: GlassMotion.widenDuration,
-          ),
+          frames: Keyframes.fractional(const [
+            FKeyframe.key(1.0, at: 0.0),
+            FKeyframe.key(1.04, at: 0.42),
+            FKeyframe.key(1.0, at: 1.0),
+          ], duration: GlassMotion.widenDuration),
         ),
       ],
       child: SingleMotionBuilder(
@@ -348,6 +346,7 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
             return Transform.scale(
               scale: scale,
               alignment: Alignment.bottomCenter,
+              transformHitTests: false,
               child: child,
             );
           },

@@ -18,6 +18,7 @@ export 'glass_back_button.dart';
 export 'glass_detail_app_bar.dart';
 export 'glass_feedback.dart';
 export 'glass_floating_segments.dart';
+export 'glass_full_screen_page.dart';
 export 'glass_island_search.dart';
 export 'glass_island_stack.dart';
 export 'glass_island_top_bar.dart';

@@ -11,7 +11,7 @@ class GlassBackButton extends StatelessWidget {
   const GlassBackButton({
     super.key,
     this.onPressed,
-    this.size = 40,
+    this.size = 48,
     this.iconSize = 18,
     this.semanticLabel = 'Back button',
   });
@@ -23,18 +23,22 @@ class GlassBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final action = onPressed ?? () => Navigator.of(context).maybePop();
     return Semantics(
       label: semanticLabel,
       button: true,
-      child: GlassIconButton(
-        icon: Icon(
-          Icons.arrow_back_ios_new_outlined,
-          color: context.colors.iconPrimary,
+      onTap: action,
+      child: ExcludeSemantics(
+        child: GlassIconButton(
+          icon: Icon(
+            Icons.arrow_back_ios_new_outlined,
+            color: context.colors.iconPrimary,
+          ),
+          onPressed: action,
+          size: size,
+          iconSize: iconSize,
+          useOwnLayer: true,
         ),
-        onPressed: onPressed ?? () => Navigator.of(context).maybePop(),
-        size: size,
-        iconSize: iconSize,
-        useOwnLayer: true,
       ),
     );
   }

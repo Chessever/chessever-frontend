@@ -29,9 +29,10 @@ class GlassIslandSearch extends StatefulWidget {
     this.onSubmitted,
     this.onClear,
     this.textFieldKey,
-    this.collapsedSize = 40,
-    this.expandedHeight = 44,
+    this.collapsedSize = 48,
+    this.expandedHeight = 48,
     this.autofocusOnExpand = true,
+
     /// Expand from trailing edge (Apple Music search circle on the right).
     this.expandAlignment = Alignment.centerRight,
   });
@@ -114,6 +115,54 @@ class _GlassIslandSearchState extends State<GlassIslandSearch> {
           collapsedSize: collapsed,
         );
 
+        final searchContent = SizedBox(
+          height: widget.expandedHeight,
+          child:
+              widget.expanded
+                  ? KeyedSubtree(
+                    key: widget.textFieldKey,
+                    child: GlassSearchBar(
+                      controller: widget.controller,
+                      focusNode: _focusNode,
+                      placeholder: widget.hintText,
+                      onChanged: widget.onChanged,
+                      onSubmitted: widget.onSubmitted,
+                      showsCancelButton: true,
+                      onCancel: _collapse,
+                      autofocus: widget.autofocusOnExpand,
+                      useOwnLayer: true,
+                      height: widget.expandedHeight,
+                      searchIconColor: colors.iconSecondary,
+                      clearIconColor: colors.iconSecondary,
+                      cancelButtonColor: colors.iconPrimary,
+                    ),
+                  )
+                  : Align(
+                    alignment: widget.expandAlignment,
+                    child: GlassIconButton(
+                      key: widget.textFieldKey,
+                      icon: Icon(
+                        CupertinoIcons.search,
+                        color: colors.iconPrimary,
+                      ),
+                      onPressed: () => widget.onExpandedChanged(true),
+                      size: widget.collapsedSize,
+                      iconSize: 18,
+                      useOwnLayer: true,
+                    ),
+                  ),
+        );
+
+        if (GlassMotion.reduceMotion(context)) {
+          return Align(
+            alignment: widget.expandAlignment,
+            child: SizedBox(
+              width: widget.expanded ? expandedW : collapsed,
+              child: searchContent,
+            ),
+          );
+        }
+
         // motor: directional shell (widen jelly / collapse snappy).
         return SingleMotionBuilder(
           motion: GlassMotion.searchDirection(widget.expanded),
@@ -143,53 +192,14 @@ class _GlassIslandSearchState extends State<GlassIslandSearch> {
                   // Mid-morph X inflate; 1.0 at both ends so icon stays round.
                   StretchAct.keyframed(
                     alignment: widget.expandAlignment,
-                    frames: Keyframes.fractional(
-                      const [
-                        FKeyframe.key(Stretch.none, at: 0.0),
-                        FKeyframe.key(Stretch(x: 1.06, y: 0.98), at: 0.4),
-                        FKeyframe.key(Stretch.none, at: 1.0),
-                      ],
-                      duration: GlassMotion.widenDuration,
-                    ),
+                    frames: Keyframes.fractional(const [
+                      FKeyframe.key(Stretch.none, at: 0.0),
+                      FKeyframe.key(Stretch(x: 1.06, y: 0.98), at: 0.4),
+                      FKeyframe.key(Stretch.none, at: 1.0),
+                    ], duration: GlassMotion.widenDuration),
                   ),
                 ],
-                child: SizedBox(
-                  height: widget.expandedHeight,
-                  child:
-                      widget.expanded
-                          ? KeyedSubtree(
-                            key: widget.textFieldKey,
-                            child: GlassSearchBar(
-                              controller: widget.controller,
-                              focusNode: _focusNode,
-                              placeholder: widget.hintText,
-                              onChanged: widget.onChanged,
-                              onSubmitted: widget.onSubmitted,
-                              showsCancelButton: true,
-                              onCancel: _collapse,
-                              autofocus: widget.autofocusOnExpand,
-                              useOwnLayer: true,
-                              height: widget.expandedHeight,
-                              searchIconColor: colors.iconSecondary,
-                              clearIconColor: colors.iconSecondary,
-                              cancelButtonColor: colors.iconPrimary,
-                            ),
-                          )
-                          : Align(
-                            alignment: widget.expandAlignment,
-                            child: GlassIconButton(
-                              key: widget.textFieldKey,
-                              icon: Icon(
-                                CupertinoIcons.search,
-                                color: colors.iconPrimary,
-                              ),
-                              onPressed: () => widget.onExpandedChanged(true),
-                              size: widget.collapsedSize,
-                              iconSize: 18,
-                              useOwnLayer: true,
-                            ),
-                          ),
-                ),
+                child: searchContent,
               ),
             );
           },

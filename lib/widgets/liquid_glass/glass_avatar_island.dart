@@ -9,26 +9,32 @@ class GlassAvatarIsland extends StatelessWidget {
   const GlassAvatarIsland({
     super.key,
     this.onTap,
-    this.size = 40,
+    this.size = 48,
     this.showPremiumBorder = true,
+    this.semanticLabel = 'Account',
   });
 
   final VoidCallback? onTap;
   final double size;
   final bool showPremiumBorder;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
-    return GlassIconButton(
-      icon: UserAvatar(
-        size: size * 0.72,
-        showPremiumBorder: showPremiumBorder,
-        onTap: null,
+    return Semantics(
+      label: semanticLabel,
+      button: onTap != null,
+      child: GlassIconButton(
+        icon: UserAvatar(
+          size: size * 0.72,
+          showPremiumBorder: showPremiumBorder,
+          onTap: null,
+        ),
+        onPressed: onTap,
+        size: size,
+        useOwnLayer: true,
+        shape: GlassIconButtonShape.circle,
       ),
-      onPressed: onTap,
-      size: size,
-      useOwnLayer: true,
-      shape: GlassIconButtonShape.circle,
     );
   }
 }

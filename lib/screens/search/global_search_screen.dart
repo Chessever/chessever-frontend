@@ -13,8 +13,9 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ class GlobalSearchScreen extends ConsumerStatefulWidget {
         return GlobalSearchScreen(initialQuery: initialQuery);
       },
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        if (GlassMotion.reduceMotion(context)) return child;
         final fade = CurvedAnimation(
           parent: animation,
           curve: Curves.easeOutCubic,
@@ -83,7 +85,11 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
     // Focus after the fade-in has started so the keyboard rises with the page.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      Future<void>.delayed(const Duration(milliseconds: 120), () {
+      final delay = GlassMotion.resolveDuration(
+        context,
+        const Duration(milliseconds: 120),
+      );
+      Future<void>.delayed(delay, () {
         if (!mounted) return;
         _focusNode.requestFocus();
         if (_query.isNotEmpty) {
@@ -159,99 +165,79 @@ class _GlobalSearchScreenState extends ConsumerState<GlobalSearchScreen> {
   Widget build(BuildContext context) {
     final recent = ref.watch(recentSearchesProvider);
     final pad = ResponsiveHelper.adaptive(phone: 12.0, tablet: 24.0);
-    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
 
-    return ScreenWrapper(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        resizeToAvoidBottomInset: false,
-        body: Column(
-          children: [
-            GlassIslandStack(
-              gap: 8,
-              children: [
-                GlassFloatingSegments(
-                  options: const ['Players', 'Events'],
-                  selectedIndex: _tab == _SearchTab.players ? 0 : 1,
-                  expanded: true,
-                  horizontalPadding: pad,
-                  onSelected: (i) {
-                    setState(() {
-                      _tab = i == 0 ? _SearchTab.players : _SearchTab.events;
-                    });
-                  },
-                ),
-              ],
-            ),
-            Expanded(
-              child:
-                  _query.isEmpty
-                      ? _RecentSearchesBody(
-                        recent: recent,
-                        onSelect: _applyRecent,
-                        onClear:
-                            () => ref.read(recentSearchesProvider.notifier).clear(),
-                        onRemove:
-                            (q) =>
-                                ref.read(recentSearchesProvider.notifier).remove(q),
-                        tab: _tab,
-                      )
-                      : _SearchResultsBody(
-                        query: _query,
-                        tab: _tab,
-                        onPlayer: _openPlayer,
-                        onEvent: _openEvent,
-                      ),
-            ),
-            // Floating glass search dock (Apple Music: field + dismiss).
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                pad,
-                8,
-                pad,
-                12 + (keyboard > 0 ? keyboard : MediaQuery.paddingOf(context).bottom),
+    return GlassFullScreenPage(
+      contentPadding: const EdgeInsets.only(top: 60, bottom: 74),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      bottomOverlayPadding: EdgeInsets.fromLTRB(pad, 8, pad, 12),
+      topOverlay: GlassIslandStack(
+        includeStatusBar: false,
+        gap: 8,
+        children: [
+          GlassFloatingSegments(
+            options: const ['Players', 'Events'],
+            selectedIndex: _tab == _SearchTab.players ? 0 : 1,
+            expanded: true,
+            horizontalPadding: pad,
+            onSelected: (i) {
+              setState(() {
+                _tab = i == 0 ? _SearchTab.players : _SearchTab.events;
+              });
+            },
+          ),
+        ],
+      ),
+      content:
+          _query.isEmpty
+              ? _RecentSearchesBody(
+                recent: recent,
+                onSelect: _applyRecent,
+                onClear:
+                    () => ref.read(recentSearchesProvider.notifier).clear(),
+                onRemove:
+                    (q) => ref.read(recentSearchesProvider.notifier).remove(q),
+                tab: _tab,
+              )
+              : _SearchResultsBody(
+                query: _query,
+                tab: _tab,
+                onPlayer: _openPlayer,
+                onEvent: _openEvent,
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GlassSearchBar(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      placeholder:
-                          _tab == _SearchTab.players
-                              ? 'Search players'
-                              : 'Search events',
-                      onChanged: _onQueryChanged,
-                      onSubmitted: (v) {
-                        final q = v.trim();
-                        if (q.isEmpty) return;
-                        setState(() => _query = q);
-                        ref.read(recentSearchesProvider.notifier).add(q);
-                      },
-                      autofocus: false,
-                      useOwnLayer: true,
-                      height: 50,
-                      showsCancelButton: false,
-                      searchIconColor: context.colors.iconSecondary,
-                      clearIconColor: context.colors.iconSecondary,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  GlassIconButton(
-                    icon: Icon(
-                      CupertinoIcons.xmark,
-                      color: context.colors.iconPrimary,
-                    ),
-                    onPressed: _close,
-                    size: 50,
-                    iconSize: 20,
-                    useOwnLayer: true,
-                  ),
-                ],
-              ),
+      bottomOverlay: Row(
+        children: [
+          Expanded(
+            child: GlassSearchBar(
+              controller: _controller,
+              focusNode: _focusNode,
+              placeholder:
+                  _tab == _SearchTab.players
+                      ? 'Search players'
+                      : 'Search events',
+              onChanged: _onQueryChanged,
+              onSubmitted: (v) {
+                final q = v.trim();
+                if (q.isEmpty) return;
+                setState(() => _query = q);
+                ref.read(recentSearchesProvider.notifier).add(q);
+              },
+              autofocus: false,
+              useOwnLayer: true,
+              height: 50,
+              showsCancelButton: false,
+              searchIconColor: context.colors.iconSecondary,
+              clearIconColor: context.colors.iconSecondary,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 10),
+          GlassIconButton(
+            icon: Icon(CupertinoIcons.xmark, color: context.colors.iconPrimary),
+            onPressed: _close,
+            size: 50,
+            iconSize: 20,
+            useOwnLayer: true,
+          ),
+        ],
       ),
     );
   }
@@ -290,9 +276,7 @@ class _RecentSearchesBody extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                tab == _SearchTab.players
-                    ? 'Search players'
-                    : 'Search events',
+                tab == _SearchTab.players ? 'Search players' : 'Search events',
                 style: AppTypography.textMdMedium.copyWith(
                   color: context.colors.textPrimary,
                 ),

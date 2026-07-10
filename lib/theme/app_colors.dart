@@ -89,7 +89,7 @@ class AppColors extends ThemeExtension<AppColors> {
     successStrong: kGreenColor,
     danger: kRedColor,
     dangerMuted: kDarkRedColor,
-    tabInactive: kInactiveTabColor,
+    tabInactive: Color(0xB3FFFFFF),
     shadow: Color(0xCC000000),
     scrim: Color(0xB3000000),
     skeleton: Color(0xFF2A2A2C),
@@ -122,7 +122,7 @@ class AppColors extends ThemeExtension<AppColors> {
     successStrong: Color(0xFF248A3D),
     danger: Color(0xFFFF3B30), // iOS systemRed
     dangerMuted: Color(0xFFFF6B6B),
-    tabInactive: Color(0x661C1C1E),
+    tabInactive: Color(0xFF5F6368),
     shadow: Color(0x1F000000),
     scrim: Color(0x66000000),
     skeleton: Color(0xFFE5E5EA),

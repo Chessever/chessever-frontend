@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:cue/cue.dart';
-import 'package:flutter/physics.dart';
+import 'package:flutter/widgets.dart';
 import 'package:motor/motor.dart';
 
 /// Shared motion presets for liquid-glass island chrome.
@@ -58,22 +58,17 @@ abstract final class GlassMotion {
   );
 
   /// Picks widen vs collapse [Motion] from search active direction.
-  static Motion searchDirection(bool expanding) =>
-      expanding ? widen : collapse;
+  static Motion searchDirection(bool expanding) => expanding ? widen : collapse;
 
   // ── cue: boolean morph acts ───────────────────────────────────────────
 
   /// Forward cue spring — same duration/bounce as [widen].
-  static CueMotion get cueWiden => CueMotion.spring(
-        duration: widenDuration,
-        bounce: widenBounce,
-      );
+  static CueMotion get cueWiden =>
+      CueMotion.spring(duration: widenDuration, bounce: widenBounce);
 
   /// Reverse cue spring — same duration/bounce as [collapse].
-  static CueMotion get cueCollapse => CueMotion.spring(
-        duration: collapseDuration,
-        bounce: collapseBounce,
-      );
+  static CueMotion get cueCollapse =>
+      CueMotion.spring(duration: collapseDuration, bounce: collapseBounce);
 
   // ── package: GlassTabBar.searchable ───────────────────────────────────
 
@@ -85,6 +80,20 @@ abstract final class GlassMotion {
         extraBounce: widenBounce,
       ).description;
 
+  /// Near-instant, non-bouncy package spring used when Reduce Motion is on.
+  static final SpringDescription reduceMotionSpring =
+      SpringDescription.withDurationAndBounce(
+        duration: const Duration(milliseconds: 1),
+      );
+
+  /// Whether custom product motion should be removed for this subtree.
+  static bool reduceMotion(BuildContext context) =>
+      MediaQuery.disableAnimationsOf(context);
+
+  /// Resolves a custom animation duration against the platform preference.
+  static Duration resolveDuration(BuildContext context, Duration duration) =>
+      reduceMotion(context) ? Duration.zero : duration;
+
   // ── progress helpers (motor builder output) ───────────────────────────
 
   /// Maps morph progress 0→1 to a slight scale around 1.0.
@@ -95,10 +104,7 @@ abstract final class GlassMotion {
   /// Mid-morph “inflate” — peaks at progress 0.5, settles to 1.0 at ends.
   ///
   /// Gives the island a liquid breathe while the package pill widens.
-  static double morphBreathe(
-    double progress, {
-    double peak = 0.022,
-  }) {
+  static double morphBreathe(double progress, {double peak = 0.022}) {
     final t = progress.clamp(0.0, 1.0);
     return 1.0 + peak * math.sin(t * math.pi);
   }

@@ -21,6 +21,7 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_feedback.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
@@ -338,6 +339,7 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
   @override
   Widget build(BuildContext context) {
     final currentItem = ref.watch(selectedBottomNavBarItemProvider);
+    final reduceMotion = GlassMotion.reduceMotion(context);
 
     // Listen for tab changes and trigger animation
     ref.listen<BottomNavBarItem>(selectedBottomNavBarItemProvider, (
@@ -345,23 +347,35 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
       next,
     ) {
       if (previous != null && previous != next) {
-        _animationController.reset();
-        _animationController.forward();
+        if (GlassMotion.reduceMotion(context)) {
+          _animationController.value = 1;
+        } else {
+          _animationController.reset();
+          _animationController.forward();
+        }
       }
     });
 
+    final screen = _buildScreen(currentItem);
+
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
-      child: AnimatedBuilder(
-        animation: _animationController,
-        child: _buildScreen(currentItem),
-        builder: (context, child) {
-          return FadeTransition(
-            opacity: _fadeAnimation,
-            child: ScaleTransition(scale: _scaleAnimation, child: child),
-          );
-        },
-      ),
+      child:
+          reduceMotion
+              ? screen
+              : AnimatedBuilder(
+                animation: _animationController,
+                child: screen,
+                builder: (context, child) {
+                  return FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: ScaleTransition(
+                      scale: _scaleAnimation,
+                      child: child,
+                    ),
+                  );
+                },
+              ),
     );
   }
 }

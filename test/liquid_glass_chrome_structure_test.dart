@@ -8,41 +8,50 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final root = Directory.current.path;
 
-  String read(String relative) =>
-      File('$root/$relative').readAsStringSync();
+  String read(String relative) => File('$root/$relative').readAsStringSync();
 
-  test('tournament success-path app bars use GlassBackButton, not IconButton', () {
-    final gamesAppBar = read(
-      'lib/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart',
-    );
-    final tourDetail = read(
-      'lib/screens/tour_detail/tournament_detail_screen.dart',
-    );
+  void expectNoMaterialIconButton(String source) {
+    expect(RegExp(r'(^|[^A-Za-z])IconButton\(').hasMatch(source), isFalse);
+  }
 
-    expect(gamesAppBar, contains('GlassBackButton'));
-    expect(gamesAppBar, isNot(contains('IconButton(')));
+  test(
+    'tournament success-path app bars use GlassBackButton, not IconButton',
+    () {
+      final gamesAppBar = read(
+        'lib/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart',
+      );
+      final tourDetail = read(
+        'lib/screens/tour_detail/tournament_detail_screen.dart',
+      );
 
-    // Success-path dropdown app bar + loading bar.
-    expect(tourDetail, contains('const GlassBackButton()'));
-    expect(tourDetail, contains('GlassBackButton('));
-    // No Material IconButton remaining in this file's chrome rows.
-    expect(tourDetail, isNot(contains('IconButton(')));
-  });
+      expect(gamesAppBar, contains('GlassBackButton'));
+      expectNoMaterialIconButton(gamesAppBar);
 
-  test('favorites + countrymen use GlassPage composition via ScreenWrapper', () {
-    final favorites = read('lib/screens/favorites/favorites_tab_screen.dart');
-    final countrymen = read(
-      'lib/screens/countrymen/countrymen_tab_screen.dart',
-    );
+      // Success-path dropdown app bar + loading bar.
+      expect(tourDetail, contains('const GlassBackButton()'));
+      expect(tourDetail, contains('GlassBackButton('));
+      // No Material IconButton remaining in this file's chrome rows.
+      expectNoMaterialIconButton(tourDetail);
+    },
+  );
 
-    expect(favorites, contains('ScreenWrapper('));
-    expect(favorites, contains('GlassBackButton'));
-    expect(favorites, isNot(contains('IconButton(')));
+  test(
+    'favorites + countrymen use GlassPage composition via ScreenWrapper',
+    () {
+      final favorites = read('lib/screens/favorites/favorites_tab_screen.dart');
+      final countrymen = read(
+        'lib/screens/countrymen/countrymen_tab_screen.dart',
+      );
 
-    expect(countrymen, contains('ScreenWrapper('));
-    expect(countrymen, contains('GlassBackButton'));
-    expect(countrymen, isNot(contains('IconButton(')));
-  });
+      expect(favorites, contains('ScreenWrapper('));
+      expect(favorites, contains('GlassBackButton'));
+      expectNoMaterialIconButton(favorites);
+
+      expect(countrymen, contains('ScreenWrapper('));
+      expect(countrymen, contains('GlassBackButton'));
+      expectNoMaterialIconButton(countrymen);
+    },
+  );
 
   test('GlassBackButton always sets useOwnLayer: true (package contract)', () {
     final back = read('lib/widgets/liquid_glass/glass_back_button.dart');
@@ -56,6 +65,17 @@ void main() {
     expect(wrapper, contains('background:'));
   });
 
+  test('full-screen page keeps opaque content behind overlay islands', () {
+    final page = read('lib/widgets/liquid_glass/glass_full_screen_page.dart');
+    final search = read('lib/screens/search/global_search_screen.dart');
+
+    expect(page, contains('Positioned.fill('));
+    expect(page, contains('topOverlay'));
+    expect(page, contains('bottomOverlay'));
+    expect(search, contains('GlassFullScreenPage('));
+    expect(search, isNot(contains('body: Column(')));
+  });
+
   test('home phone shell uses GlassScaffold + GlassTabBar.searchable', () {
     final home = read('lib/screens/home/home_screen.dart');
     final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
@@ -67,6 +87,6 @@ void main() {
   test('shared AppBarWithTitle uses GlassBackButton island', () {
     final appBar = read('lib/widgets/app_bar_with_title.dart');
     expect(appBar, contains('GlassBackButton'));
-    expect(appBar, isNot(contains('IconButton(')));
+    expectNoMaterialIconButton(appBar);
   });
 }
