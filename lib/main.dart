@@ -26,6 +26,7 @@ import 'package:chessever2/screens/tour_detail/team_tour/team_score_card_screen.
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen.dart';
 import 'package:chessever2/screens/tour_detail/tournament_detail_screen.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/screens/search/global_search_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/chessground_image_cache.dart';
@@ -1288,6 +1289,8 @@ class MyApp extends HookConsumerWidget {
           '/onboarding': (context) => const OnboardingFlowScreen(),
           '/player_selection_screen':
               (context) => const PlayerSelectionScreen(),
+          '/global_search_screen':
+              (context) => const GlobalSearchScreen(),
         },
       ),
     );

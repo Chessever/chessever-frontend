@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_nav_icon.dart';
+import 'package:chessever2/screens/search/global_search_screen.dart';
 import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
 import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
 import 'package:cue/cue.dart';
@@ -91,6 +92,9 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
   late final TextEditingController _searchController;
   late final FocusNode _searchFocus;
 
+  /// True for one frame after expand so auto-focus does not open full search.
+  bool _searchJustExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -139,16 +143,44 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
   void _setSearchActive(bool active) {
     ref.read(homeBottomSearchExpandedProvider.notifier).state = active;
     if (active) {
-      // Jump to Events for global search results surface when expanding.
-      final tab = ref.read(selectedBottomNavBarItemProvider);
-      if (tab == BottomNavBarItem.tournaments) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _searchFocus.requestFocus();
-        });
-      }
+      // First tap: expand only. Suppress field-tap → full page for one frame
+      // so package autoFocus / layout tap does not immediately push.
+      _searchJustExpanded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _searchJustExpanded = false;
+        if (ref.read(homeBottomSearchExpandedProvider)) {
+          _searchFocus.requestFocus();
+        }
+      });
     } else {
+      _searchJustExpanded = false;
       _searchFocus.unfocus();
     }
+  }
+
+  /// Second interaction on the expanded field → dedicated liquid search page.
+  void _openDedicatedSearch({String? seed}) {
+    final query = (seed ?? _searchController.text).trim();
+    _searchController.clear();
+    ref.read(homeBottomSearchTextProvider.notifier).state = '';
+    _setSearchActive(false);
+    if (!mounted) return;
+    Navigator.of(context).push<void>(
+      GlobalSearchScreen.route(initialQuery: query),
+    );
+  }
+
+  void _onSearchFieldTap() {
+    if (_searchJustExpanded) return;
+    if (!ref.read(homeBottomSearchExpandedProvider)) return;
+    _openDedicatedSearch();
+  }
+
+  void _onSearchSubmitted(String value) {
+    // Keyboard "search" from expanded pill also opens full experience.
+    if (!ref.read(homeBottomSearchExpandedProvider)) return;
+    _openDedicatedSearch(seed: value);
   }
 
   @override
@@ -185,10 +217,14 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
         hintText: 'Search',
         controller: _searchController,
         focusNode: _searchFocus,
-        autoFocusOnExpand: true,
+        // Expand owns focus; field tap opens dedicated search page.
+        autoFocusOnExpand: false,
         expandWhenActive: true,
         showsCancelButton: true,
         onChanged: (_) => _onSearchText(),
+        onSubmitted: _onSearchSubmitted,
+        onSearchFieldTap: _onSearchFieldTap,
+        textInputAction: TextInputAction.search,
         onCancelTap: () {
           _searchController.clear();
           ref.read(homeBottomSearchTextProvider.notifier).state = '';
