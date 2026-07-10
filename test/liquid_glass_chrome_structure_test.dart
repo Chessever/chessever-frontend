@@ -81,6 +81,7 @@ void main() {
     final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
     expect(home, contains('GlassScaffold('));
     expect(home, contains('extendBody: true'));
+    expect(home, contains('HomeDestinationStack('));
     expect(nav, contains('GlassTabBar.searchable('));
   });
 

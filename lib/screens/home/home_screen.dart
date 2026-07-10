@@ -10,6 +10,7 @@ import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/home/home_destination_stack.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -356,16 +357,21 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
       }
     });
 
-    final screen = _buildScreen(currentItem);
+    final destinationStack = HomeDestinationStack(
+      itemCount: BottomNavBarItem.values.length,
+      currentIndex: BottomNavBarItem.values.indexOf(currentItem),
+      itemBuilder:
+          (context, index) => _buildScreen(BottomNavBarItem.values[index]),
+    );
 
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
       child:
           reduceMotion
-              ? screen
+              ? destinationStack
               : AnimatedBuilder(
                 animation: _animationController,
-                child: screen,
+                child: destinationStack,
                 builder: (context, child) {
                   return FadeTransition(
                     opacity: _fadeAnimation,
