@@ -6,15 +6,12 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event_rep
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_kit.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -82,341 +79,392 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     super.dispose();
   }
 
-  void _scrollToTop() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
-      previous,
-      next,
-    ) {
-      if (next.item == BottomNavBarItem.calendar) {
-        _scrollToTop();
-      }
-    });
-
     final yearList = ref.read(availableYearsProvider);
-    const timeControls = ['Standard', 'Rapid', 'Blitz'];
     final filterMode = ref.watch(calendarFilterModeProvider);
     final searchQuery = ref.watch(calendarSearchQueryProvider);
+    final selectedYear = ref.watch(selectedYearProvider);
+    final calendarState = ref.watch(calendarScreenProvider);
     final isListMode =
         filterMode != CalendarFilterMode.all || searchQuery.trim().isNotEmpty;
+    final scaledLabelHeight = MediaQuery.textScalerOf(context).scale(14) * 1.2;
+    final controlHeight = (scaledLabelHeight + 20).clamp(48.0, 96.0);
 
-    return ScreenWrapper(
-      child: Scaffold(
-        key: e2eKey(E2eIds.calendarRoot),
-        backgroundColor: Colors.transparent,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Island top: expanding search + year chip (no full-width slab).
-            GlassIslandTopBar(
-              center: GlassIslandSearch(
+    return GlassFullScreenPage(
+      key: e2eKey(E2eIds.calendarRoot),
+      backgroundColor: context.colors.background,
+      contentPadding: EdgeInsets.only(top: controlHeight * 2 + 28, bottom: 12),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: GlassIslandStack(
+        key: const ValueKey<String>('calendar-floating-controls'),
+        includeStatusBar: false,
+        gap: 6,
+        children: [
+          GlassIslandTopBar(
+            topPadding: 0,
+            height: controlHeight,
+            title:
+                _searchExpanded
+                    ? null
+                    : GlassTitleChip(
+                      label: 'Calendar',
+                      maxWidth: 132,
+                      height: controlHeight,
+                    ),
+            center: Semantics(
+              label:
+                  _searchExpanded ? 'Search calendar field' : 'Search calendar',
+              button: !_searchExpanded,
+              textField: _searchExpanded,
+              child: GlassIslandSearch(
                 controller: searchController,
                 focusNode: focusNode,
                 expanded: _searchExpanded,
                 textFieldKey: e2eKey(E2eIds.calendarSearchField),
-                hintText: 'Search',
-                onExpandedChanged: (v) => setState(() => _searchExpanded = v),
-                onChanged: (val) {
-                  ref.read(calendarSearchQueryProvider.notifier).state = val;
-                  _searchAnalyticsTimer?.cancel();
-                  final query = val.trim();
-                  if (query.isEmpty) return;
-                  _searchAnalyticsTimer = Timer(
-                    const Duration(milliseconds: 350),
-                    () {
-                      AnalyticsService.instance.trackEventDetached(
-                        'Calendar Search',
-                        properties: {
-                          'query': query,
-                          'query_length': query.length,
-                        },
-                      );
-                    },
-                  );
-                },
-                onClear: () {
-                  ref.read(calendarSearchQueryProvider.notifier).state = '';
-                },
+                hintText: 'Search events',
+                collapsedSize: controlHeight,
+                expandedHeight: controlHeight,
+                onExpandedChanged:
+                    (expanded) => setState(() => _searchExpanded = expanded),
+                onChanged: _onSearchChanged,
+                onClear: _clearSearch,
               ),
-              trailing: [
-                Container(
-                  height: 40,
-                  padding: EdgeInsets.symmetric(horizontal: 10.w),
-                  decoration: BoxDecoration(
-                    color: context.colors.surface.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: context.colors.divider),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<int>(
-                      value: ref.watch(selectedYearProvider),
-                      onChanged: (int? newValue) {
-                        if (newValue != null) {
-                          ref.read(selectedYearProvider.notifier).state =
-                              newValue;
-                          AnalyticsService.instance.trackEventDetached(
-                            'Calendar Year Changed',
-                            properties: {'year': newValue},
-                          );
-                        }
-                      },
-                      icon: Icon(
-                        Icons.keyboard_arrow_down_outlined,
-                        color: context.colors.iconPrimary,
-                        size: 20.ic,
-                      ),
-                      style: AppTypography.textMdBold.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                      dropdownColor: context.colors.surface,
-                      borderRadius: BorderRadius.circular(12.br),
-                      items:
-                          yearList.map((value) {
-                            return DropdownMenuItem<int>(
-                              value: value,
-                              child: Text(value.toString()),
-                            );
-                          }).toList(),
-                    ),
-                  ),
-                ),
-              ],
             ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12.sp),
-              child: Column(
-                children: [
-                Row(
-                  children: [
-                    /// Time Control dropdown with icons
-                    Expanded(
-                      child: Container(
-                        height: 40.h,
-                        padding: EdgeInsets.symmetric(horizontal: 12.w),
-                        decoration: BoxDecoration(
-                          color: context.colors.surface,
-                          borderRadius: BorderRadius.circular(8.br),
-                          border: Border.all(
-                            color: context.colors.divider,
-                            width: 1.w,
-                          ),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String?>(
-                            value: ref.watch(calendarTimeControlProvider),
-                            hint: Row(
-                              children: [
-                                Icon(
-                                  Icons.speed_outlined,
-                                  size: 16.ic,
-                                  color: context.colors.textSecondary,
-                                ),
-                                SizedBox(width: 8.w),
-                                Text(
-                                  'Time Control',
-                                  style: AppTypography.textSmRegular.copyWith(
-                                    color: context.colors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            onChanged: (String? newValue) {
-                              ref
-                                  .read(calendarTimeControlProvider.notifier)
-                                  .state = newValue;
-                              AnalyticsService.instance.trackEventDetached(
-                                'Calendar Time Control Selected',
-                                properties: {'time_control': newValue ?? 'All'},
-                              );
-                            },
-                            icon: Icon(
-                              Icons.keyboard_arrow_down_outlined,
-                              color: context.colors.iconPrimary,
-                              size: 20.ic,
-                            ),
-                            style: AppTypography.textMdBold.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
-                            dropdownColor: context.colors.surface,
-                            borderRadius: BorderRadius.circular(8.br),
-                            isExpanded: true,
-                            selectedItemBuilder: (context) {
-                              return [
-                                _buildTimeControlRow(null, 'All Formats'),
-                                _buildTimeControlRow('Standard', 'Standard'),
-                                _buildTimeControlRow('Rapid', 'Rapid'),
-                                _buildTimeControlRow('Blitz', 'Blitz'),
-                              ];
-                            },
-                            items: [
-                              DropdownMenuItem<String?>(
-                                value: null,
-                                child: _buildTimeControlDropdownItem(
-                                  null,
-                                  'All Formats',
-                                ),
-                              ),
-                              ...timeControls.map((value) {
-                                return DropdownMenuItem<String?>(
-                                  value: value,
-                                  child: _buildTimeControlDropdownItem(
-                                    value,
-                                    value,
-                                  ),
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
+            trailing:
+                _searchExpanded
+                    ? const []
+                    : [
+                      _buildYearPicker(
+                        yearList: yearList,
+                        selectedYear: selectedYear,
+                        controlHeight: controlHeight,
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12.h),
+                    ],
+          ),
+          _buildControlRail(controlHeight),
+        ],
+      ),
+      content: AnimatedSwitcher(
+        key: const ValueKey<String>('calendar-state-switcher'),
+        duration: GlassMotion.resolveDuration(
+          context,
+          const Duration(milliseconds: 180),
+        ),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeOutCubic,
+        child: _buildCalendarBody(
+          state: calendarState,
+          selectedYear: selectedYear,
+          isListMode: isListMode,
+          controlHeight: controlHeight,
+        ),
+      ),
+    );
+  }
 
-                /// Quick Filter Buttons (Upcoming / Favorites)
-                _QuickFilterButtons(),
+  void _onSearchChanged(String value) {
+    ref.read(calendarSearchQueryProvider.notifier).state = value;
+    _searchAnalyticsTimer?.cancel();
+    final query = value.trim();
+    if (query.isEmpty) return;
+    _searchAnalyticsTimer = Timer(const Duration(milliseconds: 350), () {
+      AnalyticsService.instance.trackEventDetached(
+        'Calendar Search',
+        properties: {'query': query, 'query_length': query.length},
+      );
+    });
+  }
+
+  void _clearSearch() {
+    ref.read(calendarSearchQueryProvider.notifier).state = '';
+  }
+
+  Widget _buildYearPicker({
+    required List<int> yearList,
+    required int selectedYear,
+    required double controlHeight,
+  }) {
+    return Semantics(
+      key: const ValueKey<String>('calendar-year-picker'),
+      container: true,
+      label: 'Calendar year',
+      value: '$selectedYear',
+      child: GlassContainer(
+        useOwnLayer: true,
+        height: controlHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        shape: LiquidRoundedSuperellipse(borderRadius: controlHeight / 2),
+        quality: GlassQuality.standard,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<int>(
+            value: selectedYear,
+            onChanged: (newValue) {
+              if (newValue == null || newValue == selectedYear) return;
+              ref.read(selectedYearProvider.notifier).state = newValue;
+              AnalyticsService.instance.trackEventDetached(
+                'Calendar Year Changed',
+                properties: {'year': newValue},
+              );
+            },
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: context.colors.iconPrimary,
+              size: 20.ic,
+            ),
+            style: AppTypography.textMdBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
+            dropdownColor: context.colors.surfaceElevated,
+            borderRadius: BorderRadius.circular(12.br),
+            items: yearList
+                .map(
+                  (year) =>
+                      DropdownMenuItem<int>(value: year, child: Text('$year')),
+                )
+                .toList(growable: false),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControlRail(double controlHeight) {
+    return SingleChildScrollView(
+      key: const ValueKey<String>('calendar-floating-filter-rail'),
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildTimeControlPicker(controlHeight),
+          const SizedBox(width: 8),
+          _QuickFilterButtons(controlHeight: controlHeight),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeControlPicker(double controlHeight) {
+    const timeControls = ['Standard', 'Rapid', 'Blitz'];
+    final selected = ref.watch(calendarTimeControlProvider);
+    return Semantics(
+      key: const ValueKey<String>('calendar-time-control-picker'),
+      container: true,
+      label: 'Time control filter',
+      value: selected ?? 'All formats',
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 156),
+        child: GlassContainer(
+          useOwnLayer: true,
+          height: controlHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: LiquidRoundedSuperellipse(borderRadius: controlHeight / 2),
+          quality: GlassQuality.standard,
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: selected,
+              onChanged: (newValue) {
+                ref.read(calendarTimeControlProvider.notifier).state = newValue;
+                AnalyticsService.instance.trackEventDetached(
+                  'Calendar Time Control Selected',
+                  properties: {'time_control': newValue ?? 'All'},
+                );
+              },
+              icon: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: context.colors.iconPrimary,
+                size: 20.ic,
+              ),
+              style: AppTypography.textMdBold.copyWith(
+                color: context.colors.textPrimary,
+              ),
+              dropdownColor: context.colors.surfaceElevated,
+              borderRadius: BorderRadius.circular(12.br),
+              selectedItemBuilder:
+                  (_) => [
+                    _buildTimeControlRow(null, 'All Formats'),
+                    _buildTimeControlRow('Standard', 'Standard'),
+                    _buildTimeControlRow('Rapid', 'Rapid'),
+                    _buildTimeControlRow('Blitz', 'Blitz'),
+                  ],
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: _buildTimeControlDropdownItem(null, 'All Formats'),
+                ),
+                ...timeControls.map(
+                  (value) => DropdownMenuItem<String?>(
+                    value: value,
+                    child: _buildTimeControlDropdownItem(value, value),
+                  ),
+                ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
 
-          SizedBox(height: 16.h),
+  Widget _buildCalendarBody({
+    required AsyncValue<List<MonthEventsSummary>> state,
+    required int selectedYear,
+    required bool isListMode,
+    required double controlHeight,
+  }) {
+    return state.when(
+      data: (rawData) {
+        final data = orderMonthsByRelevance(rawData, selectedYear);
+        return KeyedSubtree(
+          key: const ValueKey<String>('calendar-data-state'),
+          child:
+              isListMode
+                  ? _buildEventList(data)
+                  : _buildMonthCanvas(data, controlHeight),
+        );
+      },
+      error:
+          (_, _) => KeyedSubtree(
+            key: const ValueKey<String>('calendar-error-state'),
+            child: _buildErrorCanvas(),
+          ),
+      loading:
+          () => KeyedSubtree(
+            key: const ValueKey<String>('calendar-loading-state'),
+            child: _buildLoadingCanvas(controlHeight),
+          ),
+    );
+  }
 
-          /// Month Grid
-          Expanded(
-            child: ref
-                .watch(calendarScreenProvider)
-                .when(
-                  data: (rawData) {
-                    final data = orderMonthsByRelevance(
-                      rawData,
-                      ref.watch(selectedYearProvider),
-                    );
-                    if (isListMode) {
-                      return _buildEventList(data);
-                    }
-
-                    final isTablet = ResponsiveHelper.isTablet;
-                    final crossAxisCount = isTablet ? 3 : 2;
-
-                    return RefreshIndicator(
-                      onRefresh: () async {
-                        HapticFeedbackService.medium();
-                        // Invalidate the calendar provider to refresh data
-                        ref.invalidate(calendarScreenProvider);
-                      },
-                      color: kPrimaryColor,
-                      backgroundColor: context.colors.surface,
-                      displacement: 60.h,
-                      strokeWidth: 3.w,
-                      child: GridView.builder(
-                        controller: _scrollController,
-                        padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: BouncingScrollPhysics(),
-                        ),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          mainAxisSpacing: 12.sp,
-                          crossAxisSpacing: 12.sp,
-                          childAspectRatio: 2.2,
-                        ),
-                        itemCount: data.length,
-                        itemBuilder: (context, index) {
-                          final summary = data[index];
-                          return _MonthButton(
-                            monthName: summary.monthName,
-                            eventCount: summary.eventCount,
-                            onTap: () {
-                              ref.read(selectedMonthProvider.notifier).state =
-                                  summary.monthNumber;
-                              AnalyticsService.instance.trackEventDetached(
-                                'Calendar Month Opened',
-                                properties: {
-                                  'month': summary.monthNumber,
-                                  'month_name': summary.monthName,
-                                  'event_count': summary.eventCount,
-                                  'year': ref.read(selectedYearProvider),
-                                },
-                              );
-                              Navigator.pushNamed(
-                                context,
-                                '/calendar_detail_screen',
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    );
-                  },
-                  error: (e, _) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Failed To Load Months!\nPlease Try Again Later',
-                            style: AppTypography.textLgRegular.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  loading: () {
-                    final isTablet = ResponsiveHelper.isTablet;
-                    final crossAxisCount = isTablet ? 3 : 2;
-                    final months = [
-                      'January',
-                      'February',
-                      'March',
-                      'April',
-                      'May',
-                      'June',
-                      'July',
-                      'August',
-                      'September',
-                      'October',
-                      'November',
-                      'December',
-                    ];
-
-                    return SkeletonWidget(
-                      child: GridView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          mainAxisSpacing: 12.sp,
-                          crossAxisSpacing: 12.sp,
-                          childAspectRatio: 2.2,
-                        ),
-                        itemCount: 12,
-                        itemBuilder: (context, index) {
-                          return _MonthButton(
-                            monthName: months[index],
-                            eventCount: (index % 3 == 0) ? index + 1 : 0,
-                            onTap: () {},
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
+  Widget _buildMonthCanvas(
+    List<MonthEventsSummary> data,
+    double controlHeight,
+  ) {
+    return RefreshIndicator(
+      onRefresh: _refreshCalendar,
+      color: kPrimaryColor,
+      backgroundColor: context.colors.surfaceElevated,
+      child: CustomScrollView(
+        key: const PageStorageKey<String>('calendar-month-canvas'),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            sliver: _buildResponsiveMonthGrid(
+              itemCount: data.length,
+              controlHeight: controlHeight,
+              itemBuilder: (context, index) {
+                final summary = data[index];
+                return _MonthButton(
+                  monthName: summary.monthName,
+                  eventCount: summary.eventCount,
+                  onTap: () => _openMonth(summary),
+                );
+              },
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLoadingCanvas(double controlHeight) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return SkeletonWidget(
+      child: CustomScrollView(
+        key: const ValueKey<String>('calendar-loading-canvas'),
+        physics: const NeverScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            sliver: _buildResponsiveMonthGrid(
+              itemCount: months.length,
+              controlHeight: controlHeight,
+              itemBuilder:
+                  (_, index) => _MonthButton(
+                    monthName: months[index],
+                    eventCount: 0,
+                    onTap: () {},
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResponsiveMonthGrid({
+    required int itemCount,
+    required double controlHeight,
+    required NullableIndexedWidgetBuilder itemBuilder,
+  }) {
+    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.crossAxisExtent;
+        final columns =
+            width >= 840 && textScale <= 1.5
+                ? 3
+                : width >= 340 && textScale <= 1.4
+                ? 2
+                : 1;
+        return SliverGrid(
+          delegate: SliverChildBuilderDelegate(
+            itemBuilder,
+            childCount: itemCount,
+          ),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            mainAxisExtent: controlHeight + 20,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildErrorCanvas() {
+    return RefreshIndicator(
+      onRefresh: _refreshCalendar,
+      color: kPrimaryColor,
+      backgroundColor: context.colors.surfaceElevated,
+      child: CustomScrollView(
+        key: const ValueKey<String>('calendar-error-canvas'),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _CalendarStatePanel(
+              icon: Icons.calendar_month_outlined,
+              title: 'Calendar unavailable',
+              message:
+                  'We could not load the events. Check your connection and try again.',
+              actionLabel: 'Retry calendar',
+              onAction: () => ref.invalidate(calendarScreenProvider),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -466,95 +514,122 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     }
 
     final isTablet = ResponsiveHelper.isTablet;
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
-      phoneCount: 1,
-    );
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
     );
 
     return RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackService.medium();
-        ref.invalidate(calendarScreenProvider);
-      },
+      onRefresh: _refreshCalendar,
       color: kPrimaryColor,
-      backgroundColor: context.colors.surface,
-      displacement: 60.h,
-      strokeWidth: 3.w,
-      child:
-          sortedEvents.isEmpty
-              ? ListView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 24.h,
-                ),
-                children: [
-                  Center(
-                    child: Text(
-                      'No events found',
-                      style: AppTypography.textLgRegular.copyWith(
-                        color: context.colors.textPrimaryMuted,
+      backgroundColor: context.colors.surfaceElevated,
+      child: CustomScrollView(
+        key: const PageStorageKey<String>('calendar-event-canvas'),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          if (sortedEvents.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _CalendarStatePanel(
+                icon: Icons.event_busy_outlined,
+                title: 'No events found',
+                message: 'Try another search, format, or calendar filter.',
+                actionLabel: 'Show all months',
+                actionIcon: Icons.calendar_view_month_rounded,
+                onAction: _clearCalendarFilters,
+              ),
+            )
+          else
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                12,
+                horizontalPadding,
+                32,
+              ),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  final textScale =
+                      MediaQuery.textScalerOf(context).scale(14) / 14;
+                  final useGrid =
+                      isTablet &&
+                      constraints.crossAxisExtent >= 700 &&
+                      textScale <= 1.35;
+                  if (useGrid) {
+                    final columns = ResponsiveHelper.getGridCrossAxisCount(
+                      phoneCount: 1,
+                    );
+                    return SliverGrid(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final event = sortedEvents[index];
+                        return EventCard(
+                          tourEventCardModel: event,
+                          heroTagSuffix: 'calendar-list-$index',
+                          onTap: () => _onEventTap(event, sortedEvents),
+                        );
+                      }, childCount: sortedEvents.length),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 16.sp,
+                        mainAxisSpacing: 16.sp,
+                        childAspectRatio:
+                            ResponsiveHelper.isLandscape ? 2.2 : 1.8,
                       ),
-                    ),
-                  ),
-                ],
-              )
-              // Use grid layout for tablets, list for phones
-              : isTablet && crossAxisCount > 1
-              ? GridView.builder(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 12.h,
-                ),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 16.sp,
-                  mainAxisSpacing: 16.sp,
-                  childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
-                ),
-                itemCount: sortedEvents.length,
-                itemBuilder: (context, index) {
-                  final event = sortedEvents[index];
-                  return EventCard(
-                    tourEventCardModel: event,
-                    heroTagSuffix: 'calendar-list-$index',
-                    onTap: () => _onEventTap(event, sortedEvents),
-                  );
-                },
-              )
-              : ListView.builder(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 12.h,
-                ),
-                itemCount: sortedEvents.length,
-                itemBuilder: (context, index) {
-                  final event = sortedEvents[index];
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 12.h),
-                    child: EventCard(
-                      tourEventCardModel: event,
-                      heroTagSuffix: 'calendar-list-$index',
-                      onTap: () => _onEventTap(event, sortedEvents),
-                    ),
+                    );
+                  }
+                  return SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final event = sortedEvents[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: EventCard(
+                          tourEventCardModel: event,
+                          heroTagSuffix: 'calendar-list-$index',
+                          forceCompactLayout: true,
+                          onTap: () => _onEventTap(event, sortedEvents),
+                        ),
+                      );
+                    }, childCount: sortedEvents.length),
                   );
                 },
               ),
+            ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _refreshCalendar() async {
+    HapticFeedbackService.medium();
+    ref.invalidate(calendarScreenProvider);
+  }
+
+  void _openMonth(MonthEventsSummary summary) {
+    ref.read(selectedMonthProvider.notifier).state = summary.monthNumber;
+    AnalyticsService.instance.trackEventDetached(
+      'Calendar Month Opened',
+      properties: {
+        'month': summary.monthNumber,
+        'month_name': summary.monthName,
+        'event_count': summary.eventCount,
+        'year': ref.read(selectedYearProvider),
+      },
+    );
+    Navigator.pushNamed(context, '/calendar_detail_screen');
+  }
+
+  void _clearCalendarFilters() {
+    _searchAnalyticsTimer?.cancel();
+    searchController.clear();
+    focusNode.unfocus();
+    setState(() => _searchExpanded = false);
+    ref.read(calendarSearchQueryProvider.notifier).state = '';
+    ref.read(calendarTimeControlProvider.notifier).state = null;
+    ref.read(calendarFilterModeProvider.notifier).state =
+        CalendarFilterMode.all;
   }
 
   Future<void> _onEventTap(
@@ -579,8 +654,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         );
 
         final byId = <String, CalendarEvent>{
-          for (final cal in yearEvents)
-            _sanitizeCalendarEventId(cal.name): cal,
+          for (final cal in yearEvents) _sanitizeCalendarEventId(cal.name): cal,
         };
 
         final ordered = <CalendarEvent>[];
@@ -624,10 +698,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => CalendarEventDetailScreen(
-              events: ordered,
-              initialIndex: initialIndex,
-            ),
+            builder:
+                (_) => CalendarEventDetailScreen(
+                  events: ordered,
+                  initialIndex: initialIndex,
+                ),
           ),
         );
         return;
@@ -736,7 +811,75 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 }
 
-/// Simple month button - just name and count
+class _CalendarStatePanel extends StatelessWidget {
+  const _CalendarStatePanel({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+    this.actionIcon = Icons.refresh_rounded,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String actionLabel;
+  final IconData actionIcon;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 32, color: context.colors.iconSecondary),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textLgBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textPrimaryMuted,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: FilledButton.icon(
+                    onPressed: onAction,
+                    icon: Icon(actionIcon),
+                    label: Text(actionLabel),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opaque month content card. Calendar management controls remain glass.
 class _MonthButton extends StatelessWidget {
   const _MonthButton({
     required this.monthName,
@@ -750,52 +893,66 @@ class _MonthButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(8.br),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8.br),
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
+    final eventLabel =
+        eventCount == 0
+            ? 'No events'
+            : '$eventCount ${eventCount == 1 ? 'event' : 'events'}';
+    return Semantics(
+      button: true,
+      label: '$monthName, $eventLabel',
+      onTap: onTap,
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 64),
+          child: Material(
             color: context.colors.surface,
-            borderRadius: BorderRadius.circular(8.br),
-            border: Border.all(
-              color: context.colors.divider,
-              width: 1,
-            ),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-          child: Row(
-            children: [
-              // Month name takes available space, aligns left
-              Expanded(
-                child: Text(
-                  monthName,
-                  style: AppTypography.textMdMedium.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
+            borderRadius: BorderRadius.circular(14.br),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: context.colors.divider),
+                  borderRadius: BorderRadius.circular(14.br),
+                ),
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        monthName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textMdMedium.copyWith(
+                          color: context.colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (eventCount > 0) ...[
+                      SizedBox(width: 8.w),
+                      Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        alignment: Alignment.center,
+                        padding: EdgeInsets.symmetric(horizontal: 8.sp),
+                        decoration: BoxDecoration(
+                          color: context.colors.surfaceRecessed,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$eventCount',
+                          style: AppTypography.textXsBold.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              // Event count badge always on the right
-              if (eventCount > 0)
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8.sp,
-                    vertical: 4.sp,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    eventCount.toString(),
-                    style: AppTypography.textXsBold.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
         ),
       ),
@@ -804,7 +961,9 @@ class _MonthButton extends StatelessWidget {
 }
 
 class _QuickFilterButtons extends ConsumerWidget {
-  const _QuickFilterButtons();
+  const _QuickFilterButtons({required this.controlHeight});
+
+  final double controlHeight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -886,56 +1045,61 @@ class _QuickFilterButtons extends ConsumerWidget {
       orElse: () => 0,
     );
 
+    void changeFilter(CalendarFilterMode next) {
+      final current = ref.read(calendarFilterModeProvider);
+      if (next == current) return;
+      ref.read(calendarFilterModeProvider.notifier).state = next;
+      AnalyticsService.instance.trackEventDetached(
+        'Calendar Filter Changed',
+        properties: {'previous_filter': current.name, 'filter': next.name},
+      );
+    }
+
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: _FilterButton(
-            label: 'Upcoming',
-            icon: Icons.schedule_rounded,
-            count: upcomingCount,
-            isSelected: filterMode == CalendarFilterMode.upcoming,
-            isDisabled: isUpcomingDisabled,
-            onTap: () {
-              if (isUpcomingDisabled) return;
-              final current = ref.read(calendarFilterModeProvider);
-              final next =
-                  current == CalendarFilterMode.upcoming
-                      ? CalendarFilterMode.all
-                      : CalendarFilterMode.upcoming;
-              ref.read(calendarFilterModeProvider.notifier).state = next;
-              AnalyticsService.instance.trackEventDetached(
-                'Calendar Filter Changed',
-                properties: {
-                  'previous_filter': current.name,
-                  'filter': next.name,
-                },
-              );
-            },
-          ),
+        _FilterButton(
+          key: const ValueKey<String>('calendar-filter-months'),
+          label: 'Months',
+          icon: Icons.calendar_view_month_rounded,
+          count: 0,
+          controlHeight: controlHeight,
+          isSelected: filterMode == CalendarFilterMode.all,
+          onTap: () => changeFilter(CalendarFilterMode.all),
         ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: _FilterButton(
-            label: 'Favorites',
-            icon: Icons.star_rounded,
-            count: favoritesCount,
-            isSelected: filterMode == CalendarFilterMode.favorites,
-            onTap: () {
-              final current = ref.read(calendarFilterModeProvider);
-              final next =
-                  current == CalendarFilterMode.favorites
-                      ? CalendarFilterMode.all
-                      : CalendarFilterMode.favorites;
-              ref.read(calendarFilterModeProvider.notifier).state = next;
-              AnalyticsService.instance.trackEventDetached(
-                'Calendar Filter Changed',
-                properties: {
-                  'previous_filter': current.name,
-                  'filter': next.name,
-                },
-              );
-            },
-          ),
+        const SizedBox(width: 8),
+        _FilterButton(
+          key: const ValueKey<String>('calendar-filter-upcoming'),
+          label: 'Upcoming',
+          icon: Icons.schedule_rounded,
+          count: upcomingCount,
+          controlHeight: controlHeight,
+          isSelected: filterMode == CalendarFilterMode.upcoming,
+          isDisabled: isUpcomingDisabled,
+          onTap: () {
+            if (isUpcomingDisabled) return;
+            changeFilter(
+              filterMode == CalendarFilterMode.upcoming
+                  ? CalendarFilterMode.all
+                  : CalendarFilterMode.upcoming,
+            );
+          },
+        ),
+        const SizedBox(width: 8),
+        _FilterButton(
+          key: const ValueKey<String>('calendar-filter-favorites'),
+          label: 'Favorites',
+          icon: Icons.star_rounded,
+          count: favoritesCount,
+          controlHeight: controlHeight,
+          isSelected: filterMode == CalendarFilterMode.favorites,
+          onTap: () {
+            changeFilter(
+              filterMode == CalendarFilterMode.favorites
+                  ? CalendarFilterMode.all
+                  : CalendarFilterMode.favorites,
+            );
+          },
         ),
       ],
     );
@@ -944,9 +1108,11 @@ class _QuickFilterButtons extends ConsumerWidget {
 
 class _FilterButton extends StatelessWidget {
   const _FilterButton({
+    super.key,
     required this.label,
     required this.icon,
     required this.count,
+    required this.controlHeight,
     required this.isSelected,
     required this.onTap,
     this.isDisabled = false,
@@ -955,106 +1121,52 @@ class _FilterButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final int count;
+  final double controlHeight;
   final bool isSelected;
   final VoidCallback onTap;
   final bool isDisabled;
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = isDisabled
-        ? context.colors.placeholder
-        : isSelected
+    final iconColor =
+        isDisabled
+            ? context.colors.placeholder
+            : isSelected
             ? kPrimaryColor
             : context.colors.textSecondary;
-    final textColor = isDisabled
-        ? context.colors.placeholder
-        : isSelected
+    final textColor =
+        isDisabled
+            ? context.colors.placeholder
+            : isSelected
             ? kPrimaryColor
             : context.colors.textPrimary;
-    final badgeColor = isDisabled
-        ? context.colors.divider.withValues(alpha: 0.4)
-        : isSelected
-            ? kPrimaryColor.withValues(alpha: 0.25)
-            : context.colors.surfaceRecessed;
-    final badgeTextColor = isDisabled
-        ? context.colors.placeholder
-        : isSelected
-            ? kPrimaryColor
-            : context.colors.textSecondary;
-    final borderColor = isDisabled
-        ? context.colors.divider
-        : isSelected
-            ? kPrimaryColor.withValues(alpha: 0.6)
-            : context.colors.divider;
-    final backgroundColor = isDisabled
-        ? context.colors.surface.withValues(alpha: 0.6)
-        : isSelected
-            ? kPrimaryColor.withValues(alpha: 0.12)
-            : context.colors.surface;
+    final visibleLabel = count > 0 ? '$label · $count' : label;
+    final semanticsLabel = count > 0 ? '$label, $count events' : label;
+    final reduceMotion = GlassMotion.reduceMotion(context);
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(10.br),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10.br),
-        onTap: isDisabled ? null : onTap,
-        child: Container(
-          height: 44.h,
-          padding: EdgeInsets.symmetric(horizontal: 14.w),
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(10.br),
-            border: Border.all(
-              color: borderColor,
-              width: isSelected ? 1.5.w : 1.w,
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      enabled: !isDisabled,
+      label: semanticsLabel,
+      onTap: isDisabled ? null : onTap,
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: controlHeight),
+          child: GlassChip(
+            label: visibleLabel,
+            icon: Icon(icon, size: 17.ic, color: iconColor),
+            selected: isSelected,
+            selectedColor: kPrimaryColor.withValues(
+              alpha: context.isLightTheme ? 0.18 : 0.28,
             ),
-            // Subtle gradient overlay for filter buttons to differentiate from month boxes
-            gradient:
-                isSelected
-                    ? LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        kPrimaryColor.withValues(alpha: 0.15),
-                        kPrimaryColor.withValues(alpha: 0.05),
-                      ],
-                    )
-                    : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Icon indicator - key visual differentiator
-              Icon(icon, size: 16.ic, color: iconColor),
-              SizedBox(width: 6.w),
-              Text(
-                label,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: textColor,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-              if (count > 0) ...[
-                SizedBox(width: 6.w),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 6.sp,
-                    vertical: 2.sp,
-                  ),
-                  decoration: BoxDecoration(
-                    color: badgeColor,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    count.toString(),
-                    style: AppTypography.textXsBold.copyWith(
-                      color: badgeTextColor,
-                      fontSize: 10.sp,
-                    ),
-                  ),
-                ),
-              ],
-            ],
+            useOwnLayer: true,
+            quality: GlassQuality.standard,
+            labelStyle: AppTypography.textSmMedium.copyWith(color: textColor),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            interactionScale: reduceMotion ? 1 : 1.03,
+            stretch: reduceMotion ? 0 : 0.3,
+            onTap: isDisabled ? null : onTap,
           ),
         ),
       ),
