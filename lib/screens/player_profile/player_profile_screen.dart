@@ -34,6 +34,7 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -791,31 +792,23 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       phone: 12.w,
       tablet: 24.w,
     );
-    // Floating glass islands — no solid multi-row topbar slab.
+    // Floating glass islands — title chip beside back (not full-bleed line).
+    final displayName = _formatDisplayName(name: effectiveName);
+    final titleLabel =
+        (effectiveTitle != null && effectiveTitle.trim().isNotEmpty)
+            ? '${effectiveTitle.trim()} $displayName'
+            : displayName;
+
     return GlassIslandTopBar(
       horizontalPadding: horizontalPadding,
       topPadding: 0,
       leading: const GlassBackButton(),
-      center: RichText(
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-        text: TextSpan(
-          children: [
-            if (effectiveTitle != null && effectiveTitle.trim().isNotEmpty)
-              TextSpan(
-                text: '${effectiveTitle.trim()} ',
-                style: AppTypography.textMdBold.copyWith(
-                  color: kLightYellowColor,
-                ),
-              ),
-            TextSpan(
-              text: _formatDisplayName(name: effectiveName),
-              style: AppTypography.textMdBold.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ],
+      title: GlassTitleChip(
+        label: titleLabel,
+        maxWidth: 200.w,
+        textStyle: AppTypography.textMdMedium.copyWith(
+          color: context.colors.textPrimary,
+          height: 1.1,
         ),
       ),
       trailing: [

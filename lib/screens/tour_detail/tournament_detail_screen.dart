@@ -24,14 +24,14 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -493,23 +493,11 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
   }
 
   Widget _buildErrorAppBar(BuildContext context, String errorMessage) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
-      child: Row(
-        children: [
-          const GlassBackButton(),
-          Expanded(
-            child: Text(
-              errorMessage,
-              textAlign: TextAlign.center,
-              style: AppTypography.textMdRegular.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 40),
-        ],
-      ),
+    return GlassIslandTopBar(
+      horizontalPadding: 12.w,
+      topPadding: 0,
+      leading: const GlassBackButton(),
+      title: GlassTitleChip(label: errorMessage, maxWidth: 240.w),
     );
   }
 }
@@ -521,36 +509,20 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.w),
-      child: SizedBox(
-        height: 44,
-        child: Row(
-          children: [
-            GlassBackButton(
-              onPressed: () {
-                try {
-                  Navigator.of(context).pop();
-                } catch (e) {
-                  debugPrint('Error navigating back from loading state: $e');
-                }
-              },
-            ),
-            Expanded(
-              child: Center(
-                child: SkeletonWidget(
-                  child: Text(
-                    title,
-                    style: AppTypography.textMdRegular.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 40),
-          ],
-        ),
+    return GlassIslandTopBar(
+      horizontalPadding: 8.w,
+      topPadding: 0,
+      leading: GlassBackButton(
+        onPressed: () {
+          try {
+            Navigator.of(context).pop();
+          } catch (e) {
+            debugPrint('Error navigating back from loading state: $e');
+          }
+        },
+      ),
+      title: SkeletonWidget(
+        child: GlassTitleChip(label: title, maxWidth: 220.w),
       ),
     );
   }

@@ -4,9 +4,10 @@ import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -148,37 +149,17 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   }
 
   Widget _buildAppBar(BuildContext context, FavoritesScreenMode selectedMode) {
-    // Transparent top row + glass back island (no solid app-bar slab).
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
-      child: SizedBox(
-        height: 44,
-        child: Row(
-          children: [
-            const GlassBackButton(),
-            Expanded(
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.favorite,
-                      color: const Color(0xFFEF4444),
-                      size: 20.ic,
-                    ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Favorites',
-                      style: AppTypography.textLgBold.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 40),
-          ],
+    // Compact glass islands: back circle + title chip (no full-width title row).
+    return GlassIslandTopBar(
+      horizontalPadding: 12.w,
+      topPadding: 0,
+      leading: const GlassBackButton(),
+      title: GlassTitleChip(
+        label: 'Favorites',
+        icon: Icon(
+          Icons.favorite_rounded,
+          color: const Color(0xFFEF4444),
+          size: 16.ic,
         ),
       ),
     );

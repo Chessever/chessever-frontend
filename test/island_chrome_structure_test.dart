@@ -83,4 +83,34 @@ void main() {
     expect(main, contains('ref.watch(themeModeProvider)'));
     expect(main, isNot(contains('const themeMode = ThemeMode.dark')));
   });
+
+  test('page titles are compact GlassTitleChip beside back (not full-line)', () {
+    final favorites = read('lib/screens/favorites/favorites_tab_screen.dart');
+    final countrymen = read('lib/screens/countrymen/countrymen_tab_screen.dart');
+    final settings = read('lib/screens/settings/settings_page.dart');
+    final profile = read(
+      'lib/screens/player_profile/player_profile_screen.dart',
+    );
+    final titleChip = read('lib/widgets/liquid_glass/glass_title_chip.dart');
+    final islandBar = read('lib/widgets/liquid_glass/glass_island_top_bar.dart');
+
+    expect(titleChip, contains('class GlassTitleChip'));
+    expect(titleChip, contains('GlassContainer'));
+    expect(titleChip, contains('useOwnLayer: true'));
+    expect(titleChip, contains('maxWidth'));
+
+    // Title slot is flexible/loose — not Expanded full-bleed title.
+    expect(islandBar, contains('this.title'));
+    expect(islandBar, contains('FlexFit.loose'));
+
+    for (final src in [favorites, countrymen, settings, profile]) {
+      expect(src, contains('GlassTitleChip'));
+      expect(src, contains('GlassIslandTopBar'));
+      expect(src, contains('GlassBackButton'));
+    }
+
+    // Favorites no longer centers a full-line title between back and spacer.
+    expect(favorites, isNot(contains('Expanded(\n              child: Center')));
+    expect(favorites, contains("label: 'Favorites'"));
+  });
 }

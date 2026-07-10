@@ -20,6 +20,7 @@ export 'glass_island_search.dart';
 export 'glass_island_top_bar.dart';
 export 'glass_loading.dart';
 export 'glass_motion.dart';
+export 'glass_title_chip.dart';
 export 'home_search_providers.dart';
 export 'scroll_chrome_mapper.dart';
 export 'scroll_chrome_provider.dart';

@@ -1,12 +1,12 @@
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-/// Preferred-size glass app bar island for detail screens on [GlassScaffold].
+/// Preferred-size glass island app bar for detail screens.
 ///
-/// Transparent layout container + glass action buttons (package iOS 26 pattern).
+/// Title is a compact [GlassTitleChip] beside the back button — never a
+/// full-bleed centered title line.
 class GlassDetailAppBar extends StatelessWidget
     implements PreferredSizeWidget {
   const GlassDetailAppBar({
@@ -15,10 +15,12 @@ class GlassDetailAppBar extends StatelessWidget
     this.titleText,
     this.leading,
     this.actions,
-    this.centerTitle = true,
+    @Deprecated('Titles sit beside the back chip; centering is ignored.')
+    this.centerTitle = false,
     this.height = 44,
   });
 
+  /// Custom title widget (e.g. rich text chip). Prefer [titleText] for plain labels.
   final Widget? title;
   final String? titleText;
   final Widget? leading;
@@ -27,28 +29,22 @@ class GlassDetailAppBar extends StatelessWidget
   final double height;
 
   @override
-  Size get preferredSize => Size.fromHeight(height);
+  Size get preferredSize => Size.fromHeight(height + 12);
 
   @override
   Widget build(BuildContext context) {
-    return GlassAppBar(
-      preferredSize: preferredSize,
-      centerTitle: centerTitle,
-      backgroundColor: Colors.transparent,
-      title:
-          title ??
-          (titleText != null
-              ? Text(
-                titleText!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textMdRegular.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              )
-              : null),
+    final titleWidget =
+        title ??
+        (titleText != null && titleText!.trim().isNotEmpty
+            ? GlassTitleChip(label: titleText!.trim())
+            : null);
+
+    return GlassIslandTopBar(
+      height: height,
+      topPadding: 0,
       leading: leading ?? const GlassBackButton(),
-      actions: actions,
+      title: titleWidget,
+      trailing: actions ?? const [],
     );
   }
 }

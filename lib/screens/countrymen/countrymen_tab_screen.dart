@@ -10,7 +10,10 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
@@ -194,96 +197,52 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   ) {
     final isTemporary = _isTemporarySelection();
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
-      child: Row(
-        children: [
-          // Glass back island (useOwnLayer via GlassBackButton)
-          GlassBackButton(onPressed: _handleBackPressed),
-          SizedBox(width: 10.w),
-          // Country dropdown - flexible but not full width
-          Expanded(
-            child: countryAsync.when(
-              data: (country) => _buildCountrySelector(country),
-              loading:
-                  () => Container(
-                    height: 36.h,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w),
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Loading...',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textPrimaryMuted,
-                        ),
-                      ),
-                    ),
-                  ),
-              error:
-                  (_, __) => Container(
-                    height: 36.h,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w),
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Error',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kRedColor,
-                        ),
-                      ),
-                    ),
-                  ),
+    // Compact islands: back + content-sized country chip (not full-bleed title).
+    return GlassIslandTopBar(
+      horizontalPadding: 12.w,
+      topPadding: 0,
+      leading: GlassBackButton(onPressed: _handleBackPressed),
+      title: countryAsync.when(
+        data:
+            (country) => ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 200.w, minWidth: 120.w),
+              child: GlassContainer(
+                useOwnLayer: true,
+                height: 40,
+                padding: EdgeInsets.zero,
+                shape: const LiquidRoundedSuperellipse(borderRadius: 20),
+                quality: GlassQuality.standard,
+                clipBehavior: Clip.antiAlias,
+                child: _buildCountrySelector(country),
+              ),
             ),
-          ),
-          SizedBox(width: 10.w),
-          // Pin button - only show when there's a temporary selection
-          countryAsync.maybeWhen(
-            data:
-                (_) =>
-                    isTemporary
-                        ? GestureDetector(
-                          onTap: _pinCurrentCountry,
-                          child: Container(
-                            height: 36.h,
-                            padding: EdgeInsets.symmetric(horizontal: 10.w),
-                            decoration: BoxDecoration(
-                              color: kPrimaryColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8.br),
-                              border: Border.all(
-                                color: kPrimaryColor.withValues(alpha: 0.3),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.push_pin_rounded,
-                                  size: 14.ic,
-                                  color: kPrimaryColor,
-                                ),
-                                SizedBox(width: 4.w),
-                                Text(
-                                  'Pin',
-                                  style: AppTypography.textXsMedium.copyWith(
-                                    color: kPrimaryColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                        : const SizedBox.shrink(), // Hide when already pinned
-            orElse: () => const SizedBox.shrink(),
-          ),
-        ],
+        loading:
+            () => GlassTitleChip(
+              label: 'Loading…',
+              textStyle: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimaryMuted,
+              ),
+            ),
+        error:
+            (_, __) => GlassTitleChip(
+              label: 'Error',
+              textStyle: AppTypography.textSmMedium.copyWith(color: kRedColor),
+            ),
       ),
+      trailing: [
+        if (isTemporary)
+          GlassIconButton(
+            icon: Icon(
+              Icons.push_pin_rounded,
+              color: kPrimaryColor,
+              size: 18.ic,
+            ),
+            onPressed: _pinCurrentCountry,
+            size: 40,
+            iconSize: 18,
+            useOwnLayer: true,
+          ),
+      ],
     );
   }
 
