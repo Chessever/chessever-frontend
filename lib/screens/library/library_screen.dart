@@ -25,9 +25,10 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
-import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_full_screen_page.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -69,6 +70,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   void _scrollToTop() {
     if (!_scrollController.hasClients) return;
+    if (GlassMotion.reduceMotion(context)) {
+      _scrollController.jumpTo(0);
+      return;
+    }
     _scrollController.animateTo(
       0,
       duration: const Duration(milliseconds: 300),
@@ -130,7 +135,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              userFacingError(e2, fallback: 'Could not open the file picker. Please try again.'),
+              userFacingError(
+                e2,
+                fallback: 'Could not open the file picker. Please try again.',
+              ),
               style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
@@ -262,7 +270,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              userFacingError(e, fallback: 'Could not create this item. Please try again.'),
+              userFacingError(
+                e,
+                fallback: 'Could not create this item. Please try again.',
+              ),
               style: TextStyle(color: context.colors.textPrimary),
             ),
             backgroundColor: kRedColor,
@@ -310,77 +321,113 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     });
 
-    return ScreenWrapper(
-      child: KeyedSubtree(
-        key: e2eKey(E2eIds.libraryRoot),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
-            ),
-            child: Column(
-              children: [_buildTopBar(), Expanded(child: _buildContent())],
-            ),
+    final scaledSearchHeight = (MediaQuery.textScalerOf(context).scale(16) + 24)
+        .clamp(48.0, 72.0);
+    final controlHeight = _searchExpanded ? scaledSearchHeight : 48.0;
+
+    return GlassFullScreenPage(
+      key: e2eKey(E2eIds.libraryRoot),
+      backgroundColor: context.colors.background,
+      contentPadding: EdgeInsets.only(top: controlHeight + 16, bottom: 16),
+      topOverlayPadding: const EdgeInsets.only(top: 4),
+      topOverlay: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
           ),
+          child: _buildTopBar(controlHeight),
+        ),
+      ),
+      content: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: _buildContent(),
         ),
       ),
     );
   }
 
-  Widget _buildTopBar() {
-    // Island row: expanding search + glass action circles (no full-width slab).
+  Widget _buildTopBar(double controlHeight) {
+    // One floating island row overlays the edge-to-edge library canvas.
     return GlassIslandTopBar(
-      center: GlassIslandSearch(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        expanded: _searchExpanded,
-        textFieldKey: e2eKey(E2eIds.librarySearchField),
-        hintText: 'Search',
-        onExpandedChanged: (v) => setState(() => _searchExpanded = v),
-        onChanged: (query) {
-          setState(() => _searchQuery = query.trim().toLowerCase());
-        },
-        onClear: () => setState(() => _searchQuery = ''),
+      topPadding: 0,
+      height: controlHeight,
+      horizontalPadding: 8,
+      center: Semantics(
+        label: _searchExpanded ? 'Search library field' : 'Open library search',
+        button: !_searchExpanded,
+        child: GlassIslandSearch(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          expanded: _searchExpanded,
+          textFieldKey: e2eKey(E2eIds.librarySearchField),
+          hintText: 'Search',
+          collapsedSize: 48,
+          expandedHeight: controlHeight,
+          onExpandedChanged: (v) => setState(() => _searchExpanded = v),
+          onChanged: (query) {
+            setState(() => _searchQuery = query.trim().toLowerCase());
+          },
+          onClear: () => setState(() => _searchQuery = ''),
+        ),
       ),
       trailing: [
         if (!_searchExpanded) ...[
-          KeyedSubtree(
-            key: e2eKey(E2eIds.libraryOpeningExplorerButton),
-            child: GlassIconButton(
-              icon: Icon(
-                CupertinoIcons.compass,
-                color: context.colors.iconPrimary,
+          Semantics(
+            label: 'Open Opening Explorer',
+            button: true,
+            excludeSemantics: true,
+            child: KeyedSubtree(
+              key: e2eKey(E2eIds.libraryOpeningExplorerButton),
+              child: GlassIconButton(
+                icon: Icon(
+                  CupertinoIcons.compass,
+                  color: context.colors.iconPrimary,
+                ),
+                onPressed: _navigateToOpeningExplorer,
+                size: 48,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
-              onPressed: _navigateToOpeningExplorer,
-              size: 40,
-              iconSize: 18,
-              useOwnLayer: true,
             ),
           ),
-          KeyedSubtree(
-            key: e2eKey(E2eIds.libraryBoardEditorButton),
-            child: GlassIconButton(
-              icon: Icon(
-                CupertinoIcons.square_grid_2x2,
-                color: context.colors.iconPrimary,
+          Semantics(
+            label: 'Open Board Editor',
+            button: true,
+            excludeSemantics: true,
+            child: KeyedSubtree(
+              key: e2eKey(E2eIds.libraryBoardEditorButton),
+              child: GlassIconButton(
+                icon: Icon(
+                  CupertinoIcons.square_grid_2x2,
+                  color: context.colors.iconPrimary,
+                ),
+                onPressed: _navigateToEmptyBoard,
+                size: 48,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
-              onPressed: _navigateToEmptyBoard,
-              size: 40,
-              iconSize: 18,
-              useOwnLayer: true,
             ),
           ),
-          KeyedSubtree(
-            key: e2eKey(E2eIds.libraryCreateFolderButton),
-            child: GlassIconButton(
-              icon: Icon(
-                CupertinoIcons.plus,
-                color: context.colors.iconPrimary,
+          Semantics(
+            label: 'Add to Library',
+            button: true,
+            excludeSemantics: true,
+            child: KeyedSubtree(
+              key: e2eKey(E2eIds.libraryCreateFolderButton),
+              child: GlassIconButton(
+                icon: Icon(
+                  CupertinoIcons.plus,
+                  color: context.colors.iconPrimary,
+                ),
+                onPressed: _handlePlusButton,
+                size: 48,
+                iconSize: 20,
+                useOwnLayer: true,
               ),
-              onPressed: _handlePlusButton,
-              size: 40,
-              iconSize: 18,
-              useOwnLayer: true,
             ),
           ),
         ],
@@ -532,7 +579,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             (context, index) => FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId ||
+              isFeatured:
+                  filteredFolders[index].id == kTwicBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),
@@ -552,7 +600,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             child: FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId ||
+              isFeatured:
+                  filteredFolders[index].id == kTwicBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),
