@@ -3,10 +3,10 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -23,16 +23,8 @@ class GamesAppBarWidget extends ConsumerWidget {
 
         return Row(
           children: [
-            SizedBox(width: 16.w),
-            Semantics(
-              label: 'Back button',
-              child: IconButton(
-                iconSize: 24.ic,
-                padding: EdgeInsets.zero,
-                onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-              ),
-            ),
+            SizedBox(width: 12.w),
+            const GlassBackButton(),
             if (hasTours) ...[
               Expanded(
                 child: Padding(
@@ -64,7 +56,9 @@ class GamesAppBarWidget extends ConsumerWidget {
           (e, _) => Center(
             child: Text(
               'Error loading tours',
-              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimaryMuted),
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textPrimaryMuted,
+              ),
             ),
           ),
     );

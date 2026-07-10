@@ -31,11 +31,11 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
@@ -482,12 +482,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
         children: [
-          IconButton(
-            iconSize: 24.ic,
-            padding: EdgeInsets.zero,
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-          ),
+          const GlassBackButton(),
           Expanded(
             child: Center(child: CategoryDropdown(constrainWidth: false)),
           ),
@@ -498,25 +493,23 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
   }
 
   Widget _buildErrorAppBar(BuildContext context, String errorMessage) {
-    return Row(
-      children: [
-        SizedBox(width: 16.w),
-        IconButton(
-          iconSize: 24.ic,
-          padding: EdgeInsets.zero,
-          onPressed: () => Navigator.of(context).pop(),
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
-        ),
-        const Spacer(),
-        Text(
-          errorMessage,
-          style: AppTypography.textMdRegular.copyWith(
-            color: context.colors.textPrimary,
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      child: Row(
+        children: [
+          const GlassBackButton(),
+          Expanded(
+            child: Text(
+              errorMessage,
+              textAlign: TextAlign.center,
+              style: AppTypography.textMdRegular.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
           ),
-        ),
-        const Spacer(),
-        SizedBox(width: 44.w),
-      ],
+          const SizedBox(width: 40),
+        ],
+      ),
     );
   }
 }
@@ -534,11 +527,7 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
         height: 44,
         child: Row(
           children: [
-            GlassIconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_outlined,
-                color: context.colors.iconPrimary,
-              ),
+            GlassBackButton(
               onPressed: () {
                 try {
                   Navigator.of(context).pop();
@@ -546,8 +535,6 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
                   debugPrint('Error navigating back from loading state: $e');
                 }
               },
-              size: 40,
-              iconSize: 18,
             ),
             Expanded(
               child: Center(

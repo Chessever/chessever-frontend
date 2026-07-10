@@ -6,11 +6,12 @@ import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class FavoritesTabScreen extends ConsumerStatefulWidget {
   const FavoritesTabScreen({super.key, this.initialMode});
@@ -92,50 +93,54 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   Widget build(BuildContext context) {
     final selectedMode = ref.watch(selectedFavoritesModeProvider);
 
-    return Scaffold(
-      key: e2eKey(E2eIds.favoritesRoot),
-      backgroundColor: context.colors.background,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Column(
-            children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-              _buildAppBar(context, selectedMode),
-              SizedBox(height: 8.h),
-              _buildSegmentedSwitcher(selectedMode),
-              Expanded(
-                child: ScrollToTopScope(
-                  bus: _scrollToTopBus,
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: 3,
-                    onPageChanged: _handlePageChanged,
-                    itemBuilder: (context, index) {
-                      switch (index) {
-                        case 0:
-                          return const FavoritesListTab();
-                        case 1:
-                          return const FavoritesGamesTab();
-                        case 2:
-                          return const FavoritesPlayersTab();
-                        default:
-                          return Center(
-                            child: Text(
-                              'Invalid page index: $index',
-                              style: TextStyle(
-                                color: context.colors.textPrimary,
+    // GlassPage composition (via ScreenWrapper) so glass chrome islands
+    // sample backdrop correctly per liquid_glass_widgets package contract.
+    return ScreenWrapper(
+      child: Scaffold(
+        key: e2eKey(E2eIds.favoritesRoot),
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: Column(
+              children: [
+                SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+                _buildAppBar(context, selectedMode),
+                SizedBox(height: 8.h),
+                _buildSegmentedSwitcher(selectedMode),
+                Expanded(
+                  child: ScrollToTopScope(
+                    bus: _scrollToTopBus,
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: 3,
+                      onPageChanged: _handlePageChanged,
+                      itemBuilder: (context, index) {
+                        switch (index) {
+                          case 0:
+                            return const FavoritesListTab();
+                          case 1:
+                            return const FavoritesGamesTab();
+                          case 2:
+                            return const FavoritesPlayersTab();
+                          default:
+                            return Center(
+                              child: Text(
+                                'Invalid page index: $index',
+                                style: TextStyle(
+                                  color: context.colors.textPrimary,
+                                ),
                               ),
-                            ),
-                          );
-                      }
-                    },
+                            );
+                        }
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -150,15 +155,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
         height: 44,
         child: Row(
           children: [
-            GlassIconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_outlined,
-                color: context.colors.textPrimary,
-              ),
-              onPressed: () => Navigator.of(context).pop(),
-              size: 40,
-              iconSize: 18,
-            ),
+            const GlassBackButton(),
             Expanded(
               child: Center(
                 child: Row(

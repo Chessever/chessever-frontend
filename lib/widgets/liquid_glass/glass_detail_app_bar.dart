@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -46,17 +47,7 @@ class GlassDetailAppBar extends StatelessWidget
                 ),
               )
               : null),
-      leading:
-          leading ??
-          GlassIconButton(
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              color: context.colors.iconPrimary,
-            ),
-            onPressed: () => Navigator.of(context).maybePop(),
-            size: 40,
-            iconSize: 18,
-          ),
+      leading: leading ?? const GlassBackButton(),
       actions: actions,
     );
   }

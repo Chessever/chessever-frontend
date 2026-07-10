@@ -9,12 +9,13 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class CountrymenTabScreen extends ConsumerStatefulWidget {
   const CountrymenTabScreen({super.key});
@@ -133,49 +134,53 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
             ? AsyncValue.data(tempCountry)
             : persistedCountryAsync;
 
-    return Scaffold(
-      backgroundColor: context.colors.background,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Column(
-            children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-              _buildAppBar(context, effectiveCountryAsync, selectedMode),
-              SizedBox(height: 8.h),
-              _buildSegmentedSwitcher(selectedMode),
-              Expanded(
-                child: ScrollToTopScope(
-                  bus: _scrollToTopBus,
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: 3,
-                    onPageChanged: _handlePageChanged,
-                    itemBuilder: (context, index) {
-                      switch (index) {
-                        case 0:
-                          return const CountrymenEventsTab();
-                        case 1:
-                          return const CountrymenGamesTab();
-                        case 2:
-                          return const CountrymenPlayersTab();
-                        default:
-                          return Center(
-                            child: Text(
-                              'Invalid page index: $index',
-                              style: TextStyle(
-                                color: context.colors.textPrimary,
+    // GlassPage composition (via ScreenWrapper) so glass chrome islands
+    // sample backdrop correctly per liquid_glass_widgets package contract.
+    return ScreenWrapper(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: Column(
+              children: [
+                SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+                _buildAppBar(context, effectiveCountryAsync, selectedMode),
+                SizedBox(height: 8.h),
+                _buildSegmentedSwitcher(selectedMode),
+                Expanded(
+                  child: ScrollToTopScope(
+                    bus: _scrollToTopBus,
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: 3,
+                      onPageChanged: _handlePageChanged,
+                      itemBuilder: (context, index) {
+                        switch (index) {
+                          case 0:
+                            return const CountrymenEventsTab();
+                          case 1:
+                            return const CountrymenGamesTab();
+                          case 2:
+                            return const CountrymenPlayersTab();
+                          default:
+                            return Center(
+                              child: Text(
+                                'Invalid page index: $index',
+                                style: TextStyle(
+                                  color: context.colors.textPrimary,
+                                ),
                               ),
-                            ),
-                          );
-                      }
-                    },
+                            );
+                        }
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -193,16 +198,8 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Row(
         children: [
-          // Glass back island
-          GlassIconButton(
-            icon: Icon(
-              Icons.arrow_back_ios_new_outlined,
-              color: context.colors.textPrimary,
-            ),
-            onPressed: _handleBackPressed,
-            size: 40,
-            iconSize: 18,
-          ),
+          // Glass back island (useOwnLayer via GlassBackButton)
+          GlassBackButton(onPressed: _handleBackPressed),
           SizedBox(width: 10.w),
           // Country dropdown - flexible but not full width
           Expanded(
