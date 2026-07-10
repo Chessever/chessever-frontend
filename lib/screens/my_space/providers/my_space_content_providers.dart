@@ -12,6 +12,7 @@ import 'package:chessever2/screens/library/providers/library_folders_provider.da
 import 'package:chessever2/screens/miniatures/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/my_space/domain/my_space_shelf_state.dart';
+import 'package:chessever2/screens/studies/providers/study_bookmarks_provider.dart';
 import 'package:chessever2/screens/studies/providers/studies_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -198,10 +199,13 @@ final class MySpaceUnavailableItem extends MySpaceContentItem {
     required super.title,
     required super.subtitle,
     this.sourceType = 'Item',
+    this.removableCanonicalStudyId,
+    super.actionLabel = 'Unavailable',
     super.status = 'Unavailable',
-  }) : super(actionLabel: 'Unavailable');
+  });
 
   final String sourceType;
+  final String? removableCanonicalStudyId;
 
   @override
   MySpaceEntityKind get kind => MySpaceEntityKind.unavailable;
@@ -249,6 +253,11 @@ final mySpaceStudiesSourceProvider =
 final mySpaceMiniaturesSourceProvider =
     Provider.autoDispose<AsyncValue<MiniaturesState>>(
       (ref) => ref.watch(miniaturesProvider),
+    );
+
+final mySpaceSavedStudiesSourceProvider =
+    Provider.autoDispose<AsyncValue<SavedStudiesState>>(
+      (ref) => ref.watch(savedStudiesProvider),
     );
 
 /// Keeps tests independent from the RevenueCat-backed notifier while using the
@@ -349,11 +358,36 @@ final mySpaceDatabasesShelfProvider = Provider.autoDispose<
   });
 });
 
-/// No canonical Study bookmark source exists in this fleet wave. Keeping this
-/// explicitly empty prevents invented content while retaining the route seam.
 final mySpaceSavedStudiesShelfProvider =
     Provider.autoDispose<MySpaceContentShelfState>((ref) {
-      return const MySpaceShelfState<List<MySpaceContentItem>>.empty();
+      if (!ref.watch(studyBookmarksEnabledProvider)) {
+        return const MySpaceShelfState<List<MySpaceContentItem>>.empty();
+      }
+      final source = ref.watch(mySpaceSavedStudiesSourceProvider);
+      final value = source.valueOrNull;
+      if (value == null) return _mapColdAsync(source);
+      if (!value.isEnabled) {
+        return const MySpaceShelfState<List<MySpaceContentItem>>.empty();
+      }
+
+      final items = List<MySpaceContentItem>.unmodifiable(
+        value.items.take(_maximumRailItems).map(_savedStudyItem),
+      );
+      if (value.hasPartialFailure && items.isNotEmpty) {
+        return MySpaceShelfState<List<MySpaceContentItem>>.partial(
+          data: items,
+          error: value.resolutionFailures.first,
+        );
+      }
+      if (value.hasPartialFailure) {
+        return MySpaceShelfState<List<MySpaceContentItem>>.error(
+          value.resolutionFailures.first,
+        );
+      }
+      if (items.isEmpty) {
+        return const MySpaceShelfState<List<MySpaceContentItem>>.empty();
+      }
+      return MySpaceShelfState<List<MySpaceContentItem>>.data(items);
     });
 
 final mySpaceFavoritePlayersShelfProvider =
@@ -620,6 +654,40 @@ MySpaceContentItem _studyItem(GamebaseStudySummary study) {
     status:
         '${study.chapterCount} ${study.chapterCount == 1 ? 'chapter' : 'chapters'} · ${study.views} views',
     actionLabel: 'View Study',
+    study: study,
+  );
+}
+
+MySpaceContentItem _savedStudyItem(SavedStudyReference saved) {
+  final bookmark = saved.bookmark;
+  if (saved is UnavailableSavedStudy) {
+    final snapshot = bookmark.displaySnapshot;
+    return MySpaceUnavailableItem(
+      id: 'study-removed:${bookmark.lichessStudyId}',
+      title: snapshot.title ?? 'Saved Study unavailable',
+      subtitle:
+          snapshot.attribution ??
+          'This Study is private or no longer available on Lichess.',
+      sourceType: 'Lichess Study',
+      status: 'Removed from source',
+      actionLabel: 'Remove bookmark',
+      removableCanonicalStudyId: bookmark.lichessStudyId,
+    );
+  }
+
+  final available = saved as AvailableSavedStudy;
+  final study = available.study;
+  final opening = study.openings.isEmpty ? null : study.openings.first;
+  final author = _nonBlank(study.authorUsername);
+  return MySpaceStudyItem(
+    id: 'study:${study.canonicalStudyId}',
+    title: study.name,
+    subtitle: opening ?? (author == null ? 'Lichess Study' : 'By $author'),
+    status:
+        bookmark.hasProgress
+            ? 'Resume at ply ${bookmark.lastPly}'
+            : 'Saved from Lichess',
+    actionLabel: 'View on Lichess',
     study: study,
   );
 }
