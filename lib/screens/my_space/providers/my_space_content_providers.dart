@@ -2,14 +2,17 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/screens/miniatures/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/my_space/domain/my_space_shelf_state.dart';
+import 'package:chessever2/screens/studies/providers/studies_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const int _maximumRailItems = 12;
@@ -20,6 +23,8 @@ enum MySpaceEntityKind {
   database,
   folder,
   player,
+  study,
+  miniature,
   unavailable,
 }
 
@@ -54,6 +59,8 @@ sealed class MySpaceContentItem {
     MySpaceEntityKind.database => 'Database',
     MySpaceEntityKind.folder => 'Folder',
     MySpaceEntityKind.player => 'Player',
+    MySpaceEntityKind.study => 'Lichess Study',
+    MySpaceEntityKind.miniature => 'Miniature game',
     MySpaceEntityKind.unavailable => 'Unavailable item',
   };
 
@@ -148,6 +155,42 @@ final class MySpacePlayerItem extends MySpaceContentItem {
   MySpaceEntityKind get kind => MySpaceEntityKind.player;
 }
 
+/// A quality-ranked Study summary whose canonical identity remains Lichess.
+///
+/// This item deliberately carries no chapter PGN or in-app chapter capability.
+final class MySpaceStudyItem extends MySpaceContentItem {
+  const MySpaceStudyItem({
+    required super.id,
+    required super.title,
+    required super.subtitle,
+    required super.actionLabel,
+    required this.study,
+    super.status,
+  });
+
+  final GamebaseStudySummary study;
+
+  @override
+  MySpaceEntityKind get kind => MySpaceEntityKind.study;
+}
+
+/// A lightweight Miniatures row that must be hydrated before Board opens.
+final class MySpaceMiniatureItem extends MySpaceContentItem {
+  const MySpaceMiniatureItem({
+    required super.id,
+    required super.title,
+    required super.subtitle,
+    required super.actionLabel,
+    required this.miniature,
+    super.status,
+  });
+
+  final GamebaseMiniature miniature;
+
+  @override
+  MySpaceEntityKind get kind => MySpaceEntityKind.miniature;
+}
+
 /// A source row that cannot be opened without inventing canonical identity.
 final class MySpaceUnavailableItem extends MySpaceContentItem {
   const MySpaceUnavailableItem({
@@ -195,6 +238,17 @@ final mySpaceLibraryFoldersSourceProvider =
 final mySpaceFavoritePlayersSourceProvider =
     Provider.autoDispose<AsyncValue<List<FavoritePlayer>>>(
       (ref) => ref.watch(favoritePlayersProviderNew),
+    );
+
+/// Test seams over the safe, metadata-only discovery feeds.
+final mySpaceStudiesSourceProvider =
+    Provider.autoDispose<AsyncValue<StudiesState>>(
+      (ref) => ref.watch(studiesProvider),
+    );
+
+final mySpaceMiniaturesSourceProvider =
+    Provider.autoDispose<AsyncValue<MiniaturesState>>(
+      (ref) => ref.watch(miniaturesProvider),
     );
 
 /// Keeps tests independent from the RevenueCat-backed notifier while using the
@@ -312,6 +366,63 @@ final mySpaceFavoritePlayersShelfProvider =
             .toList(growable: false),
       );
     });
+
+final mySpaceStudyDiscoveryShelfProvider =
+    Provider.autoDispose<MySpaceContentShelfState>((ref) {
+      final source = ref.watch(mySpaceStudiesSourceProvider);
+      final value = source.valueOrNull;
+      if (value == null) return _mapColdAsync(source);
+
+      final items = List<MySpaceContentItem>.unmodifiable(
+        value.items.take(_maximumRailItems).map(_studyItem),
+      );
+      final failure = value.loadMoreFailure?.error ?? source.error;
+      if (failure != null && items.isNotEmpty) {
+        return MySpaceShelfState<List<MySpaceContentItem>>.partial(
+          data: items,
+          error: failure,
+        );
+      }
+      if (failure != null) {
+        return MySpaceShelfState<List<MySpaceContentItem>>.error(failure);
+      }
+      if (items.isEmpty) {
+        return const MySpaceShelfState<List<MySpaceContentItem>>.empty();
+      }
+      return MySpaceShelfState<List<MySpaceContentItem>>.data(items);
+    });
+
+final mySpaceMiniaturesShelfProvider =
+    Provider.autoDispose<MySpaceContentShelfState>((ref) {
+      final source = ref.watch(mySpaceMiniaturesSourceProvider);
+      final value = source.valueOrNull;
+      if (value == null) return _mapColdAsync(source);
+
+      final items = List<MySpaceContentItem>.unmodifiable(
+        value.items.take(_maximumRailItems).map(_miniatureItem),
+      );
+      final failure = value.loadMoreFailure?.error ?? source.error;
+      if (failure != null && items.isNotEmpty) {
+        return MySpaceShelfState<List<MySpaceContentItem>>.partial(
+          data: items,
+          error: failure,
+        );
+      }
+      if (failure != null) {
+        return MySpaceShelfState<List<MySpaceContentItem>>.error(failure);
+      }
+      if (items.isEmpty) {
+        return const MySpaceShelfState<List<MySpaceContentItem>>.empty();
+      }
+      return MySpaceShelfState<List<MySpaceContentItem>>.data(items);
+    });
+
+MySpaceContentShelfState _mapColdAsync<T>(AsyncValue<T> source) {
+  if (source.hasError) {
+    return MySpaceShelfState<List<MySpaceContentItem>>.error(source.error!);
+  }
+  return const MySpaceShelfState<List<MySpaceContentItem>>.loading();
+}
 
 MySpaceContentShelfState _mapAsyncItems<T>(
   AsyncValue<List<T>> source,
@@ -487,6 +598,59 @@ MySpaceContentItem _favoritePlayerItem(FavoritePlayer player) {
       'avatarUrl',
     ]),
   );
+}
+
+MySpaceContentItem _studyItem(GamebaseStudySummary study) {
+  if (study.status == GamebaseStudyStatus.gone) {
+    return MySpaceUnavailableItem(
+      id: 'study-removed:${study.canonicalStudyId}',
+      title: study.name,
+      subtitle: 'This Study is private or no longer available on Lichess.',
+      sourceType: 'Lichess Study',
+      status: 'Removed from source',
+    );
+  }
+
+  final opening = study.openings.isEmpty ? null : study.openings.first;
+  final author = _nonBlank(study.authorUsername);
+  return MySpaceStudyItem(
+    id: 'study:${study.canonicalStudyId}',
+    title: study.name,
+    subtitle: opening ?? (author == null ? 'Lichess Study' : 'By $author'),
+    status:
+        '${study.chapterCount} ${study.chapterCount == 1 ? 'chapter' : 'chapters'} · ${study.views} views',
+    actionLabel: 'View Study',
+    study: study,
+  );
+}
+
+MySpaceContentItem _miniatureItem(GamebaseMiniature miniature) {
+  final white = _nonBlank(miniature.whiteName) ?? 'White';
+  final black = _nonBlank(miniature.blackName) ?? 'Black';
+  final opening = _nonBlank(miniature.opening);
+  final event = _nonBlank(miniature.event);
+  final subtitle = opening ?? event ?? _miniatureTimeControl(miniature);
+  final rating = miniature.avgRating;
+  return MySpaceMiniatureItem(
+    id: 'miniature:${miniature.canonicalGameId}',
+    title: '$white vs $black',
+    subtitle: subtitle,
+    status: <String>[
+      '${miniature.finalMoveNumber} moves',
+      if (rating != null) '$rating avg',
+      _miniatureTimeControl(miniature),
+    ].join(' · '),
+    actionLabel: 'Open game',
+    miniature: miniature,
+  );
+}
+
+String _miniatureTimeControl(GamebaseMiniature miniature) {
+  return switch (miniature.timeControl) {
+    MiniatureGameTimeControl.classical => 'Classical',
+    MiniatureGameTimeControl.rapid => 'Rapid',
+    MiniatureGameTimeControl.blitz => 'Blitz',
+  };
 }
 
 String _analysisTitle(SavedAnalysis analysis) {

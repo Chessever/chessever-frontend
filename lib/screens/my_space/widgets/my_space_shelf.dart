@@ -18,6 +18,7 @@ class MySpaceShelf extends StatefulWidget {
     required this.onEmptyAction,
     super.key,
     this.onRetry,
+    this.onManage,
   });
 
   final MySpaceShelfDescriptor descriptor;
@@ -28,6 +29,7 @@ class MySpaceShelf extends StatefulWidget {
   final ValueChanged<MySpaceContentItem> onItemPressed;
   final VoidCallback onEmptyAction;
   final VoidCallback? onRetry;
+  final VoidCallback? onManage;
 
   @override
   State<MySpaceShelf> createState() => _MySpaceShelfState();
@@ -68,7 +70,11 @@ class _MySpaceShelfState extends State<MySpaceShelf> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _ShelfHeader(title: widget.title, count: _itemCount(widget.state)),
+          _ShelfHeader(
+            title: widget.title,
+            count: _itemCount(widget.state),
+            onManage: widget.onManage,
+          ),
           const SizedBox(height: 10),
           AnimatedSwitcher(
             duration: duration,
@@ -141,8 +147,14 @@ class _MySpaceShelfState extends State<MySpaceShelf> {
   }
 
   Widget _rail(List<MySpaceContentItem> items) {
-    final cardHeight = MySpaceEntityCard.preferredHeight(context);
-    final cardWidth = MySpaceEntityCard.preferredWidth(context);
+    final cardHeight = MySpaceEntityCard.preferredHeight(
+      context,
+      size: widget.descriptor.size,
+    );
+    final cardWidth = MySpaceEntityCard.preferredWidth(
+      context,
+      size: widget.descriptor.size,
+    );
     return Semantics(
       container: true,
       label: '${widget.title}, ${items.length} items, horizontal list',
@@ -200,10 +212,15 @@ class _MySpaceShelfState extends State<MySpaceShelf> {
 }
 
 class _ShelfHeader extends StatelessWidget {
-  const _ShelfHeader({required this.title, required this.count});
+  const _ShelfHeader({
+    required this.title,
+    required this.count,
+    required this.onManage,
+  });
 
   final String title;
   final int? count;
+  final VoidCallback? onManage;
 
   @override
   Widget build(BuildContext context) {
@@ -233,6 +250,26 @@ class _ShelfHeader extends StatelessWidget {
                     color: context.colors.textSecondary,
                     fontWeight: FontWeight.w600,
                   ),
+                ),
+              ),
+            ),
+          ],
+          if (onManage case final manage?) ...[
+            const SizedBox(width: 4),
+            Semantics(
+              button: true,
+              label: 'Manage $title shelf',
+              child: IconButton(
+                key: ValueKey<String>('my-space-manage-shelf-$title'),
+                onPressed: manage,
+                tooltip: 'Manage shelf',
+                constraints: const BoxConstraints.tightFor(
+                  width: 48,
+                  height: 48,
+                ),
+                icon: Icon(
+                  Icons.more_horiz_rounded,
+                  color: context.colors.iconPrimary,
                 ),
               ),
             ),
@@ -340,7 +377,7 @@ class _CompactShelfState extends StatelessWidget {
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
     final stackAction =
-        MediaQuery.sizeOf(context).width < 360 || textScale > 1.3;
+        MediaQuery.sizeOf(context).width < 400 || textScale > 1.3;
     final copy = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,5 +558,9 @@ IconData _emptyIcon(MySpaceShelfType type) {
   if (type == MySpaceShelfType.favoritePlayers) {
     return Icons.people_outline_rounded;
   }
+  if (type == MySpaceShelfType.studyDiscovery) {
+    return Icons.auto_stories_outlined;
+  }
+  if (type == MySpaceShelfType.miniatures) return Icons.bolt_rounded;
   return Icons.collections_bookmark_outlined;
 }

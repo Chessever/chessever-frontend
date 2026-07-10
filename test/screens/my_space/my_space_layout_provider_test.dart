@@ -41,8 +41,8 @@ void main() {
       await container.read(mySpaceLayoutProvider.future);
       final notifier = container.read(mySpaceLayoutProvider.notifier);
       final added = MySpaceShelfDescriptor(
-        id: 'custom_miniatures',
-        type: MySpaceShelfType.miniatures,
+        id: 'custom_library_recents',
+        type: MySpaceShelfType.libraryRecents,
         size: MySpaceShelfSize.compact,
       );
 
@@ -77,8 +77,8 @@ void main() {
             .read(mySpaceLayoutProvider.notifier)
             .addShelf(
               MySpaceShelfDescriptor(
-                id: 'custom_studies',
-                type: MySpaceShelfType.studyDiscovery,
+                id: 'custom_library_recents',
+                type: MySpaceShelfType.libraryRecents,
                 size: MySpaceShelfSize.compact,
               ),
             ),
@@ -121,6 +121,64 @@ void main() {
     expect(snapshot.hasServerRow, isTrue);
     expect(snapshot.failure, isA<MySpaceLayoutException>());
   });
+
+  test(
+    'reset persists the curated layout through the same revision contract',
+    () async {
+      final customLayout = MySpaceLayout(
+        shelves: MySpaceLayout.curatedDefault.shelves.where(
+          (shelf) => shelf.type != MySpaceShelfType.savedStudies,
+        ),
+      );
+      final backend = _Backend(
+        fetchRow: _row(revision: 6, layout: customLayout),
+      );
+      final container = _container(backend);
+      await container.read(mySpaceLayoutProvider.future);
+
+      await container.read(mySpaceLayoutProvider.notifier).resetToDefault();
+
+      final snapshot = container.read(mySpaceLayoutProvider).requireValue;
+      expect(snapshot.layout, MySpaceLayout.curatedDefault);
+      expect(snapshot.revision, 7);
+      expect(backend.expectedRevisions, [6]);
+    },
+  );
+
+  test(
+    'unavailable save keeps the previous layout and exposes failure',
+    () async {
+      final backend = _Backend(
+        fetchRow: _row(revision: 3),
+        saveFailure: const MySpaceLayoutException(
+          kind: MySpaceLayoutFailureKind.unavailable,
+          message: 'service unavailable',
+        ),
+      );
+      final container = _container(backend);
+      await container.read(mySpaceLayoutProvider.future);
+      final before = container.read(mySpaceLayoutProvider).requireValue;
+
+      await expectLater(
+        container
+            .read(mySpaceLayoutProvider.notifier)
+            .removeShelf('default_saved_studies'),
+        throwsA(
+          isA<MySpaceLayoutException>().having(
+            (error) => error.kind,
+            'kind',
+            MySpaceLayoutFailureKind.unavailable,
+          ),
+        ),
+      );
+
+      final after = container.read(mySpaceLayoutProvider).requireValue;
+      expect(after.layout, before.layout);
+      expect(after.revision, before.revision);
+      expect(after.isSaving, isFalse);
+      expect(after.failure, isA<MySpaceLayoutException>());
+    },
+  );
 }
 
 ProviderContainer _container(_Backend backend, {bool enabled = true}) {
@@ -136,11 +194,11 @@ ProviderContainer _container(_Backend backend, {bool enabled = true}) {
   return container;
 }
 
-Map<String, dynamic> _row({required int revision}) => {
+Map<String, dynamic> _row({required int revision, MySpaceLayout? layout}) => {
   'user_id': 'user-1',
   'schema_version': 1,
   'revision': revision,
-  'shelves': MySpaceLayout.curatedDefault.toJson()['shelves'],
+  'shelves': (layout ?? MySpaceLayout.curatedDefault).toJson()['shelves'],
   'created_at': '2026-07-10T08:00:00.000Z',
   'updated_at': '2026-07-10T09:00:00.000Z',
 };

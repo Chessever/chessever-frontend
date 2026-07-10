@@ -441,6 +441,16 @@ final class MySpaceLayout {
         size: MySpaceShelfSize.standard,
       ),
       MySpaceShelfDescriptor(
+        id: 'default_miniatures',
+        type: MySpaceShelfType.miniatures,
+        size: MySpaceShelfSize.standard,
+      ),
+      MySpaceShelfDescriptor(
+        id: 'default_study_discovery',
+        type: MySpaceShelfType.studyDiscovery,
+        size: MySpaceShelfSize.standard,
+      ),
+      MySpaceShelfDescriptor(
         id: 'default_my_likes',
         type: MySpaceShelfType.myLikes,
         size: MySpaceShelfSize.standard,

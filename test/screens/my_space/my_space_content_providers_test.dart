@@ -1,12 +1,15 @@
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/screens/miniatures/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/my_space/domain/my_space_shelf_state.dart';
 import 'package:chessever2/screens/my_space/providers/my_space_content_providers.dart';
+import 'package:chessever2/screens/studies/providers/studies_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -213,7 +216,151 @@ void main() {
         isA<MySpaceShelfEmpty<List<MySpaceContentItem>>>(),
       );
     });
+
+    test(
+      'Study Discovery keeps canonical Lichess identity and no PGN path',
+      () {
+        final study = _study();
+        final container = ProviderContainer(
+          overrides: [
+            mySpaceStudiesSourceProvider.overrideWithValue(
+              AsyncValue<StudiesState>.data(
+                StudiesState(
+                  items: [study],
+                  filter: kDefaultStudiesFilter,
+                  total: 1,
+                  nextOffset: 1,
+                  hasMore: false,
+                ),
+              ),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final state =
+            container.read(mySpaceStudyDiscoveryShelfProvider)
+                as MySpaceShelfData<List<MySpaceContentItem>>;
+        final item = state.data.single as MySpaceStudyItem;
+
+        expect(item.study, same(study));
+        expect(item.id, 'study:study-42');
+        expect(
+          item.study.canonicalSourceUrl.toString(),
+          'https://lichess.org/study/study-42',
+        );
+        expect(item.study.canOpenMirroredChapterInApp, isFalse);
+        expect(item.actionLabel, 'View Study');
+      },
+    );
+
+    test('Miniatures keeps the canonical Gamebase hydration identity', () {
+      final miniature = _miniature();
+      final container = ProviderContainer(
+        overrides: [
+          mySpaceMiniaturesSourceProvider.overrideWithValue(
+            AsyncValue<MiniaturesState>.data(
+              MiniaturesState(
+                items: [miniature],
+                filter: kDefaultMiniaturesFilter,
+                total: 1,
+                nextOffset: 1,
+                hasMore: false,
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final state =
+          container.read(mySpaceMiniaturesShelfProvider)
+              as MySpaceShelfData<List<MySpaceContentItem>>;
+      final item = state.data.single as MySpaceMiniatureItem;
+
+      expect(item.miniature, same(miniature));
+      expect(item.id, 'miniature:game-42');
+      expect(item.miniature.sourceMetadata.requiresFullGameHydration, isTrue);
+      expect(item.actionLabel, 'Open game');
+    });
+
+    test('later-page discovery failures retain usable shelf data', () {
+      final container = ProviderContainer(
+        overrides: [
+          mySpaceStudiesSourceProvider.overrideWithValue(
+            AsyncValue<StudiesState>.data(
+              StudiesState(
+                items: [_study()],
+                filter: kDefaultStudiesFilter,
+                total: 30,
+                nextOffset: 1,
+                hasMore: true,
+                loadMoreFailure: StudiesLoadMoreFailure(
+                  error: StateError('next page failed'),
+                  stackTrace: StackTrace.empty,
+                  offset: 1,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final state = container.read(mySpaceStudyDiscoveryShelfProvider);
+
+      expect(state, isA<MySpaceShelfPartial<List<MySpaceContentItem>>>());
+      expect(
+        (state as MySpaceShelfPartial<List<MySpaceContentItem>>).data,
+        hasLength(1),
+      );
+    });
   });
+}
+
+GamebaseStudySummary _study() {
+  final now = DateTime.utc(2026, 7, 10);
+  return GamebaseStudySummary(
+    lichessStudyId: 'study-42',
+    authorUsername: 'quality-author',
+    name: 'Practical rook endings',
+    views: 4200,
+    lichessCreatedAt: now.subtract(const Duration(days: 30)),
+    lichessUpdatedAt: now,
+    chapterCount: 8,
+    plyTotal: 640,
+    hasAnnotations: true,
+    ecos: const ['C65'],
+    ecoCategories: const ['C'],
+    openings: const ['Ruy Lopez'],
+    variants: const ['standard'],
+    chapterModes: const ['normal'],
+    players: const ['Capablanca'],
+    isGamebook: false,
+    hasCustomPositions: false,
+    credibilityScore: 0.96,
+    passedGate: true,
+    status: GamebaseStudyStatus.active,
+    syncedAt: now,
+  );
+}
+
+GamebaseMiniature _miniature() {
+  return GamebaseMiniature(
+    gameId: 'game-42',
+    avgRating: 2450,
+    plyCount: 34,
+    finalMoveNumber: 17,
+    result: MiniatureGameResult.whiteWins,
+    timeControl: MiniatureGameTimeControl.rapid,
+    onlineStatus: MiniatureGameOnlineStatus.offline,
+    date: DateTime.utc(2026, 7, 9),
+    event: 'Tactical Masters',
+    eco: 'B12',
+    opening: 'Caro-Kann Defense',
+    whiteName: 'Alpha',
+    blackName: 'Beta',
+  );
 }
 
 SavedAnalysis _analysis({required String id}) {

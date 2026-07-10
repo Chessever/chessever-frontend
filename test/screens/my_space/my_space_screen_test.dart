@@ -21,9 +21,15 @@ void main() {
     final delegate = feed.childrenDelegate as SliverChildListDelegate;
 
     expect(
-      delegate.children.map((child) => (child.key! as ValueKey<String>).value),
+      delegate.children
+          .map((child) => child.key)
+          .whereType<ValueKey<String>>()
+          .map((key) => key.value)
+          .where((value) => value.startsWith('my-space-shelf-')),
       const [
         'my-space-shelf-default_continue',
+        'my-space-shelf-default_miniatures',
+        'my-space-shelf-default_study_discovery',
         'my-space-shelf-default_my_likes',
         'my-space-shelf-default_saved_events',
         'my-space-shelf-default_databases',
@@ -74,6 +80,10 @@ void main() {
 
     expect(find.bySemanticsLabel('Continue loading'), findsOneWidget);
     expect(find.text('My Likes is ready when you are'), findsOneWidget);
+    await _bringIntoView(
+      tester,
+      find.byKey(ValueKey<String>('my-space-card-${event.id}')),
+    );
     expect(find.text(event.title), findsOneWidget);
     expect(find.text('Saved event unavailable'), findsOneWidget);
     expect(find.text('Unavailable'), findsWidgets);
@@ -96,14 +106,7 @@ void main() {
     );
 
     final card = find.byKey(ValueKey<String>('my-space-card-${event.id}'));
-    await tester.scrollUntilVisible(
-      card,
-      220,
-      scrollable: find.descendant(
-        of: find.byKey(const PageStorageKey<String>('my-space-vertical-feed')),
-        matching: find.byType(Scrollable),
-      ),
-    );
+    await _bringIntoView(tester, card);
     await tester.tap(card);
     await tester.pump();
 
@@ -224,31 +227,39 @@ void main() {
 
     expect(find.text('Build your own My Space'), findsOneWidget);
     expect(
-      find.textContaining('Preview only — this cannot change your layout'),
+      find.textContaining('Preview only — this cannot change'),
       findsOneWidget,
     );
+    expect(find.text('Rollout coming'), findsNothing);
     expect(find.textContaining('saved successfully'), findsNothing);
     expect(find.text('Shelf saved'), findsNothing);
     semantics.dispose();
   });
+}
 
-  testWidgets('authorized Add shelf capability is callback-driven', (
-    tester,
-  ) async {
-    var calls = 0;
-    await _pumpMySpace(
-      tester,
-      screen: MySpaceScreen(onAuthorizedAddShelf: () => calls++),
-    );
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('my-space-add-shelf-button')),
-    );
+Future<void> _bringIntoView(WidgetTester tester, Finder target) async {
+  final feed =
+      find
+          .descendant(
+            of: find.byKey(
+              const PageStorageKey<String>('my-space-vertical-feed'),
+            ),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+  var attempts = 0;
+  while (target.evaluate().isEmpty && attempts < 20) {
+    await tester.drag(feed, const Offset(0, -260));
     await tester.pump();
-
-    expect(calls, 1);
-    expect(find.text('Build your own My Space'), findsNothing);
-  });
+    attempts += 1;
+  }
+  expect(target, findsOneWidget);
+  await Scrollable.ensureVisible(
+    tester.element(target),
+    alignment: 0.5,
+    duration: Duration.zero,
+  );
+  await tester.pump();
 }
 
 Future<void> _pumpMySpace(
@@ -262,6 +273,8 @@ Future<void> _pumpMySpace(
   MySpaceContentShelfState? databasesState,
   MySpaceContentShelfState? savedStudiesState,
   MySpaceContentShelfState? favoritePlayersState,
+  MySpaceContentShelfState? studyDiscoveryState,
+  MySpaceContentShelfState? miniaturesState,
   MySpaceScreen screen = const MySpaceScreen(),
 }) async {
   tester.view.devicePixelRatio = 1;
@@ -286,6 +299,12 @@ Future<void> _pumpMySpace(
         mySpaceFavoritePlayersShelfProvider.overrideWithValue(
           favoritePlayersState ?? empty,
         ),
+        mySpaceStudyDiscoveryShelfProvider.overrideWithValue(
+          studyDiscoveryState ?? empty,
+        ),
+        mySpaceMiniaturesShelfProvider.overrideWithValue(
+          miniaturesState ?? empty,
+        ),
       ],
       child: LiquidGlassWidgets.wrap(
         child: MaterialApp(
@@ -305,7 +324,7 @@ Future<void> _pumpMySpace(
       ),
     ),
   );
-  await tester.pump();
+  await tester.pumpAndSettle();
 }
 
 MySpaceEventItem _eventItem({

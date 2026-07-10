@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/my_space/domain/my_space_layout.dart';
 import 'package:chessever2/screens/my_space/providers/my_space_content_providers.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
@@ -19,17 +20,32 @@ class MySpaceEntityCard extends StatelessWidget {
   final double? width;
   final double? height;
 
-  static double preferredWidth(BuildContext context) {
+  static double preferredWidth(
+    BuildContext context, {
+    MySpaceShelfSize size = MySpaceShelfSize.standard,
+  }) {
     final available = MediaQuery.sizeOf(context).width - 52;
-    return math.max(148, math.min(260, available));
+    return switch (size) {
+      MySpaceShelfSize.compact => math.max(148, math.min(184, available)),
+      MySpaceShelfSize.standard => math.max(148, math.min(260, available)),
+      MySpaceShelfSize.featured => math.max(148, available),
+    };
   }
 
   /// Dynamic Type gets real vertical space instead of shrinking text or
   /// allowing the primary action to fall out of the card.
-  static double preferredHeight(BuildContext context) {
+  static double preferredHeight(
+    BuildContext context, {
+    MySpaceShelfSize size = MySpaceShelfSize.standard,
+  }) {
     final scaler = MediaQuery.textScalerOf(context);
     final scale = scaler.scale(16) / 16;
-    return 300 + math.max(0, scale - 1) * 190;
+    final base = switch (size) {
+      MySpaceShelfSize.compact => 270.0,
+      MySpaceShelfSize.standard => 300.0,
+      MySpaceShelfSize.featured => 330.0,
+    };
+    return base + math.max(0, scale - 1) * 190;
   }
 
   @override
@@ -280,6 +296,8 @@ class _DeterministicPlaceholder extends StatelessWidget {
       MySpaceEntityKind.database => Icons.storage_rounded,
       MySpaceEntityKind.folder => Icons.folder_outlined,
       MySpaceEntityKind.player => Icons.person_outline_rounded,
+      MySpaceEntityKind.study => Icons.auto_stories_outlined,
+      MySpaceEntityKind.miniature => Icons.bolt_rounded,
       MySpaceEntityKind.unavailable => Icons.link_off_rounded,
     };
 

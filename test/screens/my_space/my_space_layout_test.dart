@@ -61,13 +61,15 @@ void main() {
       expect(layout.schemaVersion, 1);
       expect(layout.shelves.map((shelf) => shelf.type), const [
         MySpaceShelfType.continueShelf,
+        MySpaceShelfType.miniatures,
+        MySpaceShelfType.studyDiscovery,
         MySpaceShelfType.myLikes,
         MySpaceShelfType.savedEvents,
         MySpaceShelfType.databases,
         MySpaceShelfType.savedStudies,
         MySpaceShelfType.favoritePlayers,
       ]);
-      expect(layout.shelves.map((shelf) => shelf.id).toSet(), hasLength(6));
+      expect(layout.shelves.map((shelf) => shelf.id).toSet(), hasLength(8));
       expect(
         layout.shelves.every(
           (shelf) =>
