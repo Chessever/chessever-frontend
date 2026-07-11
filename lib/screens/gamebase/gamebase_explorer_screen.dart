@@ -6,6 +6,7 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
@@ -648,7 +649,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         ],
       ),
       // Three actions, evenly spaced: Reset, Filters (with active dot when
-      // filters are applied), Done. The dot on the filter icon is enough to
+      // filters are applied), Save. The dot on the filter icon is enough to
       // signal "filters active" — no separate clear-filters button is needed
       // since Reset wipes the same state.
       actions: [
@@ -681,33 +682,21 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
           onPressed: () => _showFilterSheet(context),
           tooltip: 'Filters',
         ),
-        // Match IconButton's default 8dp surrounding padding so the gap
-        // tune→Done equals the gap reset→tune.
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8.sp),
-          child: GestureDetector(
-            onTap: () => _openAnalysis(context),
-            child: Container(
-              key: e2eKey(E2eIds.openingExplorerDoneButton),
-              padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Text(
-                'Done',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.background,
-                ),
-              ),
-            ),
+        IconButton(
+          key: e2eKey(E2eIds.openingExplorerSaveButton),
+          icon: Icon(
+            Icons.save_outlined,
+            size: 24.ic,
+            semanticLabel: 'Save analysis',
           ),
+          onPressed: () => _openAnalysisAndSave(context),
+          tooltip: 'Save analysis',
         ),
       ],
     );
   }
 
-  void _openAnalysis(BuildContext context) {
+  void _openAnalysisAndSave(BuildContext context) {
     final state = ref.read(gamebaseExplorerProvider);
     final game = state.game;
     if (game == null) return;
@@ -765,6 +754,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,
               startAtLastMove: true,
+              showSaveAnalysisOnLoad: true,
             ),
       ),
     );
@@ -1882,6 +1872,32 @@ class _PlayerSearchResults extends ConsumerWidget {
 /// Compact engine analysis lines displayed above the move statistics.
 /// Shows up to 3 Stockfish PV lines, each as a single horizontal row
 /// with an eval badge and SAN moves.
+/// Format an engine PV into move-numbered SAN text (e.g. "1.e4 e5 2.Nf3").
+String _formatExplorerPvMoves(
+  List<String> sanMoves,
+  int startMoveNumber,
+  bool isWhiteToMove,
+) {
+  if (sanMoves.isEmpty) return '';
+  final buffer = StringBuffer();
+  var moveNum = startMoveNumber;
+  var isWhite = isWhiteToMove;
+  for (var i = 0; i < sanMoves.length; i++) {
+    if (isWhite) {
+      if (i > 0) buffer.write(' ');
+      buffer.write('$moveNum.');
+    } else if (i == 0) {
+      buffer.write('$moveNum...');
+    } else {
+      buffer.write(' ');
+    }
+    buffer.write(sanMoves[i]);
+    if (!isWhite) moveNum++;
+    isWhite = !isWhite;
+  }
+  return buffer.toString();
+}
+
 class _ExplorerEngineLines extends ConsumerWidget {
   const _ExplorerEngineLines();
   static const int _kMaxRows = 3;
@@ -1912,9 +1928,84 @@ class _ExplorerEngineLines extends ConsumerWidget {
     final startMoveNumber =
         fenParts.length > 5 ? (int.tryParse(fenParts[5]) ?? 1) : 1;
 
-    final lines = pvLines.take(_kMaxRows).toList();
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.cards;
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
     final uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
+
+    Future<void> playLine(ExplorerPvLine line) async {
+      if (line.uciMoves.isEmpty) return;
+      final firstUci = line.uciMoves.first.trim().toLowerCase();
+      if (!uciRegex.hasMatch(firstUci)) return;
+      if (!kDebugMode && !ref.read(subscriptionProvider).isSubscribed) {
+        final currentMoveNumber =
+            ref.read(gamebaseExplorerProvider).currentMoveNumber;
+        if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
+          if (!context.mounted) return;
+          final unlocked = await requirePremiumGuard(context, ref);
+          if (!unlocked) return;
+        }
+      }
+      notifier.makeMove(firstUci);
+    }
+
+    // ChessEver layout: horizontally swipeable engine cards. Honors the user's
+    // "Number of Lines" engine setting (list mode keeps the 3-row cap).
+    if (linesView == EngineLinesView.cards) {
+      final pvCount = (engineSettings?.multiPvForLichess() ?? _kMaxRows).clamp(
+        1,
+        5,
+      );
+      final cardLines = pvLines.take(pvCount).toList();
+      final moveStyle = AppTypography.textXsMedium.copyWith(
+        color: context.colors.textPrimary.withValues(alpha: 0.95),
+        fontWeight: FontWeight.w600,
+      );
+      final items = <EnginePvItem>[
+        for (final line in cardLines)
+          EnginePvItem(
+            evalText: line.displayEval,
+            accentColor: kPrimaryColor,
+            moveSpans:
+                useFigurine
+                    ? buildFigurineSpans(
+                      text: _formatExplorerPvMoves(
+                        line.sanMoves,
+                        startMoveNumber,
+                        isWhiteToMove,
+                      ),
+                      pieceAssets: pieceAssets,
+                      style: moveStyle,
+                      pieceSize: 12.sp,
+                    )
+                    : <InlineSpan>[
+                      TextSpan(
+                        text: _formatExplorerPvMoves(
+                          line.sanMoves,
+                          startMoveNumber,
+                          isWhiteToMove,
+                        ),
+                        style: moveStyle,
+                      ),
+                    ],
+            onTap: () => playLine(line),
+          ),
+      ];
+      return Padding(
+        key: e2eKey(E2eIds.openingExplorerEngineLines),
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
+        child: EnginePvCardsView(
+          items: items,
+          cardHeight: 64.h,
+          emptyPlaceholder: _EngineLinePlaceholder(
+            isPrimary: true,
+            isEvaluating: evalState.isEvaluating,
+          ),
+        ),
+      );
+    }
+
+    final lines = pvLines.take(_kMaxRows).toList();
 
     return Column(
       key: e2eKey(E2eIds.openingExplorerEngineLines),

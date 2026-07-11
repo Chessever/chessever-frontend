@@ -12,6 +12,7 @@ import 'package:dio/dio.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/player_profile/player_profile_metadata.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -221,43 +222,75 @@ class PlayerEventData {
 
 /// Provider to fetch basic player profile from chess_players table
 final playerProfileDataProvider = FutureProvider.family
-    .autoDispose<PlayerProfileData?, int>((ref, fideId) async {
-      try {
-        final supabase = Supabase.instance.client;
+    .autoDispose<PlayerProfileData?, int>(
+      (ref, fideId) => _fetchPlayerProfileData(fideId),
+    );
 
-        // Fetch from chess_players table
-        final response =
-            await supabase
-                .from('chess_players')
-                .select()
-                .eq('fideid', fideId)
-                .maybeSingle();
+Future<PlayerProfileData?> _fetchPlayerProfileData(int fideId) async {
+  try {
+    final response =
+        await Supabase.instance.client
+            .from('chess_players')
+            .select()
+            .eq('fideid', fideId)
+            .maybeSingle();
 
-        if (response == null) return null;
+    if (response == null) return null;
 
-        // Handle birthday as int (year) and convert to string
-        final birthdayInt = response['birthday'] as int?;
-        final birthdayStr = birthdayInt?.toString();
+    final birthdayInt = response['birthday'] as int?;
+    return PlayerProfileData(
+      fideId: fideId,
+      name: response['name'] as String? ?? '',
+      title: response['title'] as String?,
+      federation: response['country']?.toString().trim(),
+      classicalRating: response['rating'] as int?,
+      rapidRating: response['rapid_rating'] as int?,
+      blitzRating: response['blitz_rating'] as int?,
+      classicalGames: response['games'] as int?,
+      rapidGames: response['rapid_games'] as int?,
+      blitzGames: response['blitz_games'] as int?,
+      birthday: birthdayInt?.toString(),
+      sex: response['sex']?.toString().trim(),
+    );
+  } catch (e) {
+    debugPrint('[playerProfileDataProvider] Error: $e');
+    return null;
+  }
+}
 
-        return PlayerProfileData(
-          fideId: fideId,
-          name: response['name'] as String? ?? 'Unknown',
-          title: response['title'] as String?,
-          federation: response['country']?.toString().trim(),
-          classicalRating: response['rating'] as int?,
-          rapidRating: response['rapid_rating'] as int?,
-          blitzRating: response['blitz_rating'] as int?,
-          classicalGames: response['games'] as int?,
-          rapidGames: response['rapid_games'] as int?,
-          blitzGames: response['blitz_games'] as int?,
-          birthday: birthdayStr,
-          sex: response['sex']?.toString().trim(),
-        );
-      } catch (e) {
-        debugPrint('[playerProfileDataProvider] Error: $e');
-        return null;
-      }
-    });
+PlayerProfileMetadata _profileMetadataFromData(PlayerProfileData data) {
+  return PlayerProfileMetadata(
+    fideId: data.fideId,
+    name: data.name,
+    title: data.title,
+    federation: data.federation,
+    classicalRating: data.classicalRating,
+    rapidRating: data.rapidRating,
+    blitzRating: data.blitzRating,
+    classicalGames: data.classicalGames,
+    rapidGames: data.rapidGames,
+    blitzGames: data.blitzGames,
+    birthday: data.birthday,
+    sex: data.sex,
+  );
+}
+
+PlayerProfileData _profileDataFromMetadata(PlayerProfileMetadata metadata) {
+  return PlayerProfileData(
+    fideId: metadata.fideId,
+    name: metadata.name,
+    title: ChessTitleUtils.normalize(metadata.title),
+    federation: metadata.federation,
+    classicalRating: metadata.classicalRating,
+    rapidRating: metadata.rapidRating,
+    blitzRating: metadata.blitzRating,
+    classicalGames: metadata.classicalGames,
+    rapidGames: metadata.rapidGames,
+    blitzGames: metadata.blitzGames,
+    birthday: metadata.birthday,
+    sex: metadata.sex,
+  );
+}
 
 /// Provider to fetch all games for a player by FIDE ID
 final playerGamesDataProvider = FutureProvider.family
@@ -1667,8 +1700,6 @@ final playerEventCardProvider = FutureProvider.autoDispose
 
 final playerProfileDataKeyProvider = FutureProvider.family
     .autoDispose<PlayerProfileData?, PlayerProfileKey>((ref, playerKey) async {
-      final chessPlayerRepo = ref.read(chessPlayerRepositoryProvider);
-
       if (playerKey.source == PlayerProfileDataSource.twic) {
         final repo = ref.read(gamebaseRepositoryProvider);
         final playerId = await _resolveTwicPlayerId(ref, playerKey);
@@ -1681,42 +1712,46 @@ final playerProfileDataKeyProvider = FutureProvider.family
                 (fideInt != null && fideInt > 0)
                     ? fideInt
                     : (playerKey.hasFideId ? playerKey.fideId : null);
-            final supabasePlayer =
+            final supabaseProfile =
                 (resolvedFideId != null && resolvedFideId > 0)
-                    ? await chessPlayerRepo.getPlayerByFideId(resolvedFideId)
+                    ? await _fetchPlayerProfileData(resolvedFideId)
                     : null;
-            return PlayerProfileData(
+            final fallback = PlayerProfileMetadata(
               fideId: resolvedFideId ?? 0,
               name: player.name,
-              title: ChessTitleUtils.normalize(
-                (supabasePlayer?.title?.trim().isNotEmpty ?? false)
-                    ? supabasePlayer!.title
-                    : player.title,
-              ),
-              federation:
-                  (supabasePlayer?.country?.trim().isNotEmpty ?? false)
-                      ? supabasePlayer!.country
-                      : player.fed,
-              classicalRating: player.ratingClassical ?? supabasePlayer?.rating,
+              title: player.title,
+              federation: player.fed,
+              classicalRating: player.ratingClassical,
               rapidRating: player.ratingRapid,
               blitzRating: player.ratingBlitz,
+            );
+            return _profileDataFromMetadata(
+              resolvePlayerProfileMetadata(
+                fallback: fallback,
+                authoritative:
+                    supabaseProfile == null
+                        ? null
+                        : _profileMetadataFromData(supabaseProfile),
+              ),
             );
           }
         }
 
         if (playerKey.hasFideId) {
-          final fallbackSupabase = await chessPlayerRepo.getPlayerByFideId(
+          final supabaseProfile = await _fetchPlayerProfileData(
             playerKey.fideId!,
           );
-          return PlayerProfileData(
-            fideId: playerKey.fideId!,
-            name:
-                fallbackSupabase?.name.trim().isNotEmpty == true
-                    ? fallbackSupabase!.name
-                    : playerKey.playerName,
-            title: ChessTitleUtils.normalize(fallbackSupabase?.title),
-            federation: fallbackSupabase?.country,
-            classicalRating: fallbackSupabase?.rating,
+          return _profileDataFromMetadata(
+            resolvePlayerProfileMetadata(
+              fallback: PlayerProfileMetadata(
+                fideId: playerKey.fideId!,
+                name: playerKey.playerName,
+              ),
+              authoritative:
+                  supabaseProfile == null
+                      ? null
+                      : _profileMetadataFromData(supabaseProfile),
+            ),
           );
         }
         return null;

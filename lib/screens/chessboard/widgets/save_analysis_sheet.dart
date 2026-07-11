@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
@@ -1169,6 +1170,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
     // CRITICAL: Wrap with Material to prevent yellow underline bug
     return Material(
+      key: e2eKey(E2eIds.saveAnalysisSheet),
       type: MaterialType.transparency,
       child: SafeArea(
         top: false,

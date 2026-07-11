@@ -14,11 +14,15 @@ class KnockoutMatchDetector {
 
     if (!formatString.toLowerCase().contains('match')) return false;
 
+    final identities = _ParticipantIdentityRegistry(games);
     // Count unique players
     final players = <String>{};
     for (final game in games) {
-      players.add(game.whitePlayer.name);
-      players.add(game.blackPlayer.name);
+      final whiteId = identities.idFor(game.whitePlayer);
+      final blackId = identities.idFor(game.blackPlayer);
+      if (whiteId == null || blackId == null) continue;
+      players.add(whiteId);
+      players.add(blackId);
       if (players.length > 2) return false; // early exit
     }
 
@@ -55,8 +59,14 @@ class KnockoutMatchDetector {
 
     // Check for repeated player matchups
     final matchups = <String, int>{};
+    final identities = _ParticipantIdentityRegistry(games);
     for (final game in games) {
-      final key = _getMatchupKey(game.whitePlayer.name, game.blackPlayer.name);
+      final key = _getMatchupKey(
+        game.whitePlayer,
+        game.blackPlayer,
+        identities,
+      );
+      if (key == null) continue;
       matchups[key] = (matchups[key] ?? 0) + 1;
     }
 
@@ -81,9 +91,15 @@ class KnockoutMatchDetector {
     List<GamesTourModel> games,
   ) {
     final matches = <String, List<GamesTourModel>>{};
+    final identities = _ParticipantIdentityRegistry(games);
 
     for (final game in games) {
-      final key = _getMatchupKey(game.whitePlayer.name, game.blackPlayer.name);
+      final key = _getMatchupKey(
+        game.whitePlayer,
+        game.blackPlayer,
+        identities,
+      );
+      if (key == null) continue;
       matches.putIfAbsent(key, () => []).add(game);
     }
 
@@ -105,9 +121,15 @@ class KnockoutMatchDetector {
     List<GamesTourModel> allGames,
   ) {
     final matches = <String, List<GamesTourModel>>{};
+    final identities = _ParticipantIdentityRegistry(allGames);
 
     for (final game in allGames) {
-      final key = _getMatchupKey(game.whitePlayer.name, game.blackPlayer.name);
+      final key = _getMatchupKey(
+        game.whitePlayer,
+        game.blackPlayer,
+        identities,
+      );
+      if (key == null) continue;
       matches.putIfAbsent(key, () => []).add(game);
     }
 
@@ -280,9 +302,15 @@ class KnockoutMatchDetector {
 
   // Private helper methods
 
-  static String _getMatchupKey(String player1, String player2) {
-    // Normalize player names and create a consistent key
-    final sorted = [player1.trim(), player2.trim()]..sort();
+  static String? _getMatchupKey(
+    PlayerCard player1,
+    PlayerCard player2,
+    _ParticipantIdentityRegistry identities,
+  ) {
+    final player1Id = identities.idFor(player1);
+    final player2Id = identities.idFor(player2);
+    if (player1Id == null || player2Id == null) return null;
+    final sorted = [player1Id, player2Id]..sort();
     return '${sorted[0]}|${sorted[1]}';
   }
 
@@ -354,11 +382,12 @@ class KnockoutMatchDetector {
     if (games.isEmpty) return (player1Score: 0.0, player2Score: 0.0);
 
     // Use first game to determine which player is player1 and player2
-    final player1Name = games.first.whitePlayer.name;
+    final identities = _ParticipantIdentityRegistry(games);
+    final player1Id = identities.idFor(games.first.whitePlayer);
 
     for (final game in games) {
       final status = game.effectiveGameStatus;
-      final isPlayer1White = game.whitePlayer.name == player1Name;
+      final isPlayer1White = identities.idFor(game.whitePlayer) == player1Id;
 
       switch (status) {
         case GameStatus.whiteWins:
@@ -416,6 +445,66 @@ class KnockoutMatchDetector {
     return games.every((g) => g.effectiveGameStatus.isFinished);
   }
 }
+
+class _ParticipantIdentityRegistry {
+  _ParticipantIdentityRegistry(Iterable<GamesTourModel> games) {
+    final fideIdsByName = <String, Set<int>>{};
+    for (final game in games) {
+      for (final player in [game.whitePlayer, game.blackPlayer]) {
+        final name = _normalizedPlayerName(player.name);
+        final fideId = player.fideId;
+        if (name.isEmpty || fideId == null || fideId <= 0) continue;
+        fideIdsByName.putIfAbsent(name, () => <int>{}).add(fideId);
+      }
+    }
+    for (final entry in fideIdsByName.entries) {
+      if (entry.value.length == 1) {
+        _fideIdByName[entry.key] = entry.value.single;
+      }
+    }
+  }
+
+  final Map<String, int> _fideIdByName = <String, int>{};
+
+  String? idFor(PlayerCard player) {
+    final name = _normalizedPlayerName(player.name);
+    if (_isPlaceholderPlayerName(name)) return null;
+    final fideId =
+        (player.fideId != null && player.fideId! > 0)
+            ? player.fideId
+            : _fideIdByName[name];
+    return fideId == null ? 'name:$name' : 'fide:$fideId';
+  }
+}
+
+bool _isPlaceholderPlayerName(String name) {
+  final normalized =
+      name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9?]+'), ' ').trim();
+  return normalized.isEmpty ||
+      normalized == '?' ||
+      normalized == 'tbd' ||
+      normalized == 'tba' ||
+      normalized == 'unknown' ||
+      normalized == 'unknown player' ||
+      normalized == 'to be determined' ||
+      normalized.startsWith('winner of ') ||
+      normalized.startsWith('loser of ');
+}
+
+String _normalizedPlayerName(String name) =>
+    name
+        .trim()
+        .replaceFirst(
+          RegExp(
+            r'^(?:(?:GM|IM|FM|CM|WGM|WIM|WFM|WCM|NM|WNM)\.?\s+)+',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .toLowerCase()
+        .replaceAll('’', "'")
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
 
 /// Information parsed from a round slug for sorting
 class _RoundSlugInfo {

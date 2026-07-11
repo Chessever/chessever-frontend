@@ -1,7 +1,7 @@
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
@@ -11,8 +11,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -28,30 +26,24 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 class GamesListView extends ConsumerWidget {
   const GamesListView({
     super.key,
-    required this.rounds,
     required this.gamesByRound,
     required this.gamesData,
-    required this.isKnockoutTournament,
     required this.gamesListViewMode,
     required this.itemScrollController,
     required this.itemPositionsListener,
     this.isSearchMode = false,
-    this.displayMode = GameDisplayMode.all,
     this.onReturnFromChessboard,
-    this.matchFormatHeader,
+    required this.layout,
   });
 
-  final List<GamesAppBarModel> rounds;
   final Map<String, List<GamesTourModel>> gamesByRound;
   final GamesScreenModel gamesData;
-  final bool isKnockoutTournament;
   final GamesListViewMode gamesListViewMode;
   final ItemScrollController itemScrollController;
   final ItemPositionsListener itemPositionsListener;
   final bool isSearchMode;
-  final GameDisplayMode displayMode;
   final void Function(int)? onReturnFromChessboard;
-  final MatchHeaderModel? matchFormatHeader;
+  final GamesTourFlattenedLayout layout;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -61,28 +53,7 @@ class GamesListView extends ConsumerWidget {
     final shouldStream = ref.watch(shouldStreamProvider);
     final streamEnabled = shouldStream;
     final allowStockfishFallback = streamEnabled;
-    final matchExpansionState =
-        isSearchMode
-            ? <String, bool>{} // Empty map means all expanded by default
-            : ref.watch(matchExpansionProvider);
-    final roundExpansionState =
-        isSearchMode
-            ? <String, bool>{} // Empty map means all expanded by default
-            : ref.watch(roundExpansionProvider);
-
-    // Pre-calculate match groupings once for knockout tournaments to avoid repeated calculations
-    final matchGroupsByRound =
-        isKnockoutTournament
-            ? _preCalculateMatchGroups(rounds, gamesByRound)
-            : <String, Map<String, List<GamesTourModel>>>{};
-
-    // For multi-stage knockouts, build ordered games list from gamesByRound
-    final orderedGamesList = _buildOrderedGamesList(
-      rounds,
-      gamesByRound,
-      isKnockoutTournament,
-      matchGroupsByRound,
-    );
+    final orderedGamesList = layout.orderedGames;
 
     // Realtime fan-in: instead of one Supabase channel PER card (which blows
     // the per-client channel rate limit — `ChannelRateLimitReached` — and
@@ -93,18 +64,7 @@ class GamesListView extends ConsumerWidget {
     // one channel's `in` filter never grows unbounded on huge rounds.
     final liveBatchKeyByGameId = _buildLiveBatchKeys(gamesByRound);
 
-    final itemCount = _computeItemCount(
-      gamesListViewMode,
-      rounds,
-      gamesByRound,
-      matchExpansionState,
-      roundExpansionState,
-      isKnockoutTournament,
-      displayMode,
-      matchGroupsByRound,
-      isSearchMode: isSearchMode,
-      matchFormatHeader: matchFormatHeader,
-    );
+    final itemCount = layout.itemCount;
 
     if (itemCount == 0) {
       return const SizedBox.shrink();
@@ -141,25 +101,13 @@ class GamesListView extends ConsumerWidget {
             itemCount: itemCount,
             minCacheExtent: listCacheExtentPixels(context),
             itemBuilder: (context, index) {
-              final lookup = _lookupItem(
-                index: index,
-                rounds: rounds,
-                gamesByRound: gamesByRound,
-                mode: gamesListViewMode,
-                matchExpansionState: matchExpansionState,
-                roundExpansionState: roundExpansionState,
-                isKnockoutTournament: isKnockoutTournament,
-                displayMode: displayMode,
-                matchGroupsByRound: matchGroupsByRound,
-                isSearchMode: isSearchMode,
-                matchFormatHeader: matchFormatHeader,
-              );
+              final lookup = layout.entryAt(index);
 
               if (lookup == null) {
                 return const SizedBox.shrink();
               }
 
-              if (lookup is _MatchFormatHeaderData) {
+              if (lookup is GamesTourMatchFormatHeaderEntry) {
                 return Padding(
                   padding: EdgeInsets.only(bottom: 16.sp),
                   child: MatchHeader(
@@ -170,7 +118,7 @@ class GamesListView extends ConsumerWidget {
                 );
               }
 
-              if (lookup is _HeaderData) {
+              if (lookup is GamesTourRoundHeaderEntry) {
                 final isRoundExpanded =
                     isSearchMode
                         ? true
@@ -195,7 +143,7 @@ class GamesListView extends ConsumerWidget {
                 );
               }
 
-              if (lookup is _MatchHeaderData) {
+              if (lookup is GamesTourMatchHeaderEntry) {
                 final matchKey = lookup.matchHeader.matchKey;
                 final isExpanded =
                     isSearchMode
@@ -219,7 +167,7 @@ class GamesListView extends ConsumerWidget {
                 );
               }
 
-              if (lookup is _GameRowData) {
+              if (lookup is GamesTourGameRowEntry) {
                 Widget rowContent = Padding(
                   padding: EdgeInsets.only(
                     bottom: lookup.isLastInSection ? 20.sp : 12.sp,
@@ -231,7 +179,6 @@ class GamesListView extends ConsumerWidget {
                             ref,
                             lookup,
                             orderedGamesList,
-                            matchGroupsByRound,
                             liveBatchKeyByGameId,
                             allowStockfishFallback,
                             streamEnabled,
@@ -241,7 +188,6 @@ class GamesListView extends ConsumerWidget {
                             ref,
                             lookup,
                             orderedGamesList,
-                            matchGroupsByRound,
                             liveBatchKeyByGameId,
                             allowStockfishFallback,
                             streamEnabled,
@@ -293,9 +239,8 @@ class GamesListView extends ConsumerWidget {
   Widget _buildGridRow(
     BuildContext context,
     WidgetRef ref,
-    _GameRowData item,
+    GamesTourGameRowEntry item,
     List<GamesTourModel> orderedGamesList,
-    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
     bool allowStockfishFallback,
     bool streamEnabled,
@@ -306,7 +251,6 @@ class GamesListView extends ConsumerWidget {
       item.game1,
       item.globalIndex1,
       orderedGamesList,
-      matchGroupsByRound,
       item.fixedBottomSide1,
       liveBatchKeyByGameId,
       allowStockfishFallback,
@@ -321,7 +265,6 @@ class GamesListView extends ConsumerWidget {
               item.game2!,
               item.globalIndex2!,
               orderedGamesList,
-              matchGroupsByRound,
               item.fixedBottomSide2,
               liveBatchKeyByGameId,
               allowStockfishFallback,
@@ -356,7 +299,6 @@ class GamesListView extends ConsumerWidget {
     GamesTourModel game,
     int globalIndex,
     List<GamesTourModel> orderedGamesList,
-    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Side? fixedBottomSide,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
     bool allowStockfishFallback,
@@ -376,17 +318,7 @@ class GamesListView extends ConsumerWidget {
                 orderedGames: updatedGames,
                 gameIndex: globalIndex,
                 onReturnFromChessboard: (returnedIndex) {
-                  final latestMatchExpansion = ref.read(matchExpansionProvider);
-                  final latestRoundExpansion = ref.read(roundExpansionProvider);
-                  _scrollToGameIndex(
-                    returnedIndex,
-                    rounds,
-                    gamesByRound,
-                    gamesListViewMode,
-                    matchGroupsByRound,
-                    matchExpansionState: latestMatchExpansion,
-                    roundExpansionState: latestRoundExpansion,
-                  );
+                  _scrollToGameIndex(returnedIndex);
                   onReturnFromChessboard?.call(returnedIndex);
                 },
               ),
@@ -404,9 +336,8 @@ class GamesListView extends ConsumerWidget {
   Widget _buildCardRow(
     BuildContext context,
     WidgetRef ref,
-    _GameRowData item,
+    GamesTourGameRowEntry item,
     List<GamesTourModel> orderedGamesList,
-    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
     bool allowStockfishFallback,
     bool streamEnabled,
@@ -427,44 +358,14 @@ class GamesListView extends ConsumerWidget {
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,
       onReturnFromChessboard: (returnedIndex) {
-        final latestMatchExpansion = ref.read(matchExpansionProvider);
-        final latestRoundExpansion = ref.read(roundExpansionProvider);
-        _scrollToGameIndex(
-          returnedIndex,
-          rounds,
-          gamesByRound,
-          gamesListViewMode,
-          matchGroupsByRound,
-          matchExpansionState: latestMatchExpansion,
-          roundExpansionState: latestRoundExpansion,
-        );
+        _scrollToGameIndex(returnedIndex);
         onReturnFromChessboard?.call(returnedIndex);
       },
     );
   }
 
-  void _scrollToGameIndex(
-    int gameIndex,
-    List<GamesAppBarModel> rounds,
-    Map<String, List<GamesTourModel>> gamesByRound,
-    GamesListViewMode mode,
-    Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound, {
-    required Map<String, bool> matchExpansionState,
-    required Map<String, bool> roundExpansionState,
-  }) {
-    final listIndex = _listIndexForGameIndex(
-      gameIndex: gameIndex,
-      rounds: rounds,
-      gamesByRound: gamesByRound,
-      mode: mode,
-      isKnockoutTournament: isKnockoutTournament,
-      matchExpansionState: matchExpansionState,
-      roundExpansionState: roundExpansionState,
-      displayMode: displayMode,
-      matchGroupsByRound: matchGroupsByRound,
-      isSearchMode: isSearchMode,
-      matchFormatHeader: matchFormatHeader,
-    );
+  void _scrollToGameIndex(int gameIndex) {
+    final listIndex = layout.itemIndexForOrderedGameIndex(gameIndex);
     if (listIndex != null) {
       itemScrollController.scrollTo(
         index: listIndex,
@@ -494,554 +395,4 @@ Map<String, LiveGamesBatchKey> _buildLiveBatchKeys(
     );
   }
   return result;
-}
-
-int _computeItemCount(
-  GamesListViewMode mode,
-  List<GamesAppBarModel> rounds,
-  Map<String, List<GamesTourModel>> gamesByRound,
-  Map<String, bool> matchExpansionState,
-  Map<String, bool> roundExpansionState,
-  bool isKnockoutTournament,
-  GameDisplayMode displayMode,
-  Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound, {
-  bool isSearchMode = false,
-  MatchHeaderModel? matchFormatHeader,
-}) {
-  var count = matchFormatHeader != null ? 1 : 0;
-  final isGrid = mode == GamesListViewMode.chessBoardGrid;
-
-  for (final round in rounds) {
-    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-    if (roundGames.isEmpty) continue;
-    // In search mode, default to expanded (true)
-    final isRoundExpanded =
-        isSearchMode ? true : (roundExpansionState[round.id] ?? true);
-
-    count++; // round header always counted
-
-    if (!isRoundExpanded) {
-      continue;
-    }
-
-    if (_isKnockoutRound(isKnockoutTournament, round)) {
-      // For knockout format: round header + match headers + games using pre-calculated groups
-      final matches = matchGroupsByRound[round.id] ?? {};
-      for (final entry in matches.entries) {
-        final matchKey = entry.key;
-        final matchGames = entry.value;
-        // In search mode, default to expanded (true)
-        final isExpanded =
-            isSearchMode
-                ? true
-                : resolveMatchExpansionState(matchExpansionState, matchKey);
-
-        count++; // match header
-
-        // Only count games if match is expanded
-        if (isExpanded) {
-          // Filter games based on displayMode for knockout tournaments
-          final filteredGames =
-              matchGames.where((game) {
-                return _shouldShowGame(displayMode, game);
-              }).toList();
-
-          if (isGrid) {
-            count += (filteredGames.length / 2).ceil();
-          } else {
-            count += filteredGames.length;
-          }
-        }
-      }
-    } else {
-      // Regular format: round header + games
-      if (isGrid) {
-        count += (roundGames.length / 2).ceil();
-      } else {
-        count += roundGames.length;
-      }
-    }
-  }
-
-  return count;
-}
-
-bool _shouldShowGame(GameDisplayMode mode, GamesTourModel game) {
-  switch (mode) {
-    case GameDisplayMode.hideFinishedGames:
-      return !game.gameStatus.isFinished;
-    case GameDisplayMode.showfinishedGame:
-      return game.gameStatus.isFinished;
-    case GameDisplayMode.all:
-      return true;
-  }
-}
-
-Object? _lookupItem({
-  required int index,
-  required List<GamesAppBarModel> rounds,
-  required Map<String, List<GamesTourModel>> gamesByRound,
-  required GamesListViewMode mode,
-  required Map<String, bool> matchExpansionState,
-  required Map<String, bool> roundExpansionState,
-  required bool isKnockoutTournament,
-  required GameDisplayMode displayMode,
-  required Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
-  bool isSearchMode = false,
-  MatchHeaderModel? matchFormatHeader,
-}) {
-  // Match format score card occupies index 0
-  if (matchFormatHeader != null) {
-    if (index == 0) return _MatchFormatHeaderData(matchFormatHeader);
-  }
-
-  var currentIndex = matchFormatHeader != null ? 1 : 0;
-  var globalGameIndex = 0;
-  final isGrid = mode == GamesListViewMode.chessBoardGrid;
-
-  for (final round in rounds) {
-    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-    if (roundGames.isEmpty) continue;
-
-    final roundStartIndex = globalGameIndex;
-    // In search mode, default to expanded (true)
-    final isRoundExpanded =
-        isSearchMode ? true : (roundExpansionState[round.id] ?? true);
-
-    if (index == currentIndex) {
-      return _HeaderData(round, roundGames);
-    }
-
-    currentIndex++; // move past round header
-
-    if (!isRoundExpanded) {
-      globalGameIndex = roundStartIndex + roundGames.length;
-      continue;
-    }
-
-    if (_isKnockoutRound(isKnockoutTournament, round)) {
-      // Handle knockout match format with match headers using pre-calculated groups
-      final matches = matchGroupsByRound[round.id] ?? {};
-      final matchHeaders =
-          matches.entries
-              .map(
-                (entry) => KnockoutMatchDetector.createMatchHeader(
-                  entry.key,
-                  entry.value,
-                ),
-              )
-              .toList();
-
-      int matchGameOffset = 0;
-
-      for (final matchHeader in matchHeaders) {
-        final matchGames = matchHeader.games;
-        final matchKey = matchHeader.matchKey;
-        // In search mode, default to expanded (true)
-        final isExpanded =
-            isSearchMode
-                ? true
-                : resolveMatchExpansionState(matchExpansionState, matchKey);
-        final matchGamesCount = matchGames.length;
-        final matchStartIndex = roundStartIndex + matchGameOffset;
-
-        // Check if this is the match header
-        if (index == currentIndex) {
-          return _MatchHeaderData(matchHeader);
-        }
-
-        currentIndex++; // move past match header
-
-        // Only process games if match is expanded
-        if (isExpanded) {
-          // Filter games based on displayMode for knockout tournaments
-          final filteredGames =
-              matchGames.where((game) {
-                return _shouldShowGame(displayMode, game);
-              }).toList();
-          final fixedBottomPlayerName = _highestRatedPlayerName(matchGames);
-
-          // Build index mapping from filtered to original
-          final filteredToOriginalIndex = <int, int>{};
-          int filteredIdx = 0;
-          for (int i = 0; i < matchGames.length; i++) {
-            if (_shouldShowGame(displayMode, matchGames[i])) {
-              filteredToOriginalIndex[filteredIdx] = i;
-              filteredIdx++;
-            }
-          }
-
-          final filteredCount = filteredGames.length;
-
-          if (isGrid) {
-            final rowCount = (filteredCount / 2).ceil();
-            if (index < currentIndex + rowCount) {
-              final row = index - currentIndex;
-              final game1Index = row * 2;
-              final game2Index = game1Index + 1;
-
-              return _GameRowData(
-                game1: filteredGames[game1Index],
-                globalIndex1:
-                    matchStartIndex + filteredToOriginalIndex[game1Index]!,
-                fixedBottomSide1: _sideForPlayer(
-                  filteredGames[game1Index],
-                  fixedBottomPlayerName,
-                ),
-                game2:
-                    game2Index < filteredCount
-                        ? filteredGames[game2Index]
-                        : null,
-                globalIndex2:
-                    game2Index < filteredCount
-                        ? matchStartIndex + filteredToOriginalIndex[game2Index]!
-                        : null,
-                fixedBottomSide2:
-                    game2Index < filteredCount
-                        ? _sideForPlayer(
-                          filteredGames[game2Index],
-                          fixedBottomPlayerName,
-                        )
-                        : null,
-                isLastInSection: row == rowCount - 1,
-              );
-            }
-            currentIndex += rowCount;
-          } else {
-            if (index < currentIndex + filteredCount) {
-              final localIndex = index - currentIndex;
-              return _GameRowData(
-                game1: filteredGames[localIndex],
-                globalIndex1:
-                    matchStartIndex + filteredToOriginalIndex[localIndex]!,
-                fixedBottomSide1: _sideForPlayer(
-                  filteredGames[localIndex],
-                  fixedBottomPlayerName,
-                ),
-                isLastInSection: localIndex == filteredCount - 1,
-              );
-            }
-            currentIndex += filteredCount;
-          }
-        }
-
-        matchGameOffset += matchGamesCount;
-      }
-
-      globalGameIndex = roundStartIndex + matchGameOffset;
-    } else {
-      // Regular format without match headers
-      final gamesCount = roundGames.length;
-
-      if (isGrid) {
-        final rowCount = (gamesCount / 2).ceil();
-        if (index < currentIndex + rowCount) {
-          final row = index - currentIndex;
-          final game1Index = row * 2;
-          final game2Index = game1Index + 1;
-
-          return _GameRowData(
-            game1: roundGames[game1Index],
-            globalIndex1: roundStartIndex + game1Index,
-            game2: game2Index < gamesCount ? roundGames[game2Index] : null,
-            globalIndex2:
-                game2Index < gamesCount ? roundStartIndex + game2Index : null,
-            isLastInSection: row == rowCount - 1,
-          );
-        }
-        currentIndex += rowCount;
-      } else {
-        if (index < currentIndex + gamesCount) {
-          final localIndex = index - currentIndex;
-          return _GameRowData(
-            game1: roundGames[localIndex],
-            globalIndex1: roundStartIndex + localIndex,
-            isLastInSection: localIndex == gamesCount - 1,
-          );
-        }
-        currentIndex += gamesCount;
-      }
-
-      globalGameIndex = roundStartIndex + gamesCount;
-    }
-  }
-
-  return null;
-}
-
-int? _listIndexForGameIndex({
-  required int gameIndex,
-  required List<GamesAppBarModel> rounds,
-  required Map<String, List<GamesTourModel>> gamesByRound,
-  required GamesListViewMode mode,
-  required bool isKnockoutTournament,
-  required Map<String, bool> matchExpansionState,
-  required Map<String, bool> roundExpansionState,
-  required GameDisplayMode displayMode,
-  required Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
-  bool isSearchMode = false,
-  MatchHeaderModel? matchFormatHeader,
-}) {
-  if (gameIndex < 0) return null;
-
-  var currentIndex = matchFormatHeader != null ? 1 : 0;
-  var globalGameIndex = 0;
-  final isGrid = mode == GamesListViewMode.chessBoardGrid;
-
-  for (final round in rounds) {
-    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-    if (roundGames.isEmpty) continue;
-
-    final roundStartIndex = globalGameIndex;
-    final isKnockoutFormat = _isKnockoutRound(isKnockoutTournament, round);
-    // In search mode, default to expanded (true)
-    final isRoundExpanded =
-        isSearchMode ? true : (roundExpansionState[round.id] ?? true);
-
-    // skip round header
-    currentIndex++;
-
-    if (!isRoundExpanded) {
-      globalGameIndex = roundStartIndex + roundGames.length;
-      continue;
-    }
-
-    if (isKnockoutFormat) {
-      // Handle knockout match format using pre-calculated groups
-      final matches = matchGroupsByRound[round.id] ?? {};
-      int matchGameOffset = 0;
-
-      for (final entry in matches.entries) {
-        final matchKey = entry.key;
-        final matchGames = entry.value;
-        // In search mode, default to expanded (true)
-        final isExpanded =
-            isSearchMode
-                ? true
-                : resolveMatchExpansionState(matchExpansionState, matchKey);
-        final matchStartIndex = roundStartIndex + matchGameOffset;
-        final matchGamesCount = matchGames.length;
-
-        // skip match header
-        currentIndex++;
-
-        if (!isExpanded) {
-          matchGameOffset += matchGamesCount;
-          continue;
-        }
-
-        // Filter games based on displayMode for knockout tournaments
-        final filteredGames =
-            matchGames.where((game) {
-              return _shouldShowGame(displayMode, game);
-            }).toList();
-        final filteredCount = filteredGames.length;
-
-        if (gameIndex >= matchStartIndex &&
-            gameIndex < matchStartIndex + matchGamesCount) {
-          final localIndex = gameIndex - matchStartIndex;
-          // Find position in filtered list
-          int filteredPosition = 0;
-          for (int i = 0; i < localIndex; i++) {
-            if (_shouldShowGame(displayMode, matchGames[i])) {
-              filteredPosition++;
-            }
-          }
-          if (_shouldShowGame(displayMode, matchGames[localIndex])) {
-            if (isGrid) {
-              final row = filteredPosition ~/ 2;
-              return currentIndex + row;
-            } else {
-              return currentIndex + filteredPosition;
-            }
-          }
-        }
-
-        if (isGrid) {
-          currentIndex += (filteredCount / 2).ceil();
-        } else {
-          currentIndex += filteredCount;
-        }
-
-        matchGameOffset += matchGamesCount;
-      }
-
-      globalGameIndex = roundStartIndex + matchGameOffset;
-    } else {
-      // Regular format
-      final gamesCount = roundGames.length;
-
-      if (gameIndex >= roundStartIndex &&
-          gameIndex < roundStartIndex + gamesCount) {
-        final localIndex = gameIndex - roundStartIndex;
-        if (isGrid) {
-          final row = localIndex ~/ 2;
-          return currentIndex + row;
-        } else {
-          return currentIndex + localIndex;
-        }
-      }
-
-      if (isGrid) {
-        currentIndex += (gamesCount / 2).ceil();
-      } else {
-        currentIndex += gamesCount;
-      }
-
-      globalGameIndex = roundStartIndex + gamesCount;
-    }
-  }
-
-  return null;
-}
-
-bool _isKnockoutRound(bool isKnockoutTournament, GamesAppBarModel round) {
-  if (!isKnockoutTournament) return false;
-  final id = round.id.toLowerCase();
-  return id.startsWith('$kKnockoutStagePrefix-') ||
-      id.startsWith('knockout-round-');
-}
-
-/// Pre-calculate match groupings for all rounds to avoid repeated calculations
-Map<String, Map<String, List<GamesTourModel>>> _preCalculateMatchGroups(
-  List<GamesAppBarModel> rounds,
-  Map<String, List<GamesTourModel>> gamesByRound,
-) {
-  final result = <String, Map<String, List<GamesTourModel>>>{};
-
-  for (final round in rounds) {
-    final roundGames = gamesByRound[round.id];
-    if (roundGames == null || roundGames.isEmpty) continue;
-
-    result[round.id] = KnockoutMatchDetector.groupByMatches(roundGames);
-  }
-
-  return result;
-}
-
-/// Build ordered list of ALL games from ALL visible rounds
-/// This is critical for correct navigation in multi-stage knockouts
-List<GamesTourModel> _buildOrderedGamesList(
-  List<GamesAppBarModel> rounds,
-  Map<String, List<GamesTourModel>> gamesByRound,
-  bool isKnockoutTournament,
-  Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
-) {
-  final orderedGames = <GamesTourModel>[];
-
-  for (final round in rounds) {
-    final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-    if (roundGames.isEmpty) continue;
-
-    if (_isKnockoutRound(isKnockoutTournament, round)) {
-      // For knockout format, add games in match order using pre-calculated groups
-      final matches = matchGroupsByRound[round.id] ?? {};
-      for (final matchGames in matches.values) {
-        orderedGames.addAll(matchGames);
-      }
-    } else {
-      // For regular format, add games as-is
-      orderedGames.addAll(roundGames);
-    }
-  }
-
-  return orderedGames;
-}
-
-String? _highestRatedPlayerName(List<GamesTourModel> matchGames) {
-  if (matchGames.isEmpty) return null;
-
-  final playersByName = <String, ({String name, int rating, int order})>{};
-  var order = 0;
-
-  void addPlayer(PlayerCard player) {
-    final key = _normalizePlayerName(player.name);
-    if (key.isEmpty) return;
-
-    final current = playersByName[key];
-    if (current == null) {
-      playersByName[key] = (
-        name: player.name,
-        rating: player.rating,
-        order: order++,
-      );
-      return;
-    }
-
-    if (player.rating > current.rating) {
-      playersByName[key] = (
-        name: player.name,
-        rating: player.rating,
-        order: current.order,
-      );
-    }
-  }
-
-  for (final game in matchGames) {
-    addPlayer(game.whitePlayer);
-    addPlayer(game.blackPlayer);
-  }
-
-  if (playersByName.isEmpty) return null;
-
-  final players =
-      playersByName.values.toList()..sort((a, b) {
-        final ratingCompare = b.rating.compareTo(a.rating);
-        return ratingCompare != 0 ? ratingCompare : a.order.compareTo(b.order);
-      });
-
-  return players.first.name;
-}
-
-Side? _sideForPlayer(GamesTourModel game, String? playerName) {
-  final normalized = _normalizePlayerName(playerName);
-  if (normalized.isEmpty) return null;
-  if (_normalizePlayerName(game.whitePlayer.name) == normalized) {
-    return Side.white;
-  }
-  if (_normalizePlayerName(game.blackPlayer.name) == normalized) {
-    return Side.black;
-  }
-  return null;
-}
-
-String _normalizePlayerName(String? name) => (name ?? '').trim().toLowerCase();
-
-class _HeaderData {
-  _HeaderData(this.round, this.roundGames);
-
-  final GamesAppBarModel round;
-  final List<GamesTourModel> roundGames;
-}
-
-class _MatchHeaderData {
-  _MatchHeaderData(this.matchHeader);
-
-  final MatchHeaderModel matchHeader;
-}
-
-class _MatchFormatHeaderData {
-  _MatchFormatHeaderData(this.matchHeader);
-
-  final MatchHeaderModel matchHeader;
-}
-
-class _GameRowData {
-  _GameRowData({
-    required this.game1,
-    required this.globalIndex1,
-    this.game2,
-    this.globalIndex2,
-    this.fixedBottomSide1,
-    this.fixedBottomSide2,
-    required this.isLastInSection,
-  });
-
-  final GamesTourModel game1;
-  final int globalIndex1;
-  final GamesTourModel? game2;
-  final int? globalIndex2;
-  final Side? fixedBottomSide1;
-  final Side? fixedBottomSide2;
-  final bool isLastInSection;
 }

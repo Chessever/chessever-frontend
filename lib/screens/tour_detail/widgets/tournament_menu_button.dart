@@ -13,9 +13,16 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart'
+    show teamStandingsProvider;
+import 'package:chessever2/screens/tour_detail/bracket/providers/bracket_share_provider.dart';
+import 'package:chessever2/screens/tour_detail/bracket/widgets/bracket_share_image_card.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
     show playerTourScreenProvider;
 import 'package:chessever2/screens/tour_detail/widgets/standings_share_image_card.dart';
+import 'package:chessever2/screens/tour_detail/widgets/team_standings_share_image_card.dart';
+import 'package:flutter/rendering.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
@@ -40,6 +47,8 @@ enum TournamentMenuAction {
   enableNotifications,
   shareEvent,
   shareStandings,
+  shareTeamStandings,
+  shareBrackets,
 }
 
 class TournamentMenuButton extends ConsumerWidget {
@@ -452,6 +461,75 @@ class TournamentMenuButton extends ConsumerWidget {
           ),
         ),
       );
+
+      // Team events: also offer the team standings leaderboard (teams, not
+      // individuals). The same `?tab=standings` link opens the Standings tab
+      // in-app, which for a team event shows the team table.
+      final isTeamEvent = ref.read(isTeamEventProvider(aboutModel.id));
+      if (isTeamEvent) {
+        items.add(
+          PopupMenuItem<TournamentMenuAction>(
+            value: TournamentMenuAction.shareTeamStandings,
+            padding: EdgeInsets.zero,
+            height: 36.h,
+            onTap: () {
+              final url = buildEventShareUrl(
+                id: fallbackId,
+                title: aboutModel.name,
+                tourId: aboutModel.id,
+                tourSlug: aboutModel.slug,
+                tab: kEventStandingsTab,
+              );
+              unawaited(
+                _shareTeamStandings(ref, context, aboutModel.name, url),
+              );
+            },
+            child: _MenuDropDownItem(
+              text: "Share team standings",
+              icon: Icon(
+                Icons.groups_outlined,
+                color: context.colors.textPrimary,
+                size: 16,
+              ),
+            ),
+          ),
+        );
+      }
+
+      // Knockout events, only while the Bracket tab is on screen (so the live
+      // canvas boundary exists to snapshot the framed area).
+      final isKnockout =
+          ref.read(knockoutTournamentStateProvider(aboutModel.id)).isKnockout;
+      final onBracketTab =
+          ref.read(selectedTourModeProvider) ==
+          TournamentDetailScreenMode.bracket;
+      if (isKnockout && onBracketTab) {
+        items.add(
+          PopupMenuItem<TournamentMenuAction>(
+            value: TournamentMenuAction.shareBrackets,
+            padding: EdgeInsets.zero,
+            height: 36.h,
+            onTap: () {
+              final url = buildEventShareUrl(
+                id: fallbackId,
+                title: aboutModel.name,
+                tourId: aboutModel.id,
+                tourSlug: aboutModel.slug,
+                tab: kEventBracketTab,
+              );
+              unawaited(_shareBrackets(ref, context, aboutModel.name, url));
+            },
+            child: _MenuDropDownItem(
+              text: "Share brackets",
+              icon: Icon(
+                Icons.account_tree_outlined,
+                color: context.colors.textPrimary,
+                size: 16,
+              ),
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -540,6 +618,184 @@ class TournamentMenuButton extends ConsumerWidget {
       );
     }
   }
+
+  /// Renders the team-event team standings (teams ranked by match points) to a
+  /// branded share image. Mirrors [_shareStandings] but with the team table.
+  Future<void> _shareTeamStandings(
+    WidgetRef ref,
+    BuildContext context,
+    String eventName,
+    String shareUrl,
+  ) async {
+    try {
+      // The team standings derive from the individual standings; awaiting the
+      // latter guarantees the team AsyncValue has resolved before we read it.
+      await ref.read(playerTourScreenProvider.future);
+      if (!context.mounted) return;
+      final teams = ref.read(teamStandingsProvider).valueOrNull ?? const [];
+      if (teams.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Team standings are still loading. Try again in a moment.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final width = math.min(MediaQuery.of(context).size.width, 430.0);
+      final imageBytes = await captureCardPng(
+        context,
+        width: width,
+        pixelRatio: 3.0,
+        child: TeamStandingsShareImageCard(
+          width: width,
+          eventName: eventName,
+          standings: teams,
+        ),
+      );
+      if (imageBytes == null) {
+        throw StateError('Team standings share render produced no image');
+      }
+      if (!context.mounted) return;
+
+      final tempDir = await getTemporaryDirectory();
+      final safeName = _safeFileName(eventName);
+      final file = File(
+        '${tempDir.path}/${safeName.isEmpty ? 'chessever-event' : safeName}-team-standings.png',
+      );
+      await file.writeAsBytes(imageBytes);
+      if (!context.mounted) return;
+
+      final subject =
+          eventName.trim().isNotEmpty
+              ? '$eventName team standings'
+              : 'ChessEver team standings';
+      await showShareImagePreview(
+        context,
+        imageBytes: imageBytes,
+        onShareImage: () async {
+          await Share.shareXFiles(
+            [XFile(file.path, mimeType: 'image/png')],
+            text: shareUrl,
+            subject: subject,
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          );
+        },
+        onShareLink: () async {
+          await Share.share(
+            shareUrl,
+            subject: subject,
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('Failed to share team standings: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not share team standings. Please try again.'),
+        ),
+      );
+    }
+  }
+
+  /// Snapshots the currently-framed bracket canvas (the live pan/zoom viewport)
+  /// and wraps it in branded chrome for sharing. The snapshot target is the
+  /// [RepaintBoundary] the bracket screen attaches via
+  /// [bracketShareBoundaryKeyProvider].
+  Future<void> _shareBrackets(
+    WidgetRef ref,
+    BuildContext context,
+    String eventName,
+    String shareUrl,
+  ) async {
+    try {
+      final key = ref.read(bracketShareBoundaryKeyProvider);
+      final boundary =
+          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null || !boundary.hasSize) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Open the Bracket tab, then try sharing.'),
+          ),
+        );
+        return;
+      }
+      final size = boundary.size;
+      final aspect = size.height > 0 ? size.width / size.height : 3 / 4;
+
+      final snapshot = await captureBoundaryPng(key, pixelRatio: 3.0);
+      if (snapshot == null) {
+        throw StateError('Bracket snapshot produced no image');
+      }
+      if (!context.mounted) return;
+
+      final width = math.min(MediaQuery.of(context).size.width, 430.0);
+      final imageBytes = await captureCardPng(
+        context,
+        width: width,
+        pixelRatio: 3.0,
+        child: BracketShareImageCard(
+          width: width,
+          eventName: eventName,
+          snapshot: snapshot,
+          snapshotAspectRatio: aspect,
+        ),
+      );
+      if (imageBytes == null) {
+        throw StateError('Bracket share render produced no image');
+      }
+      if (!context.mounted) return;
+
+      final tempDir = await getTemporaryDirectory();
+      final safeName = _safeFileName(eventName);
+      final file = File(
+        '${tempDir.path}/${safeName.isEmpty ? 'chessever-event' : safeName}-bracket.png',
+      );
+      await file.writeAsBytes(imageBytes);
+      if (!context.mounted) return;
+
+      final subject =
+          eventName.trim().isNotEmpty
+              ? '$eventName bracket'
+              : 'ChessEver bracket';
+      await showShareImagePreview(
+        context,
+        imageBytes: imageBytes,
+        onShareImage: () async {
+          await Share.shareXFiles(
+            [XFile(file.path, mimeType: 'image/png')],
+            text: shareUrl,
+            subject: subject,
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          );
+        },
+        onShareLink: () async {
+          await Share.share(
+            shareUrl,
+            subject: subject,
+            sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('Failed to share bracket: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not share the bracket. Please try again.'),
+        ),
+      );
+    }
+  }
+
+  String _safeFileName(String name) => name
+      .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '')
+      .toLowerCase();
 }
 
 @visibleForTesting

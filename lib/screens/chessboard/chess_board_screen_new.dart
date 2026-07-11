@@ -26,6 +26,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
+import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
@@ -687,8 +688,12 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   final bool showClock;
 
   /// When true, the board starts at the last move instead of the starting position.
-  /// Used by the opening explorer's "Analyze" action.
+  /// Used when the opening explorer hands its generated PGN to the board.
   final bool startAtLastMove;
+
+  /// Presents the existing Save Analysis sheet once the initial board state is
+  /// ready. The request is consumed once for this route.
+  final bool showSaveAnalysisOnLoad;
 
   /// Optional initial position to show (FEN).
   final String? initialFen;
@@ -704,6 +709,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.disableGamebaseOverlayByDefault = false,
     this.showClock = true,
     this.startAtLastMove = false,
+    this.showSaveAnalysisOnLoad = false,
     this.initialFen,
     super.key,
   });
@@ -745,6 +751,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _pipSub;
   ChessBoardProviderParams? _pipParams;
   bool _didInitialBoardBootstrap = false;
+  bool _didScheduleSaveAnalysisOnLoad = false;
   bool _isLifecycleBackgrounded = false;
   bool _isRouteCovered = false;
   bool _pipSessionMayNeedRecovery = false;
@@ -1188,6 +1195,39 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       startAtLastMove: widget.startAtLastMove,
       initialFen: widget.initialFen,
     );
+  }
+
+  void _maybeShowSaveAnalysisOnLoad({
+    required int pageIndex,
+    required ChessBoardStateNew state,
+  }) {
+    if (!widget.showSaveAnalysisOnLoad ||
+        _didScheduleSaveAnalysisOnLoad ||
+        pageIndex != _currentPageIndex ||
+        state.isLoadingMoves ||
+        state.analysisState.game == null) {
+      return;
+    }
+
+    _didScheduleSaveAnalysisOnLoad = true;
+    final params = _createParams(state.game, pageIndex);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      final allowed = await requireFullAuthGuard(context);
+      if (!allowed || !mounted) return;
+
+      final boardState = ref.read(chessBoardScreenProviderNew(params));
+      final latestState = boardState.valueOrNull;
+      if (latestState == null || latestState.analysisState.game == null) return;
+
+      await showSaveAnalysisSheet(
+        context: context,
+        state: latestState,
+        params: params,
+      );
+    });
   }
 
   void _ensureLatestMoveSelected({
@@ -2447,6 +2487,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                       data: (chessBoardState) {
                                         _ensureLatestMoveSelected(
                                           ref: ref,
+                                          pageIndex: index,
+                                          state: chessBoardState,
+                                        );
+                                        _maybeShowSaveAnalysisOnLoad(
                                           pageIndex: index,
                                           state: chessBoardState,
                                         );
@@ -10744,6 +10788,10 @@ class _NextMoveOptionsPanel extends StatelessWidget {
   }
 }
 
+bool shouldCollapseNotationAnnotationsByDefault(GameSource source) {
+  return source == GameSource.boardEditor || source == GameSource.savedAnalysis;
+}
+
 class _MovesDisplay extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -10871,6 +10919,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       // Reset cached variation collapse state when the notation tree changes
       _collapsedVariationIds.clear();
       _expandedVariationIds.clear();
+      _expandedCommentIds.clear();
     }
 
     final notationParams = NotationTreeParams(
@@ -11829,12 +11878,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   /// Editorial block-quote for a comment — full-width, depth-colored left
-  /// rail, soft white wash. Long comments fold to a "Read more" toggle.
+  /// rail, soft white wash. Imported and saved-library comments begin as a
+  /// compact Annotation row; elsewhere, only long comments fold.
   ///
   /// Edit is **double-tap or long-press** — never a lone single-tap. Single-tap
   /// used to open the editor for short comments and mistapped when users aimed
   /// for the bottom-nav → control under a full-width comment. Long comments
   /// still expand/collapse on a confirmed single tap; short ones ignore it.
+  /// Imported and saved-library comments instead use a direct single-tap
+  /// expand/collapse interaction and retain long-press editing.
   Widget _buildCommentBlock(
     NotationDisplayToken token,
     ChessBoardProviderParams params,
@@ -11844,10 +11896,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final id = token.pointerId ?? token.variation?.id;
     if (id == null) return const SizedBox.shrink();
 
+    final collapseByDefault = shouldCollapseNotationAnnotationsByDefault(
+      widget.game.source,
+    );
     final isExpanded = _expandedCommentIds.contains(id);
     final isLong = fullText.length > _variationCommentPreviewChars;
     final displayText =
-        (isLong && !isExpanded)
+        (!collapseByDefault && isLong && !isExpanded)
             ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
             : fullText;
 
@@ -11862,6 +11917,55 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _editNotationComment(token, params, fullText);
     }
 
+    if (collapseByDefault && !isExpanded) {
+      return Padding(
+        padding: EdgeInsets.only(top: 5.sp, bottom: 5.sp),
+        child: Semantics(
+          button: true,
+          label: 'Expand annotation',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _toggleCommentExpansion(id, false),
+            onLongPress: openEditor,
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(8.sp, 7.sp, 11.sp, 7.sp),
+              decoration: BoxDecoration(
+                color: context.colors.textPrimary.withValues(alpha: 0.045),
+                borderRadius: BorderRadius.only(
+                  topRight: Radius.circular(6.sp),
+                  bottomRight: Radius.circular(6.sp),
+                ),
+                border: Border(
+                  left: BorderSide(
+                    color: accent.withValues(alpha: 0.65),
+                    width: 3,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18.sp,
+                    color: accent.withValues(alpha: 0.95),
+                  ),
+                  SizedBox(width: 4.sp),
+                  Text(
+                    'Annotation',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.colors.textPrimary.withValues(alpha: 0.78),
+                      fontSize: 12.sp,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.only(top: 5.sp, bottom: 5.sp),
       child: GestureDetector(
@@ -11869,12 +11973,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         // opens the editor, so accidental hits while aiming for → stay harmless.
         behavior: HitTestBehavior.opaque,
         onTap:
-            () => _handleCommentTap(
-              id: id,
-              isLong: isLong,
-              isExpanded: isExpanded,
-              openEditor: openEditor,
-            ),
+            collapseByDefault
+                ? () => _toggleCommentExpansion(id, true)
+                : () => _handleCommentTap(
+                  id: id,
+                  isLong: isLong,
+                  isExpanded: isExpanded,
+                  openEditor: openEditor,
+                ),
         onLongPress: openEditor,
         child: Container(
           width: double.infinity,
@@ -11901,9 +12007,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                     letterSpacing: 0.05,
                   ),
                 ),
-                if (isLong)
+                if (collapseByDefault || isLong)
                   TextSpan(
-                    text: isExpanded ? '   Show less' : '   Read more',
+                    text:
+                        collapseByDefault || isExpanded
+                            ? '   Show less'
+                            : '   Read more',
                     style: AppTypography.textXsMedium.copyWith(
                       color: accent.withValues(alpha: 0.95),
                       fontSize: 11.sp,
@@ -13810,6 +13919,24 @@ class _PrincipalVariationListState
       );
     }
 
+    // Traditional layout: stack the engine lines vertically instead of the
+    // swipeable cards. Reuses the same tokens/spans/interactions.
+    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.cards;
+    if (linesView == EngineLinesView.list) {
+      return _buildPvListLayout(
+        context: context,
+        notifier: notifier,
+        displayLines: displayLines,
+        baseMoveNumber: baseMoveNumber,
+        isWhiteToMove: isWhiteToMove,
+        useFigurine: useFigurine,
+        pieceAssets: pieceAssets,
+        multiPV: multiPV,
+        showEndOfGame: showEndOfGame,
+        isEvaluating: widget.state.isEvaluating,
+      );
+    }
+
     return Column(
       // CRITICAL: No key here! Adding a key that changes with eval causes Flutter
       // to rebuild the entire widget tree, resetting PageController position.
@@ -14235,6 +14362,126 @@ class _PrincipalVariationListState
       title: moveLabel,
       subtitle: 'Engine line options',
       actions: actions,
+    );
+  }
+
+  /// Traditional (vertical list) layout for the engine PV lines. Mirrors the
+  /// Library explorer look while preserving the board's tap-to-preview and
+  /// long-press action menu on each move.
+  Widget _buildPvListLayout({
+    required BuildContext context,
+    required ChessBoardScreenNotifierNew notifier,
+    required List<AnalysisLine> displayLines,
+    required int baseMoveNumber,
+    required bool isWhiteToMove,
+    required bool useFigurine,
+    required PieceAssets pieceAssets,
+    required int multiPV,
+    required bool showEndOfGame,
+    required bool isEvaluating,
+  }) {
+    if (showEndOfGame) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 8.h),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.flag_outlined, color: kPrimaryColor, size: 20.sp),
+            SizedBox(width: 8.w),
+            Text(
+              'Game Over',
+              style: TextStyle(
+                color: context.colors.textPrimary,
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final items = <EnginePvItem>[];
+    for (
+      var variantIndex = 0;
+      variantIndex < displayLines.length;
+      variantIndex++
+    ) {
+      final line = displayLines[variantIndex];
+      final sanMoves = _formatPv(
+        line.sanMoves,
+        baseMoveNumber,
+        isWhiteToMove,
+        isThreatsMode: widget.state.isThreatsMode,
+      );
+      final pvTokens = _buildPvTokens(sanMoves);
+      final variantColor = notifier.getVariantColor(variantIndex, true);
+      final isPreviewingThisVariant =
+          widget.state.isPvPreviewActive &&
+          widget.state.pvPreviewVariantIndex == variantIndex;
+      final spans = _buildPvSpans(
+        tokens: pvTokens,
+        notifier: notifier,
+        line: line,
+        variantIndex: variantIndex,
+        variantColor: variantColor,
+        previewMoveIndex:
+            isPreviewingThisVariant ? widget.state.pvPreviewMoveIndex : null,
+        useFigurine: useFigurine,
+        pieceAssets: pieceAssets,
+      );
+
+      _PvToken? focusToken;
+      for (final token in pvTokens.reversed) {
+        if (token.moveIndex != null) {
+          focusToken = token;
+          break;
+        }
+      }
+      final focus = focusToken;
+
+      final evalValue =
+          line.isMate ? (line.mate ?? 0).toDouble() : (line.evaluation ?? 0);
+
+      items.add(
+        EnginePvItem(
+          evalText: _formatEvalLabel(line),
+          moveSpans: spans,
+          accentColor: variantColor,
+          isWhiteWinning: evalValue > 0,
+          isBlackWinning: evalValue < 0,
+          isPrimary: variantIndex == 0,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            notifier.clearPvPreview();
+            notifier.playPrincipalVariationMove(line);
+          },
+          onLongPress:
+              (focus == null || focus.moveIndex == null)
+                  ? null
+                  : () {
+                    HapticFeedback.mediumImpact();
+                    _showPvMoveActionSheet(
+                      context,
+                      focus.text,
+                      line,
+                      focus.moveIndex!,
+                      notifier,
+                    );
+                  },
+        ),
+      );
+    }
+
+    final rowCount = displayLines.isNotEmpty ? displayLines.length : multiPV;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
+      child: EnginePvListView(
+        items: items,
+        maxRows: rowCount,
+        isEvaluating: isEvaluating,
+        trailingDivider: false,
+      ),
     );
   }
 

@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:collection/collection.dart';
@@ -458,6 +459,11 @@ List<GamesAppBarModel> _buildProcessedRounds({
           name: stageName,
           startsAt: stageStartsAt,
           roundStatus: _aggregateStageStatus(stageRoundModels),
+          sourceRoundIds:
+              stageRoundModels
+                  .expand((round) => round.sourceRoundIds)
+                  .toSet()
+                  .toList(),
         ),
       );
     }
@@ -526,6 +532,11 @@ List<GamesAppBarModel> _buildProcessedRounds({
           name: entry.key,
           startsAt: stageStartsAt,
           roundStatus: _aggregateStageStatus(stageRounds),
+          sourceRoundIds:
+              stageRounds
+                  .expand((round) => round.sourceRoundIds)
+                  .toSet()
+                  .toList(),
         ),
       );
     }
@@ -557,6 +568,8 @@ List<GamesAppBarModel> _buildProcessedRounds({
       name: logicalRoundName,
       startsAt: logicalStartsAt,
       roundStatus: _aggregateStageStatus(baseRounds),
+      sourceRoundIds:
+          baseRounds.expand((round) => round.sourceRoundIds).toSet().toList(),
     ),
   ];
 }
@@ -586,47 +599,21 @@ Map<String, List<GamesTourModel>> _buildGamesByRound({
   final hasSyntheticStages = processedRounds.any(
     (round) => round.id.startsWith('$kKnockoutStagePrefix-'),
   );
-  final isRoundSlugDerivedStages =
-      hasSyntheticStages &&
-      processedRounds.any(
-        (round) =>
-            round.id.startsWith('$kKnockoutStagePrefix-${selectedTour.id}-'),
-      );
 
-  if (hasSyntheticStages && !isRoundSlugDerivedStages) {
+  if (hasSyntheticStages) {
+    final knownTourIds = <String>{selectedTour.id, ...gamesByTourId.keys};
     for (final round in processedRounds) {
-      final stageTourId = round.id.replaceFirst('$kKnockoutStagePrefix-', '');
-      final stageGames = _mapGames(
-        gamesByTourId[stageTourId] ?? const <Games>[],
+      final stageGames = itemsForTournamentDisplayRound<GamesTourModel>(
+        round: round,
+        selectedTourId: selectedTour.id,
+        knownTourIds: knownTourIds,
+        selectedTourItems: selectedTourSortedGames,
+        sourceRoundIdOf: (game) => game.roundId,
+        siblingTourItems:
+            (stageTourId) =>
+                _mapGames(gamesByTourId[stageTourId] ?? const <Games>[]),
       );
       result[round.id] = _pinOnlySort(stageGames, pinnedIds);
-    }
-    return result;
-  }
-
-  if (isRoundSlugDerivedStages) {
-    for (final game in selectedTourSortedGames) {
-      final gameSlug = (game.roundSlug ?? '').trim().toLowerCase();
-      if (gameSlug.isEmpty) {
-        continue;
-      }
-
-      final stagePart = (gameSlug.contains('--')
-              ? gameSlug.split('--').first
-              : gameSlug)
-          .replaceAll(' ', '-');
-
-      for (final round in processedRounds) {
-        if (!round.id.startsWith('$kKnockoutStagePrefix-')) {
-          continue;
-        }
-
-        final roundStagePart = round.id.split('-').skip(3).join('-');
-        if (roundStagePart == stagePart) {
-          result[round.id]!.add(game);
-          break;
-        }
-      }
     }
     return result;
   }

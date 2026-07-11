@@ -47,6 +47,10 @@ void setLiveGameCardsPausedWithNotifier(
   }
 }
 
+bool _usesLiveEventData(TournamentDetailScreenMode mode) =>
+    mode == TournamentDetailScreenMode.games ||
+    mode == TournamentDetailScreenMode.bracket;
+
 final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
   GamesTourNotifier,
   AsyncValue<List<Games>>,
@@ -76,7 +80,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       previous,
       next,
     ) {
-      if (next && _isGamesTabVisible) {
+      if (next && _isEventDataTabVisible) {
         _startPeriodicRefresh();
       } else {
         _stopPeriodicRefresh();
@@ -85,8 +89,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _selectedModeListener = ref.listen<TournamentDetailScreenMode>(
       selectedTourModeProvider,
       (_, next) {
-        if (next == TournamentDetailScreenMode.games &&
-            ref.read(shouldStreamProvider)) {
+        if (_usesLiveEventData(next) && ref.read(shouldStreamProvider)) {
           _startPeriodicRefresh();
         } else {
           _stopPeriodicRefresh();
@@ -181,11 +184,11 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         primaryTourId == tourId;
   }
 
-  bool get _isGamesTabVisible =>
-      ref.read(selectedTourModeProvider) == TournamentDetailScreenMode.games;
+  bool get _isEventDataTabVisible =>
+      _usesLiveEventData(ref.read(selectedTourModeProvider));
 
   bool get _shouldRunSafetyNet =>
-      ref.read(shouldStreamProvider) && _isGamesTabVisible;
+      ref.read(shouldStreamProvider) && _isEventDataTabVisible;
 
   int get _stableTourJitterSeconds {
     var hash = 0;

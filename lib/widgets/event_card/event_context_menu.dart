@@ -23,6 +23,7 @@ enum EventContextAction { share, copyPgn }
 /// `DeepLinkService` and the web broadcast route.
 const String kEventTabQueryParam = 'tab';
 const String kEventStandingsTab = 'standings';
+const String kEventBracketTab = 'bracket';
 
 /// Builds the canonical shareable URL for an event, mirroring
 /// `lichess.org/broadcast/<tour.slug>/<tour.id>` on chessever.com.
@@ -33,9 +34,10 @@ const String kEventStandingsTab = 'standings';
 /// and a slugified title — always works, but the path tail isn't a Lichess
 /// short id.
 ///
-/// Pass [tab] (e.g. [kEventStandingsTab]) to deep-link a specific tab of the
+/// Pass [tab] (e.g. [kEventStandingsTab] or [kEventBracketTab]) to deep-link a
+/// specific tab of the
 /// event page; it is appended as `?tab=<tab>` so the same link opens the
-/// Standings tab in-app and renders standings on the web.
+/// requested tab in-app and on the web.
 ///
 /// Pass [playerFideId] to link a specific player's scorecard within the event
 /// (`/broadcast/<slug>/<id>/player/<fideId>`): the same link opens the event and
