@@ -3,6 +3,7 @@ import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
 
@@ -156,6 +157,8 @@ class TeamEventShareImageCard extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
+                      _logoBadge(28),
+                      const SizedBox(width: 10),
                       Text(
                         'ChessEver',
                         style: AppTypography.textSmBold.copyWith(
@@ -271,6 +274,32 @@ class TeamEventShareImageCard extends StatelessWidget {
     );
   }
 
+  Widget _logoBadge(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * 0.28),
+        boxShadow: [
+          BoxShadow(
+            color: _cyan.withValues(alpha: 0.35),
+            blurRadius: 14,
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.28),
+        child: Image.asset(
+          PngAsset.newAppLogo,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
+  }
+
   Widget _buildHero() {
     final crest = TeamCrestAvatar(
       teamName: team.teamName,
@@ -291,6 +320,8 @@ class TeamEventShareImageCard extends StatelessWidget {
         children: [
           Row(
             children: [
+              _logoBadge(26),
+              const SizedBox(width: 9),
               Text(
                 'ChessEver',
                 style: AppTypography.textMdBold.copyWith(color: _textHi),
