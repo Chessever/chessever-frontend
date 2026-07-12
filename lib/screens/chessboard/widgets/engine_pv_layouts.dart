@@ -38,26 +38,36 @@ class EnginePvItem {
 
 /// Traditional layout: engine lines stacked vertically, one per row, matching
 /// the Library opening-explorer look (eval badge + move text).
+///
+/// The layout is STABLE: it always reserves exactly [slotCount] fixed-height
+/// rows (capped at 3), so rows never appear/disappear or resize as the engine
+/// streams results — missing lines render as placeholders holding their space.
 class EnginePvListView extends StatelessWidget {
   const EnginePvListView({
     super.key,
     required this.items,
-    this.maxRows = 3,
+    this.slotCount = 3,
     this.isEvaluating = false,
     this.trailingDivider = true,
   });
 
   final List<EnginePvItem> items;
-  final int maxRows;
+
+  /// Number of fixed-height rows to always reserve (hard-capped at 3).
+  final int slotCount;
   final bool isEvaluating;
   final bool trailingDivider;
 
+  /// Fixed height per row so text updates never shift the layout vertically.
+  static double get rowHeight => 30.h;
+
   @override
   Widget build(BuildContext context) {
+    final rows = slotCount.clamp(1, 3);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        for (var i = 0; i < maxRows; i++) ...[
+        for (var i = 0; i < rows; i++) ...[
           if (i > 0)
             Divider(
               height: 1,
@@ -65,10 +75,15 @@ class EnginePvListView extends StatelessWidget {
               indent: 12.sp,
               endIndent: 12.sp,
             ),
-          if (i < items.length)
-            _PvRow(item: items[i])
-          else
-            _PvRowPlaceholder(isPrimary: i == 0, isEvaluating: isEvaluating),
+          SizedBox(
+            height: rowHeight,
+            child: i < items.length
+                ? _PvRow(item: items[i])
+                : _PvRowPlaceholder(
+                    isPrimary: i == 0,
+                    isEvaluating: isEvaluating,
+                  ),
+          ),
         ],
         if (trailingDivider) Divider(color: context.colors.divider, height: 1),
       ],
@@ -102,7 +117,7 @@ class _PvRow extends StatelessWidget {
         onTap: item.onTap,
         onLongPress: item.onLongPress,
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
+          padding: EdgeInsets.symmetric(horizontal: 12.sp),
           child: Row(
             children: [
               Container(
@@ -149,7 +164,7 @@ class _PvRowPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     final badgeText = isEvaluating ? '...' : '-';
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
+      padding: EdgeInsets.symmetric(horizontal: 12.sp),
       child: Row(
         children: [
           Container(

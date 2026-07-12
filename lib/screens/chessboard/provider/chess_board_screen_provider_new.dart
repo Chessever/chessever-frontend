@@ -2306,6 +2306,15 @@ class ChessBoardScreenNotifierNew
       '🎯 PV PREVIEW: Locking PV line (PGN history: ${pgnHistory.length}, PV moves: ${line.sanMoves.length}, merged: ${mergedMoves.length})',
     );
 
+    // Freeze the engine while the user traverses this line (lichess-style).
+    // The stop is sticky for the whole preview (see _navigateToLockedPvIndex),
+    // so the PV lines and board can't shift under the user while stepping.
+    _cancelEvaluation = true;
+    unawaited(
+      StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),
+    );
+    _clearActiveEvalState();
+
     state = AsyncValue.data(
       currentState.copyWith(
         analysisState: previewAnalysis,
@@ -2318,7 +2327,7 @@ class ChessBoardScreenNotifierNew
         lockedPvMergedPositions: mergedPositions,
         lockedPvBaseMoveCount: baseMoveCount,
         lockedPvNavigationIndex: navigationIndex,
-        isEvaluating: true,
+        isEvaluating: false,
         shapes: const ISet.empty(),
       ),
     );
@@ -2696,16 +2705,20 @@ class ChessBoardScreenNotifierNew
         analysisState: updatedAnalysis,
         lockedPvNavigationIndex: clampedPvIndex,
         pvPreviewMoveIndex: clampedPvIndex,
-        isEvaluating: true,
+        isEvaluating: false,
       ),
     );
 
-    // Keep eval bar alive during preview navigation; PV arrows/cards stay suppressed elsewhere
-    _updateEvaluation(
-      force: true,
-      preserveCurrentPvs: true,
-      preserveDepthProgress: true,
-    );
+    // While previewing, the engine stays stopped: stepping only moves the board
+    // using pre-computed positions, so nothing re-evaluates and the lines/board
+    // never shift. The engine resumes on preview exit (_exitPvPreviewIfActive).
+    if (!currentState.isPvPreviewActive) {
+      _updateEvaluation(
+        force: true,
+        preserveCurrentPvs: true,
+        preserveDepthProgress: true,
+      );
+    }
   }
 
   /// Select a variant (engine suggestion) for navigation
@@ -4900,11 +4913,6 @@ class ChessBoardScreenNotifierNew
     final snapshot = _pvPreviewSnapshot ?? currentState;
     _pvPreviewSnapshot = null;
 
-    // Check if position is changing when exiting preview
-    final currentFen = currentState.analysisState.position.fen;
-    final snapshotFen = snapshot.analysisState.position.fen;
-    final positionChanged = currentFen != snapshotFen;
-
     state = AsyncValue.data(
       currentState.copyWith(
         analysisState: snapshot.analysisState,
@@ -4920,22 +4928,20 @@ class ChessBoardScreenNotifierNew
         lockedPvMergedPositions: null,
         lockedPvBaseMoveCount: null,
         lockedPvNavigationIndex: null,
-        // CRITICAL: Preserve isEvaluating state to show continued progress
-        isEvaluating: positionChanged ? true : currentState.isEvaluating,
+        // Engine was stopped on preview entry — resume with progress.
+        isEvaluating: true,
       ),
     );
 
-    // CRITICAL: Only force new evaluation if position changed
-    // If returning to same position, let ongoing evaluation continue without interference
-    if (positionChanged) {
-      _updateEvaluation(
-        force: true,
-        preserveCurrentPvs: true,
-        preserveDepthProgress: true,
-      );
-    }
-    // If position unchanged, don't call _updateEvaluation at all
-    // Let the ongoing background evaluation continue uninterrupted
+    // The engine is stopped while previewing, so always resume on exit to
+    // re-evaluate the restored position (the "position unchanged, keep the
+    // background eval running" assumption no longer holds).
+    _cancelEvaluation = false;
+    _updateEvaluation(
+      force: true,
+      preserveCurrentPvs: true,
+      preserveDepthProgress: true,
+    );
   }
 
   bool _isEditingBlockedByPreview({String? reason}) {

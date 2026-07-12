@@ -13497,21 +13497,17 @@ class _PrincipalVariationListState
           continue;
         }
 
-        // Add selected state highlighting - use same variant color as main variant
-        final moveStyle =
-            isSelectedMove
-                ? baseStyle.copyWith(
-                  backgroundColor: variantColor.withValues(alpha: 0.4),
-                  color: context.colors.textPrimary,
-                )
-                : baseStyle;
+        // Highlight the WHOLE move token when selected (piece + square).
+        final moveStyle = isSelectedMove
+            ? baseStyle.copyWith(color: context.colors.textPrimary)
+            : baseStyle;
 
         // Create GlobalKey for this move to enable scrolling
         final key = GlobalKey();
         _previewMoveKeys[token.moveIndex!] = key;
 
         // Build move content - either with figurine pieces or plain text
-        Widget moveContent;
+        Widget inner;
         if (useFigurine) {
           final figurineSpans = buildFigurineSpans(
             text: token.text,
@@ -13519,31 +13515,37 @@ class _PrincipalVariationListState
             style: moveStyle,
             pieceSize: 12.sp,
           );
-          moveContent = Text.rich(
-            TextSpan(
-              children: [
-                ...figurineSpans,
-                TextSpan(text: ' ', style: moveStyle),
-              ],
-            ),
-          );
+          inner = Text.rich(TextSpan(children: figurineSpans));
         } else {
-          moveContent = Text('${token.text} ', style: moveStyle);
+          inner = Text(token.text, style: moveStyle);
         }
+
+        final Widget moveContent = isSelectedMove
+            ? Container(
+                padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
+                decoration: BoxDecoration(
+                  color: variantColor.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(3.sp),
+                ),
+                child: inner,
+              )
+            : inner;
 
         // Wrap move text in a widget with key for scroll targeting
         spans.add(
           WidgetSpan(
-            alignment: PlaceholderAlignment.baseline,
-            baseline: TextBaseline.alphabetic,
-            child: GestureDetector(
-              key: key,
-              onTap: () {
-                HapticFeedback.lightImpact();
-                // Navigate to this position in the preview card
-                notifier.navigateToPreviewCardIndex(token.moveIndex!);
-              },
-              child: moveContent,
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: EdgeInsets.only(right: 4.sp),
+              child: GestureDetector(
+                key: key,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  // Navigate to this position in the preview card
+                  notifier.navigateToPreviewCardIndex(token.moveIndex!);
+                },
+                child: moveContent,
+              ),
             ),
           ),
         );
@@ -14228,17 +14230,14 @@ class _PrincipalVariationListState
         continue;
       }
 
-      // Add selected state highlighting
-      final moveStyle =
-          isSelectedMove
-              ? baseStyle.copyWith(
-                backgroundColor: kPrimaryColor.withValues(alpha: 0.4),
-                color: context.colors.textPrimary,
-              )
-              : baseStyle;
+      // Highlight the WHOLE move token (piece figurine + square, e.g. "Rh7")
+      // when selected — not just the destination square.
+      final moveStyle = isSelectedMove
+          ? baseStyle.copyWith(color: context.colors.textPrimary)
+          : baseStyle;
 
       // Build move content - either with figurine pieces or plain text
-      Widget moveContent;
+      Widget inner;
       if (useFigurine && pieceAssets != null) {
         final figurineSpans = buildFigurineSpans(
           text: token.text,
@@ -14246,41 +14245,51 @@ class _PrincipalVariationListState
           style: moveStyle,
           pieceSize: 12.sp,
         );
-        moveContent = Text.rich(
-          TextSpan(
-            children: [...figurineSpans, TextSpan(text: ' ', style: moveStyle)],
-          ),
-        );
+        inner = Text.rich(TextSpan(children: figurineSpans));
       } else {
-        moveContent = Text('${token.text} ', style: moveStyle);
+        inner = Text(token.text, style: moveStyle);
       }
 
-      // Use WidgetSpan with GestureDetector to handle tap and long press
+      final Widget moveContent = isSelectedMove
+          ? Container(
+              padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(3.sp),
+              ),
+              child: inner,
+            )
+          : inner;
+
+      // Use WidgetSpan with GestureDetector to handle tap and long press.
+      // A trailing gap separates moves without becoming part of the highlight.
       spans.add(
         WidgetSpan(
-          alignment: PlaceholderAlignment.baseline,
-          baseline: TextBaseline.alphabetic,
-          child: GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              // Single tap: Enter preview mode and navigate to the tapped move
-              notifier.previewPrincipalVariationMoveAt(
-                line,
-                variantIndex,
-                token.moveIndex ?? 0,
-              );
-            },
-            onLongPress: () {
-              HapticFeedback.mediumImpact();
-              _showPvMoveActionSheet(
-                context,
-                token.text,
-                line,
-                token.moveIndex!,
-                notifier,
-              );
-            },
-            child: Material(color: Colors.transparent, child: moveContent),
+          alignment: PlaceholderAlignment.middle,
+          child: Padding(
+            padding: EdgeInsets.only(right: 4.sp),
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                // Single tap: Enter preview mode and navigate to the tapped move
+                notifier.previewPrincipalVariationMoveAt(
+                  line,
+                  variantIndex,
+                  token.moveIndex ?? 0,
+                );
+              },
+              onLongPress: () {
+                HapticFeedback.mediumImpact();
+                _showPvMoveActionSheet(
+                  context,
+                  token.text,
+                  line,
+                  token.moveIndex!,
+                  notifier,
+                );
+              },
+              child: Material(color: Colors.transparent, child: moveContent),
+            ),
           ),
         ),
       );
@@ -14473,12 +14482,13 @@ class _PrincipalVariationListState
       );
     }
 
-    final rowCount = displayLines.isNotEmpty ? displayLines.length : multiPV;
+    // Always reserve a stable number of slots (capped at 3) so the list never
+    // grows/shrinks as the engine streams lines in.
     return Padding(
       padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
       child: EnginePvListView(
         items: items,
-        maxRows: rowCount,
+        slotCount: multiPV,
         isEvaluating: isEvaluating,
         trailingDivider: false,
       ),
