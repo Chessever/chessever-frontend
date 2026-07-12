@@ -47,6 +47,28 @@ void main() {
           )?.key,
           'round-3',
         );
+        // Dutch Championship 2026 stamps the decider with a dotted suffix and a
+        // separator-free slug; both must fold back into the parent round rather
+        // than fall through to "Other pairings".
+        expect(
+          resolveLogicalKnockoutStage(
+            'Round 4.Tiebreaks',
+            'round-4tiebreaks',
+          )?.key,
+          'round-4',
+        );
+        expect(
+          resolveLogicalKnockoutStage('Round 4.Tiebreaks', 'round-4tiebreaks')
+              ?.label,
+          'Round 4',
+        );
+        expect(
+          resolveLogicalKnockoutStage('Semifinals Rapid 2', 'semifinals-rapid')
+              ?.key,
+          'semifinals',
+        );
+        // A bare tiebreak carries no evidence of which stage it settles.
+        expect(resolveLogicalKnockoutStage('Tiebreaks', 'tiebreaks'), isNull);
         expect(
           resolveLogicalKnockoutStage(
             'Quarterfinals | Game 2',
@@ -343,6 +365,49 @@ void main() {
         bracket.stages.first.matches.single.key,
         isNot(bracket.stages.last.matches.single.key),
       );
+    });
+
+    test('folds dotted tiebreak rounds into the stage they decide', () {
+      // Dutch Championship 2026 Open final: two drawn classical legs, then the
+      // title settled on rapid tiebreaks. The decider must land inside "Round
+      // 4" — not a stray "Other pairings" column — and crown the winner.
+      final tour = _tour('dutch26', 'Dutch Championship 2026 Open', day: 1);
+      final rounds = [
+        _round('r4-1', 'dutch26', 'Round 4.1', 'round-41', day: 1),
+        _round('r4-2', 'dutch26', 'Round 4.2', 'round-42', day: 2),
+        _round('r4-tb', 'dutch26', 'Round 4.Tiebreaks', 'round-4tiebreaks',
+            day: 3),
+      ];
+      final bracket = buildKnockoutBracket(
+        selectedTour: tour,
+        siblingTours: const [],
+        roundsByTourId: {'dutch26': rounds},
+        gamesByTourId: {
+          'dutch26': [
+            _game('c1', 'r4-1', 'dutch26', 'Tiviakov', 'Vrolijk', '½-½',
+                board: 1),
+            _game('c2', 'r4-2', 'dutch26', 'Vrolijk', 'Tiviakov', '½-½',
+                board: 1),
+            _game('tb1', 'r4-tb', 'dutch26', 'Tiviakov', 'Vrolijk', '1-0',
+                board: 1),
+            _game('tb2', 'r4-tb', 'dutch26', 'Vrolijk', 'Tiviakov', '0-1',
+                board: 2),
+          ],
+        },
+        now: DateTime.utc(2026, 1, 5),
+      );
+
+      expect(bracket.stages.map((stage) => stage.label), ['Round 4']);
+      expect(
+        bracket.stages.any((stage) => stage.label == 'Other pairings'),
+        isFalse,
+      );
+      final match = bracket.stages.single.matches.single;
+      expect(match.games.map((game) => game.id), ['c1', 'c2', 'tb1', 'tb2']);
+      expect(match.participant1Score, 3);
+      expect(match.participant2Score, 1);
+      expect(match.isComplete, isTrue);
+      expect(match.winner?.name, 'Tiviakov');
     });
 
     test(

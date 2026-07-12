@@ -219,7 +219,12 @@ LogicalKnockoutStage _roundStage(int number) => LogicalKnockoutStage(
 );
 
 LogicalKnockoutStage? _recognizedStage(String value) {
-  final cleanValue = _clean(value);
+  // Tiebreaks and other deciding legs ("Round 4.Tiebreaks", "Semifinals Rapid
+  // 2", "round-4tiebreaks") are extra games inside an existing stage, never a
+  // stage of their own. Fold them back into the parent round so the decider
+  // that settles a place — the final for first, the bronze match for third —
+  // lands in the right bracket slot instead of a stray "Other pairings" column.
+  final cleanValue = _stripTrailingLegQualifiers(_clean(value));
 
   final roundOf = RegExp(
     r'^round\s+of\s+(\d+)$',
@@ -329,6 +334,31 @@ bool _isGenericLegSlug(String value) => RegExp(
   r'^(?:game|leg|tie-?breaks?|rapid|blitz|armageddon)(?:-|$)',
   caseSensitive: false,
 ).hasMatch(value);
+
+/// A deciding-leg suffix appended to a stage label. Lichess tacks the tiebreak
+/// or speed-chess playoff that resolves a match onto the stage round name
+/// ("Round 4.Tiebreaks", "Semifinals - Rapid 2", "round-4tiebreaks"). These are
+/// additional games within the stage, so they are stripped before stage
+/// recognition rather than treated as a separate bracket column.
+final RegExp _trailingLegQualifier = RegExp(
+  r'[\s.|:_/–—-]*'
+  r'(?:tie[ -]?breaks?|play[ -]?offs?|sudden[ -]?death|armageddon|rapid|blitz|bullet|game|leg)'
+  r'(?:[\s.|:_/–—-]*\d+)*$',
+  caseSensitive: false,
+);
+
+/// Repeatedly removes trailing leg qualifiers so compound deciders such as
+/// "Round 3 Tiebreak Rapid 1" collapse down to the parent stage ("Round 3").
+/// Only strips when a stage token would remain, so a bare "Tiebreaks" round —
+/// which carries no evidence of which stage it settles — is left unresolved.
+String _stripTrailingLegQualifiers(String value) {
+  var result = value;
+  while (true) {
+    final next = _clean(result.replaceFirst(_trailingLegQualifier, ''));
+    if (next.isEmpty || next == result) return result;
+    result = next;
+  }
+}
 
 String _clean(String value) => value
     .trim()
