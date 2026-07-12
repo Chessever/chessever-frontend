@@ -195,16 +195,37 @@ class _PvRowState extends State<_PvRow> {
 
   /// Animate the row so the highlighted (cursor) move stays visible when the
   /// user traverses the line with the arrow keys.
+  ///
+  /// IMPORTANT: this drives ONLY this row's own [ScrollController]. We must not
+  /// use [Scrollable.ensureVisible] here — it recursively scrolls every
+  /// scrollable ancestor, which would nudge the parent board PageView and make
+  /// the whole page twitch/swipe on each arrow press.
   void _scheduleFollow() {
     final key = widget.item.scrollTargetKey;
     if (key == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final ctx = key.currentContext;
-      if (ctx == null) return;
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.5,
+      if (!mounted || !_controller.hasClients) return;
+      final targetCtx = key.currentContext;
+      if (targetCtx == null) return;
+      final targetObj = targetCtx.findRenderObject();
+      if (targetObj is! RenderBox) return;
+      // The nearest Scrollable is this row's horizontal SingleChildScrollView.
+      final scrollable = Scrollable.maybeOf(targetCtx);
+      final viewportObj = scrollable?.context.findRenderObject();
+      if (viewportObj is! RenderBox) return;
+
+      // Target position relative to the visible viewport (accounts for the
+      // current scroll offset already).
+      final dx = targetObj.localToGlobal(Offset.zero, ancestor: viewportObj).dx;
+      final targetWidth = targetObj.size.width;
+      final viewportWidth = viewportObj.size.width;
+      final current = _controller.offset;
+      final maxExtent = _controller.position.maxScrollExtent;
+      final desired = (current + dx + targetWidth / 2 - viewportWidth / 2)
+          .clamp(0.0, maxExtent);
+      if ((desired - current).abs() < 1.0) return;
+      _controller.animateTo(
+        desired,
         duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic,
       );
