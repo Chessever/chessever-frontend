@@ -15,6 +15,7 @@ class EnginePvItem {
     this.isWhiteWinning = false,
     this.isBlackWinning = false,
     this.isPrimary = false,
+    this.scrollTargetKey,
     this.onTap,
     this.onLongPress,
   });
@@ -31,6 +32,10 @@ class EnginePvItem {
 
   /// The top line is emphasized in the list layout.
   final bool isPrimary;
+
+  /// When set, the list row horizontally auto-scrolls so the widget carrying
+  /// this key (the highlighted/cursor move) stays visible while traversing.
+  final GlobalKey? scrollTargetKey;
 
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -91,13 +96,130 @@ class EnginePvListView extends StatelessWidget {
   }
 }
 
-class _PvRow extends StatelessWidget {
+/// Compact eval badge sized to its content (with a small min width so rows stay
+/// aligned) — deliberately close to the move text's weight/size so it reads as
+/// part of the line, not a bulky block.
+class _EvalBadge extends StatelessWidget {
+  const _EvalBadge({
+    required this.text,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String text;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: 26.w),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 5.sp, vertical: 1.5.sp),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(3.br),
+        ),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: foreground,
+            fontSize: 10.5.f,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Horizontally scrollable move text with a soft fade at both edges. Never
+/// truncates — the user can scroll (drag) to the end of the line.
+class _FadeScroller extends StatelessWidget {
+  const _FadeScroller({required this.controller, required this.child});
+
+  final ScrollController controller;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (rect) => const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Color(0x00000000),
+          Color(0xFF000000),
+          Color(0xFF000000),
+          Color(0x00000000),
+        ],
+        stops: [0.0, 0.035, 0.9, 1.0],
+      ).createShader(rect),
+      child: SingleChildScrollView(
+        controller: controller,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _PvRow extends StatefulWidget {
   const _PvRow({required this.item});
 
   final EnginePvItem item;
 
   @override
+  State<_PvRow> createState() => _PvRowState();
+}
+
+class _PvRowState extends State<_PvRow> {
+  final ScrollController _controller = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleFollow();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PvRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleFollow();
+  }
+
+  /// Animate the row so the highlighted (cursor) move stays visible when the
+  /// user traverses the line with the arrow keys.
+  void _scheduleFollow() {
+    final key = widget.item.scrollTargetKey;
+    if (key == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = key.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
     Color evalBgColor;
     Color evalTextColor;
     if (item.isWhiteWinning) {
@@ -117,33 +239,24 @@ class _PvRow extends StatelessWidget {
         onTap: item.onTap,
         onLongPress: item.onLongPress,
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.sp),
+          padding: EdgeInsets.only(left: 10.sp, right: 4.sp),
           child: Row(
             children: [
-              Container(
-                width: 44.w,
-                padding: EdgeInsets.symmetric(vertical: 2.sp),
-                decoration: BoxDecoration(
-                  color: evalBgColor,
-                  borderRadius: BorderRadius.circular(3.br),
-                ),
-                child: Text(
-                  item.evalText,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: evalTextColor,
-                    fontSize: 11.f,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
+              _EvalBadge(
+                text: item.evalText,
+                background: evalBgColor,
+                foreground: evalTextColor,
               ),
-              SizedBox(width: 8.sp),
+              SizedBox(width: 7.sp),
               Expanded(
-                child: RichText(
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  text: TextSpan(children: item.moveSpans),
+                child: _FadeScroller(
+                  controller: _controller,
+                  child: Text.rich(
+                    TextSpan(children: item.moveSpans),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                  ),
                 ),
               ),
             ],
@@ -162,44 +275,16 @@ class _PvRowPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final badgeText = isEvaluating ? '...' : '-';
+    final badgeText = isEvaluating ? '···' : '–';
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.sp),
+      padding: EdgeInsets.only(left: 10.sp, right: 4.sp),
       child: Row(
         children: [
-          Container(
-            width: 44.w,
-            padding: EdgeInsets.symmetric(vertical: 2.sp),
-            decoration: BoxDecoration(
-              color: context.colors.textSecondary.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(3.br),
-            ),
-            child: Text(
-              badgeText,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: context.colors.textPrimary.withValues(
-                  alpha: isEvaluating ? 0.35 : 0.18,
-                ),
-                fontSize: 11.f,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          SizedBox(width: 8.sp),
-          Expanded(
-            child: Text(
-              ' ',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: context.colors.textPrimary.withValues(
-                  alpha: isPrimary ? 0.65 : 0.18,
-                ),
-                fontSize: 12.f,
-                fontWeight: FontWeight.w500,
-              ),
+          _EvalBadge(
+            text: badgeText,
+            background: context.colors.textSecondary.withValues(alpha: 0.2),
+            foreground: context.colors.textPrimary.withValues(
+              alpha: isEvaluating ? 0.35 : 0.18,
             ),
           ),
         ],

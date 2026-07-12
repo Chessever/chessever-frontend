@@ -13140,6 +13140,10 @@ class _PrincipalVariationListState
   List<AnalysisLine> _lastNonEmptyLines = const [];
   String? _lastPositionKey;
 
+  // Stable key attached to the highlighted (cursor) move of the previewed line
+  // in list layout, so the row can horizontally auto-scroll to follow it.
+  final GlobalKey _listCursorKey = GlobalKey();
+
   // Preview card notation scroll support
   final ScrollController _previewScrollController = ScrollController();
   final Map<int, GlobalKey> _previewMoveKeys = {};
@@ -14208,6 +14212,7 @@ class _PrincipalVariationListState
     int? previewMoveIndex,
     bool useFigurine = true,
     PieceAssets? pieceAssets,
+    GlobalKey? selectedMoveKey,
   }) {
     final spans = <InlineSpan>[];
     // Use consistent styling for all text in PV notation
@@ -14263,34 +14268,39 @@ class _PrincipalVariationListState
 
       // Use WidgetSpan with GestureDetector to handle tap and long press.
       // A trailing gap separates moves without becoming part of the highlight.
+      final Widget spanChild = Padding(
+        padding: EdgeInsets.only(right: 4.sp),
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            // Single tap: Enter preview mode and navigate to the tapped move
+            notifier.previewPrincipalVariationMoveAt(
+              line,
+              variantIndex,
+              token.moveIndex ?? 0,
+            );
+          },
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            _showPvMoveActionSheet(
+              context,
+              token.text,
+              line,
+              token.moveIndex!,
+              notifier,
+            );
+          },
+          child: Material(color: Colors.transparent, child: moveContent),
+        ),
+      );
+
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
-          child: Padding(
-            padding: EdgeInsets.only(right: 4.sp),
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                // Single tap: Enter preview mode and navigate to the tapped move
-                notifier.previewPrincipalVariationMoveAt(
-                  line,
-                  variantIndex,
-                  token.moveIndex ?? 0,
-                );
-              },
-              onLongPress: () {
-                HapticFeedback.mediumImpact();
-                _showPvMoveActionSheet(
-                  context,
-                  token.text,
-                  line,
-                  token.moveIndex!,
-                  notifier,
-                );
-              },
-              child: Material(color: Colors.transparent, child: moveContent),
-            ),
-          ),
+          // Tag the highlighted move so the list row can auto-scroll to it.
+          child: (isSelectedMove && selectedMoveKey != null)
+              ? KeyedSubtree(key: selectedMoveKey, child: spanChild)
+              : spanChild,
         ),
       );
     }
@@ -14438,6 +14448,9 @@ class _PrincipalVariationListState
             isPreviewingThisVariant ? widget.state.pvPreviewMoveIndex : null,
         useFigurine: useFigurine,
         pieceAssets: pieceAssets,
+        // Only the actively-previewed line carries the cursor key so its row
+        // auto-scrolls to follow the highlighted move during traversal.
+        selectedMoveKey: isPreviewingThisVariant ? _listCursorKey : null,
       );
 
       _PvToken? focusToken;
@@ -14460,6 +14473,7 @@ class _PrincipalVariationListState
           isWhiteWinning: evalValue > 0,
           isBlackWinning: evalValue < 0,
           isPrimary: variantIndex == 0,
+          scrollTargetKey: isPreviewingThisVariant ? _listCursorKey : null,
           onTap: () {
             HapticFeedback.lightImpact();
             notifier.clearPvPreview();
