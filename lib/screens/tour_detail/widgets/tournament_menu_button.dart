@@ -727,7 +727,15 @@ class TournamentMenuButton extends ConsumerWidget {
       final size = boundary.size;
       final aspect = size.height > 0 ? size.width / size.height : 3 / 4;
 
-      final snapshot = await captureBoundaryPng(key, pixelRatio: 3.0);
+      // The bracket is pannable/zoomable, so a zoomed-out frame packs tiny
+      // text. Snapshot the live viewport at a high pixel ratio, and re-render
+      // the branded card at the same ratio, so the double capture
+      // (viewport -> embedded image -> card) keeps that text sharp when the
+      // recipient zooms into the shared PNG. 4x keeps a phone viewport well
+      // under any decode limit while roughly doubling legible detail vs 3x.
+      const bracketPixelRatio = 4.0;
+      final snapshot =
+          await captureBoundaryPng(key, pixelRatio: bracketPixelRatio);
       if (snapshot == null) {
         throw StateError('Bracket snapshot produced no image');
       }
@@ -737,7 +745,7 @@ class TournamentMenuButton extends ConsumerWidget {
       final imageBytes = await captureCardPng(
         context,
         width: width,
-        pixelRatio: 3.0,
+        pixelRatio: bracketPixelRatio,
         child: BracketShareImageCard(
           width: width,
           eventName: eventName,
