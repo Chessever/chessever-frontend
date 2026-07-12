@@ -47,6 +47,22 @@ final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
   (ref) => GroupEventCategory.forYou,
 );
 
+/// Prevents queued group-event work from running after this screen is torn
+/// down. The callback itself only receives objects captured while [ref] and
+/// the enclosing [ProviderScope] are valid.
+@visibleForTesting
+class GroupEventPostFrameActions {
+  bool _isActive = true;
+
+  void schedule(VoidCallback action) {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_isActive) action();
+    });
+  }
+
+  void dispose() => _isActive = false;
+}
+
 class GroupEventScreen extends HookConsumerWidget {
   const GroupEventScreen({super.key});
 
@@ -55,6 +71,8 @@ class GroupEventScreen extends HookConsumerWidget {
     final searchController = useTextEditingController();
     final searchTabDebounce = useRef<Timer?>(null);
     useEffect(() => () => searchTabDebounce.value?.cancel(), const []);
+    final postFrameActions = useMemoized(GroupEventPostFrameActions.new);
+    useEffect(() => postFrameActions.dispose, [postFrameActions]);
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
@@ -139,22 +157,34 @@ class GroupEventScreen extends HookConsumerWidget {
       // Only clear when switching between non-search tabs
       if (next == GroupEventCategory.search) return;
 
-      SchedulerBinding.instance.addPostFrameCallback((_) {
+      final searchQueryController =
+          previous == GroupEventCategory.search
+              ? ref.read(searchQueryProvider.notifier)
+              : null;
+      final searchTabQueryController =
+          previous == GroupEventCategory.search
+              ? ref.read(searchTabQueryProvider.notifier)
+              : null;
+      final forYouEventsController =
+          next == GroupEventCategory.forYou
+              ? ref.read(forYouEventsProvider.notifier)
+              : null;
+      final container = ProviderScope.containerOf(context, listen: false);
+
+      postFrameActions.schedule(() {
         if (context.mounted) {
           // Only clear search-related state if we're leaving the search tab
           if (previous == GroupEventCategory.search) {
-            ref.read(searchQueryProvider.notifier).state = '';
-            ref.read(searchTabQueryProvider.notifier).state = '';
+            searchQueryController!.state = '';
+            searchTabQueryController!.state = '';
             searchController.clear();
           }
           if (next == GroupEventCategory.forYou) {
-            unawaited(
-              ref.read(forYouEventsProvider.notifier).refreshForVisibility(),
-            );
+            unawaited(forYouEventsController!.refreshForVisibility());
           }
           FocusScope.of(context).unfocus();
           // ignore: unused_result
-          ref.refresh(groupEventScreenProvider);
+          container.refresh(groupEventScreenProvider);
         }
       });
     });
