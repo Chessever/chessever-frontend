@@ -831,7 +831,33 @@ final forYouEventsProvider =
 /// True only while the personalized For You surface is the selected tab on the
 /// current foreground route. The notifier keeps its cache alive, but expensive
 /// catch-up work must wait for this signal instead of running behind any screen.
-final forYouSurfaceVisibleProvider = StateProvider<bool>((ref) => false);
+class ForYouSurfaceVisibilityNotifier extends StateNotifier<bool> {
+  ForYouSurfaceVisibilityNotifier() : super(false);
+
+  Object? _visibleOwner;
+
+  void publish({required Object owner, required bool isVisible}) {
+    if (!mounted) return;
+
+    if (isVisible) {
+      _visibleOwner = owner;
+      if (!state) state = true;
+      return;
+    }
+
+    // A disposed widget may publish its final hidden state after a replacement
+    // has already mounted. Only the current owner is allowed to hide the
+    // shared surface in that case.
+    if (!identical(_visibleOwner, owner)) return;
+    _visibleOwner = null;
+    if (state) state = false;
+  }
+}
+
+final forYouSurfaceVisibleProvider =
+    StateNotifierProvider<ForYouSurfaceVisibilityNotifier, bool>(
+      (ref) => ForYouSurfaceVisibilityNotifier(),
+    );
 
 final forYouTopGamesSnapshotCacheProvider =
     StateProvider<Map<String, ForYouEventGamesSnapshot>>(

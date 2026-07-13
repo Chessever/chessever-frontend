@@ -30,7 +30,9 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -728,19 +730,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          IconButton(
+          GlassBackButton(
             onPressed: () {
               HapticFeedbackService.light();
               Navigator.of(context).pop();
             },
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.symmetric(horizontal: 6.w),
-            constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: context.colors.textPrimary,
-              size: 20.ic,
-            ),
           ),
           SizedBox(width: 4.w),
           Expanded(
@@ -773,42 +767,40 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           ),
           SizedBox(width: 4.w),
           if (showExport)
-            IconButton(
-              onPressed: _handleExportPgn,
-              tooltip: 'Export as PGN',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+            GlassIconButton(
               icon: Icon(
                 Icons.ios_share_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
+                color: context.colors.iconPrimary,
               ),
+              onPressed: _handleExportPgn,
+              size: 40,
+              iconSize: 20,
+              useOwnLayer: true,
+              shape: GlassIconButtonShape.circle,
             ),
           if (showRename)
-            IconButton(
-              onPressed: _handleRename,
-              tooltip: 'Rename',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+            GlassIconButton(
               icon: Icon(
                 Icons.edit_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
+                color: context.colors.iconPrimary,
               ),
+              onPressed: _handleRename,
+              size: 40,
+              iconSize: 20,
+              useOwnLayer: true,
+              shape: GlassIconButtonShape.circle,
             ),
           if (showAdd)
-            IconButton(
-              onPressed: _handlePlusButton,
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+            GlassIconButton(
               icon: Icon(
                 Icons.add_rounded,
-                color: context.colors.textPrimary,
-                size: 26.ic,
+                color: context.colors.iconPrimary,
               ),
+              onPressed: _handlePlusButton,
+              size: 40,
+              iconSize: 20,
+              useOwnLayer: true,
+              shape: GlassIconButtonShape.circle,
             ),
         ],
       ),

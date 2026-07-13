@@ -32,16 +32,13 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/liquid_glass/game_tab_floating_controls.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart' show SpringHintWord;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
@@ -101,27 +98,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     });
   }
 
-  // Rotating "Search <word>" hint — mirrors the home and TWIC search bars so
-  // the animated second word is consistent across the app.
-  static const List<String> _rotatingHints = <String>[
-    'event',
-    'opponent',
-    'opening',
-  ];
-  static const Duration _hintRotationInterval = Duration(seconds: 2);
-  // Must comfortably cover SpringHintWord's 420ms spring so the last word
-  // finishes animating out before we collapse back to plain "Search".
-  static const Duration _hintCycleFadeOutDuration = Duration(milliseconds: 460);
-  Timer? _hintRotationTimer;
-  Timer? _hintFadeOutTimer;
-  int _hintIndex = 0;
-  // Rotation runs a single full pass, then collapses back to plain "Search".
-  bool _hintCycleDone = false;
-  // Transient: after the final tick we pass '' to SpringHintWord so it
-  // spring-fades the last word out before the overlay disappears — fixes
-  // the abrupt "snap" at cycle end.
-  bool _hintCycleFadingOut = false;
-
   String get _scrollStorageKey =>
       'player_games:${widget.dataSource.name}:${widget.fideId ?? ''}:'
       '${widget.gamebasePlayerId ?? ''}:${widget.playerName}';
@@ -137,53 +113,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
-    _searchFocusNode.addListener(_onSearchFocusChange);
-    _searchController.addListener(_onSearchTextChange);
-    _restartHintRotation();
-  }
-
-  void _onSearchFocusChange() {
-    if (!mounted) return;
-    setState(() {});
-    if (_searchFocusNode.hasFocus) {
-      _hintRotationTimer?.cancel();
-    } else {
-      _restartHintRotation();
-    }
-  }
-
-  void _onSearchTextChange() {
-    if (!mounted) return;
-    final hasText = _searchController.text.isNotEmpty;
-    final running = _hintRotationTimer?.isActive ?? false;
-    if (hasText && running) {
-      _hintRotationTimer?.cancel();
-    } else if (!hasText && !running && !_searchFocusNode.hasFocus) {
-      _restartHintRotation();
-    }
-  }
-
-  void _restartHintRotation() {
-    _hintRotationTimer?.cancel();
-    if (_hintCycleDone || _hintCycleFadingOut || _rotatingHints.length <= 1) {
-      return;
-    }
-    if (_searchController.text.isNotEmpty || _searchFocusNode.hasFocus) return;
-    _hintRotationTimer = Timer.periodic(_hintRotationInterval, (_) {
-      if (!mounted) return;
-      final next = _hintIndex + 1;
-      if (next >= _rotatingHints.length) {
-        _hintRotationTimer?.cancel();
-        setState(() => _hintCycleFadingOut = true);
-        _hintFadeOutTimer?.cancel();
-        _hintFadeOutTimer = Timer(_hintCycleFadeOutDuration, () {
-          if (!mounted) return;
-          setState(() => _hintCycleDone = true);
-        });
-      } else {
-        setState(() => _hintIndex = next);
-      }
-    });
   }
 
   /// Get the player profile key for provider lookups
@@ -214,12 +143,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     _debounceTimer?.cancel();
     _scrollIdleTimer?.cancel();
     _setLiveCardsPausedForScroll(false);
-    _hintRotationTimer?.cancel();
-    _hintFadeOutTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _searchFocusNode.removeListener(_onSearchFocusChange);
-    _searchController.removeListener(_onSearchTextChange);
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -618,10 +543,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       phone: 16.w,
       tablet: 24.w,
     );
-    final headerHeight =
-        58.h +
-        (state.hasActiveFilters ? 42.h : 0) +
-        (isSelectionMode ? 136.h : 0);
+    final double headerHeight =
+        (state.hasActiveFilters ? 42.h : 0.0) +
+        (isSelectionMode ? 136.h : 0.0);
 
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
@@ -642,6 +566,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
+          // Clear the floating chrome (player profile floats over full-screen).
+          SliverToBoxAdapter(
+            child: SizedBox(height: MediaQuery.of(context).padding.top + 132),
+          ),
           SliverAppBar(
             primary: false,
             floating: true,
@@ -687,11 +615,20 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return Stack(
       children: [
         content,
-        // Scroll to top button
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
+        // Floating bottom-right cluster: scroll-to-top (top), then
+        // filter · layout-mode · search glass icon buttons.
+        GameTabFloatingControls(
+          scrollController: _scrollController,
+          searchController: _searchController,
+          searchFocusNode: _searchFocusNode,
+          searchFieldKey: e2eKey(E2eIds.playerGamesSearchField),
+          onSearchChanged: _onSearchChanged,
+          onSearchCleared: _clearSearch,
+          onToggleLayout: () =>
+              ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+          onFilter: _showFilterDialog,
+          filterActive: state.hasActiveFilters,
+          filterCount: state.activeFilterCount,
         ),
       ],
     );
@@ -712,15 +649,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              2.h,
-              horizontalPadding,
-              4.h,
-            ),
-            child: _buildSearchBar(state),
-          ),
           if (isSelectionMode)
             Padding(
               padding: EdgeInsets.fromLTRB(
@@ -736,199 +664,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: _buildActiveFiltersChip(state),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRotatingSearchHint() {
-    // Pass an empty word during the fade-out phase so SpringHintWord animates
-    // the final entry out instead of disappearing in a single frame.
-    final word =
-        _hintCycleFadingOut
-            ? ''
-            : _rotatingHints[_hintIndex % _rotatingHints.length];
-    final style = AppTypography.textSmRegular.copyWith(
-      color: context.colors.textSecondary,
-    );
-    return IgnorePointer(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Search ', style: style),
-          Flexible(child: SpringHintWord(word: word, style: style)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar(PlayerProfileGamesState state) {
-    final hasActiveFilters = state.hasActiveFilters;
-    final activeFilterCount = state.activeFilterCount;
-    final searchBarHeight = 48.h;
-
-    return SizedBox(
-      height: searchBarHeight,
-      child: Row(
-        children: [
-          // Search field
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.search,
-                    size: 20.sp,
-                    color: context.colors.textSecondary,
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Builder(
-                      builder: (_) {
-                        final showRotating =
-                            !_hintCycleDone &&
-                            _searchController.text.isEmpty &&
-                            !_searchFocusNode.hasFocus;
-                        return Stack(
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            if (showRotating) _buildRotatingSearchHint(),
-                            TextField(
-                              key: e2eKey(E2eIds.playerGamesSearchField),
-                              controller: _searchController,
-                              focusNode: _searchFocusNode,
-                              style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                              onChanged: _onSearchChanged,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                // The TextField owns the "Search" hint except
-                                // while the rotating overlay is driving it.
-                                hintText: showRotating ? null : 'Search',
-                                hintStyle: AppTypography.textSmRegular.copyWith(
-                                  color: context.colors.textSecondary,
-                                ),
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: 14.h,
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                  if (_searchController.text.isNotEmpty ||
-                      state.searchQuery.isNotEmpty) ...[
-                    GestureDetector(
-                      onTap: _clearSearch,
-                      child: Icon(
-                        Icons.close,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
-          ),
-
-          // Filter button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: _showFilterDialog,
-            child: Container(
-              key: e2eKey(E2eIds.playerGamesFilterButton),
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
-                ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? const Color(0xFFEF4444)
-                            : context.colors.textSecondary,
-                  ),
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-
-          // Layout toggle button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  SvgAsset.chase_grid,
-                  width: 20.sp,
-                  height: 20.sp,
-                  colorFilter: ColorFilter.mode(
-                    context.colors.textSecondary,
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

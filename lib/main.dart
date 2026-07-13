@@ -75,18 +75,64 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 /// [LiquidGlassWidgets.wrap] must enclose the app so glass surfaces inherit
 /// theme, Reduce Motion / Reduce Transparency, and optional adaptive quality.
 Widget _buildRootApp() {
+  // Global base for EVERY glass widget. The theme (GlassThemeSettings) cannot
+  // set glowIntensity / ambientRim, which default to a bright Fresnel edge — the
+  // "reflective border" — on every surface. Zeroing them here (the only global
+  // hook) removes that border app-wide; the theme still sets tint/blur/thickness
+  // per mode on top of this base.
+  // NOTE: globalSettings is a WHOLESALE override (priority above the theme), so
+  // it must carry the tint/blur too or glass renders transparent. App is
+  // dark-first — use the dark island values here.
+  LiquidGlassWidgets.globalSettings = const LiquidGlassSettings(
+    // Neutral graphite — matches the app's grey/black palette (no colour cast).
+    // A touch lighter than the near-black background so the FLOATING glass reads
+    // as a distinct panel, but stays quiet and easy to read.
+    glassColor: Color(0x8C2A2A2E),
+    thickness: 26,
+    blur: 22,
+    glowIntensity: 0,
+    ambientRim: 0,
+    lightIntensity: 0,
+    ambientStrength: 0,
+    chromaticAberration: 0,
+  );
   return ProviderScope(
     child: LiquidGlassWidgets.wrap(
       child: const StartupGate(),
-      adaptiveQuality: true,
+      // Force premium (Impeller shader) — the STANDARD/lightweight path bakes a
+      // grey Fresnel rim into the shader that no public setting can remove; the
+      // premium shader draws its edge from settings (all zeroed above), so no
+      // rim. adaptiveQuality:false stops it downgrading back to the rim path.
+      adaptiveQuality: false,
+      // Chess boards are mostly WHITEISH and render behind glass chrome
+      // everywhere. A faint whiteish tint gives no contrast against them, so in
+      // dark mode the glass must be a DARK translucent island (~0.5 alpha) —
+      // dark enough to read light labels over a white board, still see-through
+      // (heavy blur keeps the liquid-glass character, not a solid panel).
+      // lightIntensity:0 + chromaticAberration:0 kill the bright specular RIM /
+      // colored edge fringe on every glass surface — that reflective border read
+      // as cheap. Glass stays glass via blur + tint, just without the halo edge.
       theme: GlassThemeData(
         light: GlassThemeVariant(
-          settings: GlassThemeSettings(thickness: 28, blur: 8),
-          quality: GlassQuality.standard,
+          settings: const GlassThemeSettings(
+            thickness: 24,
+            blur: 22,
+            glassColor: Color(0x73F4F6FB),
+            lightIntensity: 0,
+            chromaticAberration: 0,
+          ),
+          quality: GlassQuality.premium,
         ),
         dark: GlassThemeVariant(
-          settings: GlassThemeSettings(thickness: 36, blur: 10),
-          quality: GlassQuality.standard,
+          settings: const GlassThemeSettings(
+            thickness: 26,
+            blur: 22,
+            // Dark graphite island (~0.5 alpha) — contrast over white boards.
+            glassColor: Color(0x800B0D12),
+            lightIntensity: 0,
+            chromaticAberration: 0,
+          ),
+          quality: GlassQuality.premium,
         ),
       ),
     ),

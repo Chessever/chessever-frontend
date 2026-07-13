@@ -2,12 +2,11 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class ChessBoardBottomNavBar extends ConsumerWidget {
   final int gameIndex;
@@ -69,7 +68,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       // In landscape, constrain to a comfortable max width
       contentWidth = math.min(fullWidth, 800.0);
     } else {
-      contentWidth = fullWidth;
+      // Leave room on both sides so the phone bar reads as a floating pill.
+      contentWidth = fullWidth - 24.0;
     }
 
     // Button sizing with tablet refinements
@@ -84,7 +84,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
-    final activeComponent = depthSnapshot?.component;
     final gaugeProgress = depthSnapshot?.progress;
 
     // Check if user wants to see depth overlay
@@ -101,7 +100,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
         depthText = '...';
       }
     }
-
 
     // Build the navigation buttons row
     final buttonsRow = Row(
@@ -158,45 +156,31 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       ],
     );
 
-    // Tablet-refined container with subtle top border
-    final bar = Container(
+    // Floating liquid-glass bar. The outer surface is transparent so board
+    // content shows through; the buttons live inside a single glass pill.
+    final bar = SizedBox(
       width: fullWidth,
-      decoration: BoxDecoration(
-        color: context.colors.background,
-        // Add subtle top border for visual separation on tablets
-        border:
-            isTablet
-                ? Border(
-                  top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.06),
-                    width: 1,
-                  ),
-                )
-                : null,
-      ),
       child: SafeArea(
         top: false,
         child: SizedBox(
           height: barHeight,
           child: Center(
-            child:
-                isTablet
-                    // Tablet: Container with refined styling
-                    ? Container(
-                      height: barHeight - 12,
-                      decoration: BoxDecoration(
-                        color: context.colors.surface,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      margin: EdgeInsets.symmetric(vertical: 4),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      child: buttonsRow,
-                    )
-                    // Phone: Full width row
-                    : SizedBox(width: contentWidth, child: buttonsRow),
+            child: GlassContainer(
+              useOwnLayer: true,
+              shape: const LiquidRoundedSuperellipse(borderRadius: 22),
+              // Weight the vertical padding toward the bottom so the icons sit
+              // a little higher in the pill (and leave room for depth text).
+              padding: EdgeInsets.fromLTRB(
+                isTablet ? 10 : 6,
+                2,
+                isTablet ? 10 : 6,
+                12,
+              ),
+              child: SizedBox(
+                width: isTablet ? null : contentWidth,
+                child: buttonsRow,
+              ),
+            ),
           ),
         ),
       ),
@@ -217,4 +201,3 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     );
   }
 }
-

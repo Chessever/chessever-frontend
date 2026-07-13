@@ -132,7 +132,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
             // Position depth text BELOW the button area with proper gap
             if (showDepth)
               Positioned(
-                bottom: 4.h, // keep within bar bounds
+                bottom: 0.h, // hug the bottom edge, clear of the centered icon
                 left: 0,
                 right: 0,
                 child: Center(child: Text(depthText!, style: depthStyle)),

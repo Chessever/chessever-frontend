@@ -10,6 +10,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -88,13 +89,8 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.w),
-              child: IconButton(
+              child: GlassBackButton(
                 onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: context.colors.textPrimary,
-                  size: 20.ic,
-                ),
               ),
             ),
           ),
@@ -334,13 +330,8 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.w),
-              child: IconButton(
+              child: GlassBackButton(
                 onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: context.colors.textPrimary,
-                  size: 20.ic,
-                ),
               ),
             ),
           ),
@@ -388,13 +379,8 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.w),
-              child: IconButton(
+              child: GlassBackButton(
                 onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: context.colors.textPrimary,
-                  size: 20.ic,
-                ),
               ),
             ),
           ),

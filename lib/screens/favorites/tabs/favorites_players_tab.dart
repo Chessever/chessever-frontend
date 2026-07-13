@@ -367,7 +367,11 @@ class WorldPlayersSearchNotifier
 }
 
 class FavoritesPlayersTab extends ConsumerStatefulWidget {
-  const FavoritesPlayersTab({super.key});
+  const FavoritesPlayersTab({super.key, this.topPadding = 0});
+
+  /// Top inset so the first item clears the floating glass chrome while the
+  /// list scrolls underneath it.
+  final double topPadding;
 
   @override
   ConsumerState<FavoritesPlayersTab> createState() =>
@@ -457,6 +461,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
+          SliverToBoxAdapter(child: SizedBox(height: widget.topPadding)),
           // Search bar
           SliverToBoxAdapter(
             child: Padding(

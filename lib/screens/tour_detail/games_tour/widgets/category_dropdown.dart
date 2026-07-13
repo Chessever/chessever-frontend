@@ -8,12 +8,11 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/droplet_animation_curves.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -101,7 +100,8 @@ class CategoryDropdown extends ConsumerWidget {
     final roundsAsync = ref.watch(gamesAppBarProvider);
 
     return SizedBox(
-      height: 38.h,
+      // Bulky pill — matches the 64px home-style search button beside it.
+      height: 56.h,
       child: tourDetailAsync.when(
         data: (tourData) {
           if (tourData.tours.isEmpty) {
@@ -189,179 +189,28 @@ class _CategoryDropdownContent extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final layerLink = useMemoized(() => LayerLink());
     final isOpen = useState(false);
-    final animationController = useAnimationController(
-      duration: const Duration(milliseconds: 200),
-    );
-
-    final animation = useMemoized(
-      () => CurvedAnimation(
-        parent: animationController,
-        curve: DropletCurves.openPop,
-        reverseCurve: DropletCurves.close,
-      ),
-      [animationController],
-    );
-
-    useEffect(() {
-      return () {
-        if (isOpen.value) {
-          isOpen.value = false;
-        }
-      };
-    }, []);
-
     final hasMultipleOptions = categories.length > 1 || rounds.length > 1;
 
-    void openDropdown() {
-      if (!hasMultipleOptions) return;
-
-      HapticFeedbackService.selection();
-      isOpen.value = true;
-      animationController.forward();
-
-      _showOverlay(
-        context: context,
-        layerLink: layerLink,
-        isOpen: isOpen,
-        animationController: animationController,
-        animation: animation,
-        ref: ref,
-      );
-    }
-
-    void closeDropdown() {
-      animationController.reverse().then((_) {
-        if (isOpen.value) {
-          isOpen.value = false;
-        }
-      });
-    }
-
-    return CompositedTransformTarget(
-      link: layerLink,
-      child: _StadiumChipButton(
-        label: _extractCategoryName(selectedCategory.tour.name),
-        status: selectedRound?.roundStatus ?? selectedCategory.roundStatus,
-        isOpen: isOpen.value,
-        showChevron: hasMultipleOptions,
-        constrainWidth: constrainWidth,
-        onTap: () {
-          if (isOpen.value) {
-            closeDropdown();
-          } else {
-            openDropdown();
-          }
-        },
-      ),
+    return _StadiumChipButton(
+      label: _extractCategoryName(selectedCategory.tour.name),
+      status: selectedRound?.roundStatus ?? selectedCategory.roundStatus,
+      isOpen: isOpen.value,
+      showChevron: hasMultipleOptions,
+      constrainWidth: constrainWidth,
+      onTap: () async {
+        if (!hasMultipleOptions) return;
+        HapticFeedbackService.selection();
+        isOpen.value = true;
+        await _showCategorySheet(
+          context: context,
+          categories: categories,
+          onCategoryChanged: onCategoryChanged,
+          onRoundChanged: onRoundChanged,
+        );
+        if (context.mounted) isOpen.value = false;
+      },
     );
-  }
-
-  void _showOverlay({
-    required BuildContext context,
-    required LayerLink layerLink,
-    required ValueNotifier<bool> isOpen,
-    required AnimationController animationController,
-    required Animation<double> animation,
-    required WidgetRef ref,
-  }) {
-    OverlayEntry? overlayEntry;
-
-    // Track when opened for tablet phantom tap protection
-    final openedAt = DateTime.now();
-    if (ResponsiveHelper.isTablet) {
-      TabletPopupState.markOpen();
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) {
-        isOpen.value = false;
-        return;
-      }
-
-      final overlay = Overlay.of(context);
-      final renderBox = context.findRenderObject() as RenderBox?;
-
-      if (renderBox == null) {
-        isOpen.value = false;
-        return;
-      }
-
-      final size = renderBox.size;
-      final offset = renderBox.localToGlobal(Offset.zero);
-      final screenSize = MediaQuery.of(context).size;
-      final availableHeight =
-          screenSize.height - offset.dy - size.height - 32.sp;
-
-      overlayEntry = OverlayEntry(
-        builder:
-            (context) => _DropdownOverlay(
-              layerLink: layerLink,
-              triggerSize: size,
-              triggerOffset: offset,
-              screenWidth: screenSize.width,
-              availableHeight: availableHeight,
-              animation: animation,
-              categories: categories,
-              openedAt: openedAt,
-              onCategorySelect: (category) {
-                HapticFeedbackService.selection();
-                onCategoryChanged(category);
-                // Close immediately after selection
-                if (ResponsiveHelper.isTablet) {
-                  TabletPopupState.markClosed();
-                }
-                animationController.reverse().then((_) {
-                  isOpen.value = false;
-                });
-              },
-              onCategoryChange: (category) {
-                // Select category WITHOUT closing dropdown (for expand arrow)
-                HapticFeedbackService.selection();
-                onCategoryChanged(category);
-                // Don't close - let the dropdown stay open to show loaded rounds
-              },
-              onRoundSelect: (round) {
-                print('🟢 onRoundSelect called: ${round.name} (${round.id})');
-                HapticFeedbackService.selection();
-                onRoundChanged(round);
-                // Close immediately after selection
-                if (ResponsiveHelper.isTablet) {
-                  TabletPopupState.markClosed();
-                }
-                animationController.reverse().then((_) {
-                  isOpen.value = false;
-                });
-              },
-              onDismiss: () {
-                if (ResponsiveHelper.isTablet) {
-                  TabletPopupState.markClosed();
-                }
-                animationController.reverse().then((_) {
-                  isOpen.value = false;
-                });
-              },
-            ),
-      );
-
-      overlay.insert(overlayEntry!);
-
-      void removeOverlay() {
-        try {
-          if (ResponsiveHelper.isTablet) {
-            TabletPopupState.markClosed();
-          }
-          if (overlayEntry?.mounted == true) {
-            overlayEntry?.remove();
-          }
-        } catch (e) {
-          overlayEntry?.dispose();
-        }
-      }
-
-      isOpen.addListener(removeOverlay);
-    });
   }
 
   String _extractCategoryName(String fullName) {
@@ -441,28 +290,30 @@ class _StadiumChipButton extends HookWidget {
                   : _FluidShimmerPainter(
                     progress: shimmerValue,
                     shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                    borderRadius: 12.br,
+                    borderRadius: 20.br,
                   ),
           child: child,
         );
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12.br),
-          color:
+      child: GlassContainer(
+        // Same graphite glass surface as the top mode tabs (LiquidTabBar), so
+        // the bottom chip reads as one design language — just brand-tinted while
+        // the dropdown is open instead of the tabs' selected-cell bubble.
+        useOwnLayer: true,
+        padding: EdgeInsets.symmetric(horizontal: 18.sp, vertical: 14.sp),
+        shape: LiquidRoundedSuperellipse(borderRadius: 20.br),
+        settings: LiquidGlassSettings(
+          glassColor:
               isOpen
-                  ? kPrimaryColor.withValues(alpha: 0.15)
-                  : context.colors.textPrimary.withValues(alpha: 0.06),
-          border: Border.all(
-            color:
-                isOpen
-                    ? kPrimaryColor.withValues(alpha: 0.4)
-                    : context.colors.textPrimary.withValues(alpha: 0.12),
-            width: 1.0,
-          ),
+                  ? kPrimaryColor.withValues(alpha: 0.28)
+                  : const Color(0xA62A2A2E),
+          thickness: 26,
+          blur: 14,
+          lightIntensity: 0,
+          ambientStrength: 0,
+          glowIntensity: 0,
+          ambientRim: 0,
+          chromaticAberration: 0,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -776,57 +627,54 @@ class _LiveDot extends HookWidget {
   }
 }
 
-/// The floating dropdown overlay
-class _DropdownOverlay extends ConsumerWidget {
-  final LayerLink layerLink;
-  final Size triggerSize;
-  final Offset triggerOffset;
-  final double screenWidth;
-  final double availableHeight;
-  final Animation<double> animation;
+/// Opens the category/round picker as a liquid-glass bottom sheet. Replaces the
+/// old anchored overlay dropdown — a sheet reads more naturally for a
+/// full-list selector and avoids the tablet phantom-tap gymnastics.
+Future<void> _showCategorySheet({
+  required BuildContext context,
+  required List<TourModel> categories,
+  required ValueChanged<TourModel> onCategoryChanged,
+  required ValueChanged<GamesAppBarModel> onRoundChanged,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder:
+        (sheetContext) => _CategorySheet(
+          categories: categories,
+          onCategoryChanged: onCategoryChanged,
+          onRoundChanged: onRoundChanged,
+        ),
+  );
+}
+
+/// Bottom-sheet body for the category/round picker. Re-watches the tour/rounds
+/// providers so expanding a non-selected category live-loads its rounds, then
+/// reuses the shared draggable-droplet [_DropdownContent] selector.
+class _CategorySheet extends ConsumerWidget {
   final List<TourModel> categories;
-  final DateTime openedAt;
-  final ValueChanged<TourModel> onCategorySelect;
-  final ValueChanged<TourModel> onCategoryChange; // Select without closing
-  final ValueChanged<GamesAppBarModel> onRoundSelect;
-  final VoidCallback onDismiss;
+  final ValueChanged<TourModel> onCategoryChanged;
+  final ValueChanged<GamesAppBarModel> onRoundChanged;
 
-  const _DropdownOverlay({
-    required this.layerLink,
-    required this.triggerSize,
-    required this.triggerOffset,
-    required this.screenWidth,
-    required this.availableHeight,
-    required this.animation,
+  const _CategorySheet({
     required this.categories,
-    required this.openedAt,
-    required this.onCategorySelect,
-    required this.onCategoryChange,
-    required this.onRoundSelect,
-    required this.onDismiss,
+    required this.onCategoryChanged,
+    required this.onRoundChanged,
   });
-
-  /// Check if enough time has passed to allow dismissal (tablet phantom tap protection)
-  bool _canDismiss() {
-    if (!ResponsiveHelper.isTablet) return true;
-    const minOpenDuration = Duration(milliseconds: 600);
-    final elapsed = DateTime.now().difference(openedAt);
-    return elapsed >= minOpenDuration;
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch providers directly to get live data when category changes
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
     final roundsAsync = ref.watch(gamesAppBarProvider);
 
     final tourData = tourDetailAsync.valueOrNull;
     final selectedCategory =
         tourData != null
-            ? (categories.firstWhere(
+            ? categories.firstWhere(
               (t) => t.tour.id == tourData.aboutTourModel.id,
               orElse: () => categories.first,
-            ))
+            )
             : categories.first;
 
     final rounds = roundsAsync.valueOrNull?.gamesAppBarModels ?? [];
@@ -839,78 +687,71 @@ class _DropdownOverlay extends ConsumerWidget {
             )
             : null;
 
-    // Wider dropdown for better readability - use available horizontal space
-    final minWidth = ResponsiveHelper.isTablet ? 400.0 : 300.w;
-    final maxWidth = ResponsiveHelper.isTablet ? 600.0 : 400.w;
-    final dropdownWidth = (screenWidth - 32.w).clamp(minWidth, maxWidth);
-    final leftOffset = (screenWidth - dropdownWidth) / 2;
+    final mediaQuery = MediaQuery.of(context);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        // Tablet phantom tap protection - ignore taps that come too soon after opening
-        if (!_canDismiss()) {
-          debugPrint(
-            '🛡️ CATEGORY DROPDOWN: dismiss blocked - opened too recently',
-          );
-          return;
-        }
-        onDismiss();
-      },
-      child: Stack(
-        children: [
-          Positioned.fill(child: Container(color: Colors.transparent)),
-          Positioned(
-            left: leftOffset,
-            top: triggerOffset.dy + triggerSize.height + 8.sp,
-            child: Material(
-              type: MaterialType.transparency,
-              child: AnimatedBuilder(
-                animation: animation,
-                builder: (context, child) {
-                  final progress = animation.value.clamp(0.0, 1.0);
-                  return Transform.scale(
-                    scale: 0.92 + (progress * 0.08),
-                    alignment: Alignment.topCenter,
-                    child: Opacity(opacity: progress, child: child),
-                  );
-                },
-                child: GestureDetector(
-                  // Block taps from reaching the dismiss handler
-                  onTap: () {},
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    width: dropdownWidth,
-                    constraints: BoxConstraints(
-                      maxHeight: availableHeight.clamp(100.0, 350.0),
-                    ),
-                    decoration: BoxDecoration(
-                      color: context.colors.surface,
-                      borderRadius: BorderRadius.circular(16.br),
-                      border: Border.all(
-                        color: context.colors.textPrimary.withValues(alpha: 0.08),
-                        width: 1.0,
-                      ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16.br),
-                      child: _DropdownContent(
-                        animation: animation,
-                        categories: categories,
-                        selectedCategory: selectedCategory,
-                        rounds: rounds,
-                        selectedRound: selectedRound,
-                        onCategorySelect: onCategorySelect,
-                        onCategoryChange: onCategoryChange,
-                        onRoundSelect: onRoundSelect,
-                      ),
-                    ),
+    return Padding(
+      padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
+      child: Container(
+        margin: EdgeInsets.fromLTRB(
+          12.w,
+          0,
+          12.w,
+          12.h + mediaQuery.viewPadding.bottom,
+        ),
+        constraints: BoxConstraints(maxHeight: mediaQuery.size.height * 0.7),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(20.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.08),
+            width: 1.0,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20.br),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Grab handle.
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 10.h),
+                child: Container(
+                  width: 40.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: context.colors.textPrimary.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(2.br),
                   ),
                 ),
               ),
-            ),
+              Flexible(
+                child: _DropdownContent(
+                  // No open animation in a sheet — the sheet itself animates in.
+                  animation: const AlwaysStoppedAnimation(1.0),
+                  categories: categories,
+                  selectedCategory: selectedCategory,
+                  rounds: rounds,
+                  selectedRound: selectedRound,
+                  onCategorySelect: (category) {
+                    HapticFeedbackService.selection();
+                    onCategoryChanged(category);
+                    Navigator.of(context).pop();
+                  },
+                  onCategoryChange: (category) {
+                    // Expand-arrow: select without closing so rounds load.
+                    HapticFeedbackService.selection();
+                    onCategoryChanged(category);
+                  },
+                  onRoundSelect: (round) {
+                    HapticFeedbackService.selection();
+                    onRoundChanged(round);
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

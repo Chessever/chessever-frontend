@@ -12,7 +12,12 @@ void main() {
 
   test('glass_kit re-exports package + app adapters', () {
     final kit = read('lib/widgets/liquid_glass/glass_kit.dart');
-    expect(kit, contains("export 'package:liquid_glass_widgets/liquid_glass_widgets.dart'"));
+    expect(
+      kit,
+      contains(
+        "export 'package:liquid_glass_widgets/liquid_glass_widgets.dart'",
+      ),
+    );
     expect(kit, contains('glass_feedback.dart'));
     expect(kit, contains('glass_loading.dart'));
     expect(kit, contains('glass_island_search.dart'));
@@ -25,23 +30,33 @@ void main() {
     expect(search, contains('useOwnLayer: true'));
   });
 
-  test('home uses contentAwareBrightness + GlassTabBar.searchable + GlassBadge', () {
-    final home = read('lib/screens/home/home_screen.dart');
-    final events = read('lib/screens/group_event/group_event_screen.dart');
-    final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
-    expect(home, contains('contentAwareBrightness: true'));
-    expect(home, contains('showGlassConfirmDialog'));
-    expect(nav, contains('GlassTabBar.searchable'));
-    expect(events, contains('GlassBadge('));
-  });
+  test(
+    'home uses contentAwareBrightness + searchable bottom filter request',
+    () {
+      final home = read('lib/screens/home/home_screen.dart');
+      final events = read('lib/screens/group_event/group_event_screen.dart');
+      final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
+      expect(home, contains('contentAwareBrightness: true'));
+      expect(home, contains('showGlassConfirmDialog'));
+      // Canonical bottom nav: one GlassTabBar.searchable pill, wired to the
+      // shared home-search + filter-request providers.
+      expect(nav, contains('GlassTabBar.searchable('));
+      expect(nav, contains('GlassSearchBarConfig('));
+      expect(nav, contains('homeBottomSearchFilterRequestProvider'));
+      expect(events, contains('homeBottomSearchFilterRequestProvider'));
+    },
+  );
 
-  test('settings appearance uses GlassListTile.standalone + GlassSwitch sibling', () {
-    final settings = read('lib/screens/settings/settings_page.dart');
-    expect(settings, contains('GlassListTile.standalone'));
-    expect(settings, contains('GlassSwitch('));
-    // Must not nest switch inside GroupedSection children.
-    expect(settings, isNot(contains('trailing: GlassSwitch')));
-  });
+  test(
+    'settings appearance uses GlassListTile.standalone + GlassSwitch sibling',
+    () {
+      final settings = read('lib/screens/settings/settings_page.dart');
+      expect(settings, contains('GlassListTile.standalone'));
+      expect(settings, contains('GlassSwitch('));
+      // Must not nest switch inside GroupedSection children.
+      expect(settings, isNot(contains('trailing: GlassSwitch')));
+    },
+  );
 
   test('GlassLoading and feedback adapters compile against package types', () {
     // Type-level smoke: constructors are real package entry points.
@@ -80,33 +95,17 @@ void main() {
     }
   });
 
-  test('bottom nav + island search wire cue and motor for widen morph', () {
+  test('bottom nav delegates the search morph to the package, not a hand-rolled '
+      'cue/motor stack', () {
     final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
-    final search = read('lib/widgets/liquid_glass/glass_island_search.dart');
-    final motion = read('lib/widgets/liquid_glass/glass_motion.dart');
-    expect(nav, contains('package:cue/cue.dart'));
-    expect(nav, contains('package:motor/motor.dart'));
-    expect(nav, contains('Cue.onToggle'));
-    expect(nav, contains('SingleMotionBuilder'));
-    expect(nav, contains('GlassMotion.searchMorphSpring'));
-    expect(nav, contains('GlassMotion.cueWiden'));
-    expect(nav, contains('GlassMotion.cueCollapse'));
-    expect(nav, contains('GlassMotion.searchDirection'));
-    expect(nav, contains('ScaleAct.keyframed'));
-    expect(nav, contains('morphBreathe'));
-    expect(nav, contains('morphLift'));
-    expect(search, contains('Cue.onToggle'));
-    expect(search, contains('Act.sizedClip'));
-    expect(search, contains('StretchAct.keyframed'));
-    expect(search, contains('SingleMotionBuilder'));
-    expect(search, contains('GlassMotion.cueWiden'));
-    expect(search, contains('GlassMotion.searchDirection'));
-    expect(motion, contains('CupertinoMotion'));
-    expect(motion, contains('searchMorphSpring'));
-    expect(motion, contains('cueWiden'));
-    expect(motion, contains('cueCollapse'));
-    expect(motion, contains('searchDirection'));
-    expect(motion, contains('morphBreathe'));
-    expect(motion, contains('widenBounce'));
+    // The searchable pill morph is the package's own animation. The nav must
+    // NOT reintroduce the previous bespoke cue + motor widen/collapse tower.
+    expect(nav, contains('GlassTabBar.searchable('));
+    expect(nav, isNot(contains('package:cue/cue.dart')));
+    expect(nav, isNot(contains('package:motor/motor.dart')));
+    expect(nav, isNot(contains('Cue.onToggle')));
+    expect(nav, isNot(contains('SingleMotionBuilder')));
+    expect(nav, isNot(contains('morphBreathe')));
+    expect(nav, isNot(contains('morphLift')));
   });
 }

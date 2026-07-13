@@ -707,10 +707,25 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ? ResponsiveHelper.contentMaxWidth
                     : double.infinity,
           ),
-          child: Column(
+          child: Stack(
             children: [
-              // Island stack: back+title → floating tabs (chips when scrolled).
-              GlassIslandStack(
+              // Tab content owns the WHOLE screen and scrolls UNDER the floating
+              // chrome (the tab lists carry their own top scroll padding).
+              Positioned.fill(
+                child: NotificationListener<ScrollUpdateNotification>(
+                  onNotification: _handleScrollNotification,
+                  child: _buildTabContent(
+                    effectiveTitle: effectiveTitle,
+                    effectiveFederation: effectiveFederation,
+                  ),
+                ),
+              ),
+              // Floating top chrome: back + title, tabs, indicator, extras.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: GlassIslandStack(
                 gap: 6,
                 children: [
                   _buildAppBar(
@@ -757,16 +772,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ),
                   ),
                 ],
-              ),
-
-              // Tab content
-              Expanded(
-                child: NotificationListener<ScrollUpdateNotification>(
-                  onNotification: _handleScrollNotification,
-                  child: _buildTabContent(
-                    effectiveTitle: effectiveTitle,
-                    effectiveFederation: effectiveFederation,
-                  ),
                 ),
               ),
             ],

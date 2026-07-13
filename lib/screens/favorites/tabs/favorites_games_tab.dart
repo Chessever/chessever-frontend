@@ -23,23 +23,25 @@ import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
-import 'package:chessever2/widgets/scroll_to_top_button.dart';
+import 'package:chessever2/widgets/liquid_glass/game_tab_floating_controls.dart';
 import 'package:intl/intl.dart';
 
 /// Track animated game IDs for Favorites to prevent re-animation
 final Set<String> _favoritesAnimatedGameIds = {};
 
 class FavoritesGamesTab extends ConsumerStatefulWidget {
-  const FavoritesGamesTab({super.key});
+  const FavoritesGamesTab({super.key, this.topPadding = 0});
+
+  /// Top inset so the first item clears the floating glass chrome while the
+  /// list scrolls underneath it.
+  final double topPadding;
 
   @override
   ConsumerState<FavoritesGamesTab> createState() => _FavoritesGamesTabState();
@@ -457,13 +459,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          // Search bar
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-              child: _buildSearchBar(state),
-            ),
-          ),
+          SliverToBoxAdapter(child: SizedBox(height: widget.topPadding)),
 
           // Filter chips (only show when not searching)
           if (favorites.length > 1 && !state.isSearching)
@@ -493,166 +489,22 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     return Stack(
       children: [
         content,
-        // Scroll to top button
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: ScrollToTopButton(scrollController: _scrollController),
+        // Floating bottom-right cluster: scroll-to-top (top), then
+        // filter · layout-mode · search glass icon buttons.
+        GameTabFloatingControls(
+          scrollController: _scrollController,
+          searchController: _searchController,
+          searchFocusNode: _searchFocusNode,
+          searchFieldKey: e2eKey(E2eIds.favoritesGamesSearchField),
+          onSearchChanged: _onSearchChanged,
+          onSearchCleared: _clearSearch,
+          onToggleLayout: () =>
+              ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+          onFilter: () => _showFilterDialog(state),
+          filterActive: state.filter.hasActiveFilters,
+          filterCount: state.filter.activeFilterCount,
         ),
       ],
-    );
-  }
-
-  Widget _buildSearchBar(FavoritesCombinedGamesState state) {
-    final hasActiveFilters = state.filter.hasActiveFilters;
-    final activeFilterCount = state.filter.activeFilterCount;
-    final searchBarHeight = 48.h;
-
-    return SizedBox(
-      height: searchBarHeight,
-      child: Row(
-        children: [
-          // Search field
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.search,
-                    size: 20.sp,
-                    color: context.colors.textSecondary,
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: TextField(
-                      key: e2eKey(E2eIds.favoritesGamesSearchField),
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Search',
-                        hintStyle: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14.h),
-                      ),
-                    ),
-                  ),
-                  if (_searchController.text.isNotEmpty ||
-                      state.isSearching) ...[
-                    GestureDetector(
-                      onTap: _clearSearch,
-                      child: Icon(
-                        Icons.close,
-                        size: 20.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
-          ),
-          // Filter button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => _showFilterDialog(state),
-            child: Container(
-              key: e2eKey(E2eIds.favoritesGamesFilterButton),
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color:
-                    hasActiveFilters
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                        : context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color:
-                      hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                          : context.colors.surfaceRecessed,
-                ),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 20.sp,
-                    color:
-                        hasActiveFilters
-                            ? const Color(0xFFEF4444)
-                            : context.colors.textSecondary,
-                  ),
-                  // Badge showing active filter count
-                  if (hasActiveFilters)
-                    Positioned(
-                      right: 6.w,
-                      top: 6.h,
-                      child: Container(
-                        width: 14.w,
-                        height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$activeFilterCount',
-                            style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 9.sp,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          // Layout toggle button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-            child: Container(
-              width: searchBarHeight,
-              height: searchBarHeight,
-              decoration: BoxDecoration(
-                color: context.colors.background,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: context.colors.surfaceRecessed),
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  SvgAsset.chase_grid,
-                  width: 20.sp,
-                  height: 20.sp,
-                  colorFilter: ColorFilter.mode(
-                    context.colors.textSecondary,
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

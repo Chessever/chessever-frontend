@@ -1,20 +1,13 @@
 import 'dart:async';
 
-import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_nav_icon.dart';
-import 'package:chessever2/screens/search/global_search_screen.dart';
 import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
-import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
-import 'package:cue/cue.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
-import 'package:motor/motor.dart';
 
 enum BottomNavBarItem { tournaments, calendar, library }
 
@@ -67,22 +60,13 @@ final selectedBottomNavBarItemProvider =
       (ref) => BottomNavBarItem.tournaments,
     );
 
-/// Floating liquid-glass searchable bottom island (Apple Music morph).
-///
-/// Circular search control + tab pill; search expands horizontally with
-/// package jelly morph and takes width from the pill.
+/// Canonical iOS-26 liquid-glass navigation: a single floating [GlassTabBar]
+/// pill whose tabs morph into a search bar. This is the package's own
+/// Apple Music / Apple News pattern — no custom island stack, no hand-rolled
+/// morph physics. The bar samples the content scrolling behind it and flips
+/// its icon/label brightness automatically.
 class BottomNavBar extends ConsumerStatefulWidget {
   const BottomNavBar({super.key});
-
-  static const double barHeight = 64;
-  static const double verticalPadding = 12;
-  static const double horizontalPadding = 16;
-
-  /// Per-tab slot width for [GlassTabBar.searchable] (pill ≈ this × tab count).
-  static const double tabWidth = 72;
-
-  /// Visual width of the compact tab pill island (not full-bleed).
-  static double pillWidthFor(int tabCount) => tabWidth * tabCount;
 
   @override
   ConsumerState<BottomNavBar> createState() => _BottomNavBarState();
@@ -92,28 +76,32 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
   late final TextEditingController _searchController;
   late final FocusNode _searchFocus;
 
-  /// True for one frame after expand so auto-focus does not open full search.
-  bool _searchJustExpanded = false;
-
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
     _searchFocus = FocusNode();
-    _searchController.addListener(_onSearchText);
   }
 
   @override
   void dispose() {
-    _searchController.removeListener(_onSearchText);
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
 
-  void _onSearchText() {
-    ref.read(homeBottomSearchTextProvider.notifier).state =
-        _searchController.text;
+  /// The searchable pill toggled expanded / collapsed. Collapsing clears the
+  /// shared query so subscribed destinations (Events) reset their filter.
+  void _onSearchToggle(bool active) {
+    ref.read(homeBottomSearchExpandedProvider.notifier).state = active;
+    if (!active) {
+      _searchController.clear();
+      ref.read(homeBottomSearchTextProvider.notifier).state = '';
+      ref.read(homeBottomSearchFilterVisibleProvider.notifier).state = false;
+      _searchFocus.unfocus();
+    } else {
+      ref.read(homeBottomSearchFilterVisibleProvider.notifier).state = true;
+    }
   }
 
   void _onTabSelected(int index) {
@@ -125,11 +113,9 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
     }
 
     ref.read(selectedBottomNavBarItemProvider.notifier).state = next;
-    ref.read(homeScrollChromeProvider.notifier).reset();
     // Collapse search when switching tabs.
     if (ref.read(homeBottomSearchExpandedProvider)) {
-      ref.read(homeBottomSearchExpandedProvider.notifier).state = false;
-      _searchFocus.unfocus();
+      _onSearchToggle(false);
     }
 
     unawaited(
@@ -140,220 +126,100 @@ class _BottomNavBarState extends ConsumerState<BottomNavBar> {
     );
   }
 
-  void _setSearchActive(bool active) {
-    ref.read(homeBottomSearchExpandedProvider.notifier).state = active;
-    if (active) {
-      // First tap: expand the liquid field only — no keyboard yet.
-      // Guard field-tap for the expand animation so the same press does not
-      // open the dedicated page immediately.
-      _searchJustExpanded = true;
-      Future<void>.delayed(const Duration(milliseconds: 380), () {
-        if (mounted) _searchJustExpanded = false;
-      });
-      // Keep pill unfocused; keyboard is owned by GlobalSearchScreen.
-      _searchFocus.unfocus();
-    } else {
-      _searchJustExpanded = false;
-      _searchFocus.unfocus();
-    }
-  }
-
-  /// Second tap on the expanded field → fade-in dedicated search + keyboard.
-  void _openDedicatedSearch({String? seed}) {
-    final query = (seed ?? _searchController.text).trim();
-    _searchController.clear();
-    ref.read(homeBottomSearchTextProvider.notifier).state = '';
-    _setSearchActive(false);
-    if (!mounted) return;
-    unawaited(
-      Navigator.of(context).push<void>(
-        GlobalSearchScreen.route(initialQuery: query),
-      ),
-    );
-  }
-
-  void _onSearchFieldTap() {
-    // Still mid-expand from the first icon tap — ignore.
-    if (_searchJustExpanded) return;
-    if (!ref.read(homeBottomSearchExpandedProvider)) return;
-    _openDedicatedSearch();
-  }
-
-  void _onSearchSubmitted(String value) {
-    if (!ref.read(homeBottomSearchExpandedProvider)) return;
-    _openDedicatedSearch(seed: value);
-  }
-
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
-    final chrome = ref.watch(homeScrollChromeProvider);
-    final searchActive = ref.watch(homeBottomSearchExpandedProvider);
-    final isLight = context.isLightTheme;
     final selectedIndex = BottomNavBarItem.values.indexOf(selectedItem);
+    final searchActive = ref.watch(homeBottomSearchExpandedProvider);
 
-    final selectedColor = isLight ? kPrimaryColor : context.colors.textPrimary;
-    final inactiveColor =
-        isLight ? context.colors.textTertiary : context.colors.tabInactive;
-
-    final tabs = <GlassTab>[
-      for (final item in BottomNavBarItem.values)
-        GlassTab(
-          icon: GlassNavIcon(bottomNavBarIcons[item]!),
-          label: namesBottomNavBarIcons[item]!,
-          glowColor: selectedColor.withValues(alpha: 0.35),
-        ),
-    ];
-
-    // Package owns multi-axis pill morph (tab shrink + search widen leftward).
-    // springDescription is motor Cupertino widen physics (shared with cue).
-    final bar = GlassTabBar.searchable(
-      tabs: tabs,
-      selectedIndex: selectedIndex.clamp(0, tabs.length - 1),
+    // Bold dark glass bar with a vivid brand "jelly" indicator. The indicator's
+    // refraction physics are left to the package defaults on purpose — giving it
+    // a custom LiquidGlassSettings makes its lens sample the wrong backdrop and
+    // paint a stray reflection while it slides. We only tint it via
+    // indicatorColor and let GlassScaffold.bottomBar wire the backdrop sampling.
+    final brand = colors.brand;
+    return GlassTabBar.searchable(
+      selectedIndex: selectedIndex,
       onTabSelected: _onTabSelected,
       isSearchActive: searchActive,
-      springDescription: GlassMotion.searchMorphSpring,
+      verticalPadding: 28,
+      // Give the bar its OWN richer glass (thicker, deeper) so it reads as a
+      // distinct premium surface, not the same flat tint as page chrome.
+      settings: const LiquidGlassSettings(
+        glassColor: Color(0xA62A2A2E),
+        thickness: 26,
+        blur: 14,
+        lightIntensity: 0,
+        ambientStrength: 0,
+        glowIntensity: 0,
+        ambientRim: 0,
+        chromaticAberration: 0,
+      ),
+      // Selected item wears the brand — a brand-lit icon/label reading through a
+      // glass lens is what sells "premium", not a painted-in bubble.
+      selectedIconColor: brand,
+      unselectedIconColor: colors.tabInactive,
+      selectedLabelColor: brand,
+      unselectedLabelColor: colors.tabInactive,
+      // Clean brand pill — NO glow halo (that was the "reflection around it")
+      // and the indicator's own glass edges are zeroed so it has no rim either.
+      indicatorColor: brand.withValues(alpha: 0.26),
+      indicatorSettings: const LiquidGlassSettings(
+        thickness: 10,
+        blur: 8,
+        lightIntensity: 0,
+        ambientStrength: 0,
+        glowIntensity: 0,
+        ambientRim: 0,
+        chromaticAberration: 0,
+      ),
+      indicatorPinchStrength: 0.3,
+      magnification: 1.0,
+      glowBlurRadius: 0,
+      glowSpreadRadius: 0,
+      glowOpacity: 0,
+      tabs: [
+        for (final item in BottomNavBarItem.values)
+          GlassTab(
+            label: namesBottomNavBarIcons[item],
+            semanticLabel: namesBottomNavBarIcons[item],
+            icon: GlassNavIcon(bottomNavBarIcons[item]!, size: 22),
+          ),
+      ],
       searchConfig: GlassSearchBarConfig(
-        onSearchToggle: _setSearchActive,
-        hintText: 'Search',
         controller: _searchController,
         focusNode: _searchFocus,
-        // Expand only — keyboard + real search live on GlobalSearchScreen.
-        autoFocusOnExpand: false,
-        expandWhenActive: true,
-        showsCancelButton: true,
-        onChanged: (_) => _onSearchText(),
-        onSubmitted: _onSearchSubmitted,
-        onSearchFieldTap: _onSearchFieldTap,
-        textInputAction: TextInputAction.search,
-        onCancelTap: () {
-          _searchController.clear();
-          ref.read(homeBottomSearchTextProvider.notifier).state = '';
-          _setSearchActive(false);
+        hintText: 'Search',
+        // In-place search: expand → keyboard → the active page filters itself
+        // from homeBottomSearchTextProvider. No dedicated search screen.
+        autoFocusOnExpand: true,
+        onSearchToggle: _onSearchToggle,
+        onChanged: (value) {
+          ref.read(homeBottomSearchTextProvider.notifier).state = value;
         },
-        searchIcon: KeyedSubtree(
-          key: e2eKey(E2eIds.eventsSearchField),
-          child: Icon(
-            CupertinoIcons.search,
-            color: inactiveColor,
-            size: 22,
-          ),
-        ),
-        textColor: context.colors.textPrimary,
-        cursorColor: selectedColor,
-        searchIconColor: inactiveColor,
+        onCancelTap: () => _onSearchToggle(false),
       ),
-      barHeight: BottomNavBar.barHeight,
-      searchBarHeight: 50,
-      verticalPadding: BottomNavBar.verticalPadding,
-      horizontalPadding: BottomNavBar.horizontalPadding,
-      // Per-tab slot width (package: pill ≈ tabWidth × tabCount). Keep ~70–88
-      // so 3 tabs stay a compact floating island, not a full-bleed slab.
-      tabWidth: BottomNavBar.tabWidth,
-      tabPillAnchor: GlassTabPillAnchor.start,
-      enableBlend: false,
-      showIndicator: true,
-      selectedIconColor: selectedColor,
-      unselectedIconColor: inactiveColor,
-      selectedLabelColor: selectedColor,
-      unselectedLabelColor: inactiveColor,
-      iconSize: 22,
-      labelFontSize: 11,
-      quality: GlassQuality.standard,
-    );
-
-    // Unique e2e keys on translucent hit targets sized to the compact pill
-    // only (tabWidth × tabCount). Must NOT span the gap between pill and
-    // search circle — otherwise taps in empty space change tabs.
-    final tabCount = BottomNavBarItem.values.length;
-    final pillW = BottomNavBar.pillWidthFor(tabCount);
-    final island = Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        bar,
-        if (!searchActive)
-          Positioned(
-            left: BottomNavBar.horizontalPadding,
-            width: pillW,
-            bottom: BottomNavBar.verticalPadding,
-            height: BottomNavBar.barHeight,
-            child: Row(
-              children: [
-                for (var i = 0; i < tabCount; i++)
-                  Expanded(
-                    child: GestureDetector(
-                      key: switch (BottomNavBarItem.values[i]) {
-                        BottomNavBarItem.tournaments =>
-                          e2eKey(E2eIds.navEvents),
-                        BottomNavBarItem.calendar =>
-                          e2eKey(E2eIds.navCalendar),
-                        BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
-                      },
-                      behavior: HitTestBehavior.translucent,
-                      onTap: () => _onTabSelected(i),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-
-    // Motion stack (Apple Music widen forward / snappy back):
-    // 1) cue — mid-morph scale pulse (1 → peak → 1; both rests identity)
-    // 2) motor morph progress — continuous breathe + lift (directional springs)
-    // 3) motor scroll chrome — minimize on scroll (separate axis)
-    // Package springDescription already widens the search pill itself.
-    //
-    // Important: resting collapsed/expanded must be identity transforms so
-    // e2e hit slots and layout stay exact (no permanent 0.94 scale).
-    return Cue.onToggle(
-      toggled: searchActive,
-      motion: GlassMotion.cueWiden,
-      reverseMotion: GlassMotion.cueCollapse,
-      acts: [
-        // Soft inflate mid-open; ends match so collapsed layout is unscaled.
-        ScaleAct.keyframed(
-          alignment: Alignment.bottomCenter,
-          frames: Keyframes.fractional(
-            const [
-              FKeyframe.key(1.0, at: 0.0),
-              FKeyframe.key(1.04, at: 0.42),
-              FKeyframe.key(1.0, at: 1.0),
-            ],
-            duration: GlassMotion.widenDuration,
-          ),
-        ),
-      ],
-      child: SingleMotionBuilder(
-        motion: GlassMotion.searchDirection(searchActive),
-        value: searchActive ? 1.0 : 0.0,
-        builder: (context, morphT, child) {
-          final breathe = GlassMotion.morphBreathe(morphT);
-          final lift = GlassMotion.morphLift(morphT);
-          return Transform.translate(
-            offset: Offset(0, lift),
-            child: Transform.scale(
-              scale: breathe,
-              alignment: Alignment.bottomCenter,
-              child: child,
-            ),
-          );
-        },
-        child: SingleMotionBuilder(
-          motion: GlassMotion.scrollChrome,
-          value: chrome.scale,
-          builder: (context, scale, child) {
-            return Transform.scale(
-              scale: scale,
-              alignment: Alignment.bottomCenter,
-              child: child,
-            );
-          },
-          child: island,
-        ),
-      ),
+      // The filter action only applies to search results, so it stays visible
+      // while typing instead of collapsing with the keyboard.
+      extraButton:
+          searchActive
+              ? GlassTabBarExtraButton(
+                icon: const Icon(CupertinoIcons.slider_horizontal_3),
+                label: 'Filter',
+                iconColor: colors.textPrimary,
+                position: GlassExtraButtonPosition.afterSearch,
+                collapseOnSearchFocus: false,
+                onTap: () {
+                  final request = ref.read(
+                    homeBottomSearchFilterRequestProvider,
+                  );
+                  ref
+                      .read(homeBottomSearchFilterRequestProvider.notifier)
+                      .state = request + 1;
+                },
+              )
+              : null,
     );
   }
 }

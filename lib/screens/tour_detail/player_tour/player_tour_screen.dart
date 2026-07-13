@@ -175,9 +175,13 @@ class _StandingsList extends ConsumerWidget {
               key: const PageStorageKey<String>('standings_list'),
               controller: controller,
               primary: false,
+              // Clear the floating top bar + bottom chrome (event view floats).
               padding: EdgeInsets.only(
-                top: 8.sp,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
+                top: MediaQuery.of(context).padding.top + 66,
+                bottom:
+                    MediaQuery.of(context).viewInsets.bottom +
+                    MediaQuery.of(context).padding.bottom +
+                    84,
               ),
               itemCount: data.isEmpty ? 1 : data.length,
               itemBuilder: (context, index) {

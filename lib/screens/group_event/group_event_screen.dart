@@ -17,27 +17,31 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_avatar_island.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_profile_header.dart';
 import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_tab_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 enum GroupEventCategory { past, current, forYou, search }
 
 /// Provider for the current search query used in search tab
 final searchTabQueryProvider = StateProvider<String>((ref) => '');
+
+/// Icon per category, revealed when the tabs separate on scroll.
+final _categoryIcon = {
+  GroupEventCategory.past: CupertinoIcons.clock,
+  GroupEventCategory.current: CupertinoIcons.dot_radiowaves_left_right,
+  GroupEventCategory.forYou: CupertinoIcons.sparkles,
+  GroupEventCategory.search: CupertinoIcons.search,
+};
 
 final _mappedName = {
   GroupEventCategory.past: 'Past',
@@ -66,12 +70,6 @@ class GroupEventScreen extends HookConsumerWidget {
       dismissedSmartEventCardKeysProvider,
     );
 
-    int activeFilterCount(FilterPopupState state) {
-      return state.formatsAndStates.length + (state.hasEloFilter ? 1 : 0);
-    }
-
-    final filterBadgeCount = activeFilterCount(appliedFilterState);
-
     // Determine which categories to show (search tab only appears when searching)
     final visibleCategories =
         hasActiveSearch
@@ -99,6 +97,11 @@ class GroupEventScreen extends HookConsumerWidget {
     final isAnimating = useRef(false);
     final isSearching = useState(false);
     final focusNode = useFocusNode();
+
+    // Tabs glue at the top of the list and separate into icon chips on
+    // scroll-down (LiquidTabBar animates the transition).
+    final chromeCollapse = useMemoized(() => ChromeScrollCollapse(), const []);
+    final tabsSeparated = useState(false);
 
     useEffect(() {
       void onFocus() => isSearching.value = focusNode.hasFocus;
@@ -245,9 +248,6 @@ class GroupEventScreen extends HookConsumerWidget {
       tablet: 24.sp,
     );
 
-    final chromeCollapse = useMemoized(ChromeScrollCollapse.new);
-    final segmentsExpanded = useState(true);
-
     void openFilter() {
       ref.read(filterPopupProvider.notifier).setState(appliedFilterState);
       showAlertModal<void>(
@@ -267,102 +267,62 @@ class GroupEventScreen extends HookConsumerWidget {
       );
     }
 
-    // Island-only top: avatar circle + filter circle + compact category strip.
-    // Search expands from the home bottom searchable pill (Apple Music morph).
+    ref.listen<int>(homeBottomSearchFilterRequestProvider, (previous, next) {
+      if (previous == null || previous == next || !context.mounted) return;
+      openFilter();
+    });
+
+    void selectCategory(int index) {
+      final newCategory = visibleCategories[index];
+      final currentCategory = selectedTourEvent;
+      if (newCategory == currentCategory) {
+        final controller = switch (newCategory) {
+          GroupEventCategory.forYou => forYouScrollController,
+          GroupEventCategory.past => pastScrollController,
+          GroupEventCategory.current => currentScrollController,
+          GroupEventCategory.search => searchScrollController,
+        };
+        if (controller.hasClients) {
+          controller.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
+        }
+        return;
+      }
+
+      // New tab starts at the top → tabs re-glue.
+      chromeCollapse.reset();
+      tabsSeparated.value = false;
+      ref.read(selectedGroupCategoryProvider.notifier).state = newCategory;
+    }
+
+    // One horizontal island: avatar + destination tabs. Search/filter controls
+    // belong to the bottom morph and never compete with this row.
     return Material(
       key: e2eKey(E2eIds.eventsRoot),
       color: context.colors.background,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GlassIslandStack(
-                gap: 6,
-                children: [
-                  GlassIslandTopBar(
-                    horizontalPadding: horizontalPadding,
-                    topPadding: 0,
-                    leading: GlassAvatarIsland(
-                      onTap: () => Scaffold.maybeOf(context)?.openDrawer(),
-                    ),
-                    trailing: [
-                      GlassBadge(
-                        count: filterBadgeCount,
-                        backgroundColor: context.colors.brand,
-                        child: GlassIconButton(
-                          key: e2eKey(E2eIds.eventsFilterButton),
-                          icon: Icon(
-                            CupertinoIcons.slider_horizontal_3,
-                            color: context.colors.iconPrimary,
-                          ),
-                          onPressed: openFilter,
-                          size: 40,
-                          iconSize: 18,
-                          useOwnLayer: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                  _SegmentedSwitcher(
-                    searchController: searchController,
-                    selectedTourEvent: selectedTourEvent,
-                    visibleCategories: visibleCategories,
-                    expanded: segmentsExpanded.value,
-                    onSelectedChanged: (index) {
-                      final newCategory = visibleCategories[index];
-                      final currentCategory = selectedTourEvent;
-
-                      if (newCategory == currentCategory) {
-                        ScrollController? controller;
-                        if (newCategory == GroupEventCategory.forYou) {
-                          controller = forYouScrollController;
-                        } else if (newCategory == GroupEventCategory.past) {
-                          controller = pastScrollController;
-                        } else if (newCategory == GroupEventCategory.current) {
-                          controller = currentScrollController;
-                        } else if (newCategory == GroupEventCategory.search) {
-                          controller = searchScrollController;
-                        }
-
-                        if (controller != null && controller.hasClients) {
-                          controller.animateTo(
-                            0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic,
-                          );
-                        }
-                        chromeCollapse.reset();
-                        segmentsExpanded.value = true;
-                        return;
-                      }
-
-                      ref.read(selectedGroupCategoryProvider.notifier).state =
-                          newCategory;
-                      chromeCollapse.reset();
-                      segmentsExpanded.value = true;
-                    },
-                  ),
-                ],
-              ),
-              Expanded(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: ResponsiveHelper.contentMaxWidth,
+                ),
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
-                    if (notification is! ScrollUpdateNotification) {
-                      return false;
-                    }
-                    if (chromeCollapse.onScrollUpdate(notification)) {
-                      segmentsExpanded.value = chromeCollapse.expanded;
+                    if (notification is ScrollUpdateNotification &&
+                        chromeCollapse.onScrollUpdate(notification)) {
+                      tabsSeparated.value = !chromeCollapse.expanded;
                     }
                     return false;
                   },
                   child: PageView.builder(
-                  controller: pageController,
-                  itemCount: visibleCategories.length,
+                    controller: pageController,
+                    itemCount: visibleCategories.length,
                   onPageChanged: (index) {
                     if (!isAnimating.value &&
                         index < visibleCategories.length) {
@@ -532,31 +492,70 @@ class GroupEventScreen extends HookConsumerWidget {
                               (error, stackTrace) => const GenericErrorWidget(),
                         );
                   },
-                ),
+                  ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            top: MediaQuery.viewPaddingOf(context).top + 18,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: ResponsiveHelper.contentMaxWidth,
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: SizedBox(
+                    height: 44,
+                    child: Row(
+                      children: [
+                        // Header takes ALL leftover width (Expanded, no Spacer) so
+                        // the name fills the gap up to the tabs — a separate Spacer
+                        // would split that gap 50/50 and truncate the name early.
+                        // Tabs keep their natural width and hug the right corner.
+                        Expanded(
+                          child: GlassProfileHeader(
+                            collapsed: tabsSeparated.value,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _FloatingEventTabs(
+                          searchController: searchController,
+                          selectedTourEvent: selectedTourEvent,
+                          visibleCategories: visibleCategories,
+                          onSelectedChanged: selectCategory,
+                          separated: tabsSeparated.value,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SegmentedSwitcher extends ConsumerWidget {
-  const _SegmentedSwitcher({
+class _FloatingEventTabs extends ConsumerWidget {
+  const _FloatingEventTabs({
     required this.searchController,
     required this.selectedTourEvent,
     required this.visibleCategories,
     required this.onSelectedChanged,
-    this.expanded = true,
+    required this.separated,
   });
 
   final TextEditingController searchController;
   final GroupEventCategory selectedTourEvent;
   final List<GroupEventCategory> visibleCategories;
   final ValueChanged<int> onSelectedChanged;
-  final bool expanded;
+  final bool separated;
 
   /// Formats search query for tab display with title casing and smart truncation.
   /// Examples:
@@ -620,28 +619,22 @@ class _SegmentedSwitcher extends ConsumerWidget {
           return _mappedName[category]!;
         }).toList();
 
-    final optionLabels =
-        visibleCategories.map((category) {
-          String baseLabel;
-          if (category == GroupEventCategory.search &&
-              searchTabQuery.isNotEmpty) {
-            baseLabel = _formatSearchTabTitle(searchTabQuery);
-          } else {
-            baseLabel = _mappedName[category]!;
-          }
-          return Text(baseLabel);
-        }).toList();
+    final icons =
+        visibleCategories
+            .map((category) => _categoryIcon[category] ?? CupertinoIcons.circle)
+            .toList();
 
-    // Full segment island at top → floating chips when scrolled.
-    return GlassFloatingSegments(
+    final selectedIndex = visibleCategories
+        .indexOf(selectedTourEvent)
+        .clamp(0, visibleCategories.length - 1);
+
+    // Glued at the top of the list, separated into icon chips on scroll-down.
+    return LiquidTabBar(
       options: options,
-      optionLabels: optionLabels,
-      selectedIndex: visibleCategories
-          .indexOf(selectedTourEvent)
-          .clamp(0, visibleCategories.length - 1),
+      icons: icons,
+      selectedIndex: selectedIndex,
       onSelected: onSelectedChanged,
-      expanded: expanded,
-      notifyOnReselect: true,
+      separated: separated,
     );
   }
 }

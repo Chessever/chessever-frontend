@@ -19,6 +19,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -264,16 +265,11 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: IconButton(
+            child: GlassBackButton(
               onPressed: () {
                 HapticFeedbackService.light();
                 Navigator.of(context).pop();
               },
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.7),
-                size: 20.ic,
-              ),
             ),
           ),
           Opacity(

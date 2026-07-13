@@ -26,14 +26,15 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/home_search_providers.dart';
+import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_tab_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_profile_header.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -43,11 +44,12 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  final ChromeScrollCollapse _chromeCollapse = ChromeScrollCollapse();
   String _searchQuery = '';
-  bool _searchExpanded = false;
+
+  /// Top action chips unite at the top of the list, separate on scroll-down.
+  bool _controlsSeparated = false;
 
   @override
   void initState() {
@@ -61,8 +63,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   void dispose() {
-    _searchFocusNode.dispose();
-    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -245,15 +245,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         );
 
         // Redirect to the book games list view after creation.
-        final shouldFocusSearch = await Navigator.of(context).push<bool>(
+        await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => FolderContentsScreen(folder: newFolder),
           ),
         );
-        if (shouldFocusSearch == true && mounted) {
-          setState(() => _searchExpanded = true);
-          _searchFocusNode.requestFocus();
-        }
       }
     } catch (e, st) {
       talker.handle(e, st);
@@ -290,13 +286,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       return;
     }
 
-    final shouldFocusSearch = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => FolderContentsScreen(folder: folder)),
     );
-    if (shouldFocusSearch == true && mounted) {
-      setState(() => _searchExpanded = true);
-      _searchFocusNode.requestFocus();
-    }
   }
 
   @override
@@ -310,6 +302,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     });
 
+    // Single search source: the bottom-nav field filters this page in place.
+    ref.listen<String>(homeBottomSearchTextProvider, (previous, next) {
+      if (previous == next) return;
+      setState(() => _searchQuery = next.trim().toLowerCase());
+    });
+
+    // Content owns the full screen (like Events); the glass action island
+    // floats over it instead of a sticky app bar that steals a row of height.
+    final topInset = MediaQuery.viewPaddingOf(context).top;
     return ScreenWrapper(
       child: KeyedSubtree(
         key: e2eKey(E2eIds.libraryRoot),
@@ -318,8 +319,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: Column(
-              children: [_buildTopBar(), Expanded(child: _buildContent())],
+            child: Stack(
+              children: [
+                Positioned.fill(child: _buildContent()),
+                Positioned(
+                  top: topInset + 18,
+                  left: 0,
+                  right: 0,
+                  child: _buildTopBar(),
+                ),
+              ],
             ),
           ),
         ),
@@ -328,63 +337,51 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildTopBar() {
-    // Island row: expanding search + glass action circles (no full-width slab).
-    return GlassIslandTopBar(
-      center: GlassIslandSearch(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        expanded: _searchExpanded,
-        textFieldKey: e2eKey(E2eIds.librarySearchField),
-        hintText: 'Search',
-        onExpandedChanged: (v) => setState(() => _searchExpanded = v),
-        onChanged: (query) {
-          setState(() => _searchQuery = query.trim().toLowerCase());
-        },
-        onClear: () => setState(() => _searchQuery = ''),
+    // Single horizontal line (mirrors the home header): avatar/name fills the
+    // leftover width, the action chips hug the right — icon+text chips united
+    // into one bar, dismantling into icons on scroll-down. Padding matches the
+    // Tournaments/Calendar headers so the avatar sits at the identical x and
+    // doesn't jump when switching bottom-nav tabs.
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 12.sp,
+      tablet: 24.sp,
+    );
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: SizedBox(
+        height: 44,
+        child: Row(
+          children: [
+            Expanded(
+              child: GlassProfileHeader(collapsed: _controlsSeparated),
+            ),
+            const SizedBox(width: 8),
+            LiquidActionBar(
+              separated: _controlsSeparated,
+              actions: [
+                LiquidAction(
+                  keyId: e2eKey(E2eIds.libraryOpeningExplorerButton),
+                  icon: CupertinoIcons.compass,
+                  label: 'Explorer',
+                  onTap: _navigateToOpeningExplorer,
+                ),
+                LiquidAction(
+                  keyId: e2eKey(E2eIds.libraryBoardEditorButton),
+                  icon: CupertinoIcons.square_grid_2x2,
+                  label: 'Board',
+                  onTap: _navigateToEmptyBoard,
+                ),
+                LiquidAction(
+                  keyId: e2eKey(E2eIds.libraryCreateFolderButton),
+                  icon: CupertinoIcons.plus,
+                  label: 'New',
+                  onTap: _handlePlusButton,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      trailing: [
-        if (!_searchExpanded) ...[
-          KeyedSubtree(
-            key: e2eKey(E2eIds.libraryOpeningExplorerButton),
-            child: GlassIconButton(
-              icon: Icon(
-                CupertinoIcons.compass,
-                color: context.colors.iconPrimary,
-              ),
-              onPressed: _navigateToOpeningExplorer,
-              size: 40,
-              iconSize: 18,
-              useOwnLayer: true,
-            ),
-          ),
-          KeyedSubtree(
-            key: e2eKey(E2eIds.libraryBoardEditorButton),
-            child: GlassIconButton(
-              icon: Icon(
-                CupertinoIcons.square_grid_2x2,
-                color: context.colors.iconPrimary,
-              ),
-              onPressed: _navigateToEmptyBoard,
-              size: 40,
-              iconSize: 18,
-              useOwnLayer: true,
-            ),
-          ),
-          KeyedSubtree(
-            key: e2eKey(E2eIds.libraryCreateFolderButton),
-            child: GlassIconButton(
-              icon: Icon(
-                CupertinoIcons.plus,
-                color: context.colors.iconPrimary,
-              ),
-              onPressed: _handlePlusButton,
-              size: 40,
-              iconSize: 18,
-              useOwnLayer: true,
-            ),
-          ),
-        ],
-      ],
     );
   }
 
@@ -396,7 +393,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       subscribedFoldersAsync: subscribedFoldersAsync,
     );
 
-    return Stack(
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollUpdateNotification &&
+            _chromeCollapse.onScrollUpdate(notification)) {
+          setState(() => _controlsSeparated = !_chromeCollapse.expanded);
+        }
+        return false;
+      },
+      child: Stack(
       children: [
         // Subtle background decoration - only when user has personal folders
         if (contentState.hasFolders)
@@ -424,18 +429,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
-              SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+              // Huge top pad: content starts below the floating action island.
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: MediaQuery.viewPaddingOf(context).top + 120,
+                ),
+              ),
               if (contentState.isLoading)
                 _buildLoadingSliver()
               else if (contentState.hasError)
                 _buildErrorSliver(userFacingError(contentState.error))
               else
                 _buildFoldersSliver(contentState.folders),
-              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+              // Huge bottom pad: last item clears the floating bottom nav.
+              SliverToBoxAdapter(child: SizedBox(height: 140.h)),
             ],
           ),
         ),
       ],
+      ),
     );
   }
 

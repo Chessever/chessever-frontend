@@ -5,12 +5,13 @@ import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.da
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -178,28 +179,25 @@ class _PgnImportPreviewScreenState
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: IconButton(
+            child: GlassBackButton(
               onPressed: () {
                 HapticFeedbackService.light();
                 Navigator.of(context).pop();
               },
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
             ),
           ),
           Align(
             alignment: Alignment.centerRight,
-            child: IconButton(
-              onPressed: _handleSave,
-              tooltip: 'Save to folder',
+            child: GlassIconButton(
               icon: Icon(
                 Icons.save_rounded,
-                color: context.colors.textPrimary,
-                size: 26.ic,
+                color: context.colors.iconPrimary,
               ),
+              onPressed: _handleSave,
+              size: 40,
+              iconSize: 20,
+              useOwnLayer: true,
+              shape: GlassIconButtonShape.circle,
             ),
           ),
           Padding(

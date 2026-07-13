@@ -49,6 +49,8 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
@@ -3061,6 +3063,10 @@ class _GamePage extends StatelessWidget {
     final scaffold = Scaffold(
       backgroundColor: context.colors.background,
       resizeToAvoidBottomInset: false,
+      // Board content paints behind BOTH the top glass app bar and the bottom
+      // floating glass nav pill, so neither bar sits on a solid black band.
+      extendBodyBehindAppBar: true,
+      extendBody: true,
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
         state: state,
@@ -3078,14 +3084,16 @@ class _GamePage extends StatelessWidget {
         savedAnalysisData: savedAnalysisData,
         isActivePage: currentGameIndex == currentPageIndex,
       ),
-      body: _GameBody(
-        index: currentGameIndex,
-        currentPageIndex: currentPageIndex,
-        game: game,
-        state: state,
-        playerProfileDataSource: playerProfileDataSource,
-        showGamebaseButton: showGamebaseButton,
-        showClock: showClock,
+      body: _FloatingGlassChrome(
+        child: _GameBody(
+          index: currentGameIndex,
+          currentPageIndex: currentPageIndex,
+          game: game,
+          state: state,
+          playerProfileDataSource: playerProfileDataSource,
+          showGamebaseButton: showGamebaseButton,
+          showClock: showClock,
+        ),
       ),
     );
     return MediaQuery.removeViewInsets(
@@ -3139,6 +3147,8 @@ class _LoadingScreen extends StatelessWidget {
     final scaffold = Scaffold(
       backgroundColor: context.colors.background,
       resizeToAvoidBottomInset: false,
+      extendBodyBehindAppBar: true,
+      extendBody: true,
       appBar: _AppBar(
         game: games[currentGameIndex],
         games: games,
@@ -3149,7 +3159,8 @@ class _LoadingScreen extends StatelessWidget {
         hideEventInfo: hideEventInfo,
         isActivePage: isActivePage,
       ),
-      body: Center(
+      body: _FloatingGlassChrome(
+        child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: contentMaxWidth),
           child: Skeletonizer(
@@ -3329,12 +3340,89 @@ class _LoadingScreen extends StatelessWidget {
             ),
           ),
         ),
+        ),
       ),
     );
     return MediaQuery.removeViewInsets(
       context: context,
       removeBottom: true,
       child: scaffold,
+    );
+  }
+}
+
+/// Wraps the chess board body for the floating liquid-glass chrome.
+///
+/// Two jobs, both edge-only so the page still reads as one continuous surface:
+///  * Pushes content down by the status-bar + app-bar height so the board and
+///    top player card never overlap the transparent glass controls above.
+///  * Paints a soft background tint under the top app bar and the bottom
+///    floating nav pill so the glass refracts against a hint of the page —
+///    an accent at each edge, NOT a full opaque layer between page and glass.
+class _FloatingGlassChrome extends StatelessWidget {
+  final Widget child;
+
+  const _FloatingGlassChrome({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final viewPadding = MediaQuery.paddingOf(context);
+    final bg = context.colors.background;
+    final topTintHeight = viewPadding.top + kToolbarHeight * 0.35;
+    final bottomTintHeight = viewPadding.bottom + kBottomNavigationBarHeight;
+
+    return Stack(
+      children: [
+        // Board content, held clear of the floating app bar.
+        Positioned.fill(
+          child: Padding(
+            padding: EdgeInsets.only(top: topTintHeight),
+            child: child,
+          ),
+        ),
+        // Top edge tint — fades from a hint of the page into transparency.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: topTintHeight,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    bg.withValues(alpha: 0.55),
+                    bg.withValues(alpha: 0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Bottom edge tint — sits behind the floating nav pill.
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: bottomTintHeight,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    bg.withValues(alpha: 0.55),
+                    bg.withValues(alpha: 0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -3831,12 +3919,14 @@ class _AppBarState extends ConsumerState<_AppBar> {
         // Header action stays the save icon at all times — a double-tap
         // like is represented only by the small red badge above. The
         // flight phase still uses the keyed slot as its target.
-        return IconButton(
+        return GlassIconButton(
           icon: KeyedSubtree(
             key: widget.isActivePage ? anchor.saveButtonKey : null,
             child: pulsing,
           ),
-          tooltip: 'Save analysis',
+          size: 40,
+          iconSize: 20,
+          useOwnLayer: true,
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         );
       },
@@ -3873,17 +3963,22 @@ class _AppBarState extends ConsumerState<_AppBar> {
       onShare: shareGameBtnClicked,
       child: AppBar(
         elevation: 0,
-        backgroundColor: context.colors.background,
-        surfaceTintColor: context.colors.background,
-        leadingWidth: 44.sp,
+        // Transparent so the glass buttons read as floating over the board.
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        leadingWidth: 56.sp,
         titleSpacing: 4.sp,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new,
-            color: context.colors.textPrimary,
-            size: 20.sp,
+        // Center in a slot comfortably wider than the 40px button so the fixed
+        // circle never gets clipped into an oval by a tight, text-scaled slot.
+        // Match the action icons: size 40, iconSize 20, plain circle.
+        leading: Center(
+          child: Padding(
+            padding: EdgeInsets.only(left: 8.sp),
+            child: GlassBackButton(
+              iconSize: 20,
+              onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
+            ),
           ),
-          onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
         ),
         title:
             widget.hideEventInfo
@@ -3913,18 +4008,23 @@ class _AppBarState extends ConsumerState<_AppBar> {
               // Event info button (hidden when navigating from library for position analysis)
               // Uses delayed show on tablets to prevent phantom tap dismissals
               if (!widget.hideEventInfo)
-                IconButton(
-                  icon: Icon(
-                    Icons.info_outline_rounded,
-                    color: context.colors.textPrimary,
-                    size: 20.sp,
+                Padding(
+                  padding: EdgeInsets.only(right: 6.sp),
+                  child: GlassIconButton(
+                    icon: Icon(
+                      Icons.info_outline_rounded,
+                      color: context.colors.textPrimary,
+                      size: 20.sp,
+                    ),
+                    size: 40,
+                    iconSize: 20,
+                    useOwnLayer: true,
+                    onPressed:
+                        widget.isLoading
+                            ? null
+                            : () =>
+                                _showEventInfoSheet(context, ref, infoSheetPgn),
                   ),
-                  tooltip: 'Event info',
-                  onPressed:
-                      widget.isLoading
-                          ? null
-                          : () =>
-                              _showEventInfoSheet(context, ref, infoSheetPgn),
                 ),
               // Save Analysis button — with auto-save status animation for library games
               _buildSaveButton(),
@@ -3932,10 +4032,18 @@ class _AppBarState extends ConsumerState<_AppBar> {
               // phantom tap dismissals, use standard PopupMenuButton on mobile
               if (ResponsiveHelper.isTablet)
                 _TabletSafePopupMenu<String>(
-                  icon: Icon(
-                    Icons.more_vert,
-                    color: context.colors.textPrimary,
-                    size: 22.sp,
+                  icon: GlassContainer(
+                    width: 36,
+                    height: 36,
+                    useOwnLayer: true,
+                    shape: const LiquidRoundedSuperellipse(borderRadius: 18),
+                    child: Center(
+                      child: Icon(
+                        Icons.more_vert,
+                        color: context.colors.textPrimary,
+                        size: 20.sp,
+                      ),
+                    ),
                   ),
                   enabled: !widget.isLoading,
                   onSelected: (value) async {
@@ -4059,10 +4167,18 @@ class _AppBarState extends ConsumerState<_AppBar> {
                 )
               else
                 PopupMenuButton<String>(
-                  icon: Icon(
-                    Icons.more_vert,
-                    color: context.colors.textPrimary,
-                    size: 22.sp,
+                  icon: GlassContainer(
+                    width: 36,
+                    height: 36,
+                    useOwnLayer: true,
+                    shape: const LiquidRoundedSuperellipse(borderRadius: 18),
+                    child: Center(
+                      child: Icon(
+                        Icons.more_vert,
+                        color: context.colors.textPrimary,
+                        size: 20.sp,
+                      ),
+                    ),
                   ),
                   enabled: !widget.isLoading,
                   onSelected: (value) async {
@@ -13157,7 +13273,14 @@ class _PrincipalVariationListState
       _currentPage = 0;
       _lastUserSelectedIndex = 0;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _pageController.hasClients) {
+        if (!mounted) return;
+        if (_previewScrollController.hasClients) {
+          // Start at the true leading edge whenever a preview is opened.
+          // The leading content inset below keeps the first move clear of
+          // the clipped card edge and its accent border.
+          _previewScrollController.jumpTo(0);
+        }
+        if (_pageController.hasClients) {
           _pageController.jumpToPage(0);
         }
       });
@@ -13643,7 +13766,7 @@ class _PrincipalVariationListState
                                 parent: AlwaysScrollableScrollPhysics(),
                               ),
                               padding: EdgeInsets.fromLTRB(
-                                0,
+                                8.sp,
                                 10.sp,
                                 12.sp,
                                 10.sp,

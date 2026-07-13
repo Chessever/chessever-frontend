@@ -94,8 +94,24 @@ class HamburgerMenu extends HookConsumerWidget {
       width: drawerWidth,
       child: Drawer(
         key: e2eKey(E2eIds.homeDrawer),
-        backgroundColor: context.colors.background,
-        child: GestureDetector(
+        // Liquid-glass sidebar: the page behind the drawer shows through a dark
+        // frosted glass surface (no glass controls nested inside, so a single
+        // GlassContainer is safe on every renderer).
+        backgroundColor: Colors.transparent,
+        child: GlassContainer(
+          useOwnLayer: true,
+          shape: const LiquidRoundedSuperellipse(borderRadius: 0),
+          settings: const LiquidGlassSettings(
+            glassColor: Color(0xC71E1E22),
+            thickness: 20,
+            blur: 20,
+            lightIntensity: 0,
+            ambientStrength: 0,
+            glowIntensity: 0,
+            ambientRim: 0,
+            chromaticAberration: 0,
+          ),
+          child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: () {
             logarteTapCount.value++;
@@ -387,6 +403,7 @@ class HamburgerMenu extends HookConsumerWidget {
             ),
           ),
         ),
+          ),
       ),
     );
   }

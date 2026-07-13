@@ -1,22 +1,10 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_motion.dart';
-import 'package:chessever2/widgets/liquid_glass/search_expand_state.dart';
-import 'package:cue/cue.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
-import 'package:motor/motor.dart';
 
-/// Collapsed glass search circle that expands horizontally into package
-/// [GlassSearchBar] with Apple Music–style widen / collapse.
-///
-/// Motion stack:
-/// - **cue** [Cue.onToggle] + [Act.sizedClip] — true horizontal widen from
-///   [expandAlignment] (default: trailing edge, circle on the right).
-/// - **cue** [Act.stretch] — soft X-axis “inflate” accent during open.
-/// - **cue** [Act.scale] — presence settle around the expansion origin.
-/// - **motor** [SingleMotionBuilder] — directional widen/collapse shell
-///   scale + mid-morph breathe (asymmetric springs).
-/// - **liquid_glass** [GlassSearchBar] — glass field + cancel when expanded.
+/// Collapsed glass search circle that expands into the canonical package
+/// [GlassSearchBar]. The collapse/expand is a clean [AnimatedSize] crossfade —
+/// no bespoke motion tower — so the glass never wobbles or over-shoots.
 class GlassIslandSearch extends StatefulWidget {
   const GlassIslandSearch({
     super.key,
@@ -31,6 +19,8 @@ class GlassIslandSearch extends StatefulWidget {
     this.textFieldKey,
     this.collapsedSize = 40,
     this.expandedHeight = 44,
+    this.collapsedIconSize = 18,
+    this.collapsedSettings,
     this.autofocusOnExpand = true,
     /// Expand from trailing edge (Apple Music search circle on the right).
     this.expandAlignment = Alignment.centerRight,
@@ -47,6 +37,14 @@ class GlassIslandSearch extends StatefulWidget {
   final Key? textFieldKey;
   final double collapsedSize;
   final double expandedHeight;
+
+  /// Icon size inside the collapsed circle.
+  final double collapsedIconSize;
+
+  /// Richer glass for the collapsed button so it can read identically to the
+  /// home bottom-nav search button (thicker, deeper tint) instead of the flat
+  /// default. Null = package default glass.
+  final LiquidGlassSettings? collapsedSettings;
   final bool autofocusOnExpand;
   final Alignment expandAlignment;
 
@@ -99,102 +97,52 @@ class _GlassIslandSearchState extends State<GlassIslandSearch> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final radius = widget.expandedHeight / 2;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final available =
-            constraints.maxWidth.isFinite
-                ? constraints.maxWidth
-                : MediaQuery.sizeOf(context).width * 0.7;
-        final collapsed = widget.collapsedSize;
-        final expandedW = searchExpandTargetWidth(
-          available: available,
-          expanded: true,
-          collapsedSize: collapsed,
-        );
-
-        // motor: directional shell (widen jelly / collapse snappy).
-        return SingleMotionBuilder(
-          motion: GlassMotion.searchDirection(widget.expanded),
-          value: widget.expanded ? 1.0 : 0.0,
-          builder: (context, progress, _) {
-            final shell = GlassMotion.shellScale(progress, min: 0.94);
-            final breathe = GlassMotion.morphBreathe(progress, peak: 0.028);
-            return Transform.scale(
-              scale: shell * breathe,
-              alignment: widget.expandAlignment,
-              child: Cue.onToggle(
-                toggled: widget.expanded,
-                // Same duration/bounce tokens as motor widen / collapse.
-                motion: GlassMotion.cueWiden,
-                reverseMotion: GlassMotion.cueCollapse,
-                acts: [
-                  // Core widen: collapsed width ↔ full field. Rest states are
-                  // exact (no permanent scale/stretch distortion when closed).
-                  Act.sizedClip(
-                    from: NSize.width(collapsed),
-                    to: NSize.width(expandedW),
-                    alignment: widget.expandAlignment,
-                    clipGeometry: ClipGeometry.superEllipse(
-                      BorderRadius.circular(radius),
-                    ),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      alignment: widget.expandAlignment,
+      child: SizedBox(
+        // Collapsed circle can be taller than the expanded field (bulky search
+        // button), so size to whichever state is active instead of clipping.
+        height:
+            widget.expanded ? widget.expandedHeight : widget.collapsedSize,
+        child:
+            widget.expanded
+                ? KeyedSubtree(
+                  key: widget.textFieldKey,
+                  child: GlassSearchBar(
+                    controller: widget.controller,
+                    focusNode: _focusNode,
+                    placeholder: widget.hintText,
+                    onChanged: widget.onChanged,
+                    onSubmitted: widget.onSubmitted,
+                    showsCancelButton: true,
+                    onCancel: _collapse,
+                    autofocus: widget.autofocusOnExpand,
+                    useOwnLayer: true,
+                    height: widget.expandedHeight,
+                    searchIconColor: colors.iconSecondary,
+                    clearIconColor: colors.iconSecondary,
+                    cancelButtonColor: colors.iconPrimary,
                   ),
-                  // Mid-morph X inflate; 1.0 at both ends so icon stays round.
-                  StretchAct.keyframed(
-                    alignment: widget.expandAlignment,
-                    frames: Keyframes.fractional(
-                      const [
-                        FKeyframe.key(Stretch.none, at: 0.0),
-                        FKeyframe.key(Stretch(x: 1.06, y: 0.98), at: 0.4),
-                        FKeyframe.key(Stretch.none, at: 1.0),
-                      ],
-                      duration: GlassMotion.widenDuration,
+                )
+                : Align(
+                  alignment: widget.expandAlignment,
+                  child: GlassIconButton(
+                    key: widget.textFieldKey,
+                    icon: Icon(
+                      CupertinoIcons.search,
+                      color: colors.iconPrimary,
                     ),
+                    onPressed: () => widget.onExpandedChanged(true),
+                    size: widget.collapsedSize,
+                    iconSize: widget.collapsedIconSize,
+                    useOwnLayer: true,
+                    settings: widget.collapsedSettings,
                   ),
-                ],
-                child: SizedBox(
-                  height: widget.expandedHeight,
-                  child:
-                      widget.expanded
-                          ? KeyedSubtree(
-                            key: widget.textFieldKey,
-                            child: GlassSearchBar(
-                              controller: widget.controller,
-                              focusNode: _focusNode,
-                              placeholder: widget.hintText,
-                              onChanged: widget.onChanged,
-                              onSubmitted: widget.onSubmitted,
-                              showsCancelButton: true,
-                              onCancel: _collapse,
-                              autofocus: widget.autofocusOnExpand,
-                              useOwnLayer: true,
-                              height: widget.expandedHeight,
-                              searchIconColor: colors.iconSecondary,
-                              clearIconColor: colors.iconSecondary,
-                              cancelButtonColor: colors.iconPrimary,
-                            ),
-                          )
-                          : Align(
-                            alignment: widget.expandAlignment,
-                            child: GlassIconButton(
-                              key: widget.textFieldKey,
-                              icon: Icon(
-                                CupertinoIcons.search,
-                                color: colors.iconPrimary,
-                              ),
-                              onPressed: () => widget.onExpandedChanged(true),
-                              size: widget.collapsedSize,
-                              iconSize: 18,
-                              useOwnLayer: true,
-                            ),
-                          ),
                 ),
-              ),
-            );
-          },
-        );
-      },
+      ),
     );
   }
 }

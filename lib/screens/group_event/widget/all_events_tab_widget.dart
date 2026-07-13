@@ -105,6 +105,9 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
       controller: widget.scrollController,
       scrollCacheExtent: kListScrollCacheExtent,
       slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(height: MediaQuery.of(context).viewPadding.top + 78),
+        ),
         if (widget.smartData != null)
           SliverPadding(
             padding: EdgeInsets.only(
@@ -120,7 +123,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
           padding: EdgeInsets.only(
             left: horizontalPadding,
             right: horizontalPadding,
-            bottom: bottomPadding + 12.sp,
+            bottom: bottomPadding + 120.sp,
           ),
           sliver: SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -160,7 +163,10 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
       padding: EdgeInsets.only(
         left: 20.sp,
         right: 20.sp,
-        bottom: bottomPadding + 12.sp,
+        // Clear the floating avatar + tabs island on top…
+        top: MediaQuery.of(context).viewPadding.top + 78,
+        // …and the floating bottom nav below.
+        bottom: bottomPadding + 120.sp,
       ),
       itemCount:
           widget.filteredEvents.length +

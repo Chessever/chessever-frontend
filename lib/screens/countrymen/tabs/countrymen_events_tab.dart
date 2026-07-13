@@ -7,7 +7,6 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -181,7 +180,11 @@ class CountrymenEventsNotifier extends StateNotifier<CountrymenEventsState> {
 // --- Tab Widget ---
 
 class CountrymenEventsTab extends ConsumerStatefulWidget {
-  const CountrymenEventsTab({super.key});
+  const CountrymenEventsTab({super.key, this.topPadding = 0});
+
+  /// Top inset so the first item clears the floating glass chrome while the
+  /// list scrolls underneath it.
+  final double topPadding;
 
   @override
   ConsumerState<CountrymenEventsTab> createState() =>
@@ -264,6 +267,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
+          SliverToBoxAdapter(child: SizedBox(height: widget.topPadding)),
           // Search bar (scrolls with content)
           SliverToBoxAdapter(
             child: Padding(

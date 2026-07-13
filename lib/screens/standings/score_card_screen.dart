@@ -24,6 +24,8 @@ import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:heroine/heroine.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
@@ -1482,43 +1484,58 @@ class _PlayerHeaderRow extends StatelessWidget {
         rawCountryCode.trim().isNotEmpty || countryCode.trim().isNotEmpty;
     final titleText = (title ?? '').trim();
 
-    return Row(
-      children: [
-        if (hasFederation)
-          FederationFlag(
-            federation:
-                rawCountryCode.trim().isNotEmpty ? rawCountryCode : countryCode,
-            height: 16.h,
-            width: 22.w,
-            borderRadius: BorderRadius.circular(2.br),
-          )
-        else
-          SizedBox(width: 22.w, height: 16.h),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: RichText(
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            text: TextSpan(
-              children: [
-                if (titleText.isNotEmpty)
-                  TextSpan(
-                    text: '$titleText ',
-                    style: AppTypography.textMdBold.copyWith(
-                      color: kLightYellowColor,
+    // Player identity as a liquid-glass title pill (matches the player-profile
+    // header chip), sized to content so it reads as a floating badge.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: 240.w, minHeight: 40, maxHeight: 40),
+      child: GlassContainer(
+        useOwnLayer: true,
+        height: 40,
+        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        alignment: Alignment.center,
+        shape: const LiquidRoundedSuperellipse(borderRadius: 20),
+        quality: GlassQuality.standard,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasFederation) ...[
+              FederationFlag(
+                federation:
+                    rawCountryCode.trim().isNotEmpty
+                        ? rawCountryCode
+                        : countryCode,
+                height: 16.h,
+                width: 22.w,
+                borderRadius: BorderRadius.circular(2.br),
+              ),
+              SizedBox(width: 8.w),
+            ],
+            Flexible(
+              child: RichText(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  children: [
+                    if (titleText.isNotEmpty)
+                      TextSpan(
+                        text: '$titleText ',
+                        style: AppTypography.textMdBold.copyWith(
+                          color: kLightYellowColor,
+                        ),
+                      ),
+                    TextSpan(
+                      text: name,
+                      style: AppTypography.textMdBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
                     ),
-                  ),
-                TextSpan(
-                  text: name,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -1737,16 +1754,15 @@ class _SliverScoreboardAppBarState
 
     return SliverAppBar(
       pinned: true,
-      backgroundColor: context.colors.background,
+      // Transparent so the glass controls read as floating over the content.
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       centerTitle: false,
-      leading: IconButton(
-        icon: Icon(
-          Icons.arrow_back_ios_new_outlined,
-          color: context.colors.textPrimary,
-          size: 22.ic,
-        ),
-        onPressed: () => Navigator.of(context).pop(),
+      leadingWidth: 52.w,
+      leading: Padding(
+        padding: EdgeInsets.only(left: 8.w),
+        child: GlassBackButton(onPressed: () => Navigator.of(context).pop()),
       ),
       title:
           hasTournamentContext
@@ -1758,26 +1774,26 @@ class _SliverScoreboardAppBarState
               : headerRow,
       actions: [
         if (widget.onShareProfile != null)
-          InkWell(
-            onTap: () => widget.onShareProfile!(),
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: Icon(
+          Padding(
+            padding: EdgeInsets.only(right: 6.w),
+            child: GlassIconButton(
+              icon: Icon(
                 Icons.ios_share,
                 color: context.colors.textPrimary,
                 size: 20.ic,
                 semanticLabel: 'Share Profile',
               ),
+              size: 40,
+              iconSize: 20,
+              useOwnLayer: true,
+              onPressed: () => widget.onShareProfile!(),
             ),
           ),
         if (isForYouView)
-          InkWell(
-            onTap: _toggleFavorite,
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: ScaleTransition(
+          Padding(
+            padding: EdgeInsets.only(right: 6.w),
+            child: GlassIconButton(
+              icon: ScaleTransition(
                 scale: _scaleAnimation,
                 child: SvgWidget(
                   isFavorite
@@ -1791,6 +1807,10 @@ class _SliverScoreboardAppBarState
                   preserveOriginalColors: isFavorite,
                 ),
               ),
+              size: 40,
+              iconSize: 20,
+              useOwnLayer: true,
+              onPressed: _toggleFavorite,
             ),
           ),
         SizedBox(width: 8.w),

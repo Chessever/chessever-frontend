@@ -132,6 +132,30 @@ void main() {
     );
   });
 
+  test('idle For You cards do not run infinite decorative tickers', () {
+    final premiumCardsSource =
+        File(
+          'lib/screens/group_event/widget/premium_collection_cards.dart',
+        ).readAsStringSync();
+    final smartEventCardSource =
+        File('lib/widgets/event_card/smart_event_card.dart').readAsStringSync();
+
+    expect(
+      premiumCardsSource,
+      isNot(contains(RegExp(r'\.repeat\s*\('))),
+      reason:
+          'The always-visible Favorites tile must let Flutter become frame-idle '
+          'instead of translating its photo grid at 60/120 Hz forever.',
+    );
+    expect(
+      smartEventCardSource,
+      isNot(contains(RegExp(r'\.repeat\s*\('))),
+      reason:
+          'A visible filtered-event card must not keep scheduling decorative '
+          'pulse frames after its entrance animation has settled.',
+    );
+  });
+
   test('tournament safety net polls lightweight rows without overlap', () {
     final repositorySource =
         File(

@@ -216,11 +216,12 @@ class GamesListView extends ConsumerWidget {
 
               return const SizedBox.shrink();
             },
+            // Clear the floating top bar + bottom chrome (event view floats).
             padding: EdgeInsets.only(
               left: horizontalPadding,
               right: horizontalPadding,
-              top: 8.sp,
-              bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+              top: MediaQuery.of(context).padding.top + 66,
+              bottom: MediaQuery.of(context).viewPadding.bottom + 84,
             ),
           );
         },

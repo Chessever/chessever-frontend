@@ -9,7 +9,6 @@ import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -17,7 +16,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Collection cards displayed at the top of For You tab.
@@ -212,33 +210,18 @@ class _PremiumCollectionCard extends ConsumerWidget {
   }
 }
 
-/// Auto-scrolling irregular player photo grid background for Favorites card.
-/// Creates a visually interesting mosaic of player photos that scrolls indefinitely.
-class _FavoritePlayersGridBackground extends HookConsumerWidget {
+/// Irregular player photo grid background for the Favorites card.
+///
+/// This intentionally settles after layout. The previous endlessly translating
+/// strip kept Flutter scheduling 60/120 Hz frames for the entire time the For
+/// You tab was open, even when the user was not interacting with the app.
+class _FavoritePlayersGridBackground extends ConsumerWidget {
   const _FavoritePlayersGridBackground();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final favorites = favoritesAsync.valueOrNull ?? [];
-
-    // Animation controller for infinite horizontal scroll
-    final animationController = useAnimationController(
-      duration: const Duration(seconds: 45),
-    );
-
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
-
-    // Start infinite animation unless the OS requests reduced motion.
-    useEffect(() {
-      if (disableAnimations) {
-        animationController.stop();
-        animationController.value = 0;
-      } else {
-        animationController.repeat();
-      }
-      return null;
-    }, [animationController, disableAnimations]);
 
     if (favorites.isEmpty) {
       return const _EmptyFavoritesPlaceholder();
@@ -286,46 +269,20 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
         final verticalPadding = (rowHeight - actualCellSize) / 2;
         final cellWithSpacing = actualCellSize + cellSpacing;
 
-        // Keep the animated strip bounded. The old version repeated every
-        // favorite, so users with large favorite lists rendered hundreds of
-        // clipped image widgets behind a tiny card.
-        final scrollDistance = patternCellCount * cellWithSpacing;
-        final stripCellsPerRow =
-            ((cardWidth + scrollDistance) / cellWithSpacing).ceil() + 2;
-
-        // Build the cell grid ONCE and pass as `child` to AnimatedBuilder.
-        // The inner RepaintBoundary caches the grid to a layer, so per-frame
-        // work collapses to a cheap GPU transform of a pre-rasterized image.
-        // No ClipRect here: the parent _PremiumCollectionCard already wraps
-        // everything in a ClipRRect, so off-card cells are already clipped.
-        final grid = RepaintBoundary(
+        // Fill just beyond the visible card bounds so staggered rows have no
+        // gaps, while keeping the same photo density and organic sizing.
+        final cellsPerRow = (cardWidth / cellWithSpacing).ceil() + 2;
+        return RepaintBoundary(
           child: _StaticPlayerGrid(
             favorites: patternFavorites,
             photoUrls: photoUrls,
             patternCellCount: patternCellCount,
             rows: gridConfig.rows,
-            cellsPerRow: stripCellsPerRow,
+            cellsPerRow: cellsPerRow,
             cellSize: actualCellSize,
             cellSpacing: cellSpacing,
             cellWithSpacing: cellWithSpacing,
             verticalPadding: verticalPadding,
-          ),
-        );
-
-        if (disableAnimations) {
-          return RepaintBoundary(child: grid);
-        }
-
-        return RepaintBoundary(
-          child: AnimatedBuilder(
-            animation: animationController,
-            child: grid,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(-animationController.value * scrollDistance, 0),
-                child: child,
-              );
-            },
           ),
         );
       },
@@ -367,9 +324,7 @@ class _GridConfig {
   final int maxVisibleCells;
 }
 
-/// Renders the grid of player photos at fixed positions. The parent wraps
-/// this in an AnimatedBuilder + Transform.translate, so this widget is built
-/// once per layout and reused across all animation frames.
+/// Renders the grid of player photos at fixed positions.
 class _StaticPlayerGrid extends StatelessWidget {
   const _StaticPlayerGrid({
     required this.favorites,
@@ -421,10 +376,8 @@ class _StaticPlayerGrid extends StatelessWidget {
         );
       }
     }
-    // Clip.none: cells extend beyond the Stack's card-width constraints (up
-    // to stripWidth). The RepaintBoundary must cache all of them so the
-    // Transform.translate can slide them into view. The outer ClipRRect on
-    // _PremiumCollectionCard handles the final visible clip.
+    // The staggered edge cells may extend beyond the Stack. The outer
+    // ClipRRect on _PremiumCollectionCard handles the final visible clip.
     return Stack(clipBehavior: Clip.none, children: cells);
   }
 

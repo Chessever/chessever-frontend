@@ -17,3 +17,7 @@ const countrymenModeNames = {
   CountrymenScreenMode.games: 'Games',
   CountrymenScreenMode.players: 'Players',
 };
+
+/// True while the Games tab's floating search is expanded — the parent screen
+/// watches this to hide the floating bottom country selector while searching.
+final countrymenSearchActiveProvider = StateProvider<bool>((ref) => false);

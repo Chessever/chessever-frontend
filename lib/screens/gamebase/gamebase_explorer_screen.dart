@@ -352,6 +352,9 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         child: Scaffold(
           key: e2eKey(E2eIds.openingExplorerRoot),
           backgroundColor: context.colors.surface,
+          // Board content paints behind the floating glass nav pill so it has
+          // no solid band behind it (matches the chess board screen).
+          extendBody: true,
           appBar: _buildAppBar(context),
           bottomNavigationBar: ChessBoardBottomNavBar(
             gameIndex: 0,

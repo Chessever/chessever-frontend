@@ -24,22 +24,19 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_tabs.dart';
 import 'package:chessever2/utils/share_standings.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_tab_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_glass_halo.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -225,6 +222,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ref.invalidate(gameDisplayModeProvider);
       ref.invalidate(playerTourScreenProvider);
       ref.invalidate(searchQueryProvider);
+      ref.invalidate(eventBottomSearchExpandedProvider);
       // Scroll provider is scoped per screen; it will dispose with the ProviderScope below.
     } catch (e) {
       // Ignore errors during cleanup
@@ -288,6 +286,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           );
           final isTeam = layout == TournamentDetailLayout.team;
 
+          final topInset = MediaQuery.of(context).viewPadding.top;
+          final bottomInset = MediaQuery.of(context).viewPadding.bottom;
           return ScreenWrapper(
             child: Scaffold(
               key: e2eKey(E2eIds.tournamentDetailRoot),
@@ -299,30 +299,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                             ? ResponsiveHelper.contentMaxWidth
                             : double.infinity,
                   ),
-                  child: Column(
+                  child: Stack(
                     children: [
-                      SizedBox(
-                        height: MediaQuery.of(context).viewPadding.top + 4.h,
-                      ),
-                      tourDetailAsync.when(
-                        data:
-                            (data) => _buildSuccessAppBar(
-                              data,
-                              effectiveMode,
-                              visibleModes,
-                            ),
-                        error:
-                            (error, stackTrace) => _buildErrorAppBar(
-                              error,
-                              effectiveMode,
-                              visibleModes,
-                            ),
-                        loading:
-                            () => const _LoadingAppBarWithTitle(
-                              title: "ChessEver",
-                            ),
-                      ),
-                      Expanded(
+                      // Content owns the WHOLE screen and scrolls UNDER the
+                      // floating chrome (each tab list carries its own top/bottom
+                      // scroll padding so the first/last rows rest clear).
+                      Positioned.fill(
                         child: NotificationListener<ScrollNotification>(
                           onNotification: (notification) {
                             if (notification is! ScrollUpdateNotification) {
@@ -399,6 +381,82 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                           ),
                         ),
                       ),
+                      // Readability scrims. The content scrolls edge-to-edge
+                      // under the floating chrome; these soft gradient bands sit
+                      // between the page and the glass so the top (back/tabs) and
+                      // bottom (category pill + search) islands never dissolve
+                      // into bright board rows behind them.
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: IgnorePointer(
+                          child: Container(
+                            height:
+                                topInset +
+                                MediaQuery.of(context).size.height * 0.10,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  context.colors.background.withValues(
+                                    alpha: 0.9,
+                                  ),
+                                  context.colors.background.withValues(
+                                    alpha: 0.0,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: IgnorePointer(
+                          child: Container(
+                            height: MediaQuery.of(context).size.height * 0.15,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  context.colors.background.withValues(
+                                    alpha: 0.0,
+                                  ),
+                                  context.colors.background.withValues(
+                                    alpha: 0.92,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Top floating bar: back + mode tabs + menu (one line).
+                      Positioned(
+                        top: topInset + 8,
+                        left: 0,
+                        right: 0,
+                        child: _buildTopFloating(
+                          tourDetailAsync,
+                          effectiveMode,
+                          visibleModes,
+                        ),
+                      ),
+                      // Bottom floating: category pill (centre) + search (right).
+                      Positioned(
+                        bottom: bottomInset + 16,
+                        left: 0,
+                        right: 0,
+                        child: _buildBottomFloating(
+                          tourDetailAsync,
+                          effectiveMode,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -410,54 +468,101 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     );
   }
 
-  Widget _buildSuccessAppBar(
-    TourDetailViewModel data,
+  /// Top floating bar — back button, the About/Games/Standings tabs, and the
+  /// tournament menu. One line.
+  Widget _buildTopFloating(
+    AsyncValue<TourDetailViewModel> async,
     TournamentDetailScreenMode selectedTourMode,
     List<TournamentDetailScreenMode> visibleModes,
   ) {
-    return GlassIslandStack(
-      gap: 6,
-      includeStatusBar: false,
-      topPadding: 0,
-      children: [
-        selectedTourMode == TournamentDetailScreenMode.games
-            ? const GamesAppBarWidget()
-            : _TourDetailDropDownAppBar(data: data),
-        _PinnedEventSearchBar(
-          pageController: pageController,
-          visibleModes: visibleModes,
-          fallbackPage:
-              tournamentDetailPageForMode(
-                visibleModes,
-                selectedTourMode,
-              ).toDouble(),
-        ),
-        _buildSegmentedSwitcher(
-          selectedTourMode,
-          visibleModes,
-          (index) => _handleTabSelection(index, visibleModes),
-        ),
-      ],
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      child: Row(
+        children: [
+          // Left cluster: back + menu. Kept together so the mode chips own the
+          // right corner (consistent with the home header's top-right tabs).
+          const LiquidGlassHalo(borderRadius: 20, child: GlassBackButton()),
+          async.maybeWhen(
+            data: (data) {
+              if (data.tours.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: LiquidGlassHalo(
+                  borderRadius: 20,
+                  child: TournamentMenuButton(tourData: data),
+                ),
+              );
+            },
+            orElse: () => const SizedBox.shrink(),
+          ),
+          const Spacer(),
+          // Mode chips, shrink-wrapped and pinned to the right corner.
+          _buildSegmentedSwitcher(
+            selectedTourMode,
+            visibleModes,
+            (index) => _handleTabSelection(index, visibleModes),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildErrorAppBar(
-    Object error,
+  /// Bottom floating chrome — the bulky category-selector pill (centre) and the
+  /// search button (right, Games tab only). Scales down while scrolling, like
+  /// the bottom nav.
+  Widget _buildBottomFloating(
+    AsyncValue<TourDetailViewModel> async,
     TournamentDetailScreenMode selectedTourMode,
-    List<TournamentDetailScreenMode> visibleModes,
   ) {
-    return GlassIslandStack(
-      gap: 6,
-      includeStatusBar: false,
-      topPadding: 0,
-      children: [
-        _LoadingAppBarWithTitle(title: userFacingError(error)),
-        _buildSegmentedSwitcher(
-          selectedTourMode,
-          visibleModes,
-          (index) => _handleTabSelection(index, visibleModes),
+    final showSearch = selectedTourMode == TournamentDetailScreenMode.games;
+    // Home-style in-place morph: while the search is open the category pill
+    // collapses out and the search field spans the whole bottom width.
+    final searchExpanded =
+        showSearch && ref.watch(eventBottomSearchExpandedProvider);
+    final categorySelector = async.maybeWhen(
+      data: (data) {
+        if (data.tours.isEmpty) return const SizedBox.shrink();
+        return const LiquidGlassHalo(
+          borderRadius: 20,
+          child: CategoryDropdown(constrainWidth: true),
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+
+    return AnimatedScale(
+      scale: _chromeCollapse.expanded ? 1.0 : 0.9,
+      alignment: Alignment.bottomCenter,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.w),
+        child: Row(
+          children: [
+            if (!searchExpanded) ...[
+              // Left spacer balances the trailing search button so the pill
+              // stays visually centred. Matches the bulky 64px search circle.
+              const SizedBox(width: 64),
+              Expanded(child: Center(child: categorySelector)),
+            ],
+            if (showSearch)
+              searchExpanded
+                  ? const Expanded(
+                      child: LiquidGlassHalo(
+                        borderRadius: 25,
+                        child: EventSearchBar(),
+                      ),
+                    )
+                  : const SizedBox(
+                      width: 64,
+                      child: LiquidGlassHalo(
+                        borderRadius: 32,
+                        child: EventSearchBar(),
+                      ),
+                    ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -467,16 +572,19 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     ValueChanged<int> onChanged,
   ) {
     final options = modes.map((m) => _mappedName[m]!).toList();
+    final icons = modes.map((m) => _modeIcon[m] ?? CupertinoIcons.circle).toList();
     final selectedIndex = modes.indexOf(selectedTourMode);
     final safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
-    return GlassFloatingSegments(
+    // Identical to the home header tabs: bare LiquidTabBar — glued at the top of
+    // the list, loosening into gapped icon chips on scroll-down. Same widget,
+    // same motion, same brand-bubble selection.
+    return LiquidTabBar(
       key: ValueKey('tab_switcher_${modes.map((mode) => mode.name).join('_')}'),
       options: options,
+      icons: icons,
       selectedIndex: safeIndex,
       onSelected: onChanged,
-      expanded: _chromeCollapse.expanded,
-      notifyOnReselect: true,
-      isScrollable: modes.length > 3,
+      separated: !_chromeCollapse.expanded,
     );
   }
 
@@ -487,6 +595,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     try {
       final selectedMode = tournamentDetailModeForPage(visibleModes, index);
       final currentMode = ref.read(selectedTourModeProvider);
+      // Collapse the search morph when leaving Games so it doesn't linger open.
+      if (selectedMode != TournamentDetailScreenMode.games) {
+        ref.read(eventBottomSearchExpandedProvider.notifier).state = false;
+      }
       if (selectedMode == currentMode) {
         _scrollToTopBus.request();
         if (!_chromeCollapse.expanded) {
@@ -527,6 +639,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       final nextMode = tournamentDetailModeForPage(visibleModes, index);
       final currentMode = ref.read(selectedTourModeProvider);
 
+      if (nextMode != TournamentDetailScreenMode.games) {
+        ref.read(eventBottomSearchExpandedProvider.notifier).state = false;
+      }
       if (currentMode != nextMode) {
         FocusScope.of(context).unfocus();
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -567,72 +682,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   }
 }
 
-class _TourDetailDropDownAppBar extends ConsumerWidget {
-  const _TourDetailDropDownAppBar({required this.data});
-
-  final TourDetailViewModel data;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (data.tours.isEmpty) {
-      return _buildErrorAppBar(context, 'No tournaments available');
-    }
-
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
-      tablet: 24.w,
-    );
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Row(
-        children: [
-          const GlassBackButton(),
-          Expanded(
-            child: Center(child: CategoryDropdown(constrainWidth: false)),
-          ),
-          TournamentMenuButton(tourData: data),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorAppBar(BuildContext context, String errorMessage) {
-    return GlassIslandTopBar(
-      horizontalPadding: 12.w,
-      topPadding: 0,
-      leading: const GlassBackButton(),
-      title: GlassTitleChip(label: errorMessage, maxWidth: 240.w),
-    );
-  }
-}
-
-class _LoadingAppBarWithTitle extends StatelessWidget {
-  const _LoadingAppBarWithTitle({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassIslandTopBar(
-      horizontalPadding: 8.w,
-      topPadding: 0,
-      leading: GlassBackButton(
-        onPressed: () {
-          try {
-            Navigator.of(context).pop();
-          } catch (e) {
-            debugPrint('Error navigating back from loading state: $e');
-          }
-        },
-      ),
-      title: SkeletonWidget(
-        child: GlassTitleChip(label: title, maxWidth: 220.w),
-      ),
-    );
-  }
-}
-
 const _mappedName = {
   TournamentDetailScreenMode.about: 'About',
   TournamentDetailScreenMode.games: 'Games',
@@ -641,53 +690,12 @@ const _mappedName = {
   TournamentDetailScreenMode.players: 'Players',
 };
 
-/// Search bar pinned above the tournament-detail tab switcher.
-///
-/// Hidden on About and Bracket; visible on Games, Standings, and Players.
-/// Drives its height and opacity directly from [pageController.page] so the
-/// reveal/collapse tracks the swipe finger in real time and smoothly chases
-/// `animateToPage` when a tab is tapped — no two-stage "page settles, then
-/// search bar pops" feel.
-class _PinnedEventSearchBar extends StatelessWidget {
-  const _PinnedEventSearchBar({
-    required this.pageController,
-    required this.visibleModes,
-    required this.fallbackPage,
-  });
-
-  final PageController pageController;
-  final List<TournamentDetailScreenMode> visibleModes;
-  final double fallbackPage;
-
-  @override
-  Widget build(BuildContext context) {
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
-    return AnimatedBuilder(
-      animation: pageController,
-      builder: (context, child) {
-        final page =
-            pageController.hasClients
-                ? (pageController.page ?? fallbackPage)
-                : fallbackPage;
-        final t = tournamentDetailSearchVisibility(visibleModes, page);
-        if (t <= 0.0) {
-          return const SizedBox.shrink();
-        }
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: t,
-            child: Opacity(opacity: t, child: child),
-          ),
-        );
-      },
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-        child: const EventSearchBar(),
-      ),
-    );
-  }
-}
+/// Per-mode icon revealed when the tabs separate on scroll (mirrors the home
+/// header's `_categoryIcon`).
+const _modeIcon = {
+  TournamentDetailScreenMode.about: CupertinoIcons.info,
+  TournamentDetailScreenMode.games: CupertinoIcons.square_grid_2x2,
+  TournamentDetailScreenMode.bracket: CupertinoIcons.square_split_1x2,
+  TournamentDetailScreenMode.standings: CupertinoIcons.list_number,
+  TournamentDetailScreenMode.players: CupertinoIcons.person_2,
+};

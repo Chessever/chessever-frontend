@@ -7,10 +7,9 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_tab_bar.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_glass_halo.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:flutter/material.dart';
@@ -116,6 +115,16 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     final selectedMode = ref.watch(selectedFavoritesModeProvider);
     final selectedIndex = FavoritesScreenMode.values.indexOf(selectedMode);
 
+    // Page content owns the whole screen edge-to-edge; discrete glass islands
+    // float on top and the list scrolls *underneath*. Each tab gets this inset
+    // as leading padding (via a first sliver spacer) so its first row clears the
+    // islands (status bar + control row + gap + segment island) without a
+    // reserved opaque strip that would read as a traditional appbar.
+    final statusTop = MediaQuery.viewPaddingOf(context).top;
+    // Single-line header now (back + title + segments): status bar + 8 top pad
+    // + 44 row + a little breathing room.
+    final topInset = statusTop + 64;
+
     return ScreenWrapper(
       child: Scaffold(
         key: e2eKey(E2eIds.favoritesRoot),
@@ -125,38 +134,11 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: Column(
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                // Tight island stack — no dead strip between title and tabs.
-                GlassIslandStack(
-                  gap: 6,
-                  children: [
-                    GlassIslandTopBar(
-                      horizontalPadding: 12.w,
-                      topPadding: 0,
-                      leading: const GlassBackButton(),
-                      title: GlassTitleChip(
-                        label: 'Favorites',
-                        icon: Icon(
-                          Icons.favorite_rounded,
-                          color: const Color(0xFFEF4444),
-                          size: 16.ic,
-                        ),
-                      ),
-                    ),
-                    GlassFloatingSegments(
-                      options: favoritesModeNames.values.toList(),
-                      selectedIndex: selectedIndex.clamp(
-                        0,
-                        favoritesModeNames.length - 1,
-                      ),
-                      onSelected: _handleTabSelection,
-                      expanded: _chromeCollapse.expanded,
-                      notifyOnReselect: true,
-                    ),
-                  ],
-                ),
-                Expanded(
+                // Full-bleed page content.
+                Positioned.fill(
                   child: NotificationListener<ScrollNotification>(
                     onNotification: _onScroll,
                     child: ScrollToTopScope(
@@ -168,11 +150,11 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
                         itemBuilder: (context, index) {
                           switch (index) {
                             case 0:
-                              return const FavoritesListTab();
+                              return FavoritesListTab(topPadding: topInset);
                             case 1:
-                              return const FavoritesGamesTab();
+                              return FavoritesGamesTab(topPadding: topInset);
                             case 2:
-                              return const FavoritesPlayersTab();
+                              return FavoritesPlayersTab(topPadding: topInset);
                             default:
                               return Center(
                                 child: Text(
@@ -184,6 +166,62 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
                               );
                           }
                         },
+                      ),
+                    ),
+                  ),
+                ),
+                // Floating glass chrome — scales down on scroll-down and back up
+                // on scroll-up, mirroring the home bottom nav bar's behaviour.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: AnimatedScale(
+                    scale: _chromeCollapse.expanded ? 1.0 : 0.94,
+                    alignment: Alignment.topCenter,
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedOpacity(
+                      opacity: _chromeCollapse.expanded ? 1.0 : 0.96,
+                      duration: const Duration(milliseconds: 240),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          12.w,
+                          statusTop + 8,
+                          12.w,
+                          0,
+                        ),
+                        // One line: back button + the mode tabs hugging the
+                        // right. The tabs are the SAME bare LiquidTabBar (with
+                        // icons) used on the Home / Tournaments / Calendar
+                        // headers — identical glass, motion and brand-bubble.
+                        child: SizedBox(
+                          height: 44,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              LiquidGlassHalo(
+                                borderRadius: 20,
+                                child: const GlassBackButton(),
+                              ),
+                              const Spacer(),
+                              LiquidTabBar(
+                                options: favoritesModeNames.values.toList(),
+                                icons: const [
+                                  CupertinoIcons.heart,
+                                  CupertinoIcons.square_grid_2x2,
+                                  CupertinoIcons.person_2,
+                                ],
+                                selectedIndex: selectedIndex.clamp(
+                                  0,
+                                  favoritesModeNames.length - 1,
+                                ),
+                                onSelected: _handleTabSelection,
+                                separated: !_chromeCollapse.expanded,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),

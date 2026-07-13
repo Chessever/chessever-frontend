@@ -9,6 +9,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -55,64 +56,6 @@ class _GamebasePlayerGamesScreenState
 
     return Scaffold(
       backgroundColor: context.colors.background,
-      appBar: AppBar(
-        backgroundColor: context.colors.background,
-        elevation: 0,
-        leading: IconButton(
-          icon:  Icon(Icons.arrow_back_ios, color: context.colors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (displayTitle.isNotEmpty) ...[
-                  Text(
-                    displayTitle,
-                    style: AppTypography.textSmBold.copyWith(
-                      color: const Color(0xFFA1A1AA), // Zinc 400
-                    ),
-                  ),
-                  SizedBox(width: 6.w),
-                ],
-                Flexible(
-                  child: Text(
-                    widget.player.name,
-                    style: AppTypography.textMdBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            if (widget.player.fed.trim().isNotEmpty) ...[
-              SizedBox(height: 2.h),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FederationFlag(
-                    federation: widget.player.fed,
-                    width: 16.w,
-                    height: 12.h,
-                    borderRadius: BorderRadius.circular(2.br),
-                  ),
-                  SizedBox(width: 6.w),
-                  Text(
-                    widget.player.fed,
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFA1A1AA),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-        centerTitle: false,
-      ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -121,7 +64,94 @@ class _GamebasePlayerGamesScreenState
                     ? ResponsiveHelper.contentMaxWidth
                     : double.infinity,
           ),
-          child: _buildBody(state),
+          child: Column(
+            children: [
+              _buildGlassHeader(context, displayTitle),
+              Expanded(child: _buildBody(state)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Floating liquid-glass header — replaces the sticky AppBar. Back button
+  /// plus the player's title/name and federation, over a top-fading gradient
+  /// so games scroll beneath it (matches the library detail pages).
+  Widget _buildGlassHeader(BuildContext context, String displayTitle) {
+    final topPadding = MediaQuery.of(context).viewPadding.top;
+    return Container(
+      padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            context.colors.background,
+            context.colors.background.withValues(alpha: 0),
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(8.w, 0, 8.w, 4.h),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const GlassBackButton(),
+            SizedBox(width: 8.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (displayTitle.isNotEmpty) ...[
+                        Text(
+                          displayTitle,
+                          style: AppTypography.textSmBold.copyWith(
+                            color: const Color(0xFFA1A1AA), // Zinc 400
+                          ),
+                        ),
+                        SizedBox(width: 6.w),
+                      ],
+                      Flexible(
+                        child: Text(
+                          widget.player.name,
+                          style: AppTypography.textMdBold.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (widget.player.fed.trim().isNotEmpty) ...[
+                    SizedBox(height: 2.h),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FederationFlag(
+                          federation: widget.player.fed,
+                          width: 16.w,
+                          height: 12.h,
+                          borderRadius: BorderRadius.circular(2.br),
+                        ),
+                        SizedBox(width: 6.w),
+                        Text(
+                          widget.player.fed,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: const Color(0xFFA1A1AA),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

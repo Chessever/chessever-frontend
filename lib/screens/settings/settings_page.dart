@@ -12,7 +12,6 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/cupertino.dart';
@@ -127,7 +126,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     horizontalPadding: 0,
                     topPadding: 0,
                     leading: const GlassBackButton(),
-                    title: const GlassTitleChip(label: 'Settings'),
+                    // Page title floats as plain text — no glass chip / border.
+                    title: Text(
+                      'Settings',
+                      style: AppTypography.textXlBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
                   ),
                   SizedBox(height: 16.h),
                   _AppearanceCard(),

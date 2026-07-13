@@ -22,16 +22,14 @@ void main() {
     expect(screen, contains('requestFocus'));
   });
 
-  test('bottom nav expands first then opens dedicated search on field tap', () {
+  test('bottom nav search filters the active page in place (no dedicated screen)', () {
     final nav = read('lib/screens/home/widget/bottom_nav_bar.dart');
-    expect(nav, contains('onSearchFieldTap'));
-    expect(nav, contains('_openDedicatedSearch'));
-    expect(nav, contains('GlobalSearchScreen.route'));
-    expect(nav, contains('_searchJustExpanded'));
-    expect(nav, contains('onSubmitted: _onSearchSubmitted'));
-    // First tap expands only — no keyboard on the bottom pill.
-    expect(nav, contains('autoFocusOnExpand: false'));
-    expect(nav, contains('_searchFocus.unfocus()'));
+    // Typing drives the shared query provider; the active tab filters itself.
+    expect(nav, contains('homeBottomSearchTextProvider'));
+    expect(nav, contains('autoFocusOnExpand: true'));
+    // No hand-off to a separate full-screen search.
+    expect(nav, isNot(contains('GlobalSearchScreen')));
+    expect(nav, isNot(contains('_openDedicatedSearch')));
   });
 
   test('recent searches provider persists queries', () {

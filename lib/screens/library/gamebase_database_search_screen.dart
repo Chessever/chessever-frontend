@@ -13,8 +13,8 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamebaseDatabaseSearchScreen extends ConsumerStatefulWidget {
@@ -43,24 +43,6 @@ class _GamebaseDatabaseSearchScreenState
 
     return Scaffold(
       backgroundColor: context.colors.background,
-      appBar: AppBar(
-        backgroundColor: context.colors.background,
-        elevation: 0,
-        leading: IconButton(
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            Navigator.of(context).pop();
-          },
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: context.colors.textPrimary,
-          ),
-        ),
-        title: Text(
-          'ChessEver Database',
-          style: AppTypography.textLgBold.copyWith(color: context.colors.textPrimary),
-        ),
-      ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -69,16 +51,22 @@ class _GamebaseDatabaseSearchScreenState
                     ? ResponsiveHelper.contentMaxWidth
                     : double.infinity,
           ),
-          child: searchAsync.when(
-            loading:
-                () => const Center(
-                  child: CircularProgressIndicator(color: kPrimaryColor),
-                ),
-            error: (error, _) => _ErrorState(message: userFacingError(error)),
-            data: (state) {
-              return Column(
-                children: [
-                  _SearchBar(
+          child: Column(
+            children: [
+              _GlassHeader(title: 'ChessEver Database'),
+              Expanded(
+                child: searchAsync.when(
+                  loading:
+                      () => const Center(
+                        child: CircularProgressIndicator(color: kPrimaryColor),
+                      ),
+                  error:
+                      (error, _) =>
+                          _ErrorState(message: userFacingError(error)),
+                  data: (state) {
+                    return Column(
+                      children: [
+                        _SearchBar(
                     controller: _queryController,
                     focusNode: _queryFocusNode,
                     query: state.query,
@@ -129,9 +117,12 @@ class _GamebaseDatabaseSearchScreenState
                                 .read(gamebaseDatabaseSearchProvider.notifier)
                                 .nextPage(),
                   ),
-                ],
-              );
-            },
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -151,6 +142,60 @@ class _GamebaseDatabaseSearchScreenState
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
     showAddToFolderSheet(context: context, game: game);
+  }
+}
+
+/// Floating liquid-glass header — replaces the sticky AppBar. A back button
+/// plus a centered title, sitting over a top-fading background gradient so the
+/// content scrolls beneath it (matches the folder/book library detail pages).
+class _GlassHeader extends StatelessWidget {
+  const _GlassHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).viewPadding.top;
+    return Container(
+      padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            context.colors.background,
+            context.colors.background.withValues(alpha: 0),
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(8.w, 0, 8.w, 4.h),
+        child: Row(
+          children: [
+            GlassBackButton(
+              onPressed: () {
+                HapticFeedbackService.light();
+                Navigator.of(context).pop();
+              },
+            ),
+            SizedBox(width: 4.w),
+            Expanded(
+              child: Text(
+                title,
+                style: AppTypography.textMdBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // Balance the back button so the title reads visually centered.
+            SizedBox(width: 40.w + 4.w),
+          ],
+        ),
+      ),
+    );
   }
 }
 

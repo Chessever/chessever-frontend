@@ -11,6 +11,10 @@ void main() {
   String read(String relative) =>
       File('$root/$relative').readAsStringSync();
 
+  // Matches a RAW Material IconButton but NOT GlassIconButton.
+  bool hasRawIconButton(String src) =>
+      RegExp(r'(?<![A-Za-z])IconButton\(').hasMatch(src);
+
   test('tournament success-path app bars use GlassBackButton, not IconButton', () {
     final gamesAppBar = read(
       'lib/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart',
@@ -20,13 +24,13 @@ void main() {
     );
 
     expect(gamesAppBar, contains('GlassBackButton'));
-    expect(gamesAppBar, isNot(contains('IconButton(')));
+    expect(hasRawIconButton(gamesAppBar), isFalse);
 
     // Success-path dropdown app bar + loading bar.
     expect(tourDetail, contains('const GlassBackButton()'));
     expect(tourDetail, contains('GlassBackButton('));
-    // No Material IconButton remaining in this file's chrome rows.
-    expect(tourDetail, isNot(contains('IconButton(')));
+    // No raw Material IconButton remaining in this file's chrome rows.
+    expect(hasRawIconButton(tourDetail), isFalse);
   });
 
   test('favorites + countrymen use GlassPage composition via ScreenWrapper', () {
@@ -37,11 +41,11 @@ void main() {
 
     expect(favorites, contains('ScreenWrapper('));
     expect(favorites, contains('GlassBackButton'));
-    expect(favorites, isNot(contains('IconButton(')));
+    expect(hasRawIconButton(favorites), isFalse);
 
     expect(countrymen, contains('ScreenWrapper('));
     expect(countrymen, contains('GlassBackButton'));
-    expect(countrymen, isNot(contains('IconButton(')));
+    expect(hasRawIconButton(countrymen), isFalse);
   });
 
   test('GlassBackButton always sets useOwnLayer: true (package contract)', () {
@@ -67,6 +71,6 @@ void main() {
   test('shared AppBarWithTitle uses GlassBackButton island', () {
     final appBar = read('lib/widgets/app_bar_with_title.dart');
     expect(appBar, contains('GlassBackButton'));
-    expect(appBar, isNot(contains('IconButton(')));
+    expect(hasRawIconButton(appBar), isFalse);
   });
 }

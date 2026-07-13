@@ -21,7 +21,6 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_feedback.dart';
-import 'package:chessever2/widgets/liquid_glass/scroll_chrome_provider.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
@@ -43,8 +42,13 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
+/// Key on the outer home [Scaffold] that owns the drawer. Exposed so nested
+/// chrome (e.g. the Events avatar island) can open the left sidebar — the
+/// GlassScaffold wraps its own inner Scaffold, so `Scaffold.of` from the body
+/// would find that one (which has no drawer) instead of this one.
+final GlobalKey<ScaffoldState> homeScaffoldKey = GlobalKey<ScaffoldState>();
+
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   static const int _favoritePromptThreshold = 5;
 
   @override
@@ -221,14 +225,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Tablet layout: NavigationRail on the side (unchanged — phone island is primary)
     if (ResponsiveHelper.isTablet) {
       return Scaffold(
-        key: _scaffoldKey,
+        key: homeScaffoldKey,
         resizeToAvoidBottomInset: false,
         drawer: HamburgerMenu(callbacks: _menuCallbacks),
         body: BillingIssueGate(
           child: Row(
             children: [
               // Navigation rail for tablets
-              TabletNavRail(scaffoldKey: _scaffoldKey),
+              TabletNavRail(scaffoldKey: homeScaffoldKey),
               // Vertical divider
               Container(width: 1, color: context.colors.divider),
               // Main content
@@ -244,10 +248,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    // Phone layout: GlassScaffold + floating GlassTabBar island.
+    // Phone layout: content owns every pixel; the floating glass tab bar is the
+    // canonical GlassScaffold.bottomBar (the package handles z-order, edge fade,
+    // safe-area and content-aware brightness sampling for us).
     // Outer Scaffold only owns the drawer (GlassScaffold has no drawer slot).
     return Scaffold(
-      key: _scaffoldKey,
+      key: homeScaffoldKey,
       resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.background,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
@@ -257,23 +263,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // Package: bars sample content scrolling underneath and flip icon colors.
         contentAwareBrightness: true,
         extendBody: true,
-        edgeFade: true,
-        bottomBarHeight: BottomNavBar.barHeight + BottomNavBar.verticalPadding,
+        // iOS-26 scroll-edge effect: content dissolves into the background in a
+        // band above the floating bottom nav, so the glass bar stays readable no
+        // matter what scrolls behind it. Top is handled per-screen (the floating
+        // top islands are body content, so a scaffold top-fade would dissolve
+        // them — each screen paints its own scrim BEHIND its island instead).
+        edgeFade: false,
+        topEdgeFade: false,
+        bottomEdgeFade: true,
+        bottomBarHeight: 96,
+        bottomEdgeFadeExtent: 28,
+        edgeStyle: GlassScrollEdgeStyle.soft,
         resizeToAvoidBottomInset: false,
         bottomBar: const BottomNavBar(),
-        body: NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            // Drive bottom-island shrink on scroll-down; grow back on
-            // scroll-up and always fully restore when at the top of the page.
-            return ref
-                .read(homeScrollChromeProvider.notifier)
-                .onScrollNotification(notification);
-          },
-          child: BillingIssueGate(
-            child: KeyedSubtree(
-              key: e2eKey(E2eIds.homeRoot),
-              child: const BottomNavBarView(),
-            ),
+        body: BillingIssueGate(
+          child: KeyedSubtree(
+            key: e2eKey(E2eIds.homeRoot),
+            child: const BottomNavBarView(),
           ),
         ),
       ),
@@ -288,42 +294,7 @@ class BottomNavBarView extends ConsumerStatefulWidget {
   ConsumerState<BottomNavBarView> createState() => _BottomNavBarViewState();
 }
 
-class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
-    with TickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.7, curve: Curves.easeInOut),
-      ),
-    );
-
-    // The Events tab is the first screen users see; don't spend the first
-    // frames scaling/repainting the whole For You feed while it is loading.
-    _animationController.value = 1;
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
+class _BottomNavBarViewState extends ConsumerState<BottomNavBarView> {
   Widget _buildScreen(BottomNavBarItem item) {
     switch (item) {
       case BottomNavBarItem.tournaments:
@@ -339,29 +310,9 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
   Widget build(BuildContext context) {
     final currentItem = ref.watch(selectedBottomNavBarItemProvider);
 
-    // Listen for tab changes and trigger animation
-    ref.listen<BottomNavBarItem>(selectedBottomNavBarItemProvider, (
-      previous,
-      next,
-    ) {
-      if (previous != null && previous != next) {
-        _animationController.reset();
-        _animationController.forward();
-      }
-    });
-
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
-      child: AnimatedBuilder(
-        animation: _animationController,
-        child: _buildScreen(currentItem),
-        builder: (context, child) {
-          return FadeTransition(
-            opacity: _fadeAnimation,
-            child: ScaleTransition(scale: _scaleAnimation, child: child),
-          );
-        },
-      ),
+      child: _buildScreen(currentItem),
     );
   }
 }

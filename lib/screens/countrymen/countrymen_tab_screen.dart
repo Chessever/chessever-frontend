@@ -8,17 +8,17 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/liquid_glass/chrome_scroll_collapse.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_back_button.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_floating_segments.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_stack.dart';
-import 'package:chessever2/widgets/liquid_glass/glass_island_top_bar.dart';
+import 'package:chessever2/widgets/liquid_glass/glass_country_pill.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_tab_bar.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_title_chip.dart';
+import 'package:chessever2/widgets/liquid_glass/liquid_glass_halo.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:country_picker/country_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -150,12 +150,23 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     final selectedMode = ref.watch(selectedCountrymenModeProvider);
     final persistedCountryAsync = ref.watch(countryDropdownProvider);
     final tempCountry = ref.watch(temporaryCountryProvider);
+    // Hide the floating bottom country pill while the Games-tab search is open.
+    final searchActive = ref.watch(countrymenSearchActiveProvider);
 
     // Effective country: temporary selection takes precedence
     final effectiveCountryAsync =
         tempCountry != null
             ? AsyncValue.data(tempCountry)
             : persistedCountryAsync;
+
+    // Page content owns the whole screen edge-to-edge; the discrete glass
+    // islands float on top and the list scrolls *underneath* them. Each tab
+    // gets this inset as leading padding so its first row clears the islands
+    // (status bar + control row + gap + segment island) without a reserved
+    // opaque strip that would read as a traditional appbar.
+    final statusTop = MediaQuery.viewPaddingOf(context).top;
+    // Single-line header now (back + country pill + segments).
+    final topInset = statusTop + 64;
 
     // GlassPage composition (via ScreenWrapper) so glass chrome islands
     // sample backdrop correctly per liquid_glass_widgets package contract.
@@ -167,28 +178,11 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: Column(
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                GlassIslandStack(
-                  gap: 6,
-                  children: [
-                    _buildAppBar(
-                      context,
-                      effectiveCountryAsync,
-                      selectedMode,
-                    ),
-                    GlassFloatingSegments(
-                      options: countrymenModeNames.values.toList(),
-                      selectedIndex: CountrymenScreenMode.values
-                          .indexOf(selectedMode)
-                          .clamp(0, countrymenModeNames.length - 1),
-                      onSelected: _handleTabSelection,
-                      expanded: _chromeCollapse.expanded,
-                      notifyOnReselect: true,
-                    ),
-                  ],
-                ),
-                Expanded(
+                // Full-bleed page content.
+                Positioned.fill(
                   child: NotificationListener<ScrollNotification>(
                     onNotification: _onScroll,
                     child: ScrollToTopScope(
@@ -200,11 +194,11 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                         itemBuilder: (context, index) {
                           switch (index) {
                             case 0:
-                              return const CountrymenEventsTab();
+                              return CountrymenEventsTab(topPadding: topInset);
                             case 1:
-                              return const CountrymenGamesTab();
+                              return CountrymenGamesTab(topPadding: topInset);
                             case 2:
-                              return const CountrymenPlayersTab();
+                              return CountrymenPlayersTab(topPadding: topInset);
                             default:
                               return Center(
                                 child: Text(
@@ -220,6 +214,77 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                     ),
                   ),
                 ),
+                // Floating glass chrome — scales down on scroll-down and back up
+                // on scroll-up, mirroring the home bottom nav bar's behaviour.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: AnimatedScale(
+                    scale: _chromeCollapse.expanded ? 1.0 : 0.94,
+                    alignment: Alignment.topCenter,
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedOpacity(
+                      opacity: _chromeCollapse.expanded ? 1.0 : 0.96,
+                      duration: const Duration(milliseconds: 240),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(12.w, statusTop + 8, 12.w, 0),
+                        // One line: back button + the mode tabs hugging the
+                        // right. Tabs are the SAME bare LiquidTabBar (with icons)
+                        // used on Home / Tournaments / Calendar. The country
+                        // selector moved to a floating pill at the bottom.
+                        child: SizedBox(
+                          height: 44,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              LiquidGlassHalo(
+                                borderRadius: 20,
+                                child: GlassBackButton(
+                                  onPressed: _handleBackPressed,
+                                ),
+                              ),
+                              const Spacer(),
+                              LiquidTabBar(
+                                options: countrymenModeNames.values.toList(),
+                                icons: const [
+                                  CupertinoIcons.calendar,
+                                  CupertinoIcons.square_grid_2x2,
+                                  CupertinoIcons.person_2,
+                                ],
+                                selectedIndex: CountrymenScreenMode.values
+                                    .indexOf(selectedMode)
+                                    .clamp(0, countrymenModeNames.length - 1),
+                                onSelected: _handleTabSelection,
+                                separated: !_chromeCollapse.expanded,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Floating country selector at the BOTTOM — mirrors the
+                // tournament-detail bottom category pill. No room for it up top.
+                // Hidden while the Games-tab search field is expanded.
+                if (!searchActive)
+                  Positioned(
+                    bottom: MediaQuery.viewPaddingOf(context).bottom + 16,
+                    left: 0,
+                    right: 0,
+                    child: AnimatedScale(
+                      scale: _chromeCollapse.expanded ? 1.0 : 0.9,
+                      alignment: Alignment.bottomCenter,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      child: _buildBottomCountrySelector(
+                        context,
+                        effectiveCountryAsync,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -228,72 +293,84 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     );
   }
 
-  Widget _buildAppBar(
+  /// Floating country selector pill (+ optional pin) centred at the bottom of
+  /// the screen — the tournament-detail bottom-selector pattern. Content scrolls
+  /// underneath; the top row only carries the back button and mode tabs.
+  Widget _buildBottomCountrySelector(
     BuildContext context,
     AsyncValue<Country> countryAsync,
-    CountrymenScreenMode selectedMode,
   ) {
     final isTemporary = _isTemporarySelection();
 
-    // Compact islands: back + content-sized country chip (not full-bleed title).
-    return GlassIslandTopBar(
-      horizontalPadding: 12.w,
-      topPadding: 0,
-      leading: GlassBackButton(onPressed: _handleBackPressed),
-      title: countryAsync.when(
-        data:
-            (country) => ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 200.w, minWidth: 120.w),
-              child: GlassContainer(
-                useOwnLayer: true,
-                height: 40,
-                padding: EdgeInsets.zero,
-                shape: const LiquidRoundedSuperellipse(borderRadius: 20),
-                quality: GlassQuality.standard,
-                clipBehavior: Clip.antiAlias,
-                child: _buildCountrySelector(country),
+    // Perfect centring (tournament-detail pattern): a left spacer equal to the
+    // trailing pin (40 + 8 gap) balances the row so the pill sits dead-centre.
+    const double pinSlot = 48;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Row(
+        children: [
+          if (isTemporary) const SizedBox(width: pinSlot),
+          Expanded(
+            child: Center(
+              child: countryAsync.when(
+                data:
+                    (country) => LiquidGlassHalo(
+                      borderRadius: 20,
+                      child: GlassCountryPill(
+                        height: 40,
+                        countryCode: country.countryCode,
+                        countryName: country.name,
+                        onSelected: (newCountry) {
+                          // Temporary selection — user taps Pin to persist it.
+                          ref.read(temporaryCountryProvider.notifier).state =
+                              newCountry;
+                        },
+                      ),
+                    ),
+                loading:
+                    () => LiquidGlassHalo(
+                      borderRadius: 20,
+                      child: GlassTitleChip(
+                        height: 40,
+                        label: 'Loading…',
+                        textStyle: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.textPrimaryMuted,
+                        ),
+                      ),
+                    ),
+                error:
+                    (_, __) => LiquidGlassHalo(
+                      borderRadius: 20,
+                      child: GlassTitleChip(
+                        height: 40,
+                        label: 'Error',
+                        textStyle: AppTypography.textSmMedium.copyWith(
+                          color: kRedColor,
+                        ),
+                      ),
+                    ),
               ),
             ),
-        loading:
-            () => GlassTitleChip(
-              label: 'Loading…',
-              textStyle: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimaryMuted,
-              ),
-            ),
-        error:
-            (_, __) => GlassTitleChip(
-              label: 'Error',
-              textStyle: AppTypography.textSmMedium.copyWith(color: kRedColor),
-            ),
-      ),
-      trailing: [
-        if (isTemporary)
-          GlassIconButton(
-            icon: Icon(
-              Icons.push_pin_rounded,
-              color: kPrimaryColor,
-              size: 18.ic,
-            ),
-            onPressed: _pinCurrentCountry,
-            size: 40,
-            iconSize: 18,
-            useOwnLayer: true,
           ),
-      ],
-    );
-  }
-
-  Widget _buildCountrySelector(Country country) {
-    return CountryDropdown(
-      selectedCountryCode: country.countryCode,
-      onChanged: (newCountry) {
-        // Set as temporary selection (not persisted)
-        // User must tap "Pin" to make it permanent
-        ref.read(temporaryCountryProvider.notifier).state = newCountry;
-      },
-      requireAuthToChange: false,
-      compact: true,
+          if (isTemporary) ...[
+            const SizedBox(width: 8),
+            LiquidGlassHalo(
+              borderRadius: 20,
+              child: GlassIconButton(
+                icon: Icon(
+                  Icons.push_pin_rounded,
+                  color: kPrimaryColor,
+                  size: 18.ic,
+                ),
+                onPressed: _pinCurrentCountry,
+                size: 40,
+                iconSize: 18,
+                useOwnLayer: true,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

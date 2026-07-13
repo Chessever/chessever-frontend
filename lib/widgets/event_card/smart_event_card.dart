@@ -325,7 +325,7 @@ class _FilterCaption extends StatelessWidget {
         reduceMotion
             ? dot
             : dot
-                .animate(onPlay: (c) => c.repeat(reverse: true))
+                .animate()
                 .fadeIn(duration: 700.ms, curve: Curves.easeOut)
                 .scaleXY(begin: 0.7, end: 1.15, duration: 700.ms),
         SizedBox(width: 5.w),

@@ -212,7 +212,11 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
 // --- Tab Widget ---
 
 class CountrymenPlayersTab extends ConsumerStatefulWidget {
-  const CountrymenPlayersTab({super.key});
+  const CountrymenPlayersTab({super.key, this.topPadding = 0});
+
+  /// Top inset so the first item clears the floating glass chrome while the
+  /// list scrolls underneath it.
+  final double topPadding;
 
   @override
   ConsumerState<CountrymenPlayersTab> createState() =>
@@ -306,6 +310,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
+          SliverToBoxAdapter(child: SizedBox(height: widget.topPadding)),
           // Search bar (scrolls with content)
           SliverToBoxAdapter(
             child: Padding(

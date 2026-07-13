@@ -21,7 +21,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 class AboutTourScreen extends ConsumerStatefulWidget {
-   AboutTourScreen({super.key});
+  const AboutTourScreen({super.key});
 
   @override
   ConsumerState<AboutTourScreen> createState() => _AboutTourScreenState();
@@ -186,7 +186,11 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
             margin: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: SingleChildScrollView(
               controller: _scrollController,
-              padding: EdgeInsets.zero,
+              // Clear the floating top bar + bottom chrome (event view floats).
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 66,
+                bottom: MediaQuery.of(context).padding.bottom + 84,
+              ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,12 +374,13 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                         SvgAsset.websiteIcon,
                         height: 12.h,
                         width: 12.h,
-                        colorFilter: context.isLightTheme
-                            ? const ColorFilter.mode(
-                                kPrimaryColor,
-                                BlendMode.srcIn,
-                              )
-                            : null,
+                        colorFilter:
+                            context.isLightTheme
+                                ? const ColorFilter.mode(
+                                  kPrimaryColor,
+                                  BlendMode.srcIn,
+                                )
+                                : null,
                       ),
                       SizedBox(width: 4.w),
                       Flexible(
@@ -419,11 +424,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
 }
 
 class _TitleDescWidget extends StatelessWidget {
-  const _TitleDescWidget({
-    required this.title,
-    required this.description,
-    super.key,
-  });
+  const _TitleDescWidget({required this.title, required this.description});
 
   final String title;
   final String description;
@@ -435,12 +436,16 @@ class _TitleDescWidget extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
         ),
         SizedBox(height: 8),
         Text(
           description,
-          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
       ],
     );
@@ -452,7 +457,6 @@ class _InlineLinkRow extends StatelessWidget {
     required this.prefix,
     required this.linkLabel,
     this.onTap,
-    super.key,
   });
 
   final String prefix;
@@ -469,7 +473,9 @@ class _InlineLinkRow extends StatelessWidget {
           children: [
             Text(
               '$prefix ',
-              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             GestureDetector(
               onTap: onTap,
@@ -494,7 +500,6 @@ class _CountryFlag extends StatelessWidget {
     required this.title,
     required this.flag,
     required this.description,
-    super.key,
   });
 
   final String title;
@@ -508,7 +513,9 @@ class _CountryFlag extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
         ),
         SizedBox(height: 8.w),
         Row(
@@ -519,7 +526,9 @@ class _CountryFlag extends StatelessWidget {
               child: Text(
                 description,
                 maxLines: 1,
-                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ],

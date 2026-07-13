@@ -23,7 +23,11 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class FavoritesListTab extends ConsumerStatefulWidget {
-  const FavoritesListTab({super.key});
+  const FavoritesListTab({super.key, this.topPadding = 0});
+
+  /// Top inset so the first item clears the floating glass chrome while the
+  /// list scrolls underneath it.
+  final double topPadding;
 
   @override
   ConsumerState<FavoritesListTab> createState() => _FavoritesListTabState();
@@ -110,6 +114,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
+              SliverToBoxAdapter(child: SizedBox(height: widget.topPadding)),
               // Search bar
               SliverToBoxAdapter(
                 child: Padding(

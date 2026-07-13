@@ -17,7 +17,9 @@ void main() {
           selectedGroupCategoryProvider.overrideWith(
             (ref) => GroupEventCategory.current,
           ),
-          forYouSurfaceVisibleProvider.overrideWith((ref) => true),
+          forYouSurfaceVisibleProvider.overrideWith(
+            (ref) => ForYouSurfaceVisibilityNotifier(),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -35,7 +37,6 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(container.read(forYouSurfaceVisibleProvider), isFalse);
 
-      container.read(forYouSurfaceVisibleProvider.notifier).state = true;
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
       expect(tester.takeException(), isNull);

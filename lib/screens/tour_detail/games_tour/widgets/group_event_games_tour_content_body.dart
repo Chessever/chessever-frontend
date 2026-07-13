@@ -191,11 +191,12 @@ class _GroupEventGamesTourContentBodyState
         child: ScrollablePositionedList.builder(
           itemScrollController: scrollController,
           itemPositionsListener: itemPositionsListener,
+          // Clear the floating top bar + bottom chrome (event view floats).
           padding: EdgeInsets.only(
             left: 16.sp,
             right: 16.sp,
-            top: 8.sp,
-            bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+            top: MediaQuery.of(context).padding.top + 66,
+            bottom: MediaQuery.of(context).viewPadding.bottom + 84,
           ),
           itemCount: listItemCount,
           itemBuilder: (context, index) {

@@ -79,22 +79,26 @@ class ForYouGamesWidget extends ConsumerStatefulWidget {
 
 class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
-  late final StateController<bool> _surfaceVisibility;
   PageRoute<dynamic>? _pageRoute;
   bool _routeSubscribed = false;
   bool _isSubscribingToRoute = false;
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _isDisposing = false;
+  bool _visibilityPublishScheduled = false;
+  late final ForYouSurfaceVisibilityNotifier _surfaceVisibilityNotifier;
 
   @override
   void initState() {
     super.initState();
-    _surfaceVisibility = ref.read(forYouSurfaceVisibleProvider.notifier);
+    _surfaceVisibilityNotifier = ref.read(
+      forYouSurfaceVisibleProvider.notifier,
+    );
     WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _publishSurfaceVisibility();
+      if (!mounted || _isDisposing) return;
+      _publishSurfaceVisibilityNow();
       Future<void>.microtask(_refreshRealtimeGamesNow);
     });
   }
@@ -129,12 +133,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     // Riverpod forbids provider mutations from dispose. Queue the cleanup so
     // it runs after this tree update; a replacement widget publishes its own
     // visibility in the subsequent post-frame callback.
+    final visibilityNotifier = _surfaceVisibilityNotifier;
     unawaited(
       Future<void>.microtask(() {
-        if (!_surfaceVisibility.mounted) return;
-        if (_surfaceVisibility.state) {
-          _surfaceVisibility.state = false;
-        }
+        visibilityNotifier.publish(owner: this, isVisible: false);
       }),
     );
     widget.scrollController.removeListener(_onScroll);
@@ -225,6 +227,17 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   void _publishSurfaceVisibility() {
     if (!mounted || _isDisposing) return;
+    if (_visibilityPublishScheduled) return;
+    _visibilityPublishScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibilityPublishScheduled = false;
+      if (!mounted || _isDisposing) return;
+      _publishSurfaceVisibilityNow();
+    });
+  }
+
+  void _publishSurfaceVisibilityNow() {
+    if (!mounted || _isDisposing) return;
     final routeIsCurrent = _pageRoute?.isCurrent == true;
     final selected = ref.read(selectedGroupCategoryProvider);
     final isVisible =
@@ -232,9 +245,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         routeIsCurrent &&
         _appIsResumed &&
         selected == GroupEventCategory.forYou;
-    if (_surfaceVisibility.state != isVisible) {
-      _surfaceVisibility.state = isVisible;
-    }
+    _surfaceVisibilityNotifier.publish(owner: this, isVisible: isVisible);
   }
 
   void _refreshRealtimeGamesNow({bool resetStreams = true}) {
@@ -488,9 +499,13 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_list'),
       controller: widget.scrollController,
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: 16.sp,
+      // Extra top clearance: the first item is the premium/favorites/countrymen
+      // header row, which must sit clear of the floating top islands.
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        MediaQuery.viewPaddingOf(context).top + 90,
+        horizontalPadding,
+        120.sp,
       ),
       itemCount: itemCount,
       scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
@@ -598,9 +613,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_tablet_grid'),
       controller: widget.scrollController,
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: 16.sp,
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        MediaQuery.viewPaddingOf(context).top + 90,
+        horizontalPadding,
+        120.sp,
       ),
       itemCount: itemCount,
       scrollCacheExtent: _forYouCacheExtentForMode(viewMode),

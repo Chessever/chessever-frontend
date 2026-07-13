@@ -9,6 +9,27 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/liquid_glass/glass_island_search.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
+/// Bulky collapsed search button — identical size + glass to the home bottom-nav
+/// search button (64px circle, thick graphite lens). See BottomNavBar.
+const double kEventSearchCollapsedSize = 64;
+const double kEventSearchExpandedHeight = 50;
+const LiquidGlassSettings _kEventSearchGlass = LiquidGlassSettings(
+  glassColor: Color(0xA62A2A2E),
+  thickness: 26,
+  blur: 14,
+  lightIntensity: 0,
+  ambientStrength: 0,
+  glowIntensity: 0,
+  ambientRim: 0,
+  chromaticAberration: 0,
+);
+
+/// Whether the tournament bottom search is morphed open (home-style in-place
+/// morph). Hoisted so the bottom chrome can collapse the category pill and let
+/// the search field span the full width while it's expanded.
+final eventBottomSearchExpandedProvider = StateProvider<bool>((ref) => false);
 
 /// Expand-on-tap glass search island above the event tab switcher.
 ///
@@ -26,7 +47,6 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
   late final FocusNode _focusNode;
   late final int _placeholderIndex;
   Timer? _debounce;
-  bool _expanded = false;
 
   @override
   void initState() {
@@ -37,7 +57,11 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
     _focusNode = FocusNode();
     _placeholderIndex = math.Random().nextInt(eventSearchPlaceholderCount);
     if (_controller.text.trim().isNotEmpty) {
-      _expanded = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(eventBottomSearchExpandedProvider.notifier).state = true;
+        }
+      });
     }
   }
 
@@ -55,8 +79,9 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       text: query,
       selection: TextSelection.collapsed(offset: query.length),
     );
-    if (query.trim().isNotEmpty && !_expanded) {
-      setState(() => _expanded = true);
+    if (query.trim().isNotEmpty &&
+        !ref.read(eventBottomSearchExpandedProvider)) {
+      ref.read(eventBottomSearchExpandedProvider.notifier).state = true;
     }
   }
 
@@ -96,6 +121,8 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
       _syncControllerText(next);
     });
 
+    final expanded = ref.watch(eventBottomSearchExpandedProvider);
+
     return Padding(
       padding: EdgeInsets.only(top: 2.h, bottom: 4.h),
       child: Align(
@@ -103,9 +130,15 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
         child: GlassIslandSearch(
           controller: _controller,
           focusNode: _focusNode,
-          expanded: _expanded,
+          expanded: expanded,
           hintText: hintText,
-          onExpandedChanged: (v) => setState(() => _expanded = v),
+          collapsedSize: kEventSearchCollapsedSize,
+          expandedHeight: kEventSearchExpandedHeight,
+          collapsedIconSize: 18,
+          collapsedSettings: _kEventSearchGlass,
+          onExpandedChanged:
+              (v) =>
+                  ref.read(eventBottomSearchExpandedProvider.notifier).state = v,
           onChanged: _handleChanged,
           onClear: _handleCleared,
         ),

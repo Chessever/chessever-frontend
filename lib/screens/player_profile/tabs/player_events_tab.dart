@@ -560,9 +560,12 @@ class _EventsListContent extends ConsumerWidget {
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
-        padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 16.h,
+        // Clear the floating chrome (player profile floats over full-screen).
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          MediaQuery.of(context).padding.top + 132,
+          horizontalPadding,
+          16.h,
         ),
         itemCount: totalItems,
         itemBuilder: (context, index) {
