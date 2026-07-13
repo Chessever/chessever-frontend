@@ -2,12 +2,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_list_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_list_presentation_provider.dart';
 
@@ -30,58 +27,9 @@ class GamesTourContentBody extends ConsumerWidget {
 
     final presentation = ref.watch(gamesTourListPresentationProvider);
     final gamesByRound = presentation.gamesByRound;
-    final displayRounds = presentation.displayRounds;
 
-    final gamesAppBar = ref.watch(gamesAppBarProvider);
-    final selectedRoundId = gamesAppBar.value?.selectedId;
-    final userSelected = gamesAppBar.value?.userSelectedId ?? false;
     final isSearchMode = gamesScreenModel.isSearchMode;
-    final upcomingPairingIds = groupedData.upcomingPairingRoundIds;
-    final autoScrollRounds =
-        displayRounds
-            .where((round) => !upcomingPairingIds.contains(round.id))
-            .toList();
-
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
-    final autoScrollDone = ref.watch(gamesTourAutoScrollProvider(scopeId));
-    if (!autoScrollDone &&
-        !isSearchMode &&
-        autoScrollRounds.isNotEmpty &&
-        !userSelected &&
-        _allRoundsUpcoming(autoScrollRounds)) {
-      final targetRoundId = _pickUpcomingRoundId(
-        autoScrollRounds,
-        selectedRoundId,
-      );
-      if (targetRoundId != null) {
-        final itemIndex = ref
-            .read(gamesAppBarProvider.notifier)
-            .calculateRoundIndex(targetRoundId);
-        if (itemIndex >= 0) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (ref.read(gamesTourAutoScrollProvider(scopeId))) {
-              return;
-            }
-            ref.read(gamesTourAutoScrollProvider(scopeId).notifier).state =
-                true;
-            final scrollNotifier = ref.read(
-              gamesTourScrollProvider(scopeId).notifier,
-            );
-            final controller = scrollNotifier.scrollController;
-            scrollNotifier.startProgrammaticScroll(
-              targetRoundId: targetRoundId,
-            );
-            _attemptScrollToRound(
-              controller,
-              scrollNotifier,
-              itemIndex,
-              targetRoundId,
-              0,
-            );
-          });
-        }
-      }
-    }
 
     final orderedGamesData = gamesScreenModel.copyWith(
       gamesTourModels: presentation.layout.orderedGames,
@@ -109,77 +57,5 @@ class GamesTourContentBody extends ConsumerWidget {
         // This callback can be used for additional logic if needed
       },
     );
-  }
-}
-
-bool _allRoundsUpcoming(List<GamesAppBarModel> rounds) {
-  return rounds.isNotEmpty &&
-      rounds.every((round) => round.roundStatus == RoundStatus.upcoming);
-}
-
-String? _pickUpcomingRoundId(
-  List<GamesAppBarModel> rounds,
-  String? selectedRoundId,
-) {
-  if (selectedRoundId != null &&
-      rounds.any((round) => round.id == selectedRoundId)) {
-    return selectedRoundId;
-  }
-
-  final upcomingRounds =
-      rounds
-          .where((round) => round.roundStatus == RoundStatus.upcoming)
-          .toList();
-  if (upcomingRounds.isEmpty) {
-    return null;
-  }
-
-  upcomingRounds.sort((a, b) {
-    final aStart = a.startsAt;
-    final bStart = b.startsAt;
-    if (aStart == null && bStart == null) {
-      return a.name.compareTo(b.name);
-    }
-    if (aStart == null) return 1;
-    if (bStart == null) return -1;
-    final cmp = aStart.compareTo(bStart);
-    return cmp != 0 ? cmp : a.name.compareTo(b.name);
-  });
-
-  return upcomingRounds.first.id;
-}
-
-void _attemptScrollToRound(
-  ItemScrollController controller,
-  dynamic scrollNotifier,
-  int itemIndex,
-  String roundId,
-  int attempt,
-) {
-  const maxAttempts = 5;
-  const retryDelay = Duration(milliseconds: 100);
-
-  if (controller.isAttached) {
-    try {
-      controller.jumpTo(index: itemIndex, alignment: 0.0);
-    } catch (e) {
-      debugPrint('❌ Auto-scroll jumpTo failed for $roundId: $e');
-    }
-    scrollNotifier.endProgrammaticScroll();
-  } else if (attempt < maxAttempts) {
-    Future.delayed(retryDelay, () {
-      _attemptScrollToRound(
-        controller,
-        scrollNotifier,
-        itemIndex,
-        roundId,
-        attempt + 1,
-      );
-    });
-  } else {
-    debugPrint(
-      '❌ Auto-scroll gave up for $roundId after $maxAttempts attempts',
-    );
-    scrollNotifier.endProgrammaticScroll();
   }
 }

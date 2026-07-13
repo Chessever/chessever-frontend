@@ -82,12 +82,13 @@ class EnginePvListView extends StatelessWidget {
             ),
           SizedBox(
             height: rowHeight,
-            child: i < items.length
-                ? _PvRow(item: items[i])
-                : _PvRowPlaceholder(
-                    isPrimary: i == 0,
-                    isEvaluating: isEvaluating,
-                  ),
+            child:
+                i < items.length
+                    ? _PvRow(item: items[i])
+                    : _PvRowPlaceholder(
+                      isPrimary: i == 0,
+                      isEvaluating: isEvaluating,
+                    ),
           ),
         ],
         if (trailingDivider) Divider(color: context.colors.divider, height: 1),
@@ -136,8 +137,9 @@ class _EvalBadge extends StatelessWidget {
   }
 }
 
-/// Horizontally scrollable move text with a soft fade at both edges. Never
-/// truncates — the user can scroll (drag) to the end of the line.
+/// Horizontally scrollable move text with soft overflow fades. The leading
+/// edge stays fully opaque at the initial position so the first move is always
+/// cleanly readable; its fade appears only after the row has been scrolled.
 class _FadeScroller extends StatelessWidget {
   const _FadeScroller({required this.controller, required this.child});
 
@@ -146,25 +148,39 @@ class _FadeScroller extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ShaderMask(
-      blendMode: BlendMode.dstIn,
-      shaderCallback: (rect) => const LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [
-          Color(0x00000000),
-          Color(0xFF000000),
-          Color(0xFF000000),
-          Color(0x00000000),
-        ],
-        stops: [0.0, 0.035, 0.9, 1.0],
-      ).createShader(rect),
-      child: SingleChildScrollView(
-        controller: controller,
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: child,
-      ),
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final hasClients = controller.hasClients;
+        final fadeLeadingEdge = hasClients && controller.offset > 0.5;
+        final fadeTrailingEdge =
+            hasClients && controller.position.extentAfter > 0.5;
+
+        return ShaderMask(
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (rect) {
+            final opaque = const Color(0xFF000000);
+            final transparent = const Color(0x00000000);
+            return LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                fadeLeadingEdge ? transparent : opaque,
+                fadeLeadingEdge ? opaque : opaque,
+                fadeTrailingEdge ? opaque : opaque,
+                fadeTrailingEdge ? transparent : opaque,
+              ],
+              stops: const [0.0, 0.035, 0.9, 1.0],
+            ).createShader(rect);
+          },
+          child: SingleChildScrollView(
+            controller: controller,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }
@@ -289,7 +305,10 @@ class _PvRowState extends State<_PvRow> {
 }
 
 class _PvRowPlaceholder extends StatelessWidget {
-  const _PvRowPlaceholder({required this.isPrimary, required this.isEvaluating});
+  const _PvRowPlaceholder({
+    required this.isPrimary,
+    required this.isEvaluating,
+  });
 
   final bool isPrimary;
   final bool isEvaluating;
@@ -360,28 +379,31 @@ class _EnginePvCardsViewState extends State<EnginePvCardsView> {
       children: [
         SizedBox(
           height: height,
-          child: items.isEmpty
-              ? (widget.emptyPlaceholder ?? const SizedBox.shrink())
-              : PageView.builder(
-                  controller: _pageController,
-                  physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
+          child:
+              items.isEmpty
+                  ? (widget.emptyPlaceholder ?? const SizedBox.shrink())
+                  : PageView.builder(
+                    controller: _pageController,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    padEnds: false,
+                    onPageChanged:
+                        (index) => setState(() => _currentPage = index),
+                    itemCount: items.length,
+                    itemBuilder:
+                        (context, index) => _PvCard(item: items[index]),
                   ),
-                  padEnds: false,
-                  onPageChanged: (index) =>
-                      setState(() => _currentPage = index),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) => _PvCard(item: items[index]),
-                ),
         ),
         SizedBox(height: 4.h),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(pageCount, (index) {
             final isActive = index == _currentPage;
-            final accent = items.isEmpty
-                ? context.colors.textPrimary.withValues(alpha: 0.1)
-                : items[index.clamp(0, items.length - 1)].accentColor;
+            final accent =
+                items.isEmpty
+                    ? context.colors.textPrimary.withValues(alpha: 0.1)
+                    : items[index.clamp(0, items.length - 1)].accentColor;
             return Container(
               margin: EdgeInsets.symmetric(horizontal: 4.sp),
               width: 6.w,
@@ -452,7 +474,10 @@ class _PvCard extends StatelessWidget {
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
-                padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 10.sp),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 10.sp,
+                  vertical: 10.sp,
+                ),
                 child: RichText(
                   text: TextSpan(
                     style: AppTypography.textXsMedium.copyWith(

@@ -9,6 +9,33 @@ final roundRepositoryProvider = AutoDisposeProvider<RoundRepository>((ref) {
 });
 
 class RoundRepository extends BaseRepository {
+  Future<Map<String, DateTime>> getLatestPlayedRoundTimesByTourIds(
+    List<String> tourIds, {
+    DateTime? now,
+  }) async {
+    if (tourIds.isEmpty) return <String, DateTime>{};
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('rounds')
+          .select('tour_id,starts_at,games!games_round_id_fkey!inner(id)')
+          .inFilter('tour_id', tourIds)
+          .not('starts_at', 'is', null)
+          .lte('starts_at', (now ?? DateTime.now()).toUtc().toIso8601String())
+          .order('starts_at', ascending: false);
+
+      final latestByTourId = <String, DateTime>{};
+      for (final row in response as List) {
+        final json = Map<String, dynamic>.from(row as Map);
+        final tourId = json['tour_id'] as String?;
+        final startsAt = json['starts_at'] as String?;
+        if (tourId == null || tourId.isEmpty || startsAt == null) continue;
+        latestByTourId.putIfAbsent(tourId, () => DateTime.parse(startsAt));
+      }
+      return latestByTourId;
+    });
+  }
+
   Future<List<Round>> getRoundsByIds(List<String> roundIds) async {
     if (roundIds.isEmpty) return <Round>[];
 

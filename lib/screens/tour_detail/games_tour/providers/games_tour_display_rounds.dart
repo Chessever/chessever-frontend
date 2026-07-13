@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 
 /// Selects and orders the rounds actually painted by the regular Games list.
 ///
@@ -69,21 +70,21 @@ List<GamesAppBarModel> selectGamesTourDisplayRounds({
       effectiveRounds
           .where((round) => upcomingPairingRoundIds.contains(round.id))
           .toList();
-  GamesAppBarModel? topPairingRound;
-  if (upcomingPairingRounds.isNotEmpty) {
-    final next = upcomingPairingRounds.first;
-    final startsAt = next.startsAt;
-    if (startsAt != null &&
-        startsAt.difference(now ?? DateTime.now()) < const Duration(hours: 1)) {
-      topPairingRound = next;
-    }
-  }
 
-  return List<GamesAppBarModel>.unmodifiable(<GamesAppBarModel>[
-    if (topPairingRound != null) topPairingRound,
-    ...visibleRounds,
-    ...upcomingPairingRounds.where((round) => round != topPairingRound),
-  ]);
+  return List<GamesAppBarModel>.unmodifiable(
+    sortRoundsForDisplay(
+      <GamesAppBarModel>[...visibleRounds, ...upcomingPairingRounds],
+      resolveDate: (round) => round.startsAt,
+      hasGames: (_) => true,
+      isRoundFullyPlayed: (round) {
+        final games = gamesByRound[round.id] ?? const <GamesTourModel>[];
+        return round.roundStatus == RoundStatus.completed ||
+            (games.isNotEmpty &&
+                games.every((game) => game.gameStatus.isFinished));
+      },
+      now: now,
+    ),
+  );
 }
 
 int _compareRoundsByStartAscending(

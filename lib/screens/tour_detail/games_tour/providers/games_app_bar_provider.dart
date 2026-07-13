@@ -432,7 +432,7 @@ class _GamesAppBarNotifier
 
   Future<void> _load({
     bool showLoading = true,
-    bool scrollSelection = true,
+    bool scrollSelection = false,
   }) async {
     if (tourId == null) {
       if (showLoading) {
@@ -914,6 +914,78 @@ class _GamesAppBarNotifier
     }
   }
 
+  Map<String, bool> _buildRoundCompletion(List<GamesAppBarModel> loadedModels) {
+    final isKnockout =
+        tourId != null
+            ? ref.read(knockoutTournamentStateProvider(tourId!)).isKnockout
+            : false;
+
+    if (isKnockout && tourId != null) {
+      final games =
+          ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
+          const <GamesTourModel>[];
+      final knownTourIds =
+          ref
+              .read(tourDetailScreenProvider)
+              .valueOrNull
+              ?.tours
+              .map((tour) => tour.tour.id) ??
+          const <String>[];
+      return <String, bool>{
+        for (final model in loadedModels)
+          model.id: () {
+            final roundGames = itemsForTournamentDisplayRound<GamesTourModel>(
+              round: model,
+              selectedTourId: tourId!,
+              knownTourIds: knownTourIds,
+              selectedTourItems: games,
+              sourceRoundIdOf: (game) => game.roundId,
+              siblingTourItems:
+                  (stageTourId) =>
+                      ref
+                          .read(knockoutTournamentStateProvider(stageTourId))
+                          .allGames,
+            );
+            return roundGames.isNotEmpty &&
+                roundGames.every((game) => game.gameStatus.isFinished);
+          }(),
+      };
+    }
+
+    final rawGames =
+        tourId == null
+            ? null
+            : ref.read(gamesTourProvider(tourId!)).valueOrNull;
+    if (rawGames != null) {
+      return <String, bool>{
+        for (final model in loadedModels)
+          model.id: () {
+            final roundGames = rawGames.where(
+              (game) => model.sourceRoundIds.contains(game.roundId),
+            );
+            return roundGames.isNotEmpty &&
+                roundGames.every(
+                  (game) => GameStatus.fromString(game.status).isFinished,
+                );
+          }(),
+      };
+    }
+
+    final games =
+        ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
+        const <GamesTourModel>[];
+    return <String, bool>{
+      for (final model in loadedModels)
+        model.id: () {
+          final roundGames = games.where(
+            (game) => model.sourceRoundIds.contains(game.roundId),
+          );
+          return roundGames.isNotEmpty &&
+              roundGames.every((game) => game.gameStatus.isFinished);
+        }(),
+    };
+  }
+
   bool _hasGames(String roundId, Map<String, int> counts) =>
       (counts[roundId] ?? 0) > 0;
 
@@ -968,17 +1040,23 @@ class _GamesAppBarNotifier
     List<GamesAppBarModel> models,
     Map<String, int> counts,
   ) {
+    final completion = _buildRoundCompletion(models);
     return pickPreferredRoundForSelection(
       models,
       resolveDate: _roundEventDateTime,
       hasGames: (model) => _hasGames(model.id, counts),
+      isRoundFullyPlayed: (model) => completion[model.id] ?? false,
     );
   }
 
   void _sortRounds(List<GamesAppBarModel> models) {
+    final counts = _buildRoundGameCounts(models);
+    final completion = _buildRoundCompletion(models);
     final sorted = sortRoundsForDisplay(
       models,
       resolveDate: _roundEventDateTime,
+      hasGames: (model) => _hasGames(model.id, counts),
+      isRoundFullyPlayed: (model) => completion[model.id] ?? false,
     );
     models
       ..clear()
@@ -1001,6 +1079,28 @@ class _GamesAppBarNotifier
       if (unknownRoundIds.isNotEmpty) {
         _startUnknownGameRoundReloads(unknownRoundIds);
       }
+
+      if (current == null) return;
+      final reordered = List<GamesAppBarModel>.from(current.gamesAppBarModels);
+      _sortRounds(reordered);
+      final sticky = ref.read(userSelectedRoundProvider);
+      final stickyId = sticky?.id;
+      final counts = _buildRoundGameCounts(reordered);
+      final autoSelected = _selectAutoRound(reordered, counts);
+      final stickyIsValid =
+          sticky?.userSelected == true &&
+          stickyId != null &&
+          reordered.any((round) => round.id == stickyId) &&
+          _hasGames(stickyId, counts);
+      final nextSelectedId =
+          stickyIsValid ? stickyId : autoSelected?.id ?? current.selectedId;
+      state = AsyncValue.data(
+        GamesAppBarViewModel(
+          gamesAppBarModels: reordered,
+          selectedId: nextSelectedId,
+          userSelectedId: stickyIsValid,
+        ),
+      );
     });
   }
 
@@ -1166,10 +1266,12 @@ class _GamesAppBarNotifier
       (m) => _roundEventDateTime(m) != null,
     );
     if (allHaveStartTimes) {
+      final completion = _buildRoundCompletion(models);
       final preconfiguredFocus = pickPreferredRoundForSelection(
         models,
         resolveDate: _roundEventDateTime,
         hasGames: (model) => _hasGames(model.id, counts),
+        isRoundFullyPlayed: (model) => completion[model.id] ?? false,
       );
       if (preconfiguredFocus != null) {
         state = AsyncValue.data(
@@ -1612,14 +1714,21 @@ int? _parseGameNumber(String? value) {
 String _roundCountSignature(List<Games> games) {
   if (games.isEmpty) return '';
 
-  final counts = <String, int>{};
+  final statuses = <String, List<String>>{};
   for (final game in games) {
-    counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+    statuses
+        .putIfAbsent(game.roundId, () => <String>[])
+        .add((game.status ?? '').trim());
   }
 
   final entries =
-      counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
-  return entries.map((entry) => '${entry.key}:${entry.value}').join('|');
+      statuses.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+  return entries
+      .map((entry) {
+        entry.value.sort();
+        return '${entry.key}:${entry.value.join(',')}';
+      })
+      .join('|');
 }
 
 List<GamesAppBarModel> buildVirtualGamebaseRoundModels(List<Games> games) {

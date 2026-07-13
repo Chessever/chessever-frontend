@@ -39,6 +39,7 @@ Tour selectDefaultTour({
   String? currentSelectedId,
   String? savedTourId,
   String? activityTourId,
+  Map<String, DateTime> latestPlayedRoundAtByTourId = const {},
 }) {
   final hasStartedTours = tourModels.any(
     (model) => model.roundStatus != RoundStatus.upcoming,
@@ -70,24 +71,49 @@ Tour selectDefaultTour({
     return currentTour;
   }
 
-  final savedTour = findSelectableTour(savedTourId);
-  if (savedTour != null) {
-    return savedTour;
-  }
-
   final liveModels =
       tourModels
           .where((model) => model.roundStatus == RoundStatus.live)
           .toList()
-        ..sort((a, b) {
-          final aDate =
-              a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-          final bDate =
-              b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
-          return bDate.compareTo(aDate);
-        });
+        ..sort(
+          (a, b) => _compareLiveTourPriority(
+            a,
+            b,
+            latestPlayedRoundAtByTourId: latestPlayedRoundAtByTourId,
+          ),
+        );
   if (liveModels.isNotEmpty) {
     return liveModels.first.tour;
+  }
+
+  final latestPlayedModels =
+      tourModels
+          .where(
+            (model) =>
+                canUseSelection(model) &&
+                latestPlayedRoundAtByTourId.containsKey(model.tour.id),
+          )
+          .toList()
+        ..sort(
+          (a, b) => _compareTourRelevance(
+            a,
+            b,
+            latestPlayedRoundAtByTourId: latestPlayedRoundAtByTourId,
+            activityTourId: activityTourId,
+          ),
+        );
+  if (latestPlayedModels.isNotEmpty) {
+    return latestPlayedModels.first.tour;
+  }
+
+  final activityTour = findSelectableTour(activityTourId);
+  if (activityTour != null) {
+    return activityTour;
+  }
+
+  final savedTour = findSelectableTour(savedTourId);
+  if (savedTour != null) {
+    return savedTour;
   }
 
   final selectableModels =
@@ -139,11 +165,6 @@ Tour selectDefaultTour({
     }
   }
 
-  final activityTour = findSelectableTour(activityTourId);
-  if (activityTour != null) {
-    return activityTour;
-  }
-
   final ongoingTours =
       tourModels
           .where((model) => model.roundStatus == RoundStatus.ongoing)
@@ -190,4 +211,63 @@ Tour selectDefaultTour({
   }
 
   return tourModels.first.tour;
+}
+
+int _compareLiveTourPriority(
+  TourModel a,
+  TourModel b, {
+  required Map<String, DateTime> latestPlayedRoundAtByTourId,
+}) {
+  final eloCompare = (b.tour.avgElo ?? 0).compareTo(a.tour.avgElo ?? 0);
+  if (eloCompare != 0) return eloCompare;
+
+  final aLatest = latestPlayedRoundAtByTourId[a.tour.id];
+  final bLatest = latestPlayedRoundAtByTourId[b.tour.id];
+  if (aLatest != null && bLatest != null) {
+    final latestCompare = bLatest.compareTo(aLatest);
+    if (latestCompare != 0) return latestCompare;
+  } else if (aLatest != null) {
+    return -1;
+  } else if (bLatest != null) {
+    return 1;
+  }
+
+  final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+  final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+  final dateCompare = bDate.compareTo(aDate);
+  if (dateCompare != 0) return dateCompare;
+  return a.tour.id.compareTo(b.tour.id);
+}
+
+int _compareTourRelevance(
+  TourModel a,
+  TourModel b, {
+  required Map<String, DateTime> latestPlayedRoundAtByTourId,
+  required String? activityTourId,
+}) {
+  final aLatest = latestPlayedRoundAtByTourId[a.tour.id];
+  final bLatest = latestPlayedRoundAtByTourId[b.tour.id];
+  if (aLatest != null && bLatest != null) {
+    final latestCompare = bLatest.compareTo(aLatest);
+    if (latestCompare != 0) return latestCompare;
+  } else if (aLatest != null) {
+    return -1;
+  } else if (bLatest != null) {
+    return 1;
+  }
+
+  if (aLatest == null && bLatest == null) {
+    final aHasActivity = a.tour.id == activityTourId;
+    final bHasActivity = b.tour.id == activityTourId;
+    if (aHasActivity != bHasActivity) return aHasActivity ? -1 : 1;
+  }
+
+  final eloCompare = (b.tour.avgElo ?? 0).compareTo(a.tour.avgElo ?? 0);
+  if (eloCompare != 0) return eloCompare;
+
+  final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+  final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+  final dateCompare = bDate.compareTo(aDate);
+  if (dateCompare != 0) return dateCompare;
+  return a.tour.id.compareTo(b.tour.id);
 }

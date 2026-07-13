@@ -79,7 +79,10 @@ class ForYouGamesWidget extends ConsumerStatefulWidget {
 
 class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     with WidgetsBindingObserver, RouteAware, AutomaticKeepAliveClientMixin {
+  late final StateController<bool> _surfaceVisibility;
+  PageRoute<dynamic>? _pageRoute;
   bool _routeSubscribed = false;
+  bool _isSubscribingToRoute = false;
   bool _routeIsCurrent = true;
   bool _appIsResumed = true;
   bool _isDisposing = false;
@@ -87,6 +90,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   @override
   void initState() {
     super.initState();
+    _surfaceVisibility = ref.read(forYouSurfaceVisibleProvider.notifier);
     WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -104,19 +108,40 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     // transient popups (the share/copy-pgn menu, dialogs, sheets) so they no
     // longer blank this tab; only a real page push (tournament/board) does.
     if (route is! PageRoute) return;
-    pageRouteObserver.subscribe(this, route);
-    _routeSubscribed = true;
+    _pageRoute = route;
     _routeIsCurrent = route.isCurrent;
+    // RouteObserver.subscribe invokes didPush synchronously. Since this method
+    // runs during the widget build lifecycle, publishing from that callback
+    // would mutate Riverpod while the tree is building. The initState
+    // post-frame callback performs the initial publication instead.
+    _isSubscribingToRoute = true;
+    try {
+      pageRouteObserver.subscribe(this, route);
+      _routeSubscribed = true;
+    } finally {
+      _isSubscribingToRoute = false;
+    }
   }
 
   @override
   void dispose() {
     _isDisposing = true;
-    ref.read(forYouSurfaceVisibleProvider.notifier).state = false;
+    // Riverpod forbids provider mutations from dispose. Queue the cleanup so
+    // it runs after this tree update; a replacement widget publishes its own
+    // visibility in the subsequent post-frame callback.
+    unawaited(
+      Future<void>.microtask(() {
+        if (!_surfaceVisibility.mounted) return;
+        if (_surfaceVisibility.state) {
+          _surfaceVisibility.state = false;
+        }
+      }),
+    );
     widget.scrollController.removeListener(_onScroll);
     if (_routeSubscribed) {
       pageRouteObserver.unsubscribe(this);
     }
+    _pageRoute = null;
     ForegroundTaskScheduler.cancel('for_you_games_route_return_$hashCode');
     ForegroundTaskScheduler.cancel('for_you_games_resume_$hashCode');
     WidgetsBinding.instance.removeObserver(this);
@@ -125,6 +150,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   @override
   void didPush() {
+    if (_isSubscribingToRoute) return;
     _setRouteActive(true, refreshNow: true);
   }
 
@@ -199,24 +225,22 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   void _publishSurfaceVisibility() {
     if (!mounted || _isDisposing) return;
-    final routeIsCurrent = ModalRoute.of(context)?.isCurrent == true;
+    final routeIsCurrent = _pageRoute?.isCurrent == true;
     final selected = ref.read(selectedGroupCategoryProvider);
     final isVisible =
         _routeIsCurrent &&
         routeIsCurrent &&
         _appIsResumed &&
         selected == GroupEventCategory.forYou;
-    final notifier = ref.read(forYouSurfaceVisibleProvider.notifier);
-    if (notifier.state != isVisible) {
-      notifier.state = isVisible;
+    if (_surfaceVisibility.state != isVisible) {
+      _surfaceVisibility.state = isVisible;
     }
   }
 
   void _refreshRealtimeGamesNow({bool resetStreams = true}) {
     if (!mounted || _isDisposing) return;
     if (!_routeIsCurrent || !_appIsResumed) return;
-    final route = ModalRoute.of(context);
-    if (route?.isCurrent != true) return;
+    if (_pageRoute?.isCurrent != true) return;
     final selected = ref.read(selectedGroupCategoryProvider);
     if (selected == GroupEventCategory.forYou) {
       final wasStreaming = ref.read(shouldStreamProvider);

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
@@ -381,12 +382,22 @@ class _TourDetailScreenNotifier
           );
     } catch (_) {}
 
+    Map<String, DateTime> latestPlayedRoundAtByTourId = const {};
+    try {
+      latestPlayedRoundAtByTourId = await ref
+          .read(roundRepositoryProvider)
+          .getLatestPlayedRoundTimesByTourIds(
+            tourModels.map((model) => model.tour.id).toList(),
+          );
+    } catch (_) {}
+
     return selectDefaultTour(
       tourModels: tourModels,
       liveTourIds: liveTourIds,
       currentSelectedId: currentSelectedId,
       savedTourId: savedTourId,
       activityTourId: activityTourId,
+      latestPlayedRoundAtByTourId: latestPlayedRoundAtByTourId,
     );
   }
 

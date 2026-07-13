@@ -32,9 +32,91 @@ void main() {
       );
 
       expect(visible.map((round) => round.id), [
-        semifinals.id,
         quarterfinals.id,
+        semifinals.id,
       ]);
+    });
+
+    test('promotes the next pairing at the inclusive one-hour boundary', () {
+      final now = DateTime(2026, 7, 13, 12);
+      final round1 = _round(
+        'r1',
+        RoundStatus.completed,
+        startsAt: now.subtract(const Duration(hours: 4)),
+      );
+      final round2 = _round(
+        'r2',
+        RoundStatus.completed,
+        startsAt: now.subtract(const Duration(hours: 2)),
+      );
+      final round3 = _round(
+        'r3',
+        RoundStatus.upcoming,
+        startsAt: now.add(const Duration(hours: 1)),
+      );
+      final round4 = _round(
+        'r4',
+        RoundStatus.upcoming,
+        startsAt: now.add(const Duration(hours: 2)),
+      );
+
+      final visible = selectGamesTourDisplayRounds(
+        rounds: [round4, round2, round3, round1],
+        effectiveRounds: [round4, round2, round3, round1],
+        gamesByRound: {
+          round1.id: [_game('finished-1', status: GameStatus.draw)],
+          round2.id: [_game('finished-2', status: GameStatus.draw)],
+          round3.id: [_game('pairing-3')],
+          round4.id: [_game('pairing-4')],
+        },
+        upcomingPairingRoundIds: {round3.id, round4.id},
+        isSearchMode: false,
+        isMultiStageKnockout: false,
+        now: now,
+      );
+
+      expect(visible.map((round) => round.id), ['r3', 'r2', 'r1', 'r4']);
+    });
+
+    test('keeps future pairings last while a played round is unfinished', () {
+      final now = DateTime(2026, 7, 13, 12);
+      final completed = _round(
+        'r1',
+        RoundStatus.completed,
+        startsAt: now.subtract(const Duration(hours: 4)),
+      );
+      final ongoing = _round(
+        'r2',
+        RoundStatus.ongoing,
+        startsAt: now.subtract(const Duration(hours: 2)),
+      );
+      final next = _round(
+        'r3',
+        RoundStatus.upcoming,
+        startsAt: now.add(const Duration(minutes: 30)),
+      );
+      final later = _round(
+        'r4',
+        RoundStatus.upcoming,
+        startsAt: now.add(const Duration(hours: 2)),
+      );
+
+      final visible = selectGamesTourDisplayRounds(
+        rounds: [next, completed, later, ongoing],
+        effectiveRounds: [next, completed, later, ongoing],
+        gamesByRound: {
+          completed.id: [_game('finished', status: GameStatus.draw)],
+          ongoing.id: [_game('ongoing')],
+          next.id: [_game('pairing-next')],
+          later.id: [_game('pairing-later')],
+        },
+        upcomingPairingRoundIds: {next.id, later.id},
+        isSearchMode: false,
+        isMultiStageKnockout: false,
+        now: now,
+      );
+
+      expect(visible.map((round) => round.id), ['r2', 'r1', 'r4', 'r3']);
     });
   });
 
@@ -171,8 +253,8 @@ GamesTourFlattenedLayout _layout({
   displayMode: displayMode,
 );
 
-GamesAppBarModel _round(String id, RoundStatus status) =>
-    GamesAppBarModel(id: id, name: id, startsAt: null, roundStatus: status);
+GamesAppBarModel _round(String id, RoundStatus status, {DateTime? startsAt}) =>
+    GamesAppBarModel(id: id, name: id, startsAt: startsAt, roundStatus: status);
 
 GamesTourModel _game(
   String id, {

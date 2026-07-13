@@ -107,6 +107,71 @@ bool _gamesEqual(GamesTourModel a, GamesTourModel b) {
       a.isOnline == b.isOnline;
 }
 
+/// Builds the bounded RPC-backed preview while enforcing the event card's
+/// single-category contract. Mixed/stale payloads are resolved to the
+/// highest-average-Elo tour, preserving the RPC's board order within that
+/// tour so older rounds can backfill any remaining board slots.
+ForYouEventGamesSnapshot buildForYouTopGamesSnapshot({
+  required String eventId,
+  required List<Games> games,
+  required int maxGames,
+}) {
+  if (games.isEmpty || maxGames <= 0) {
+    return ForYouEventGamesSnapshot(
+      eventId: eventId,
+      tourId: '',
+      visibleGames: const [],
+      pinnedIds: const [],
+    );
+  }
+
+  final parsedGames = <({Games raw, GamesTourModel model})>[];
+  final seenGameIds = <String>{};
+  for (final game in games) {
+    try {
+      final model = GamesTourModel.fromGame(game);
+      if (isEventBoardGameVisible(model) && seenGameIds.add(model.gameId)) {
+        parsedGames.add((raw: game, model: model));
+      }
+    } catch (_) {
+      // Match the Games tab's resilience to malformed/stale game rows.
+    }
+  }
+
+  if (parsedGames.isEmpty) {
+    return ForYouEventGamesSnapshot(
+      eventId: eventId,
+      tourId: '',
+      visibleGames: const [],
+      pinnedIds: const [],
+    );
+  }
+
+  var selected = parsedGames.first;
+  for (final candidate in parsedGames.skip(1)) {
+    final selectedElo = selected.raw.avgElo;
+    final candidateElo = candidate.raw.avgElo;
+    if (candidateElo != null &&
+        (selectedElo == null || candidateElo > selectedElo)) {
+      selected = candidate;
+    }
+  }
+
+  final selectedTourId = selected.model.tourId;
+  final visibleGames = parsedGames
+      .where((game) => game.model.tourId == selectedTourId)
+      .map((game) => game.model)
+      .take(maxGames)
+      .toList(growable: false);
+
+  return ForYouEventGamesSnapshot(
+    eventId: eventId,
+    tourId: selectedTourId,
+    visibleGames: visibleGames,
+    pinnedIds: const [],
+  );
+}
+
 bool _playerCardsEqual(PlayerCard a, PlayerCard b) {
   return a.name == b.name &&
       a.federation == b.federation &&
