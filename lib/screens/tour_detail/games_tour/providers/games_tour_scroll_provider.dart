@@ -43,10 +43,6 @@ void clearGamesTourScrollScopeActive(String scopeId) {
   }
 }
 
-/// Track whether we already performed the initial auto-scroll for a given scope.
-final gamesTourAutoScrollProvider = StateProvider.autoDispose
-    .family<bool, String>((ref, scopeId) => false);
-
 /// True while the tournament games list is actively moving.
 ///
 /// Game-card engine fallbacks use this to stay cache-only during scroll and

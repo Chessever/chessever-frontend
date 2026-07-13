@@ -153,6 +153,143 @@ void main() {
       expect(selected.id, 'tour-live');
     });
 
+    test('live category overrides a stale saved started category', () {
+      final now = DateTime.now();
+      final liveRapid = _makeTour(
+        id: 'rapid-live',
+        name: 'Biel Rapid',
+        dates: [now.subtract(const Duration(hours: 2)), now],
+        avgElo: 2650,
+      );
+      final savedClassical = _makeTour(
+        id: 'classical-saved',
+        name: 'Biel Classical',
+        dates: [
+          now.subtract(const Duration(days: 2)),
+          now.add(const Duration(days: 3)),
+        ],
+        avgElo: 2750,
+      );
+
+      final selected = selectDefaultTour(
+        tourModels: [
+          TourModel(tour: savedClassical, roundStatus: RoundStatus.ongoing),
+          TourModel(tour: liveRapid, roundStatus: RoundStatus.live),
+        ],
+        liveTourIds: const ['rapid-live'],
+        savedTourId: 'classical-saved',
+        latestPlayedRoundAtByTourId: {
+          'rapid-live': now.subtract(const Duration(minutes: 20)),
+          'classical-saved': now.subtract(const Duration(days: 1)),
+        },
+      );
+
+      expect(selected.id, 'rapid-live');
+    });
+
+    test(
+      'multiple live categories prioritize average Elo over recent activity',
+      () {
+        final now = DateTime.now();
+        final higherEloEarlier = _makeTour(
+          id: 'higher-elo-earlier',
+          name: 'Higher Elo Earlier',
+          dates: [
+            now.subtract(const Duration(hours: 3)),
+            now.add(const Duration(hours: 3)),
+          ],
+          avgElo: 2750,
+        );
+        final lowerEloLater = _makeTour(
+          id: 'lower-elo-later',
+          name: 'Lower Elo Later',
+          dates: [
+            now.subtract(const Duration(hours: 2)),
+            now.add(const Duration(hours: 4)),
+          ],
+          avgElo: 2550,
+        );
+
+        final selected = selectDefaultTour(
+          tourModels: [
+            TourModel(tour: lowerEloLater, roundStatus: RoundStatus.live),
+            TourModel(tour: higherEloEarlier, roundStatus: RoundStatus.live),
+          ],
+          liveTourIds: const ['lower-elo-later', 'higher-elo-earlier'],
+          activityTourId: 'lower-elo-later',
+          latestPlayedRoundAtByTourId: {
+            'higher-elo-earlier': now.subtract(const Duration(minutes: 20)),
+            'lower-elo-later': now.subtract(const Duration(minutes: 2)),
+          },
+        );
+
+        expect(selected.id, 'higher-elo-earlier');
+      },
+    );
+
+    test(
+      'chooses the category with the latest played round before saved state',
+      () {
+        final now = DateTime.now();
+        final older = _makeTour(
+          id: 'older',
+          name: 'Older category',
+          dates: [now.subtract(const Duration(days: 3)), now],
+        );
+        final recent = _makeTour(
+          id: 'recent',
+          name: 'Recent category',
+          dates: [now.subtract(const Duration(days: 3)), now],
+        );
+
+        final selected = selectDefaultTour(
+          tourModels: [
+            TourModel(tour: older, roundStatus: RoundStatus.ongoing),
+            TourModel(tour: recent, roundStatus: RoundStatus.ongoing),
+          ],
+          liveTourIds: const [],
+          savedTourId: 'older',
+          latestPlayedRoundAtByTourId: {
+            'older': now.subtract(const Duration(days: 1)),
+            'recent': now.subtract(const Duration(hours: 2)),
+          },
+        );
+
+        expect(selected.id, 'recent');
+      },
+    );
+
+    test('breaks equal latest-round category ties by average Elo', () {
+      final now = DateTime.now();
+      final lowerElo = _makeTour(
+        id: 'lower-elo',
+        name: 'Lower Elo',
+        dates: [now.subtract(const Duration(days: 1)), now],
+        avgElo: 2500,
+      );
+      final higherElo = _makeTour(
+        id: 'higher-elo',
+        name: 'Higher Elo',
+        dates: [now.subtract(const Duration(days: 1)), now],
+        avgElo: 2700,
+      );
+      final latestRound = now.subtract(const Duration(hours: 1));
+
+      final selected = selectDefaultTour(
+        tourModels: [
+          TourModel(tour: lowerElo, roundStatus: RoundStatus.ongoing),
+          TourModel(tour: higherElo, roundStatus: RoundStatus.ongoing),
+        ],
+        liveTourIds: const [],
+        latestPlayedRoundAtByTourId: {
+          'lower-elo': latestRound,
+          'higher-elo': latestRound,
+        },
+      );
+
+      expect(selected.id, 'higher-elo');
+    });
+
     test('falls back to activity tour when other signals are absent', () {
       final now = DateTime.now();
       final tourA = _makeTour(

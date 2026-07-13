@@ -19,36 +19,8 @@ void main() {
       );
     });
 
-    test('latest get_for_you_top_games ranks round recency before rating', () {
-      final migration = _latestMigrationDefining(
-        'create or replace function public.get_for_you_top_games',
-      );
-      final sql = migration.readAsStringSync();
-
-      final eventRankingStart = sql.indexOf('partition by cg.event_id');
-      expect(eventRankingStart, isNonNegative);
-
-      final eventRankingSql = sql.substring(eventRankingStart);
-      final sourceRoundTimeOrder = eventRankingSql.indexOf(
-        'cg.source_round_time desc nulls last',
-      );
-      final categoryEloOrder = eventRankingSql.indexOf(
-        'cg.category_avg_elo desc nulls last',
-      );
-
-      expect(sourceRoundTimeOrder, isNonNegative);
-      expect(categoryEloOrder, isNonNegative);
-      expect(
-        sourceRoundTimeOrder,
-        lessThan(categoryEloOrder),
-        reason:
-            'For You card previews should show the freshest completed section '
-            'before falling back to stronger/older rating categories.',
-      );
-    });
-
     test(
-      'latest get_for_you_top_games ranks live games by ascending board first',
+      'latest get_for_you_top_games selects one tour before ranking boards',
       () {
         final migration = _latestMigrationDefining(
           'create or replace function public.get_for_you_top_games',
@@ -57,33 +29,83 @@ void main() {
 
         expect(
           sql,
-          contains("lower(btrim(coalesce(g.status, ''))) in ('*', 'ongoing')"),
-          reason: 'The RPC should recognize both persisted ongoing values.',
+          contains('selected_round_sources as ('),
+          reason: 'Each event must resolve one tour and round before boards.',
+        );
+        expect(
+          sql,
+          contains('join public.tours t on t.id = rs.selected_tour_id'),
+        );
+        expect(
+          sql,
+          contains('join public.rounds r on r.id = rs.source_round_id'),
+        );
+        expect(
+          sql,
+          isNot(contains('t.avg_elo is not distinct from rs.category_avg_elo')),
+          reason: 'Average Elo is priority metadata, not category identity.',
+        );
+        expect(
+          sql,
+          contains('partition by rs.event_id, rs.selected_tour_id'),
+          reason:
+              'All ranked boards for an event must belong to its selected tour.',
+        );
+      },
+    );
+
+    test(
+      'latest get_for_you_top_games picks live category by Elo before recency',
+      () {
+        final migration = _latestMigrationDefining(
+          'create or replace function public.get_for_you_top_games',
+        );
+        final sql = migration.readAsStringSync();
+
+        final liveSourcesStart = sql.indexOf('live_round_sources as (');
+        final fallbackSourcesStart = sql.indexOf('fallback_round_sources as (');
+        expect(liveSourcesStart, isNonNegative);
+        expect(fallbackSourcesStart, greaterThan(liveSourcesStart));
+
+        final liveSourcesSql = sql.substring(
+          liveSourcesStart,
+          fallbackSourcesStart,
+        );
+        final categoryEloOrder = liveSourcesSql.indexOf(
+          'er.category_avg_elo desc nulls last',
+        );
+        final sourceRoundTimeOrder = liveSourcesSql.indexOf(
+          'er.source_round_time desc nulls last',
+        );
+
+        expect(categoryEloOrder, isNonNegative);
+        expect(sourceRoundTimeOrder, greaterThan(categoryEloOrder));
+      },
+    );
+
+    test(
+      'latest get_for_you_top_games backfills by round inside selected tour',
+      () {
+        final migration = _latestMigrationDefining(
+          'create or replace function public.get_for_you_top_games',
+        );
+        final sql = migration.readAsStringSync();
+
+        expect(
+          sql,
+          contains('selected_tour_rounds as ('),
+          reason: 'Backfill rounds must remain scoped to the selected tour.',
         );
 
         final eventRankingStart = sql.indexOf('partition by cg.event_id');
         expect(eventRankingStart, isNonNegative);
 
         final eventRankingSql = sql.substring(eventRankingStart);
-        final liveGameOrder = eventRankingSql.indexOf('cg.is_live_game desc');
-        final boardNumberOrder = eventRankingSql.indexOf(
-          'cg.board_nr asc nulls last',
-        );
-        final sourcePriorityOrder = eventRankingSql.indexOf(
-          'cg.source_priority asc',
-        );
-        final sourceRoundTimeOrder = eventRankingSql.indexOf(
-          'cg.source_round_time desc nulls last',
-        );
-        final categoryEloOrder = eventRankingSql.indexOf(
-          'cg.category_avg_elo desc nulls last',
-        );
+        final roundRankOrder = eventRankingSql.indexOf('cg.round_rank asc');
+        final boardRankOrder = eventRankingSql.indexOf('cg.board_rank asc');
 
-        expect(liveGameOrder, isNonNegative);
-        expect(boardNumberOrder, greaterThan(liveGameOrder));
-        expect(sourcePriorityOrder, greaterThan(boardNumberOrder));
-        expect(sourceRoundTimeOrder, greaterThan(sourcePriorityOrder));
-        expect(categoryEloOrder, greaterThan(sourceRoundTimeOrder));
+        expect(roundRankOrder, isNonNegative);
+        expect(boardRankOrder, greaterThan(roundRankOrder));
       },
     );
   });

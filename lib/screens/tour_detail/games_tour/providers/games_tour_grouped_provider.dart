@@ -430,11 +430,11 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
           if (aStart == null && bStart == null) return a.name.compareTo(b.name);
           if (aStart == null) return 1;
           if (bStart == null) return -1;
-          final cmp = aStart.compareTo(bStart);
+          final cmp = bStart.compareTo(aStart);
           return cmp != 0 ? cmp : a.name.compareTo(b.name);
         });
 
-  // Pairing-only rounds always come last, soonest first.
+  // Pairing-only rounds always come last, newest/farthest first.
   final filteredRounds = [...playedRounds, ...upcomingPairingRounds];
   final hasGroupedGames = gamesByRound.values.any((games) => games.isNotEmpty);
 

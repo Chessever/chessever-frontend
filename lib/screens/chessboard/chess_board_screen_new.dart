@@ -11085,20 +11085,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
 
-    // Tablet landscape hides the reset icon since tablets navigate
-    // position-search flows differently.
-    final isTabletLandscape =
-        ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
-
-    // Reset to the pasted-FEN starting state — only meaningful in the
-    // position-search flow (the user came from Board Editor → Paste FEN →
-    // Analyze). For mainline games this would wipe legitimate moves, so it's
-    // gated on the starting position being non-default.
-    final notationStartingFen =
-        widget.state.analysisState.startingPosition?.fen;
-    final isPositionSearchFlow =
-        notationStartingFen != null && notationStartingFen != Chess.initial.fen;
-
     Widget content = Container(
       key: e2eKey(E2eIds.boardNotationRoot),
       decoration: BoxDecoration(
@@ -11115,26 +11101,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               clipBehavior: Clip.none,
               children: [
                 Positioned.fill(child: notationContent),
-                if (isPositionSearchFlow && !isTabletLandscape)
-                  Positioned(
-                    top: 4.h,
-                    right: 4.w,
-                    child: IconButton(
-                      tooltip: 'Reset to pasted position',
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints.tight(Size(28.sp, 28.sp)),
-                      onPressed: () {
-                        HapticFeedback.mediumImpact();
-                        notifier.deleteContinuationFromPointer(const []);
-                      },
-                      icon: Icon(
-                        Icons.restart_alt_rounded,
-                        color: context.colors.textPrimaryMuted,
-                        size: 16.ic,
-                      ),
-                    ),
-                  ),
                 // Subtle overlay when preview is active - only covers main variant area
                 if (widget.state.isPvPreviewActive)
                   Positioned(
