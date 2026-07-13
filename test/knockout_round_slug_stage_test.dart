@@ -3,20 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('roundSlugStageRoundId', () {
-    test('maps plain knockout game slugs to app-bar stage ids', () {
-      // FIDE World Cup 2025 (tour DqmmnYSq) round slugs.
-      expect(
-        roundSlugStageRoundId('DqmmnYSq', 'game-1'),
-        'knockout-stage-DqmmnYSq-game-1',
-      );
-      expect(
-        roundSlugStageRoundId('DqmmnYSq', 'tiebreak-1-rapid-1'),
-        'knockout-stage-DqmmnYSq-tiebreak-1-rapid-1',
-      );
-      expect(
-        roundSlugStageRoundId('DqmmnYSq', 'sudden-death'),
-        'knockout-stage-DqmmnYSq-sudden-death',
-      );
+    test('does not turn individual game legs into tournament stages', () {
+      // FIDE World Cup 2025 legs all belong to the Finals stage tour. The
+      // synthetic model maps them through sourceRoundIds instead.
+      expect(roundSlugStageRoundId('DqmmnYSq', 'game-1'), isNull);
+      expect(roundSlugStageRoundId('DqmmnYSq', 'game_1'), isNull);
+      expect(roundSlugStageRoundId('DqmmnYSq', 'tiebreak-1-rapid-1'), isNull);
+      expect(roundSlugStageRoundId('DqmmnYSq', 'rapid_1'), isNull);
+      expect(roundSlugStageRoundId('DqmmnYSq', 'blitz_1'), isNull);
+      expect(roundSlugStageRoundId('DqmmnYSq', 'sudden-death'), isNull);
+      expect(roundSlugStageRoundId('DqmmnYSq', 'sudden_death'), isNull);
     });
 
     test('uses the segment before "--" as the stage part', () {
@@ -26,15 +22,11 @@ void main() {
       );
       expect(
         roundSlugStageRoundId('t1', 'stage-quarterfinals--game-1'),
-        'knockout-stage-t1-stage-quarterfinals',
+        'knockout-stage-t1-quarterfinals',
       );
     });
 
-    test('normalizes separators like the app-bar stage names', () {
-      expect(
-        roundSlugStageRoundId('t1', 'sudden_death'),
-        'knockout-stage-t1-sudden-death',
-      );
+    test('uses the shared logical stage key', () {
       expect(
         roundSlugStageRoundId('t1', ' Round-1 '),
         'knockout-stage-t1-round-1',

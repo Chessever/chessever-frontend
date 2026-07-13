@@ -26,6 +26,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_tabs.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
     show playerTourScreenProvider;
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -45,7 +46,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
-    show kEventStandingsTab, kEventTabQueryParam;
+    show kEventTabQueryParam;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -379,12 +380,7 @@ class DeepLinkService {
             'teamName': teamName,
           },
         );
-        _navigateToTeamScorecard(
-          broadcastId,
-          teamName,
-          navigatorKey,
-          ref,
-        );
+        _navigateToTeamScorecard(broadcastId, teamName, navigatorKey, ref);
       } else if (broadcastId != null && broadcastId.isNotEmpty) {
         // `?tab=standings` opens the event on its Standings tab (the same link
         // that renders standings on the web). Absent/other values open Games.
@@ -867,10 +863,7 @@ class DeepLinkService {
         ChessboardView.forYou;
     ref.read(shouldStreamProvider.notifier).state = false;
 
-    _addBreadcrumb(
-      'navigating to gamebase game',
-      data: {'gameId': gameId},
-    );
+    _addBreadcrumb('navigating to gamebase game', data: {'gameId': gameId});
     unawaited(
       _captureDeepLinkMessage(
         'deep link gamebase game loaded',
@@ -1135,9 +1128,8 @@ class DeepLinkService {
 
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       ref.read(selectedTourModeProvider.notifier).state =
-          tab == kEventStandingsTab
-              ? TournamentDetailScreenMode.standings
-              : TournamentDetailScreenMode.games;
+          tournamentDetailModeFromTabQuery(tab) ??
+          TournamentDetailScreenMode.games;
 
       debugPrint(
         'DeepLinkService: Event loaded, navigating to tournament detail',
@@ -1448,10 +1440,7 @@ class DeepLinkService {
         e,
         stackTrace,
         stage: 'navigate_to_team_scorecard',
-        extras: {
-          'groupBroadcastId': groupBroadcastId,
-          'teamName': teamName,
-        },
+        extras: {'groupBroadcastId': groupBroadcastId, 'teamName': teamName},
       );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',

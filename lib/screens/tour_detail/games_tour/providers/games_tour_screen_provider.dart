@@ -10,7 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
@@ -607,12 +607,19 @@ class GamesTourScreenProvider
 
     final rounds =
         gamesAppBar.value?.gamesAppBarModels ?? const <GamesAppBarModel>[];
+    final knownTourIds =
+        ref
+            .read(tourDetailScreenProvider)
+            .valueOrNull
+            ?.tours
+            .map((tour) => tour.tour.id) ??
+        const <String>[];
     final stageTourIds =
-        rounds
-            .where((round) => round.id.startsWith('$kKnockoutStagePrefix-'))
-            .map((round) => round.id.replaceFirst('$kKnockoutStagePrefix-', ''))
-            .where((id) => id.isNotEmpty)
-            .toSet();
+        siblingKnockoutStageTourIds(
+          rounds: rounds,
+          selectedTourId: aboutTourModel!.id,
+          knownTourIds: knownTourIds,
+        ).toSet();
 
     if (stageTourIds.isEmpty) {
       return baseGames;
@@ -724,15 +731,18 @@ class GamesTourScreenProvider
       final gamesAppBar = ref.read(gamesAppBarProvider);
       if (gamesAppBar.hasValue) {
         final rounds = gamesAppBar.value?.gamesAppBarModels ?? [];
-        final stageTourIds =
-            rounds
-                .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
-                .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
-                .where(
-                  (id) => id != aboutTourModel!.id,
-                ) // Don't search main tour twice
-                .toSet()
-                .toList();
+        final knownTourIds =
+            ref
+                .read(tourDetailScreenProvider)
+                .valueOrNull
+                ?.tours
+                .map((tour) => tour.tour.id) ??
+            const <String>[];
+        final stageTourIds = siblingKnockoutStageTourIds(
+          rounds: rounds,
+          selectedTourId: aboutTourModel!.id,
+          knownTourIds: knownTourIds,
+        ).toList(growable: false);
 
         // Search each stage
         for (final stageTourId in stageTourIds) {

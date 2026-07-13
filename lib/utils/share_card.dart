@@ -86,6 +86,31 @@ Future<Uint8List?> captureCardPng(
   }
 }
 
+/// Snapshots a [RepaintBoundary] that is already live in the widget tree to PNG
+/// bytes. Unlike [captureCardPng] (which mounts a fresh widget off-screen), this
+/// captures whatever the boundary is currently painting — used for the bracket
+/// "share" where the boundary wraps the pannable/zoomable canvas viewport, so
+/// the snapshot is exactly the area the user framed. Returns null if [key] isn't
+/// attached to a [RenderRepaintBoundary] yet.
+Future<Uint8List?> captureBoundaryPng(
+  GlobalKey key, {
+  double pixelRatio = 3.0,
+}) async {
+  // A frame boundary lets any in-flight paint settle before we snapshot.
+  await WidgetsBinding.instance.endOfFrame;
+  final boundary =
+      key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  if (boundary == null) return null;
+
+  final image = await boundary.toImage(pixelRatio: pixelRatio);
+  try {
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List();
+  } finally {
+    image.dispose();
+  }
+}
+
 /// Shows the captured share image in a preview bottom sheet with up to two
 /// actions: "Share Image" (always) and "Share Link" (when [onShareLink] is
 /// provided). Each action dismisses the sheet then runs the native share flow.

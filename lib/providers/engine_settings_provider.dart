@@ -165,6 +165,25 @@ final engineDepthStatusProvider = Provider<EngineDepthSnapshot?>((ref) {
   );
 });
 
+/// How engine principal-variation lines are laid out everywhere in the app
+/// (board screen + Library opening explorer). Index order MUST match the
+/// `engine_lines_view_index` column: 0 = cards, 1 = list.
+enum EngineLinesView {
+  /// ChessEver style — horizontally swipeable PV cards (default).
+  cards,
+
+  /// Traditional style — vertical, one line per row.
+  list,
+}
+
+/// Map a persisted integer index to [EngineLinesView], defaulting to cards.
+EngineLinesView engineLinesViewFromIndex(int? index) {
+  if (index == null || index < 0 || index >= EngineLinesView.values.length) {
+    return EngineLinesView.cards;
+  }
+  return EngineLinesView.values[index];
+}
+
 /// Engine settings configuration class
 class EngineSettings {
   const EngineSettings({
@@ -173,6 +192,7 @@ class EngineSettings {
     this.showPvArrows = true,
     this.showEngineAnalysis = true,
     this.searchTimeIndex = 0,
+    this.engineLinesView = EngineLinesView.cards,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
     int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
   }) : principalVariationIndex =
@@ -196,6 +216,8 @@ class EngineSettings {
   final int principalVariationIndex;
   final int
   maxArrowsOnBoard; // Index for max arrows on board (0-4 = 1-5 arrows)
+  final EngineLinesView
+  engineLinesView; // Layout for engine PV lines (cards vs list)
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
   static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
@@ -314,6 +336,7 @@ class EngineSettings {
     bool? showPvArrows,
     bool? showEngineAnalysis,
     int? searchTimeIndex,
+    EngineLinesView? engineLinesView,
     int? principalVariationIndex,
     int? maxArrowsOnBoard,
   }) {
@@ -323,6 +346,7 @@ class EngineSettings {
       showPvArrows: showPvArrows ?? this.showPvArrows,
       showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
       searchTimeIndex: searchTimeIndex ?? this.searchTimeIndex,
+      engineLinesView: engineLinesView ?? this.engineLinesView,
       principalVariationIndex: (principalVariationIndex ??
               this.principalVariationIndex)
           .clamp(0, principalVariationLabels.length - 1),
@@ -418,12 +442,17 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       }
 
       final model = EngineSettingsModel.fromSupabase(response);
+      // engine_lines_view_index is not part of the dart_mappable model; read it
+      // directly to avoid regenerating the mapper for a single field.
       final settings = EngineSettings(
         showEngineGauge: model.showEngineGauge,
         showDepthOverlay: model.showDepthOverlay,
         showPvArrows: model.showPvArrows,
         showEngineAnalysis: model.showEngineAnalysis,
         searchTimeIndex: model.searchTimeIndex,
+        engineLinesView: engineLinesViewFromIndex(
+          response['engine_lines_view_index'] as int?,
+        ),
         principalVariationIndex: model.principalVariationIndex,
         maxArrowsOnBoard: model.maxArrowsOnBoard,
       );
@@ -541,6 +570,16 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         .clearAll(reason: 'PV setting changed');
   }
 
+  /// Set engine lines view layout (cards vs list). Applies everywhere.
+  Future<void> setEngineLinesView(EngineLinesView view) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    if (currentState.engineLinesView == view) return;
+    final newSettings = currentState.copyWith(engineLinesView: view);
+    debugPrint('🔧 EngineSettings: Engine lines view changed to ${view.name}');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Set max arrows on board index
   Future<void> setMaxArrowsOnBoard(int index) async {
     final clamped = index.clamp(0, EngineSettings.maxArrowsLabels.length - 1);
@@ -604,6 +643,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           'show_pv_arrows': settings.showPvArrows,
           'show_engine_analysis': settings.showEngineAnalysis,
           'search_time_index': settings.searchTimeIndex,
+          'engine_lines_view_index': settings.engineLinesView.index,
           'principal_variation_index': settings.principalVariationIndex,
           'max_arrows_on_board': settings.maxArrowsOnBoard,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -626,6 +666,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'showPvArrows': settings.showPvArrows,
         'showEngineAnalysis': settings.showEngineAnalysis,
         'searchTimeIndex': settings.searchTimeIndex,
+        'engineLinesView': settings.engineLinesView.index,
         'principalVariationIndex': settings.principalVariationIndex,
         'maxArrowsOnBoard': settings.maxArrowsOnBoard,
       });
@@ -663,6 +704,9 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showPvArrows: map['showPvArrows'] as bool? ?? true,
         showEngineAnalysis: map['showEngineAnalysis'] as bool? ?? true,
         searchTimeIndex: map['searchTimeIndex'] as int? ?? 0,
+        engineLinesView: engineLinesViewFromIndex(
+          map['engineLinesView'] as int?,
+        ),
         principalVariationIndex: map['principalVariationIndex'] as int? ?? 4,
         maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
       );

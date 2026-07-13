@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -60,7 +63,14 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
 
         return gamesTourAsync.when(
           data: (data) {
-            if (data.gamesTourModels.isEmpty) {
+            final groupedData = ref.watch(gamesTourGroupedProvider);
+            final hasGroupedGames = groupedData.gamesByRound.values.any(
+              (games) => games.isNotEmpty,
+            );
+            if (data.gamesTourModels.isEmpty && groupedData.isLoading) {
+              return const TourLoadingWidget();
+            }
+            if (data.gamesTourModels.isEmpty && !hasGroupedGames) {
               return SingleChildScrollView(
                 child:
                     data.isSearchMode && data.searchQuery != null
@@ -131,7 +141,9 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
             return Center(
               child: Text(
                 userFacingError(e),
-                style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textMdRegular.copyWith(
+                  color: context.colors.textPrimary,
+                ),
                 textAlign: TextAlign.center,
               ),
             );
@@ -143,7 +155,9 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
         return Center(
           child: Text(
             userFacingError(e),
-            style: AppTypography.textMdRegular.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdRegular.copyWith(
+              color: context.colors.textPrimary,
+            ),
             textAlign: TextAlign.center,
           ),
         );
@@ -157,6 +171,24 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
     try {
       FocusScope.of(context).unfocus();
       final futures = <Future>[];
+      final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
+      final selectedTourId = tourDetail?.aboutTourModel.id;
+      final rounds =
+          ref.read(gamesAppBarProvider).valueOrNull?.gamesAppBarModels ??
+          const <GamesAppBarModel>[];
+      if (selectedTourId != null && selectedTourId.isNotEmpty) {
+        final knownTourIds =
+            tourDetail?.tours.map((tour) => tour.tour.id) ?? const <String>[];
+        for (final siblingTourId in siblingKnockoutStageTourIds(
+          rounds: rounds,
+          selectedTourId: selectedTourId,
+          knownTourIds: knownTourIds,
+        )) {
+          futures.add(
+            ref.read(gamesTourProvider(siblingTourId).notifier).refreshGames(),
+          );
+        }
+      }
       futures.add(
         ref.read(tourDetailScreenProvider.notifier).refreshTourDetails(),
       );

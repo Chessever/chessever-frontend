@@ -22,12 +22,20 @@ class GamesAppBarModel extends Equatable {
     required this.name,
     required this.startsAt,
     required this.roundStatus,
+    this.sourceRoundIds = const <String>[],
   });
 
   final String id;
   final String name;
   final DateTime? startsAt;
   final RoundStatus roundStatus;
+
+  /// Real Lichess/Supabase round ids represented by this display row.
+  ///
+  /// Regular rows contain their own id. Synthetic knockout stages contain all
+  /// game-leg and tiebreak round ids folded into that stage, which lets the
+  /// Games list map a game to its logical stage without re-parsing lossy slugs.
+  final List<String> sourceRoundIds;
 
   factory GamesAppBarModel.fromRound(Round round, List<String> liveRound) {
     final utcStart = round.startsAt;
@@ -42,6 +50,7 @@ class GamesAppBarModel extends Equatable {
         startsAt: startsAt,
         liveRound: liveRound,
       ),
+      sourceRoundIds: <String>[round.id],
     );
   }
 
@@ -85,12 +94,14 @@ class GamesAppBarModel extends Equatable {
     String? name,
     DateTime? startsAt,
     RoundStatus? roundStatus,
+    List<String>? sourceRoundIds,
   }) {
     return GamesAppBarModel(
       id: id ?? this.id,
       name: name ?? this.name,
       startsAt: startsAt ?? this.startsAt,
       roundStatus: roundStatus ?? this.roundStatus,
+      sourceRoundIds: sourceRoundIds ?? this.sourceRoundIds,
     );
   }
 
@@ -100,5 +111,5 @@ class GamesAppBarModel extends Equatable {
   String get formattedRoundDateTime => TimeUtils.formatRoundDateTime(startsAt);
 
   @override
-  List<Object?> get props => [id, name, startsAt, roundStatus];
+  List<Object?> get props => [id, name, startsAt, roundStatus, sourceRoundIds];
 }

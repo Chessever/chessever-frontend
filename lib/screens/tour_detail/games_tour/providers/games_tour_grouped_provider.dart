@@ -7,7 +7,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/lichess_pairings_fallback_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/bracket/utils/knockout_stage_parser.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -172,54 +174,89 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final isMultiStageKnockout =
       isKnockoutTournament &&
       rounds.any((r) => r.id.startsWith('knockout-stage-'));
-  final isRoundSlugDerivedStages =
-      isMultiStageKnockout &&
-      tourId != null &&
-      rounds.any((r) {
-        if (!r.id.startsWith('knockout-stage-')) return false;
-        final suffix = r.id.replaceFirst('knockout-stage-', '');
-        return suffix.startsWith('$tourId-') &&
-            suffix.length > tourId.length + 1;
-      });
+  final knownTourIds =
+      ref
+          .read(tourDetailScreenProvider)
+          .valueOrNull
+          ?.tours
+          .map((tour) => tour.tour.id) ??
+      const <String>[];
+  final stageReferences = <String, KnockoutStageRoundReference>{
+    if (tourId != null)
+      for (final round in rounds)
+        if (resolveKnockoutStageRoundReference(
+              round: round,
+              selectedTourId: tourId,
+              knownTourIds: knownTourIds,
+            )
+            case final reference?)
+          round.id: reference,
+  };
+  final hasSiblingStageTours = stageReferences.values.any(
+    (reference) => reference.isSiblingTour,
+  );
+  var representedSiblingIsLoading = false;
 
-  if (isMultiStageKnockout && !isRoundSlugDerivedStages) {
+  if (isMultiStageKnockout && hasSiblingStageTours) {
     if (!isSearchMode) {
-      final stageTourIds =
-          rounds
-              .where((r) => r.id.startsWith('knockout-stage-'))
-              .map((r) => r.id.replaceFirst('knockout-stage-', ''))
-              .toList();
-
       final stageTourGames = <String, List<GamesTourModel>>{};
-      for (final stageTourId in stageTourIds) {
-        final stageAsync = ref.read(gamesTourProvider(stageTourId));
+      for (final stageTourId
+          in stageReferences.values
+              .map((reference) => reference.siblingTourId)
+              .whereType<String>()
+              .toSet()) {
+        final stageAsync = ref.watch(gamesTourProvider(stageTourId));
+        representedSiblingIsLoading =
+            representedSiblingIsLoading || stageAsync.isLoading;
         final rawStageGames = stageAsync.valueOrNull ?? [];
-        stageTourGames[stageTourId] =
-            rawStageGames
-                .map((g) => GamesTourModel.fromGame(g))
-                .where(isEventBoardGameVisible)
-                .toList();
+        final stageModels = <GamesTourModel>[];
+        for (final game in rawStageGames) {
+          try {
+            final model = GamesTourModel.fromGame(game);
+            if (isEventBoardGameVisible(model)) stageModels.add(model);
+          } catch (_) {
+            // One malformed row must not hide every sibling stage game.
+          }
+        }
+        stageTourGames[stageTourId] = stageModels;
       }
 
       for (final round in rounds) {
-        if (round.id.startsWith('knockout-stage-')) {
-          final stageTourId = round.id.replaceFirst('knockout-stage-', '');
-          final stageGames = stageTourGames[stageTourId] ?? [];
-          gamesByRound[round.id] = stageGames;
-        }
+        final reference = stageReferences[round.id];
+        if (reference == null) continue;
+        final stageTourId = reference.siblingTourId;
+        gamesByRound[round.id] =
+            stageTourId == null
+                ? allGamesScreenModel
+                    .where((game) => game.tourId == tourId)
+                    .toList(growable: false)
+                : stageTourGames[stageTourId] ?? [];
       }
     } else {
       for (final game in allGamesScreenModel) {
-        final stageTourId = game.tourId;
-        final roundId = 'knockout-stage-$stageTourId';
-        if (gamesByRound.containsKey(roundId)) {
-          addGameToRound(roundId, game);
+        for (final entry in stageReferences.entries) {
+          final representedTourId = entry.value.siblingTourId ?? tourId;
+          if (game.tourId == representedTourId) {
+            addGameToRound(entry.key, game);
+            break;
+          }
         }
       }
     }
-  } else if (isRoundSlugDerivedStages) {
+  } else if (isMultiStageKnockout) {
     for (final game in allGamesScreenModel) {
-      final roundId = roundSlugStageRoundId(tourId, game.roundSlug);
+      String? roundId;
+      for (final stage in rounds) {
+        if (stage.sourceRoundIds.contains(game.roundId)) {
+          roundId = stage.id;
+          break;
+        }
+      }
+      // Compatibility fallback for cached/legacy synthetic models that do not
+      // yet carry their source round ids.
+      if (roundId == null && tourId != null) {
+        roundId = roundSlugStageRoundId(tourId, game.roundSlug);
+      }
       if (roundId != null && gamesByRound.containsKey(roundId)) {
         addGameToRound(roundId, game);
       }
@@ -399,6 +436,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
 
   // Pairing-only rounds always come last, soonest first.
   final filteredRounds = [...playedRounds, ...upcomingPairingRounds];
+  final hasGroupedGames = gamesByRound.values.any((games) => games.isNotEmpty);
 
   return GroupedGamesData(
     filteredRounds: filteredRounds,
@@ -406,13 +444,23 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     matchFormatHeader: matchFormatHeader,
     isKnockoutTournament: isKnockoutTournament,
     isMultiStageKnockout: isMultiStageKnockout,
-    isLoading: false,
+    isLoading: shouldKeepGroupedGamesLoading(
+      representedSiblingIsLoading: representedSiblingIsLoading,
+      hasGroupedGames: hasGroupedGames,
+    ),
     rounds: rounds,
     allGames: allGamesScreenModel,
     providerGameCount: providerGameCount,
     upcomingPairingRoundIds: upcomingPairingRoundIds,
   );
 });
+
+/// Keep the empty state suppressed while a represented sibling stage is still
+/// resolving, but never cover a stage that has already produced games.
+bool shouldKeepGroupedGamesLoading({
+  required bool representedSiblingIsLoading,
+  required bool hasGroupedGames,
+}) => representedSiblingIsLoading && !hasGroupedGames;
 
 bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
   switch (mode) {
@@ -427,20 +475,16 @@ bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
 
 /// Maps a game's round slug to the synthetic stage round id that
 /// gamesAppBarProvider builds for round-slug derived knockout stages
-/// (`knockout-stage-<tourId>-<stage>`). The stage part is the slug segment
-/// before "--" (or the whole slug), normalized the same way the app bar
-/// normalizes its stage names.
+/// (`knockout-stage-<tourId>-<stage>`). Only a stage-bearing slug is accepted;
+/// generic legs such as `game-1` and `tiebreak-1-rapid-1` are deliberately not
+/// promoted into independent tournament stages. New synthetic models use
+/// [GamesAppBarModel.sourceRoundIds] and do not need this legacy fallback.
 @visibleForTesting
 String? roundSlugStageRoundId(String tourId, String? roundSlug) {
-  final slug = roundSlug?.trim().toLowerCase();
+  final slug = roundSlug?.trim();
   if (slug == null || slug.isEmpty) return null;
-  final stagePart = slug.contains('--') ? slug.split('--').first : slug;
-  final normalized = stagePart
-      .split(RegExp(r'[-_\s]'))
-      .where((s) => s.isNotEmpty)
-      .join('-');
-  if (normalized.isEmpty) return null;
-  return '$kKnockoutStagePrefix-$tourId-$normalized';
+  final stage = resolveLogicalKnockoutStage('', slug);
+  return stage == null ? null : '$kKnockoutStagePrefix-$tourId-${stage.key}';
 }
 
 /// Whether a game row is renderable as an event board. Shared by the event

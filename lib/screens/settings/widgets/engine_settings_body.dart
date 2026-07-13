@@ -138,6 +138,36 @@ class EngineSettingsBody extends ConsumerWidget {
         ),
         SizedBox(height: 18.h),
         SettingCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Engine Lines',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  fontSize: 13.f,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'How engine analysis lines appear on boards and the opening explorer.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                  fontSize: 11.f,
+                ),
+              ),
+              SizedBox(height: 14.h),
+              _EngineLinesToggle(
+                value: settings.engineLinesView,
+                onChanged: (view) {
+                  trackPersist(notifier.setEngineLinesView(view));
+                },
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+        SettingCard(
           child: Row(
             children: [
               Expanded(
@@ -350,6 +380,90 @@ class EngineSettingsBody extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Two-segment toggle for the engine-lines layout (Cards vs List).
+class _EngineLinesToggle extends StatelessWidget {
+  const _EngineLinesToggle({required this.value, required this.onChanged});
+
+  final EngineLinesView value;
+  final ValueChanged<EngineLinesView> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(3.w),
+      decoration: BoxDecoration(
+        color: context.colors.divider.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10.br),
+      ),
+      child: Row(
+        children: [
+          _segment(
+            context,
+            label: 'Cards',
+            icon: Icons.view_carousel_outlined,
+            selected: value == EngineLinesView.cards,
+            onTap: () => onChanged(EngineLinesView.cards),
+          ),
+          SizedBox(width: 4.w),
+          _segment(
+            context,
+            label: 'List',
+            icon: Icons.view_agenda_outlined,
+            selected: value == EngineLinesView.list,
+            onTap: () => onChanged(EngineLinesView.list),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: EdgeInsets.symmetric(vertical: 9.h),
+          decoration: BoxDecoration(
+            color: selected ? kPrimaryColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(8.br),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16.f,
+                color: selected
+                    ? context.colors.textInverse
+                    : context.colors.textSecondary,
+              ),
+              SizedBox(width: 6.w),
+              Text(
+                label,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: selected
+                      ? context.colors.textInverse
+                      : context.colors.textSecondary,
+                  fontSize: 12.f,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
