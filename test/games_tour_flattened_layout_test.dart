@@ -37,7 +37,7 @@ void main() {
       ]);
     });
 
-    test('promotes the next pairing at the inclusive one-hour boundary', () {
+    test('promotes the next ready pairing at the two-hour boundary', () {
       final now = DateTime(2026, 7, 13, 12);
       final round1 = _round(
         'r1',
@@ -52,12 +52,12 @@ void main() {
       final round3 = _round(
         'r3',
         RoundStatus.upcoming,
-        startsAt: now.add(const Duration(hours: 1)),
+        startsAt: now.add(const Duration(hours: 2)),
       );
       final round4 = _round(
         'r4',
         RoundStatus.upcoming,
-        startsAt: now.add(const Duration(hours: 2)),
+        startsAt: now.add(const Duration(hours: 3)),
       );
 
       final visible = selectGamesTourDisplayRounds(
@@ -76,6 +76,35 @@ void main() {
       );
 
       expect(visible.map((round) => round.id), ['r3', 'r2', 'r1', 'r4']);
+    });
+
+    test('does not promote an upcoming round before its boards are ready', () {
+      final now = DateTime(2026, 7, 13, 12);
+      final completed = _round(
+        'r1',
+        RoundStatus.completed,
+        startsAt: now.subtract(const Duration(hours: 2)),
+      );
+      final awaitingBoards = _round(
+        'r2',
+        RoundStatus.upcoming,
+        startsAt: now.add(const Duration(minutes: 90)),
+      );
+
+      final visible = selectGamesTourDisplayRounds(
+        rounds: [awaitingBoards, completed],
+        effectiveRounds: [awaitingBoards, completed],
+        gamesByRound: {
+          completed.id: [_game('finished', status: GameStatus.draw)],
+          awaitingBoards.id: const <GamesTourModel>[],
+        },
+        upcomingPairingRoundIds: {awaitingBoards.id},
+        isSearchMode: false,
+        isMultiStageKnockout: false,
+        now: now,
+      );
+
+      expect(visible.map((round) => round.id), ['r1', 'r2']);
     });
 
     test('keeps future pairings last while a played round is unfinished', () {

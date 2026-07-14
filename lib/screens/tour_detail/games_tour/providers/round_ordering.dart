@@ -4,7 +4,7 @@ typedef RoundDateResolver = DateTime? Function(GamesAppBarModel model);
 typedef RoundHasGames = bool Function(GamesAppBarModel model);
 typedef RoundIsFullyPlayed = bool Function(GamesAppBarModel model);
 
-const Duration upcomingRoundPromotionWindow = Duration(hours: 1);
+const Duration upcomingRoundPromotionWindow = Duration(hours: 2);
 
 List<GamesAppBarModel> sortRoundsForDisplay(
   List<GamesAppBarModel> models, {

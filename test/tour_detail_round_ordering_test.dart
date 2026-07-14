@@ -119,7 +119,7 @@ void main() {
     );
 
     test(
-      'promotes next round inside one hour after every latest-round board finishes',
+      'promotes next round inside two hours after every latest-round board finishes',
       () {
         final now = DateTime(2026, 3, 30, 16);
         final rounds = [
@@ -132,7 +132,7 @@ void main() {
           _round(
             id: 'r2',
             name: 'Round 2',
-            startsAt: now.add(const Duration(minutes: 59)),
+            startsAt: now.add(const Duration(minutes: 119)),
             status: RoundStatus.upcoming,
           ),
           _round(
@@ -196,7 +196,7 @@ void main() {
       },
     );
 
-    test('promotes the next round at exactly one hour', () {
+    test('promotes the next round at exactly two hours', () {
       final now = DateTime(2026, 3, 30, 16);
       final rounds = [
         _round(
@@ -208,7 +208,7 @@ void main() {
         _round(
           id: 'r2',
           name: 'Round 2',
-          startsAt: now.add(const Duration(hours: 1)),
+          startsAt: now.add(const Duration(hours: 2)),
           status: RoundStatus.upcoming,
         ),
       ];
@@ -279,7 +279,7 @@ void main() {
           _round(
             id: 'r3',
             name: 'Round 3',
-            startsAt: now.add(const Duration(minutes: 90)),
+            startsAt: now.add(const Duration(minutes: 150)),
             status: RoundStatus.upcoming,
           ),
           _round(
@@ -461,7 +461,7 @@ void main() {
     );
 
     test(
-      'selects next round inside one hour when latest round is fully played',
+      'selects next round inside two hours when latest round is fully played',
       () {
         final now = DateTime(2026, 3, 30, 16);
         final rounds = [
@@ -474,7 +474,7 @@ void main() {
           _round(
             id: 'r2',
             name: 'Round 2',
-            startsAt: now.add(const Duration(minutes: 59)),
+            startsAt: now.add(const Duration(minutes: 119)),
             status: RoundStatus.upcoming,
           ),
           _round(

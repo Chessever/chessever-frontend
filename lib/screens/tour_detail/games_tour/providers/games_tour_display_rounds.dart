@@ -75,7 +75,7 @@ List<GamesAppBarModel> selectGamesTourDisplayRounds({
     sortRoundsForDisplay(
       <GamesAppBarModel>[...visibleRounds, ...upcomingPairingRounds],
       resolveDate: (round) => round.startsAt,
-      hasGames: (_) => true,
+      hasGames: (round) => gamesByRound[round.id]?.isNotEmpty ?? false,
       isRoundFullyPlayed: (round) {
         final games = gamesByRound[round.id] ?? const <GamesTourModel>[];
         return round.roundStatus == RoundStatus.completed ||

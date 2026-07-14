@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/lichess_pairings_fallback_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/bracket/utils/knockout_stage_parser.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -346,9 +347,10 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
       final startsAt = round.startsAt;
       if (startsAt == null) continue;
       final untilStart = startsAt.difference(now);
-      // Slightly wider than the 1h top-pin display gate, plus grace for
+      // Slightly wider than the top-pin display gate, plus grace for
       // late-starting broadcasts (same window the data hub sync uses).
-      if (untilStart > const Duration(minutes: 65) ||
+      if (untilStart >
+              upcomingRoundPromotionWindow + const Duration(minutes: 5) ||
           untilStart < const Duration(minutes: -30)) {
         continue;
       }
@@ -415,21 +417,14 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
                 (gamesByRound[round.id]?.isNotEmpty ?? false),
           )
           .toList();
-  final upcomingPairingRounds =
-      rounds
-          .where((round) => upcomingPairingRoundIds.contains(round.id))
-          .toList()
-        ..sort((a, b) {
-          final aStart = a.startsAt;
-          final bStart = b.startsAt;
-          if (aStart == null && bStart == null) return a.name.compareTo(b.name);
-          if (aStart == null) return 1;
-          if (bStart == null) return -1;
-          final cmp = bStart.compareTo(aStart);
-          return cmp != 0 ? cmp : a.name.compareTo(b.name);
-        });
+  final upcomingPairingRounds = sortRoundsForDisplay(
+    rounds
+        .where((round) => upcomingPairingRoundIds.contains(round.id))
+        .toList(),
+    resolveDate: (round) => round.startsAt,
+  );
 
-  // Pairing-only rounds always come last, newest/farthest first.
+  // Pairing-only rounds always come last, nearest future round first.
   final filteredRounds = [...playedRounds, ...upcomingPairingRounds];
   final hasGroupedGames = gamesByRound.values.any((games) => games.isNotEmpty);
 
