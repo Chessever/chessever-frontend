@@ -25,6 +25,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 
 const int kUnknownGameRoundMaxRetries = 5;
+const int kPublishedRoundMissingSnapshotTolerance = 5;
 
 /// Sticky user selection
 final userSelectedRoundProvider =
@@ -113,6 +114,8 @@ class _GamesAppBarNotifier
   final String? tourId;
   List<String> _liveRounds;
   final Map<String, _RoundSortMeta> _roundSortMeta;
+  List<GamesAppBarModel> _knownRoundModels = const <GamesAppBarModel>[];
+  final Map<String, int> _roundMissingSnapshotCounts = <String, int>{};
   String? _lastRoundCountSignature;
   bool _selectionRefreshScheduled = false;
   final Set<String> _checkedUnknownLiveRoundIds = <String>{};
@@ -456,6 +459,8 @@ class _GamesAppBarNotifier
         _roundSortMeta.clear();
         final models = buildVirtualGamebaseRoundModels(games);
         if (models.isEmpty) {
+          _knownRoundModels = const <GamesAppBarModel>[];
+          _roundMissingSnapshotCounts.clear();
           state = const AsyncValue.data(
             GamesAppBarViewModel(
               gamesAppBarModels: [],
@@ -467,6 +472,8 @@ class _GamesAppBarNotifier
         }
 
         _sortRounds(models);
+        _roundMissingSnapshotCounts.clear();
+        _knownRoundModels = List<GamesAppBarModel>.unmodifiable(models);
         await _applySelectionFrom(
           models,
           tourId!,
@@ -478,13 +485,11 @@ class _GamesAppBarNotifier
       final repo = ref.read(roundRepositoryProvider);
       final rounds = await repo.getRoundsByTourId(tourId!);
 
-      _roundSortMeta
-        ..clear()
-        ..addEntries(
-          rounds.map(
-            (round) => MapEntry(round.id, _RoundSortMeta.fromRound(round)),
-          ),
-        );
+      _roundSortMeta.addEntries(
+        rounds.map(
+          (round) => MapEntry(round.id, _RoundSortMeta.fromRound(round)),
+        ),
+      );
 
       final models =
           rounds
@@ -492,12 +497,37 @@ class _GamesAppBarNotifier
               .toList();
 
       // Check if this is a knockout tournament and group sub-rounds
-      final processedModels = await _processKnockoutRoundsIfNeeded(
+      final incomingModels = await _processKnockoutRoundsIfNeeded(
         models,
         sourceRounds: rounds,
       );
+      final processedModels = mergePublishedRoundModels(
+        previous: _knownRoundModels,
+        incoming: incomingModels,
+        liveRoundIds: _liveRounds,
+        missingSnapshotCounts: _roundMissingSnapshotCounts,
+      );
+
+      final previouslyRepresentedIds = <String>{
+        for (final model in _knownRoundModels) model.id,
+        for (final model in _knownRoundModels) ...model.sourceRoundIds,
+      };
+      final retainedRepresentedIds = <String>{
+        for (final model in processedModels) model.id,
+        for (final model in processedModels) ...model.sourceRoundIds,
+      };
+      for (final prunedId in previouslyRepresentedIds.difference(
+        retainedRepresentedIds,
+      )) {
+        // A bounded prune must also retire its discovery evidence. If that
+        // source id becomes live again later, it will be treated as unknown
+        // and trigger a fresh metadata load instead of being silently skipped.
+        _roundSortMeta.remove(prunedId);
+        _checkedUnknownLiveRoundIds.remove(prunedId);
+      }
 
       _sortRounds(processedModels);
+      _knownRoundModels = List<GamesAppBarModel>.unmodifiable(processedModels);
 
       await _applySelectionFrom(
         processedModels,
@@ -1196,6 +1226,16 @@ class _GamesAppBarNotifier
             .toList();
 
     _sortRounds(updated);
+    final liveIds = _liveRounds.toSet();
+    for (final model in updated) {
+      if (model.sourceRoundIds.any(liveIds.contains)) {
+        _roundMissingSnapshotCounts[model.id] = 0;
+      }
+    }
+    // Keep the monotonic snapshot cache in lockstep with the state shown to
+    // the user. Otherwise the next metadata fetch can resurrect stale status
+    // values even though the live-id stream already advanced to a new round.
+    _knownRoundModels = List<GamesAppBarModel>.unmodifiable(updated);
 
     final sticky = ref.read(userSelectedRoundProvider);
     final counts = _buildRoundGameCounts(updated);
@@ -1351,6 +1391,111 @@ class _GamesAppBarNotifier
     _unknownGameRoundsRetryGeneration++;
     super.dispose();
   }
+}
+
+/// Reconciles a newly fetched round page with rounds already published by this
+/// notifier. Broadcast ingestion can briefly return a partial page while a new
+/// round and its settings row are hydrating; absence from one response is not
+/// evidence that a previously visible round was deleted. Missing rows are
+/// retained for a bounded number of successful snapshots (and for as long as
+/// they are still live), so a transient partial response cannot make a round
+/// card blink while genuinely deleted rows do not remain forever.
+@visibleForTesting
+List<GamesAppBarModel> mergePublishedRoundModels({
+  required Iterable<GamesAppBarModel> previous,
+  required Iterable<GamesAppBarModel> incoming,
+  Iterable<String> liveRoundIds = const <String>[],
+  Map<String, int>? missingSnapshotCounts,
+  int missingSnapshotTolerance = kPublishedRoundMissingSnapshotTolerance,
+  bool snapshotIsAuthoritativelyComplete = false,
+}) {
+  final previousModels = previous.toList(growable: false);
+  final incomingModels = incoming.toList(growable: false);
+  final liveIds = liveRoundIds.toSet();
+
+  GamesAppBarModel withCurrentStatus(GamesAppBarModel model) => model.copyWith(
+    roundStatus: roundStatusForLiveSourceRounds(
+      model: model,
+      liveRoundIds: liveIds,
+    ),
+  );
+
+  if (previousModels.isEmpty) {
+    missingSnapshotCounts?.clear();
+    return incomingModels.map(withCurrentStatus).toList(growable: false);
+  }
+
+  bool usesSyntheticStages(Iterable<GamesAppBarModel> models) =>
+      models.any((model) => model.id.startsWith('$kKnockoutStagePrefix-'));
+
+  // Knockout detection can legitimately replace raw source-round rows with
+  // synthetic stage rows. Do not retain the incompatible representation.
+  if (incomingModels.isNotEmpty &&
+      usesSyntheticStages(previousModels) !=
+          usesSyntheticStages(incomingModels)) {
+    missingSnapshotCounts?.clear();
+    return incomingModels.map(withCurrentStatus).toList(growable: false);
+  }
+
+  final previousById = <String, GamesAppBarModel>{
+    for (final model in previousModels) model.id: model,
+  };
+  final incomingIds = <String>{};
+  final merged = <GamesAppBarModel>[];
+
+  for (final next in incomingModels) {
+    incomingIds.add(next.id);
+    missingSnapshotCounts?.remove(next.id);
+    final current = previousById[next.id];
+    if (current == null) {
+      merged.add(withCurrentStatus(next));
+      continue;
+    }
+
+    final reconciled = GamesAppBarModel(
+      id: next.id,
+      name: next.name.trim().isEmpty ? current.name : next.name,
+      startsAt: next.startsAt ?? current.startsAt,
+      roundStatus: next.roundStatus,
+      sourceRoundIds: <String>{
+        ...current.sourceRoundIds,
+        ...next.sourceRoundIds,
+      }.toList(growable: false),
+    );
+    // Recompute after metadata reconciliation. An incoming partial row can
+    // have startsAt=null and therefore carry `upcoming`, while the cached
+    // canonical startsAt proves that the same round is ongoing/live.
+    merged.add(withCurrentStatus(reconciled));
+  }
+
+  for (final current in previousModels) {
+    if (incomingIds.contains(current.id)) continue;
+
+    final isStillLive = current.sourceRoundIds.any(liveIds.contains);
+    if (isStillLive && !snapshotIsAuthoritativelyComplete) {
+      // Do not let misses accumulated during a backend hydration gap consume
+      // the post-live grace window. Once the live signal moves on, this round
+      // still receives the full bounded tolerance before it can be pruned.
+      if (missingSnapshotCounts != null) {
+        missingSnapshotCounts[current.id] = 0;
+      }
+      merged.add(withCurrentStatus(current));
+      continue;
+    }
+    final misses = (missingSnapshotCounts?[current.id] ?? 0) + 1;
+    if (missingSnapshotCounts != null) {
+      missingSnapshotCounts[current.id] = misses;
+    }
+    final shouldPrune =
+        snapshotIsAuthoritativelyComplete ||
+        (missingSnapshotTolerance >= 0 && misses > missingSnapshotTolerance);
+    if (shouldPrune) {
+      missingSnapshotCounts?.remove(current.id);
+      continue;
+    }
+    merged.add(withCurrentStatus(current));
+  }
+  return merged;
 }
 
 @visibleForTesting

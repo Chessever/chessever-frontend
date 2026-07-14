@@ -14,6 +14,44 @@ ChessMove move(String san, {List<ChessLine>? variations}) {
 }
 
 void main() {
+  test(
+    'live game updates never replace a populated mainline with an empty one',
+    () {
+      const populatedPgn = '''
+[Event "Live Test"]
+[Result "*"]
+
+1. e4 e5 2. Nf3 *
+''';
+      const headerOnlyPgn = '''
+[Event "Live Test"]
+[Result "*"]
+
+*
+''';
+      final populated = ChessGame.fromPgn(
+        'live',
+        populatedPgn,
+      ).copyWith(metadata: const {ChessGame.metadataIsLiveKey: true});
+      final regressive = ChessGame.fromPgn(
+        'live',
+        headerOnlyPgn,
+      ).copyWith(metadata: const {ChessGame.metadataIsLiveKey: true});
+      final navigator = ChessGameNavigator(populated)..goToTail();
+      final expectedFen = navigator.state.currentFen;
+
+      navigator.updateWithLatestGame(regressive, goToTail: true);
+
+      expect(navigator.state.currentFen, expectedFen);
+      expect(navigator.state.game.mainline.map((move) => move.san), [
+        'e4',
+        'e5',
+        'Nf3',
+      ]);
+      expect(navigator.state.movePointer, [2]);
+    },
+  );
+
   test('deleteVariationAtPointer removes variation branch', () {
     final variation = [move('Nf3')];
     final game = ChessGame(

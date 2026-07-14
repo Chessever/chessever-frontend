@@ -278,22 +278,6 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   }
 
-  if (!isSearchMode) {
-    final pinnedGameIds = screenModelAsync.valueOrNull?.pinnedGamedIs ?? [];
-    if (pinnedGameIds.isNotEmpty) {
-      for (final roundId in gamesByRound.keys) {
-        final roundGames = gamesByRound[roundId]!;
-        roundGames.sort((a, b) {
-          final aPinned = pinnedGameIds.contains(a.gameId);
-          final bPinned = pinnedGameIds.contains(b.gameId);
-          if (aPinned && !bPinned) return -1;
-          if (!aPinned && bPinned) return 1;
-          return 0;
-        });
-      }
-    }
-  }
-
   // Future rounds: Lichess publishes pairings for upcoming rounds ahead of
   // time. Those games never pass isEventBoardGameVisible (no played position),
   // so their rounds would be dropped entirely. Surface them as pairing-only
@@ -412,6 +396,17 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   }
 
+  // The Games tab is a board list, so its final presentation order must come
+  // from the broadcaster's authoritative board number rather than arrival
+  // order, rating, live/finished state, or local pin order. Run this after DB
+  // and Lichess-fallback rows have been reconciled so every path obeys the
+  // same deterministic contract.
+  for (final roundId in gamesByRound.keys.toList(growable: false)) {
+    gamesByRound[roundId] = sortTournamentRoundGamesByBoard(
+      gamesByRound[roundId]!,
+    );
+  }
+
   final playedRounds =
       rounds
           .where(
@@ -461,6 +456,31 @@ bool shouldKeepGroupedGamesLoading({
   required bool representedSiblingIsLoading,
   required bool hasGroupedGames,
 }) => representedSiblingIsLoading && !hasGroupedGames;
+
+@visibleForTesting
+List<GamesTourModel> sortTournamentRoundGamesByBoard(
+  Iterable<GamesTourModel> games,
+) {
+  final sorted = games.toList(growable: false);
+  sorted.sort((a, b) {
+    final aBoard = a.boardNr;
+    final bBoard = b.boardNr;
+    if (aBoard != null && bBoard != null) {
+      final boardOrder = aBoard.compareTo(bBoard);
+      if (boardOrder != 0) return boardOrder;
+    } else if (aBoard != null) {
+      return -1;
+    } else if (bBoard != null) {
+      return 1;
+    }
+
+    // Duplicate/missing board numbers occur in malformed or still-hydrating
+    // feeds. A stable identity fallback prevents cards from shuffling as
+    // realtime updates rebuild otherwise-equal model instances.
+    return a.gameId.compareTo(b.gameId);
+  });
+  return sorted;
+}
 
 bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
   switch (mode) {

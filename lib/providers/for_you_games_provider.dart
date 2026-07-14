@@ -341,8 +341,6 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   void _refreshFeedForLiveChange() {
-    _sessionEventOrder.clear();
-    _nextSessionEventOrder = 0;
     if (!ref.read(forYouSurfaceVisibleProvider)) {
       _liveFeedRefreshPending = true;
       return;
@@ -503,17 +501,14 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
       // Update state
       if (isInitial) {
-        final previousEventIds = state.events
-            .map((event) => event.id)
-            .toList(growable: false);
-        final nextEventIds = models
-            .map((event) => event.id)
-            .toList(growable: false);
-        if (previousEventIds.isNotEmpty &&
-            !_sameStringSet(previousEventIds, nextEventIds)) {
-          // A newly eligible event must enter through the existing
-          // user-specific star/favorite-player ranking, not be appended after
-          // the session-stable cards.
+        final hasGenuinelyNewEvent =
+            _sessionEventOrder.isNotEmpty &&
+            models.any((event) => !_sessionEventOrder.containsKey(event.id));
+        if (hasGenuinelyNewEvent) {
+          // Preserve the established order for metadata-only refreshes, but a
+          // genuinely new card must enter through the full personalized sort.
+          // Appending it after every known card would bury a newly starred
+          // event (or one containing favorite players) at the bottom.
           _sessionEventOrder.clear();
           _nextSessionEventOrder = 0;
         }
