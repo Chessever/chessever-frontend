@@ -17,6 +17,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_positi
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
@@ -347,6 +348,18 @@ Future<void> showGameShareOverlay(
   final positionFen = _resolveFen(game.fen);
   final lastMove = _uciToMove(game.lastMove ?? '');
 
+  // Games without real clocks store placeholders like "--:--" / "-:--:--".
+  // Hide those on the share card instead of painting ugly dashes (mirrors the
+  // guard in ChessBoardScreenNew's share path).
+  final whiteClock =
+      hasUsableClockDisplay(game.whiteTimeDisplay)
+          ? game.whiteTimeDisplay
+          : null;
+  final blackClock =
+      hasUsableClockDisplay(game.blackTimeDisplay)
+          ? game.blackTimeDisplay
+          : null;
+
   Navigator.of(context).push(
     PageRouteBuilder(
       opaque: false,
@@ -368,8 +381,8 @@ Future<void> showGameShareOverlay(
             blackPlayerElo: game.blackPlayer.rating.toString(),
             whitePlayerTitle: game.whitePlayer.title,
             blackPlayerTitle: game.blackPlayer.title,
-            whitePlayerClock: game.whiteTimeDisplay,
-            blackPlayerClock: game.blackTimeDisplay,
+            whitePlayerClock: whiteClock,
+            blackPlayerClock: blackClock,
             tournamentName: tournamentName,
             roundInfo: roundInfo,
             currentMoveIndex: currentMoveIndex,
