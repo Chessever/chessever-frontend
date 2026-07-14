@@ -70,6 +70,20 @@ class ShareGameCardOverlay extends StatefulWidget {
   final String gameId; // CRITICAL: Include game ID for correct eval caching
   final String? startingFen; // null = standard initial position
 
+  /// Complete-game mainline for the Share GIF (start → final move), independent
+  /// of the focused ply. When null, the GIF falls back to [moveSans] — used by
+  /// callers whose [moveSans] already covers the whole game (e.g. grid share).
+  final List<String>? gifMoveSans;
+
+  /// Starting FEN for the full-game GIF replay; null = standard start. Only
+  /// consulted when [gifMoveSans] is non-null.
+  final String? gifStartingFen;
+
+  /// Whether the full game ends in a finished result (focus-independent).
+  /// Drives the GIF's final-frame king effect. Only consulted when
+  /// [gifMoveSans] is non-null; otherwise [isAtGameEnd] is used.
+  final bool gifIsAtGameEnd;
+
   const ShareGameCardOverlay({
     super.key,
     required this.boardSettings,
@@ -100,6 +114,9 @@ class ShareGameCardOverlay extends StatefulWidget {
     this.shareUrl,
     required this.gameId, // REQUIRED for correct eval caching
     this.startingFen, // null = standard initial position
+    this.gifMoveSans,
+    this.gifStartingFen,
+    this.gifIsAtGameEnd = false,
   });
 
   @override
@@ -125,6 +142,23 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   String? _gifFrameBlackClock;
   bool _gifFrameIsFinal = false; // Only show game ending effects on final frame
   bool _cancelled = false; // Set on dispose to abort in-flight GIF generation
+
+  // ---------------------------------------------------------------------------
+  // Full-game GIF source
+  //
+  // Share GIF always replays the complete game (start → final), independent of
+  // the currently focused board move. `widget.moveSans` is the focused path
+  // (truncated on back-navigation), so prefer the explicit whole-game list when
+  // the caller supplies one; otherwise fall back to `moveSans` (callers whose
+  // list already covers the full game).
+  // ---------------------------------------------------------------------------
+  List<String> get _gifMoveSans => widget.gifMoveSans ?? widget.moveSans;
+
+  String? get _gifStartingFen =>
+      widget.gifMoveSans != null ? widget.gifStartingFen : widget.startingFen;
+
+  bool get _gifIsAtGameEnd =>
+      widget.gifMoveSans != null ? widget.gifIsAtGameEnd : widget.isAtGameEnd;
 
   @override
   void dispose() {
@@ -412,10 +446,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   /// Share GIF always replays the full game (start → final), regardless of
   /// the currently focused board move. Returns `null` if no moves are available.
   GifExportWindow? _computeExportWindow() {
+    final gifMoveSans = _gifMoveSans;
     return computeGifExportWindow(
-      moveSans: widget.moveSans,
-      currentMoveIndex: widget.currentMoveIndex,
-      startingFen: widget.startingFen,
+      moveSans: gifMoveSans,
+      // Whole-game replay always ends on the final move.
+      currentMoveIndex: gifMoveSans.length - 1,
+      startingFen: _gifStartingFen,
     );
   }
 
@@ -671,8 +707,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           i + globalMoveOffset,
         );
         final isGameEnd =
-            widget.isAtGameEnd &&
-            i + globalMoveOffset == widget.moveSans.length - 1;
+            _gifIsAtGameEnd &&
+            i + globalMoveOffset == _gifMoveSans.length - 1;
 
         if (!mounted) return;
         setState(() {
@@ -786,8 +822,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         i + globalMoveOffset,
       );
       final isGameEnd =
-          widget.isAtGameEnd &&
-          i + globalMoveOffset == widget.moveSans.length - 1;
+          _gifIsAtGameEnd &&
+          i + globalMoveOffset == _gifMoveSans.length - 1;
 
       if (!mounted) return;
       setState(() {

@@ -50,6 +50,14 @@ class GameShareSnapshot {
   final int currentMoveIndex;
   final String? startingFen;
 
+  /// Complete game mainline (start → final move), independent of the currently
+  /// focused board ply. Share GIF replays this so the animation always covers
+  /// the whole game; Share Image keeps using [positionFen] (current position).
+  final List<String> gifMoveSans;
+
+  /// Starting FEN for the full-game GIF replay; null means standard start.
+  final String? gifStartingFen;
+
   const GameShareSnapshot({
     required this.positionFen,
     required this.lastMove,
@@ -57,6 +65,8 @@ class GameShareSnapshot {
     required this.moveTimes,
     required this.currentMoveIndex,
     this.startingFen,
+    this.gifMoveSans = const <String>[],
+    this.gifStartingFen,
   });
 }
 
@@ -247,6 +257,18 @@ GameShareSnapshot buildGameShareSnapshot({
           state.moveSans.isNotEmpty);
 
   if (canUseBoardState) {
+    // Full-game mainline for the GIF: navigator-synced `moveSans` is truncated
+    // to the path-to-current ply, so pull the complete line from the game tree
+    // (never truncated) and fall back to the visible list only if absent.
+    final fullGame = stateAnalysis.game;
+    final gifMoveSans =
+        fullGame != null
+            ? fullGame.mainline.map((move) => move.san).toList()
+            : List<String>.from(stateAnalysis.moveSans);
+    final gifStartingFen =
+        fullGame != null
+            ? _normalizedStartingFen(fullGame.startingFen)
+            : _normalizedStartingFen(stateAnalysis.startingPosition?.fen);
     return GameShareSnapshot(
       positionFen: stateAnalysis.position.fen,
       lastMove: stateAnalysis.lastMove,
@@ -254,6 +276,8 @@ GameShareSnapshot buildGameShareSnapshot({
       moveTimes: List<String>.from(state.moveTimes),
       currentMoveIndex: stateAnalysis.currentMoveIndex,
       startingFen: _normalizedStartingFen(stateAnalysis.startingPosition?.fen),
+      gifMoveSans: gifMoveSans,
+      gifStartingFen: gifStartingFen,
     );
   }
 
@@ -273,6 +297,9 @@ GameShareSnapshot buildGameShareSnapshot({
       currentMoveIndex:
           parsed.moveSans.isEmpty ? -1 : parsed.moveSans.length - 1,
       startingFen: _normalizedStartingFen(parsed.startingPos.fen),
+      // No board open: the parsed list already covers the whole game.
+      gifMoveSans: List<String>.from(parsed.moveSans),
+      gifStartingFen: _normalizedStartingFen(parsed.startingPos.fen),
     );
   } catch (_) {
     return GameShareSnapshot(
@@ -282,6 +309,8 @@ GameShareSnapshot buildGameShareSnapshot({
       moveTimes: const <String>[],
       currentMoveIndex: -1,
       startingFen: null,
+      gifMoveSans: const <String>[],
+      gifStartingFen: null,
     );
   }
 }

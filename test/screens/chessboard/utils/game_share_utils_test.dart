@@ -382,5 +382,41 @@ void main() {
       expect(snapshot.currentMoveIndex, snapshot.moveSans.length - 1);
       expect(snapshot.positionFen, isNotEmpty);
     });
+
+    test(
+      'gifMoveSans covers the whole game even when navigated back mid-game',
+      () {
+        // Board is ready but the user navigated back to move 2: the analysis
+        // state's moveSans is truncated to the path-to-current ply, while the
+        // game tree still holds the full mainline. Share GIF must replay the
+        // whole game (start → final), so gifMoveSans must be the full line.
+        final game = _game(gameId: 'live_1', source: GameSource.supabase);
+        final fullGame = ChessGame.fromPgn('analysis', _fullPgn);
+        final state = ChessBoardStateNew(
+          game: game,
+          pgnData: null,
+          isLoadingMoves: false,
+          analysisState: AnalysisBoardState(
+            game: fullGame,
+            moveSans: const ['e4', 'e5'], // truncated to focused move 2
+            currentMoveIndex: 1,
+          ),
+        );
+
+        final snapshot = buildGameShareSnapshot(
+          game: game,
+          pgn: _fullPgn,
+          state: state,
+        );
+
+        // Share Image stays at the focused position.
+        expect(snapshot.moveSans, const ['e4', 'e5']);
+        expect(snapshot.currentMoveIndex, 1);
+        // Share GIF replays the full mainline regardless of focus.
+        expect(snapshot.gifMoveSans, const ['e4', 'e5', 'Nf3', 'Nc6']);
+        // Standard start collapses to null.
+        expect(snapshot.gifStartingFen, isNull);
+      },
+    );
   });
 }

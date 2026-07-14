@@ -3384,6 +3384,11 @@ class _ResolvedAppBarShareData {
   final bool isFlipped;
   final bool isAtGameEnd;
 
+  /// Whether the *full game* (not the focused ply) ends in a finished result.
+  /// Drives the GIF's final-frame king effect, which must fire on the whole-game
+  /// replay regardless of where the board is currently focused.
+  final bool gifIsAtGameEnd;
+
   const _ResolvedAppBarShareData({
     required this.pgn,
     required this.shareUrl,
@@ -3392,6 +3397,7 @@ class _ResolvedAppBarShareData {
     required this.mate,
     required this.isFlipped,
     required this.isAtGameEnd,
+    required this.gifIsAtGameEnd,
   });
 }
 
@@ -3448,6 +3454,36 @@ bool _isSnapshotAtFinishedSharePosition({
   } catch (_) {
     return false;
   }
+}
+
+/// Focus-independent variant of [_isAnalysisAtFinishedSharePosition]: does the
+/// *complete* mainline end in a finished result? Used for the Share GIF, which
+/// always replays the whole game, so its final-frame king effect must not
+/// depend on the currently focused ply.
+bool _isFullGameFinishedForShare({
+  required AnalysisBoardState analysisState,
+  required GamesTourModel game,
+}) {
+  final analysisGame = analysisState.game;
+  if (analysisGame == null || !game.gameStatus.isFinished) return false;
+
+  final mainline = analysisGame.mainline;
+  if (mainline.isEmpty) return false;
+
+  // Live games must never show finished-result effects.
+  if (analysisGame.isLiveGame) return false;
+
+  // Some remote sources can report a finished result while the line/FEN is
+  // truncated, so require a true terminal position for those sources.
+  if (_shareGameNeedsTerminalPosition(game.source)) {
+    try {
+      return Chess.fromSetup(Setup.parseFen(mainline.last.fen)).isGameOver;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 class _AppBarState extends ConsumerState<_AppBar> {
@@ -3540,6 +3576,16 @@ class _AppBarState extends ConsumerState<_AppBar> {
               snapshot: snapshot,
               game: widget.game,
             );
+    // The GIF replays the whole game, so its final-frame effect depends on the
+    // full mainline ending, not the focused ply. When the board isn't ready the
+    // snapshot already represents the whole game at its final position.
+    final gifIsAtGameEnd =
+        boardReady
+            ? _isFullGameFinishedForShare(
+              analysisState: state.analysisState,
+              game: widget.game,
+            )
+            : isAtGameEnd;
 
     return _ResolvedAppBarShareData(
       pgn: pgn,
@@ -3552,6 +3598,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
       mate: boardReady ? state.mate ?? 0 : 0,
       isFlipped: boardReady ? state.isBoardFlipped : false,
       isAtGameEnd: isAtGameEnd,
+      gifIsAtGameEnd: gifIsAtGameEnd,
     );
   }
 
@@ -14771,6 +14818,10 @@ class _ShareGameScreen extends ConsumerWidget {
       shareUrl: shareData.shareUrl,
       gameId: game.gameId, // Pass game ID for correct eval display
       startingFen: shareData.snapshot.startingFen,
+      // Share GIF replays the complete game, independent of the focused move.
+      gifMoveSans: shareData.snapshot.gifMoveSans,
+      gifStartingFen: shareData.snapshot.gifStartingFen,
+      gifIsAtGameEnd: shareData.gifIsAtGameEnd,
       onClose: () => Navigator.of(context).pop(),
     );
   }
