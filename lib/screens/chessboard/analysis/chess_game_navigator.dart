@@ -1187,6 +1187,16 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   }
 
   void updateWithLatestGame(ChessGame latestGame, {bool goToTail = false}) {
+    // Realtime broadcast rows can briefly replay a header-only or otherwise
+    // truncated PGN. A live mainline is monotonic: accepting a shorter replay
+    // would leave the existing pointer out of range, making currentFen fall
+    // back to the starting position and emptying the visible notation path.
+    if ((state.game.isLiveGame || latestGame.isLiveGame) &&
+        state.game.mainline.isNotEmpty &&
+        latestGame.mainline.length < state.game.mainline.length) {
+      return;
+    }
+
     final newMainline = <ChessMove>[];
     final newPointer = List.of(state.movePointer);
 

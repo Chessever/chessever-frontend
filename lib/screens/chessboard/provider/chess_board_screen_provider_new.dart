@@ -21,6 +21,7 @@ import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
@@ -67,6 +68,12 @@ final chessBoardAllGamesProvider = StateProvider<List<GamesTourModel>>(
 final currentlyVisiblePageIndexProvider = StateProvider<int>((ref) {
   return 0;
 });
+
+/// Allows provider tests to disable best-effort SQLite persistence during
+/// disposal. Production keeps this enabled; tests run without platform plugin
+/// channels and should not start an unawaited database open after completion.
+@visibleForTesting
+final chessBoardPersistenceEnabledProvider = Provider<bool>((ref) => true);
 
 /// Global provider to track if the board is flipped.
 /// This ensures the board orientation stays consistent when swiping between games.
@@ -120,6 +127,7 @@ class ChessBoardScreenNotifierNew
     this.initialFen,
   }) : super(const AsyncValue.loading()) {
     _stockfishOwnerId = StockfishSingleton.generateOwnerId(game.gameId, index);
+    _persistenceEnabled = ref.read(chessBoardPersistenceEnabledProvider);
     _initializeState();
     _setupPgnStreamListener();
   }
@@ -131,6 +139,7 @@ class ChessBoardScreenNotifierNew
   /// Unique owner ID for Stockfish job isolation.
   /// Allows this provider to cancel only its own jobs without affecting others.
   late final String _stockfishOwnerId;
+  late final bool _persistenceEnabled;
 
   /// Optional saved analysis data to restore full state.
   /// Mutable so it can be set after a first-time save from the save sheet.
@@ -767,12 +776,21 @@ class ChessBoardScreenNotifierNew
     final previousResolvedPgn = currentState.pgnData ?? game.pgn;
     final pgnChanged = newPgn != null && newPgn != previousResolvedPgn;
     final streamStatus = gameData['status'] as String?;
+    final liveLastMove = gameData['last_move'] as String? ?? game.lastMove;
+    final rawLiveFen = gameData['fen'] as String? ?? game.fen;
+    final resolvedLiveFen =
+        resolveFreshestGameFen(
+          fen: rawLiveFen,
+          pgn: newPgn ?? game.pgn,
+          lastMove: liveLastMove,
+        ) ??
+        rawLiveFen;
 
     // Update game data with ALL stream values including PGN
     game = game.copyWith(
       pgn: newPgn ?? game.pgn,
-      fen: gameData['fen'] as String? ?? game.fen,
-      lastMove: gameData['last_move'] as String? ?? game.lastMove,
+      fen: resolvedLiveFen,
+      lastMove: liveLastMove,
       lastMoveTime:
           gameData['last_move_time'] != null
               ? DateTime.tryParse(gameData['last_move_time'] as String)
@@ -793,18 +811,24 @@ class ChessBoardScreenNotifierNew
       _isFollowingLive = false;
     }
 
-    // Only update moves if PGN actually changed (new moves arrived)
-    if (pgnChanged) {
-      final liveFen = gameData['fen'] as String?;
-      final liveUci = gameData['last_move'] as String?;
+    final liveFenChanged =
+        resolvedLiveFen != null &&
+        resolvedLiveFen.trim().isNotEmpty &&
+        (currentState.position == null ||
+            _normalizeFen(currentState.position!.fen) !=
+                _normalizeFen(resolvedLiveFen));
+
+    // Update moves when PGN changes, or when the FEN/last_move pair reaches
+    // the next ply before the PGN column catches up.
+    if (pgnChanged || liveFenChanged) {
+      final liveFen = resolvedLiveFen;
+      final liveUci = liveLastMove;
       bool fastPathSuccess = false;
 
       // Audit Optimization: Fast-path incremental move application.
       // If we have a single new move (UCI) and its resulting FEN matches
       // the server's new FEN, we can just append it instead of reparsing the whole PGN.
-      if (liveFen != null &&
-          liveUci != null &&
-          currentState.allMoves.isNotEmpty) {
+      if (liveFen != null && liveUci != null) {
         try {
           // Find the actual final position from all moves
           Position finalPos =
@@ -827,6 +851,7 @@ class ChessBoardScreenNotifierNew
                 '⚡ FAST PATH[$source]: Appending incremental move '
                 '$liveUci without full PGN parse',
               );
+              final nextPgnData = newPgn ?? currentState.pgnData ?? game.pgn;
 
               final newAllMoves = [...currentState.allMoves, extraMove];
               final newMoveSans = [...currentState.moveSans, sanResult.$2];
@@ -844,7 +869,7 @@ class ChessBoardScreenNotifierNew
                   displayedMoveIndex == currentState.allMoves.length - 1;
               final isFollowing =
                   game.gameStatus.isOngoing
-                      ? _isFollowingLive
+                      ? _isFollowingLive || currentState.allMoves.isEmpty
                       : wasViewingLastMove;
               final newMoveIndex =
                   isFollowing
@@ -879,7 +904,7 @@ class ChessBoardScreenNotifierNew
                 moveSans: newMoveSans,
                 moveTimes: newMoveTimes,
                 currentMoveIndex: newMoveIndex,
-                pgnData: newPgn,
+                pgnData: nextPgnData,
                 analysisState: currentState.analysisState.copyWith(
                   position: displayPosition,
                   lastMove: displayLastMove,
@@ -894,10 +919,28 @@ class ChessBoardScreenNotifierNew
 
               state = AsyncValue.data(newState);
 
-              _analysisNavigator?.updateWithLatestGame(
-                _createChessGameFromPgn(newPgn),
-                goToTail: isFollowing,
+              final changedPgn = pgnChanged ? newPgn : null;
+              final changedPgnPosition = resolveFinalPositionFromPgn(
+                changedPgn,
               );
+              if (changedPgn != null &&
+                  changedPgnPosition != null &&
+                  _normalizeFen(changedPgnPosition.fen) ==
+                      _normalizeFen(liveFen)) {
+                _analysisNavigator?.updateWithLatestGame(
+                  _createChessGameFromPgn(changedPgn),
+                  goToTail: isFollowing,
+                );
+              } else {
+                _appendFastPathMoveToNavigator(
+                  previousFinalPosition: finalPos,
+                  nextPosition: candidatePos,
+                  move: extraMove,
+                  san: sanResult.$2,
+                  clockTime: timeStr,
+                  goToTail: isFollowing,
+                );
+              }
 
               if (isFollowing) {
                 _updateLastSeenMoveCount(newMoveSans.length);
@@ -919,13 +962,46 @@ class ChessBoardScreenNotifierNew
       }
 
       if (!fastPathSuccess) {
+        final pgnToParse = newPgn;
+        if (!pgnChanged || pgnToParse == null) return;
         _releaseLog(
           '🆕 NEW MOVES[$source]: Reparsing PGN for game ${game.gameId}',
         );
         _hasParsedMoves = false;
-        unawaited(parseMoves(pgnOverride: newPgn));
+        unawaited(parseMoves(pgnOverride: pgnToParse));
       }
     }
+  }
+
+  void _appendFastPathMoveToNavigator({
+    required Position previousFinalPosition,
+    required Position nextPosition,
+    required Move move,
+    required String san,
+    required String clockTime,
+    required bool goToTail,
+  }) {
+    final navigator = _analysisNavigator;
+    final currentGame = navigator?.state.game ?? _analysisGame;
+    if (navigator == null || currentGame == null) return;
+
+    final clock = clockTime.trim();
+    final appendedMove = ChessMove(
+      num: previousFinalPosition.fullmoves,
+      fen: nextPosition.fen,
+      san: san,
+      uci: move.uci,
+      turn:
+          previousFinalPosition.turn == Side.white
+              ? ChessColor.white
+              : ChessColor.black,
+      clockTime: clock.isEmpty ? null : clock,
+    );
+    final latestGame = currentGame.copyWith(
+      mainline: <ChessMove>[...currentGame.mainline, appendedMove],
+    );
+    _analysisGame = latestGame;
+    navigator.updateWithLatestGame(latestGame, goToTail: goToTail);
   }
 
   void _setupPgnStreamListener() {
@@ -1282,6 +1358,35 @@ class ChessBoardScreenNotifierNew
 
       // Only update state if still mounted and not superseded by a newer parse
       if (!mounted || thisGeneration != _parseGeneration) return;
+
+      // A focused live-board stream may briefly replay a header-only or stale
+      // PGN while its clock/status fields are already fresh. Never let that
+      // non-monotonic snapshot erase a populated board and notation. Keep the
+      // new non-PGN row fields, but restore the last accepted PGN/mainline and
+      // wait for a later equal-or-newer movetext snapshot.
+      // Re-read at commit time: a newer update may have taken the incremental
+      // fast path while this parse was awaiting its PGN upgrade lookup.
+      final acceptedState = state.valueOrNull ?? currentState;
+      final previousMoveCount = acceptedState?.allMoves.length ?? 0;
+      final isRegressiveStreamPgn =
+          pgnOverride != null &&
+          previousMoveCount > 0 &&
+          allMoves.length < previousMoveCount;
+      if (isRegressiveStreamPgn) {
+        final previousPgn = acceptedState?.pgnData;
+        game = acceptedState?.game ?? game;
+        if (previousPgn != null && previousPgn.isNotEmpty) {
+          game = game.copyWith(pgn: previousPgn);
+        }
+        state = AsyncValue.data(
+          acceptedState!.copyWith(game: game, isLoadingMoves: false),
+        );
+        _releaseLog(
+          '⚠️ Ignoring regressive streamed PGN for ${game.gameId}: '
+          '${allMoves.length} plies < $previousMoveCount accepted plies',
+        );
+        return;
+      }
 
       // Check if there are new unseen moves
       final lastSeenMoveCount =
@@ -7353,10 +7458,12 @@ class ChessBoardScreenNotifierNew
     // are persisted. _performAutoSave short-circuits when nothing differs.
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
-    if (savedAnalysisData?.analysisId != null) {
-      unawaited(_performAutoSave());
+    if (_persistenceEnabled) {
+      if (savedAnalysisData?.analysisId != null) {
+        unawaited(_performAutoSave());
+      }
+      unawaited(_persistAnalysisState());
     }
-    unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
     _cancelEvalWatchdog(resetPending: true);
