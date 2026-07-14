@@ -12,7 +12,6 @@ class NotificationPreferences {
   final bool favoriteEventAlerts;
   final bool favoritePlayerAlerts;
   final bool headsUpAlerts;
-  final bool liveGameUpdates;
   final bool dailyDigest;
   final bool callToActionAlerts;
   final bool bookUpdateAlerts;
@@ -31,7 +30,6 @@ class NotificationPreferences {
     required this.favoriteEventAlerts,
     required this.favoritePlayerAlerts,
     required this.headsUpAlerts,
-    required this.liveGameUpdates,
     required this.dailyDigest,
     required this.callToActionAlerts,
     required this.bookUpdateAlerts,
@@ -48,7 +46,6 @@ class NotificationPreferences {
     bool? favoriteEventAlerts,
     bool? favoritePlayerAlerts,
     bool? headsUpAlerts,
-    bool? liveGameUpdates,
     bool? dailyDigest,
     bool? callToActionAlerts,
     bool? bookUpdateAlerts,
@@ -64,7 +61,6 @@ class NotificationPreferences {
       favoriteEventAlerts: favoriteEventAlerts ?? this.favoriteEventAlerts,
       favoritePlayerAlerts: favoritePlayerAlerts ?? this.favoritePlayerAlerts,
       headsUpAlerts: headsUpAlerts ?? this.headsUpAlerts,
-      liveGameUpdates: liveGameUpdates ?? this.liveGameUpdates,
       dailyDigest: dailyDigest ?? this.dailyDigest,
       callToActionAlerts: callToActionAlerts ?? this.callToActionAlerts,
       bookUpdateAlerts: bookUpdateAlerts ?? this.bookUpdateAlerts,
@@ -82,7 +78,6 @@ class NotificationPreferences {
     favoriteEventAlerts: true,
     favoritePlayerAlerts: true,
     headsUpAlerts: false,
-    liveGameUpdates: false,
     dailyDigest: false,
     callToActionAlerts: false,
     bookUpdateAlerts: true,
@@ -142,7 +137,7 @@ class NotificationPreferencesNotifier
               .from('user_notification_preferences')
               .select(
                 'favorite_event_alerts,favorite_player_alerts,heads_up_alerts,'
-                'live_game_updates,daily_digest,call_to_action_alerts,'
+                'daily_digest,call_to_action_alerts,'
                 'book_update_alerts,'
                 'fp_classical,fp_rapid,fp_blitz,'
                 'se_classical,se_rapid,se_blitz,'
@@ -165,9 +160,6 @@ class NotificationPreferencesNotifier
         headsUpAlerts:
             response['heads_up_alerts'] as bool? ??
             NotificationPreferences.defaults.headsUpAlerts,
-        liveGameUpdates:
-            response['live_game_updates'] as bool? ??
-            NotificationPreferences.defaults.liveGameUpdates,
         dailyDigest:
             response['daily_digest'] as bool? ??
             NotificationPreferences.defaults.dailyDigest,
@@ -252,10 +244,6 @@ class NotificationPreferencesNotifier
     await _updatePreferences((prefs) => prefs.copyWith(headsUpAlerts: value));
   }
 
-  Future<void> setLiveGameUpdates(bool value) async {
-    await _updatePreferences((prefs) => prefs.copyWith(liveGameUpdates: value));
-  }
-
   Future<void> setDailyDigest(bool value) async {
     await _updatePreferences((prefs) => prefs.copyWith(dailyDigest: value));
   }
@@ -322,7 +310,6 @@ class NotificationPreferencesNotifier
         favoriteEventAlerts: false,
         favoritePlayerAlerts: false,
         headsUpAlerts: false,
-        liveGameUpdates: false,
         dailyDigest: false,
         callToActionAlerts: false,
         bookUpdateAlerts: false,
@@ -361,7 +348,6 @@ class NotificationPreferencesNotifier
         'favorite_event_alerts': updated.favoriteEventAlerts,
         'favorite_player_alerts': updated.favoritePlayerAlerts,
         'heads_up_alerts': updated.headsUpAlerts,
-        'live_game_updates': updated.liveGameUpdates,
         'daily_digest': updated.dailyDigest,
         'call_to_action_alerts': updated.callToActionAlerts,
         'book_update_alerts': updated.bookUpdateAlerts,
@@ -392,7 +378,6 @@ class NotificationPreferencesNotifier
         'favoriteEventAlerts': prefs.favoriteEventAlerts,
         'favoritePlayerAlerts': prefs.favoritePlayerAlerts,
         'headsUpAlerts': prefs.headsUpAlerts,
-        'liveGameUpdates': prefs.liveGameUpdates,
         'dailyDigest': prefs.dailyDigest,
         'callToActionAlerts': prefs.callToActionAlerts,
         'bookUpdateAlerts': prefs.bookUpdateAlerts,
@@ -429,9 +414,6 @@ class NotificationPreferencesNotifier
         headsUpAlerts:
             map['headsUpAlerts'] as bool? ??
             NotificationPreferences.defaults.headsUpAlerts,
-        liveGameUpdates:
-            map['liveGameUpdates'] as bool? ??
-            NotificationPreferences.defaults.liveGameUpdates,
         dailyDigest:
             map['dailyDigest'] as bool? ??
             NotificationPreferences.defaults.dailyDigest,

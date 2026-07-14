@@ -946,8 +946,6 @@ class DeepLinkService {
     switch (type) {
       case 'game_started':
       case 'game_finished':
-      case 'live_game_update':
-      case 'live_game_alert':
         if (gameId != null && gameId.isNotEmpty) {
           _navigateToGame(gameId, navigatorKey, ref);
         } else {

@@ -329,7 +329,6 @@ class PushNotificationsService {
               'favorite_event_alerts': true,
               'favorite_player_alerts': true,
               'heads_up_alerts': false,
-              'live_game_updates': false,
               'daily_digest': false,
               'call_to_action_alerts': false,
               'book_update_alerts': true,

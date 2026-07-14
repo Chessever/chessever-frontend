@@ -218,13 +218,14 @@ async function processItem(item: OutboxItem) {
     }
 
     if (item.event_type === "live_game_update") {
-      // Live Activity refresh has a dedicated, isolated Edge Function. The
-      // regular push dispatcher must not process widget transport rows.
-      await markSkipped(item.id, "live_activity_refresh_isolated");
+      // Live Activity has been fully removed from the app (iOS widget + Android
+      // NotificationServiceExtension). Any legacy live_game_update transport row
+      // is permanently ignored here — it must never surface as a push.
+      await markSkipped(item.id, "live_activity_removed");
       return {
         id: item.id,
         status: "skipped",
-        reason: "live_activity_refresh_isolated",
+        reason: "live_activity_removed",
       };
     }
 
@@ -1390,7 +1391,7 @@ async function applyPreferences(
   const prefsMap = await fetchPreferenceMap(
     ids,
     "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
-      "live_game_updates,call_to_action_alerts," +
+      "call_to_action_alerts," +
       "fp_classical,fp_rapid,fp_blitz," +
       "se_classical,se_rapid,se_blitz",
   );
@@ -1424,14 +1425,6 @@ async function applyPreferences(
       // Event-favorite users only receive round-level notifications.
       const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
       if (isPlayerFav && playerAllowed) {
-        filtered.add(userId);
-      }
-      continue;
-    }
-
-    if (eventType === "live_game_update") {
-      if (!prefs || prefs.live_game_updates !== true) continue;
-      if (isEventFav || isPlayerFav) {
         filtered.add(userId);
       }
       continue;
@@ -1720,8 +1713,6 @@ type NotificationPayload = {
 const ANDROID_CHANNELS = {
   favorites: "fav_updates",
   headsUp: "heads_up",
-  live: "live_updates",
-  liveAlerts: "live_alerts",
   callToAction: "call_to_action",
   general: "general",
 } as const;
@@ -2034,8 +2025,6 @@ function channelForEvent(eventType: string) {
   switch (eventType) {
     case "round_heads_up":
       return ANDROID_CHANNELS.headsUp;
-    case "live_game_update":
-      return ANDROID_CHANNELS.live;
     case "round_started":
     case "round_finished":
     case "game_started":

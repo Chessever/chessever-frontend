@@ -34,8 +34,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   final Set<Future<void>> _pendingPersists = {};
   SettingsSection? _expanded;
 
-  // Used to scroll the Live Game Widgets (PiP + Live Activity) cards into view
-  // when the page is opened straight to the notification section.
+  // Used to scroll the Picture-in-Picture card into view when the page is opened
+  // straight to the notification section.
   final GlobalKey _liveWidgetsKey = GlobalKey();
 
   @override
@@ -50,8 +50,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _scrollToLiveWidgets() async {
-    // Let the page lay out, then centre the Live Game Widgets cards so PiP +
-    // Live Activity are immediately in view (they sit below a tall push card).
+    // Let the page lay out, then centre the Picture-in-Picture card so it is
+    // immediately in view (it sits below a tall push card).
     await Future<void>.delayed(const Duration(milliseconds: 280));
     final ctx = _liveWidgetsKey.currentContext;
     if (!mounted || ctx == null || !ctx.mounted) return;

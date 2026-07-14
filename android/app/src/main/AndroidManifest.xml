@@ -161,9 +161,6 @@
       <meta-data
           android:name="io.flutter.embedding.android.EnableHcpp"
           android:value="true" />
-      <meta-data
-          android:name="com.onesignal.NotificationServiceExtension"
-          android:value="com.chessEver.app.NotificationServiceExtension" />
      <!-- Custom small icon for OneSignal push notifications (status bar) -->
      <meta-data
           android:name="com.onesignal.NotificationDefaultSmallIcon"
@@ -174,11 +171,6 @@
      <meta-data
           android:name="com.google.firebase.messaging.default_notification_color"
           android:resource="@color/notification_accent" />
-
-      <!-- Receiver for live notification actions -->
-      <receiver
-          android:name=".NotificationActionReceiver"
-          android:exported="false" />
 
      <!-- Boot receiver -->
        <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"

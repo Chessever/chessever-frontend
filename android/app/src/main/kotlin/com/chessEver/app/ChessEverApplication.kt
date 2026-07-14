@@ -26,27 +26,11 @@ class ChessEverApplication : Application() {
 
     val defaultSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
-    val liveUpdates = NotificationChannel(
-      CHANNEL_LIVE_UPDATES,
-      "Live Game Updates",
-      NotificationManager.IMPORTANCE_LOW
-    ).apply {
-      description = "Real-time move updates for live games"
-      setShowBadge(false)
-      enableVibration(false)
-      setSound(null, null)
-    }
-
-    val liveAlerts = NotificationChannel(
-      CHANNEL_LIVE_ALERTS,
-      "Live Game Alerts",
-      NotificationManager.IMPORTANCE_DEFAULT
-    ).apply {
-      description = "Check and game end alerts for live games"
-      setShowBadge(true)
-      enableVibration(true)
-      setSound(defaultSound, silentAttrs)
-    }
+    // Live Activity feature removed — delete its channels on existing installs so
+    // the stale "Live Game Updates" / "Live Game Alerts" entries disappear from the
+    // system notification settings after an app update. No-op on fresh installs.
+    manager.deleteNotificationChannel("live_updates")
+    manager.deleteNotificationChannel("live_alerts")
 
     val favorites = NotificationChannel(
       CHANNEL_FAVORITES,
@@ -79,13 +63,11 @@ class ChessEverApplication : Application() {
     }
 
     manager.createNotificationChannels(
-      listOf(liveUpdates, liveAlerts, favorites, headsUp, general)
+      listOf(favorites, headsUp, general)
     )
   }
 
   companion object {
-    const val CHANNEL_LIVE_UPDATES = "live_updates"
-    const val CHANNEL_LIVE_ALERTS = "live_alerts"
     const val CHANNEL_FAVORITES = "fav_updates"
     const val CHANNEL_HEADS_UP = "heads_up"
     const val CHANNEL_GENERAL = "general"
