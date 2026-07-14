@@ -362,6 +362,47 @@ void main() {
   );
 
   test(
+    'round reconciliation results can be sorted in place by the app bar',
+    () {
+      final initialMerge = mergePublishedRoundModels(
+        previous: const <GamesAppBarModel>[],
+        incoming: const <GamesAppBarModel>[
+          GamesAppBarModel(
+            id: 'round-1',
+            name: 'Round 1',
+            startsAt: null,
+            roundStatus: RoundStatus.ongoing,
+            sourceRoundIds: <String>['round-1'],
+          ),
+        ],
+      );
+      final representationChange = mergePublishedRoundModels(
+        previous: const <GamesAppBarModel>[
+          GamesAppBarModel(
+            id: 'knockout-stage-event-round-1',
+            name: 'Round 1',
+            startsAt: null,
+            roundStatus: RoundStatus.ongoing,
+            sourceRoundIds: <String>['source-round-1'],
+          ),
+        ],
+        incoming: const <GamesAppBarModel>[
+          GamesAppBarModel(
+            id: 'source-round-1',
+            name: 'Round 1',
+            startsAt: null,
+            roundStatus: RoundStatus.ongoing,
+            sourceRoundIds: <String>['source-round-1'],
+          ),
+        ],
+      );
+
+      expect(() => initialMerge.clear(), returnsNormally);
+      expect(() => representationChange.clear(), returnsNormally);
+    },
+  );
+
+  test(
     'round cache syncs live status and prunes only after bounded misses',
     () {
       final startsAt = DateTime.now().add(const Duration(hours: 2));

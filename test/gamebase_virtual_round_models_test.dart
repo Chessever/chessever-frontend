@@ -22,44 +22,41 @@ void main() {
     );
   }
 
-  test(
-    'buildVirtualGamebaseRoundModels creates selectable rounds for games',
-    () {
-      final rounds = buildVirtualGamebaseRoundModels([
-        game(
-          id: 'g1',
-          roundId: 'virtual::round::1',
-          roundSlug: 'Round 1',
-          status: '1-0',
-          dateStart: DateTime.utc(2026, 6, 21),
-        ),
-        game(
-          id: 'g2',
-          roundId: 'virtual::round::1',
-          roundSlug: 'Round 1',
-          status: '0-1',
-          dateStart: DateTime.utc(2026, 6, 22),
-        ),
-        game(
-          id: 'g3',
-          roundId: 'virtual::round::2',
-          roundSlug: 'Round 2',
-          status: '*',
-          dateStart: DateTime.utc(2026, 6, 23),
-        ),
-      ]);
+  test('buildGameDerivedRoundModels creates selectable rounds for games', () {
+    final rounds = buildGameDerivedRoundModels([
+      game(
+        id: 'g1',
+        roundId: 'virtual::round::1',
+        roundSlug: 'Round 1',
+        status: '1-0',
+        dateStart: DateTime.utc(2026, 6, 21),
+      ),
+      game(
+        id: 'g2',
+        roundId: 'virtual::round::1',
+        roundSlug: 'Round 1',
+        status: '0-1',
+        dateStart: DateTime.utc(2026, 6, 22),
+      ),
+      game(
+        id: 'g3',
+        roundId: 'virtual::round::2',
+        roundSlug: 'Round 2',
+        status: '*',
+        dateStart: DateTime.utc(2026, 6, 23),
+      ),
+    ]);
 
-      expect(rounds, hasLength(2));
-      expect(rounds.map((round) => round.id), [
-        'virtual::round::1',
-        'virtual::round::2',
-      ]);
-      expect(rounds.map((round) => round.name), ['Round 1', 'Round 2']);
-      expect(rounds[0].startsAt, DateTime.utc(2026, 6, 21));
-      expect(rounds[0].roundStatus, RoundStatus.completed);
-      expect(rounds[1].roundStatus, RoundStatus.ongoing);
+    expect(rounds, hasLength(2));
+    expect(rounds.map((round) => round.id), [
+      'virtual::round::1',
+      'virtual::round::2',
+    ]);
+    expect(rounds.map((round) => round.name), ['Round 1', 'Round 2']);
+    expect(rounds[0].startsAt, DateTime.utc(2026, 6, 21));
+    expect(rounds[0].roundStatus, RoundStatus.completed);
+    expect(rounds[1].roundStatus, RoundStatus.ongoing);
 
-      expect(() => rounds.clear(), returnsNormally);
-    },
-  );
+    expect(() => rounds.clear(), returnsNormally);
+  });
 }

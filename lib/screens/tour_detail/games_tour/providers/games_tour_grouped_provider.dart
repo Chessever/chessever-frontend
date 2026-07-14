@@ -59,14 +59,12 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
           ? const AsyncValue<List<Games>>.data(<Games>[])
           : ref.watch(gamesTourProvider(tourId));
   final rawGames = rawGamesAsync.valueOrNull ?? const <Games>[];
-  final virtualFallbackRounds =
-      isVirtualGamebaseEvent
-          ? buildVirtualGamebaseRoundModels(rawGames)
-          : const <GamesAppBarModel>[];
-
   final gamesAppBar = ref.watch(gamesAppBarProvider);
-  if ((gamesAppBar.isLoading || !gamesAppBar.hasValue) &&
-      virtualFallbackRounds.isEmpty) {
+  final roundResolution = resolveGamesTourRounds(
+    gamesAppBar: gamesAppBar,
+    rawGames: rawGames,
+  );
+  if (roundResolution.isLoading) {
     return GroupedGamesData(
       filteredRounds: [],
       gamesByRound: {},
@@ -79,11 +77,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     );
   }
 
-  final appBarRounds = gamesAppBar.valueOrNull?.gamesAppBarModels ?? [];
-  final rounds =
-      virtualFallbackRounds.isNotEmpty && appBarRounds.isEmpty
-          ? virtualFallbackRounds
-          : appBarRounds;
+  final rounds = roundResolution.rounds;
   final knockoutState = ref.watch(knockoutTournamentStateProvider(tourId));
   final isKnockoutTournament = knockoutState.isKnockout;
 
@@ -444,6 +438,40 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     upcomingPairingRoundIds: upcomingPairingRoundIds,
   );
 });
+
+typedef GamesTourRoundResolution =
+    ({List<GamesAppBarModel> rounds, bool isLoading});
+
+/// Resolves the round metadata required to group already-fetched games.
+///
+/// Kept as a pure seam so the loading transition can be replayed without a
+/// running app or backend.
+@visibleForTesting
+GamesTourRoundResolution resolveGamesTourRounds({
+  required AsyncValue<GamesAppBarViewModel> gamesAppBar,
+  required List<Games> rawGames,
+}) {
+  final appBarRounds =
+      gamesAppBar.valueOrNull?.gamesAppBarModels ?? const <GamesAppBarModel>[];
+  if (appBarRounds.isNotEmpty) {
+    return (rounds: appBarRounds, isLoading: false);
+  }
+
+  // Games and round metadata are fetched independently. A slow or stalled
+  // round request must not cover boards that have already arrived with an
+  // endless shimmer. The game rows carry enough round identity for a complete
+  // temporary grouping; canonical metadata replaces it on the next rebuild.
+  final gameDerivedRounds = buildGameDerivedRoundModels(rawGames);
+  if (gameDerivedRounds.isNotEmpty) {
+    return (rounds: gameDerivedRounds, isLoading: false);
+  }
+
+  if (gamesAppBar.isLoading || !gamesAppBar.hasValue) {
+    return (rounds: const <GamesAppBarModel>[], isLoading: true);
+  }
+
+  return (rounds: const <GamesAppBarModel>[], isLoading: false);
+}
 
 /// Keep the empty state suppressed while a represented sibling stage is still
 /// resolving, but never cover a stage that has already produced games.

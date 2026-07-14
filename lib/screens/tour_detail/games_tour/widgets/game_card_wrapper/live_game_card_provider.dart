@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
@@ -12,6 +14,25 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Auto-disposes once no visible card/provider is observing the game.
 final baseGameProvider = StateProvider.autoDispose
     .family<GamesTourModel?, String>((ref, gameId) => null);
+
+/// Full positions for visible archived Gamebase boards.
+///
+/// `/api/event` intentionally returns lightweight game summaries without FEN
+/// or moves. Reuse the existing per-game fetch only while a board card is
+/// visible instead of downloading every game in a large event up front.
+final hydratedGamebaseCardProvider = FutureProvider.autoDispose.family<
+  GamesTourModel,
+  GamesTourModel
+>((ref, game) async {
+  if (!shouldHydrateGamebaseCard(game)) return game;
+
+  final fullGame = await ref.watch(gameWithPgnByIdProvider(game.gameId).future);
+  final fullPgn =
+      fullGame == null
+          ? null
+          : selectGamebaseBoardPgn(rawPgn: fullGame.pgn, data: fullGame.data);
+  return hydrateGamebaseCardPosition(game, fullPgn);
+});
 
 /// Provider that combines the base game model with real-time updates from the stream.
 /// This is used by game cards to show live updates without entering the game screen.
@@ -337,6 +358,40 @@ bool shouldSubscribeToLiveGame(GamesTourModel game) {
       !game.gameStatus.isFinished;
 }
 
+@visibleForTesting
+bool shouldHydrateGamebaseCard(GamesTourModel game) {
+  if (game.source != GameSource.gamebase ||
+      game.gameId.isEmpty ||
+      !game.gameStatus.isFinished) {
+    return false;
+  }
+
+  if (resolveFinalPositionFromPgn(game.pgn) != null) return false;
+
+  final fen = game.fen?.trim();
+  if (!isValidGameFen(fen)) return true;
+  final board = fen!.split(RegExp(r'\s+')).first;
+  return board == 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+}
+
+/// Replaces a virtual Gamebase event card's header-only position data with the
+/// full game PGN used to derive its final board position.
+@visibleForTesting
+GamesTourModel hydrateGamebaseCardPosition(
+  GamesTourModel game,
+  String? fullPgn,
+) {
+  final pgn = fullPgn?.trim();
+  final position = resolveFinalPositionFromPgn(pgn);
+  if (pgn == null || pgn.isEmpty || position == null) return game;
+
+  return game.copyWith(
+    pgn: pgn,
+    fen: position.fen,
+    lastMove: position.lastMoveUci,
+  );
+}
+
 GamesTourModel _mergeLiveUpdate({
   required GamesTourModel baseGame,
   required LiveGameUpdate update,
@@ -445,13 +500,19 @@ GamesTourModel watchLiveGamePosition(
   LiveGamesBatchKey? batchKey,
   bool streamEnabled = true,
 }) {
-  _ensureBaseGame(ref, game);
+  final positionedGame = watchHydratedGamebaseCard(ref, game);
+  _ensureBaseGame(ref, positionedGame);
   final params = _liveWatchParamsForGame(
-    game: game,
+    game: positionedGame,
     batchKey: batchKey,
     streamEnabled: streamEnabled,
   );
-  return ref.watch(liveGamePositionProvider(params)) ?? game;
+  return ref.watch(liveGamePositionProvider(params)) ?? positionedGame;
+}
+
+GamesTourModel watchHydratedGamebaseCard(WidgetRef ref, GamesTourModel game) {
+  if (!shouldHydrateGamebaseCard(game)) return game;
+  return ref.watch(hydratedGamebaseCardProvider(game)).valueOrNull ?? game;
 }
 
 GamesTourModel watchLiveGameClock(

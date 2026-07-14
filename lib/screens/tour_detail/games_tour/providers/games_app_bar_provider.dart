@@ -23,6 +23,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/utils/string_utils.dart';
 
 const int kUnknownGameRoundMaxRetries = 5;
 const int kPublishedRoundMissingSnapshotTolerance = 5;
@@ -457,7 +458,7 @@ class _GamesAppBarNotifier
         }
 
         _roundSortMeta.clear();
-        final models = buildVirtualGamebaseRoundModels(games);
+        final models = buildGameDerivedRoundModels(games);
         if (models.isEmpty) {
           _knownRoundModels = const <GamesAppBarModel>[];
           _roundMissingSnapshotCounts.clear();
@@ -1422,7 +1423,7 @@ List<GamesAppBarModel> mergePublishedRoundModels({
 
   if (previousModels.isEmpty) {
     missingSnapshotCounts?.clear();
-    return incomingModels.map(withCurrentStatus).toList(growable: false);
+    return incomingModels.map(withCurrentStatus).toList();
   }
 
   bool usesSyntheticStages(Iterable<GamesAppBarModel> models) =>
@@ -1434,7 +1435,7 @@ List<GamesAppBarModel> mergePublishedRoundModels({
       usesSyntheticStages(previousModels) !=
           usesSyntheticStages(incomingModels)) {
     missingSnapshotCounts?.clear();
-    return incomingModels.map(withCurrentStatus).toList(growable: false);
+    return incomingModels.map(withCurrentStatus).toList();
   }
 
   final previousById = <String, GamesAppBarModel>{
@@ -1876,7 +1877,7 @@ String _roundCountSignature(List<Games> games) {
       .join('|');
 }
 
-List<GamesAppBarModel> buildVirtualGamebaseRoundModels(List<Games> games) {
+List<GamesAppBarModel> buildGameDerivedRoundModels(List<Games> games) {
   if (games.isEmpty) return const <GamesAppBarModel>[];
 
   final roundsById = <String, List<Games>>{};
@@ -1897,7 +1898,7 @@ List<GamesAppBarModel> buildVirtualGamebaseRoundModels(List<Games> games) {
       id: entry.key,
       name:
           firstGame.roundSlug.trim().isNotEmpty
-              ? firstGame.roundSlug.trim()
+              ? StringUtils.formatRoundLabel(firstGame.roundSlug.trim())
               : 'Round $fallbackRoundNumber',
       startsAt: startsAt,
       roundStatus: hasOngoingGame ? RoundStatus.ongoing : RoundStatus.completed,

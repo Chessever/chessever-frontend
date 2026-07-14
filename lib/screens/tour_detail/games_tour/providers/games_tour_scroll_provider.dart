@@ -78,7 +78,11 @@ class _GamesTourScrollActivityDetectorState
   bool _liveCardsPausedForScroll = false;
   late final StateController<Set<String>> _liveGameCardsPauseReasons;
 
-  String _pauseReasonFor(String scopeId) => 'games_tour_scroll_$scopeId';
+  // A detector owns its pause reason. Including the State identity prevents a
+  // detector that is being unmounted from clearing a replacement detector's
+  // pause reason for the same scroll scope.
+  String _pauseReasonFor(String scopeId) =>
+      'games_tour_scroll_${scopeId}_$hashCode';
 
   @override
   void initState() {
@@ -96,16 +100,23 @@ class _GamesTourScrollActivityDetectorState
     clearGamesTourScrollScopeActive(oldWidget.scopeId);
     markGamesTourScrollScopeActive(widget.scopeId);
     if (_liveCardsPausedForScroll) {
-      setLiveGameCardsPaused(
-        ref,
-        reason: _pauseReasonFor(oldWidget.scopeId),
-        paused: false,
-      );
-      setLiveGameCardsPaused(
-        ref,
-        reason: _pauseReasonFor(widget.scopeId),
-        paused: true,
-      );
+      final oldReason = _pauseReasonFor(oldWidget.scopeId);
+      final newReason = _pauseReasonFor(widget.scopeId);
+      final notifier = _liveGameCardsPauseReasons;
+      Future<void>(() {
+        if (!notifier.mounted) return;
+        setLiveGameCardsPausedWithNotifier(
+          notifier,
+          reason: oldReason,
+          paused: false,
+        );
+        if (!mounted || !_liveCardsPausedForScroll) return;
+        setLiveGameCardsPausedWithNotifier(
+          notifier,
+          reason: newReason,
+          paused: true,
+        );
+      });
     }
   }
 
@@ -173,7 +184,19 @@ class _GamesTourScrollActivityDetectorState
   @override
   void dispose() {
     _idleTimer?.cancel();
-    _setLiveCardsPausedForScroll(false);
+    if (_liveCardsPausedForScroll) {
+      _liveCardsPausedForScroll = false;
+      final reason = _pauseReasonFor(widget.scopeId);
+      final notifier = _liveGameCardsPauseReasons;
+      Future<void>(() {
+        if (!notifier.mounted) return;
+        setLiveGameCardsPausedWithNotifier(
+          notifier,
+          reason: reason,
+          paused: false,
+        );
+      });
+    }
     clearGamesTourScrollScopeActive(widget.scopeId);
     super.dispose();
   }

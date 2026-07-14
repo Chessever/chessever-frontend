@@ -9,6 +9,7 @@ import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -38,10 +39,11 @@ class _GroupEventGamesTourContentBodyState
   @override
   Widget build(BuildContext context) {
     final gamesAppBar = ref.watch(gamesAppBarProvider);
-    if (gamesAppBar.isLoading || !gamesAppBar.hasValue) {
+    final groupedData = ref.watch(gamesTourGroupedProvider);
+    if (groupedData.isLoading) {
       return const TourLoadingWidget();
     }
-    final rounds = gamesAppBar.value!.gamesAppBarModels;
+    final rounds = groupedData.rounds;
     final selectedRoundId = gamesAppBar.value?.selectedId;
     final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
