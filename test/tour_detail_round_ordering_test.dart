@@ -51,7 +51,7 @@ void main() {
   });
 
   group('sortRoundsForDisplay', () {
-    test('keeps all future rounds in descending order', () {
+    test('keeps all future rounds in ascending order', () {
       final now = DateTime(2026, 3, 29, 10);
       final rounds = [
         _round(
@@ -80,8 +80,43 @@ void main() {
         now: now,
       );
 
-      expect(_ids(sorted), ['r3', 'r2', 'r1']);
+      expect(_ids(sorted), ['r1', 'r2', 'r3']);
     });
+
+    test(
+      'orders future rounds by round number when start times are missing',
+      () {
+        final now = DateTime(2026, 3, 29, 10);
+        final rounds = [
+          _round(
+            id: 'r10',
+            name: 'Round 10',
+            startsAt: null,
+            status: RoundStatus.upcoming,
+          ),
+          _round(
+            id: 'r2',
+            name: 'Round 2',
+            startsAt: null,
+            status: RoundStatus.upcoming,
+          ),
+          _round(
+            id: 'r1',
+            name: 'Round 1',
+            startsAt: null,
+            status: RoundStatus.upcoming,
+          ),
+        ];
+
+        final sorted = sortRoundsForDisplay(
+          rounds,
+          resolveDate: (round) => round.startsAt,
+          now: now,
+        );
+
+        expect(_ids(sorted), ['r1', 'r2', 'r10']);
+      },
+    );
 
     test(
       'promotes next round inside one hour after every latest-round board finishes',
@@ -121,7 +156,7 @@ void main() {
           now: now,
         );
 
-        expect(_ids(sorted), ['r2', 'r1', 'r4', 'r3']);
+        expect(_ids(sorted), ['r2', 'r1', 'r3', 'r4']);
       },
     );
 
@@ -157,7 +192,7 @@ void main() {
           now: now,
         );
 
-        expect(_ids(sorted), ['r1', 'r3', 'r2']);
+        expect(_ids(sorted), ['r1', 'r2', 'r3']);
       },
     );
 
@@ -224,43 +259,46 @@ void main() {
       },
     );
 
-    test('keeps previously started rounds in reverse chronological order', () {
-      final now = DateTime(2026, 3, 31, 16);
-      final rounds = [
-        _round(
-          id: 'r1',
-          name: 'Round 1',
-          startsAt: now.subtract(const Duration(days: 2)),
-          status: RoundStatus.completed,
-        ),
-        _round(
-          id: 'r2',
-          name: 'Round 2',
-          startsAt: now.subtract(const Duration(days: 1)),
-          status: RoundStatus.completed,
-        ),
-        _round(
-          id: 'r3',
-          name: 'Round 3',
-          startsAt: now.add(const Duration(minutes: 90)),
-          status: RoundStatus.upcoming,
-        ),
-        _round(
-          id: 'r4',
-          name: 'Round 4',
-          startsAt: now.add(const Duration(days: 1)),
-          status: RoundStatus.upcoming,
-        ),
-      ];
+    test(
+      'keeps started rounds descending and future rounds ascending below them',
+      () {
+        final now = DateTime(2026, 3, 31, 16);
+        final rounds = [
+          _round(
+            id: 'r1',
+            name: 'Round 1',
+            startsAt: now.subtract(const Duration(days: 2)),
+            status: RoundStatus.completed,
+          ),
+          _round(
+            id: 'r2',
+            name: 'Round 2',
+            startsAt: now.subtract(const Duration(days: 1)),
+            status: RoundStatus.completed,
+          ),
+          _round(
+            id: 'r3',
+            name: 'Round 3',
+            startsAt: now.add(const Duration(minutes: 90)),
+            status: RoundStatus.upcoming,
+          ),
+          _round(
+            id: 'r4',
+            name: 'Round 4',
+            startsAt: now.add(const Duration(days: 1)),
+            status: RoundStatus.upcoming,
+          ),
+        ];
 
-      final sorted = sortRoundsForDisplay(
-        rounds,
-        resolveDate: (round) => round.startsAt,
-        now: now,
-      );
+        final sorted = sortRoundsForDisplay(
+          rounds,
+          resolveDate: (round) => round.startsAt,
+          now: now,
+        );
 
-      expect(_ids(sorted), ['r2', 'r1', 'r4', 'r3']);
-    });
+        expect(_ids(sorted), ['r2', 'r1', 'r3', 'r4']);
+      },
+    );
 
     test('ends with latest round first and all prior rounds descending', () {
       final now = DateTime(2026, 4, 12, 16);
@@ -355,6 +393,73 @@ void main() {
   });
 
   group('pickPreferredRoundForSelection', () {
+    test('selects the earliest round before an event begins', () {
+      final now = DateTime(2026, 3, 30, 16);
+      final rounds = [
+        _round(
+          id: 'r3',
+          name: 'Round 3',
+          startsAt: now.add(const Duration(hours: 6)),
+          status: RoundStatus.upcoming,
+        ),
+        _round(
+          id: 'r1',
+          name: 'Round 1',
+          startsAt: now.add(const Duration(minutes: 30)),
+          status: RoundStatus.upcoming,
+        ),
+        _round(
+          id: 'r2',
+          name: 'Round 2',
+          startsAt: now.add(const Duration(hours: 3)),
+          status: RoundStatus.upcoming,
+        ),
+      ];
+
+      final selected = pickPreferredRoundForSelection(
+        rounds,
+        resolveDate: (round) => round.startsAt,
+        hasGames: (_) => true,
+        now: now,
+      );
+
+      expect(selected?.id, 'r1');
+    });
+
+    test(
+      'selects the lowest upcoming round when event start times are missing',
+      () {
+        final rounds = [
+          _round(
+            id: 'r10',
+            name: 'Round 10',
+            startsAt: null,
+            status: RoundStatus.upcoming,
+          ),
+          _round(
+            id: 'r2',
+            name: 'Round 2',
+            startsAt: null,
+            status: RoundStatus.upcoming,
+          ),
+          _round(
+            id: 'r1',
+            name: 'Round 1',
+            startsAt: null,
+            status: RoundStatus.upcoming,
+          ),
+        ];
+
+        final selected = pickPreferredRoundForSelection(
+          rounds,
+          resolveDate: (round) => round.startsAt,
+          hasGames: (_) => true,
+        );
+
+        expect(selected?.id, 'r1');
+      },
+    );
+
     test(
       'selects next round inside one hour when latest round is fully played',
       () {

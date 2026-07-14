@@ -37,7 +37,7 @@ List<GamesAppBarModel> sortRoundsForDisplay(
               (model) => !_isStartedRound(model, effectiveNow, resolveDate),
             )
             .toList()
-          ..sort((a, b) => _compareByStart(a, b, false, resolveDate));
+          ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
     final promoted = pickUpcomingRoundForPromotion(
       models,
       resolveDate: resolveDate,
@@ -67,7 +67,7 @@ List<GamesAppBarModel> sortRoundsForDisplay(
       models
           .where((m) => !_isStartedRound(m, effectiveNow, resolveDate))
           .toList()
-        ..sort((a, b) => _compareByStart(a, b, false, resolveDate));
+        ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
   final promoted = pickUpcomingRoundForPromotion(
     models,
     resolveDate: resolveDate,
@@ -141,7 +141,7 @@ GamesAppBarModel? pickPreferredRoundForSelection(
         models
             .where((m) => m.roundStatus == RoundStatus.upcoming && include(m))
             .toList()
-          ..sort((a, b) => _compareByStart(a, b, false, resolveDate));
+          ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
     if (upcomingRounds.isNotEmpty) {
       return upcomingRounds.first;
     }
@@ -157,7 +157,10 @@ GamesAppBarModel? pickPreferredRoundForSelection(
         models.where((m) => m.roundStatus == status && include(m)).toList();
     if (candidates.isEmpty) continue;
     candidates.sort((a, b) {
-      if (useGenericRoundOrder && status != RoundStatus.upcoming) {
+      if (status == RoundStatus.upcoming) {
+        return _compareByStart(a, b, true, resolveDate);
+      }
+      if (useGenericRoundOrder) {
         final roundCompare = _compareByGenericRoundNumber(a, b);
         if (roundCompare != 0) return roundCompare;
       }
@@ -234,7 +237,7 @@ int _compareByStart(
 
   int compare;
   if (aStart == null && bStart == null) {
-    compare = a.name.compareTo(b.name);
+    compare = _compareByGenericRoundNumber(a, b, ascending: true);
   } else if (aStart == null) {
     compare = 1;
   } else if (bStart == null) {
@@ -242,7 +245,7 @@ int _compareByStart(
   } else {
     compare = aStart.compareTo(bStart);
     if (compare == 0) {
-      compare = a.name.compareTo(b.name);
+      compare = _compareByGenericRoundNumber(a, b, ascending: true);
     }
   }
 
@@ -257,14 +260,19 @@ bool _shouldUseGenericRoundOrder(List<GamesAppBarModel> models) {
   return models.every((model) => _genericRoundNumber(model.name) != null);
 }
 
-int _compareByGenericRoundNumber(GamesAppBarModel a, GamesAppBarModel b) {
+int _compareByGenericRoundNumber(
+  GamesAppBarModel a,
+  GamesAppBarModel b, {
+  bool ascending = false,
+}) {
   final aNumber = _genericRoundNumber(a.name);
   final bNumber = _genericRoundNumber(b.name);
   if (aNumber == null && bNumber == null) return a.name.compareTo(b.name);
   if (aNumber == null) return 1;
   if (bNumber == null) return -1;
 
-  final numberCompare = bNumber.compareTo(aNumber);
+  final numberCompare =
+      ascending ? aNumber.compareTo(bNumber) : bNumber.compareTo(aNumber);
   if (numberCompare != 0) return numberCompare;
   return a.name.compareTo(b.name);
 }

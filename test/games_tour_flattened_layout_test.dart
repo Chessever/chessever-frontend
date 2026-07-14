@@ -116,7 +116,7 @@ void main() {
         now: now,
       );
 
-      expect(visible.map((round) => round.id), ['r2', 'r1', 'r4', 'r3']);
+      expect(visible.map((round) => round.id), ['r2', 'r1', 'r3', 'r4']);
     });
   });
 
