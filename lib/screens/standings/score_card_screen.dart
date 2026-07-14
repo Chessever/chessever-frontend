@@ -385,7 +385,7 @@ class _ScoreCardPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedPlayer = player;
+    final selectedPlayer = this.player;
 
     final backfilledPlayerAsync = ref.watch(
       backfilledStandingPlayerProvider(selectedPlayer),
@@ -1094,7 +1094,6 @@ class _ScoreCardPage extends ConsumerWidget {
             ),
           ),
         ),
-      ),
     );
 
     // Detect a screenshot of the scorecard and nudge sharing the branded card.

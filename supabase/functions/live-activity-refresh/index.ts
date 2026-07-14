@@ -216,17 +216,23 @@ const UPDATE_PRIORITY = normalizeLiveActivityPriority(
 // nudges — clocks were removed from the widget (they were unreliable, and the
 // interim pushes just burned Apple's high-priority budget and delayed real moves).
 // This keeps push volume to ~1 per move so every move is delivered.
-// Android Live Notifications (silent, rendered by the app's NotificationService-
-// Extension) are sent straight from this function via the OneSignal Create Message
-// API — on a REAL MOVE only (Android's notification chronometer ticks the clock
-// locally, so there are no between-move nudges). Defaults OFF so deploying this
-// cannot touch a single Android user until it is explicitly enabled and verified
-// on a device. LIVE_ACTIVITY_ANDROID_ENABLED="true" turns it on; it is the kill
-// switch. These are NEVER the notification-outbox / sendLiveGameAlert path that
-// flooded users on 2026-06-06.
-const ANDROID_ENABLED =
-  (Deno.env.get("LIVE_ACTIVITY_ANDROID_ENABLED") ?? "false").toLowerCase() ===
-    "true";
+//
+// Android Live Notifications used to be rendered SILENTLY by the app's
+// NotificationServiceExtension (NSE), which intercepted every push carrying
+// `data.live_notification` and drew its own ongoing card on a low-importance
+// channel — no sound, no banner. The NSE was REMOVED from the app on
+// 2026-07-14 (Live Activity dropped on both iOS and Android). With no NSE, each
+// per-move push surfaces as a VISIBLE banner whose body is the raw move
+// ("41.Bc1+", "29.Qd6", ...) — i.e. one notification per move. That is exactly
+// the flood the PM hit on 2026-07-14.
+//
+// PERMANENT KILL SWITCH: this path must never send again unless a replacement
+// NSE ships first. It is hard-disabled here so the `LIVE_ACTIVITY_ANDROID_ENABLED`
+// env var alone can no longer turn it back on. With this false, selectSubscriptions
+// never even queries android rows, so no android push can leave this function.
+// (These were NEVER the notification-outbox / sendLiveGameAlert path that flooded
+// users on 2026-06-06 — different transport, same symptom.)
+const ANDROID_ENABLED = false;
 const LIVE_ACTIVITY_REFRESH_ALLOWED_KEYS = parseAllowedKeys(
   Deno.env.get("LIVE_ACTIVITY_REFRESH_ALLOWED_KEYS") ?? "",
 );
@@ -442,10 +448,17 @@ async function refreshSubscription(
     nowMs: options.nowMs,
   });
 
-  // Android is served by a silent Create-Message live notification, not the
-  // iOS ActivityKit endpoint. Same freshness/ghost-sub gates, different transport.
+  // Android Live Notifications are PERMANENTLY DISABLED (see ANDROID_ENABLED).
+  // The app no longer ships the NotificationServiceExtension that rendered these
+  // silently, so any Android push here would surface as a visible per-move banner
+  // (the 2026-07-14 flood). Never send. Disable any android subscription that
+  // slips through — e.g. if the env flag is ever flipped — so it is not retried.
+  // This is a hard second barrier behind selectSubscriptions' ios-only filter.
   if (row.platform === "android") {
-    return await refreshAndroidSubscription(row, game, payload, options);
+    if (!options.dryRun) {
+      await disableLiveSubscription(row);
+    }
+    return { status: "ended", gameId: row.game_id, userId: row.user_id };
   }
 
   if (isGameOverStatus(game.status)) {
