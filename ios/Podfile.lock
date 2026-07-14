@@ -235,7 +235,6 @@ DEPENDENCIES:
   - google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`)
   - in_app_review (from `.symlinks/plugins/in_app_review/ios`)
   - onesignal_flutter (from `.symlinks/plugins/onesignal_flutter/ios`)
-  - OneSignalXCFramework/OneSignalLiveActivities (< 6.0, >= 5.0.0)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - patrol (from `.symlinks/plugins/patrol/darwin`)
@@ -395,6 +394,6 @@ SPEC CHECKSUMS:
   terminate_restart: 0fc748d0a297afebc179251b11b8d47771918601
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 
-PODFILE CHECKSUM: 8fe0368807a7b70a372d905d35802729fbda55bf
+PODFILE CHECKSUM: 0e641d9157a296e0e26c1a6219a9e950490cb043
 
 COCOAPODS: 1.16.2

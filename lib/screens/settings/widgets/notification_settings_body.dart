@@ -1,5 +1,4 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/providers/live_activity_mode_provider.dart';
 import 'package:chessever2/providers/notification_permission_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
@@ -29,7 +28,7 @@ class NotificationSettingsBody extends ConsumerWidget {
   final TrackPersist trackPersist;
 
   /// Optional anchor on the Live Game Widgets group so the host can scroll the
-  /// PiP + Live Activity cards into view (used when opening straight here).
+  /// PiP card into view (used when opening straight here).
   final Key? liveWidgetsKey;
 
   @override
@@ -44,8 +43,8 @@ class NotificationSettingsBody extends ConsumerWidget {
     final pushEnabled = permissionAsync.valueOrNull ?? false;
     final interactive = pushEnabled && !prefsLoading;
 
-    // Live game widgets (PiP + Live Activity) live with notifications now —
-    // they are how a live game stays visible outside the app.
+    // Live game widgets (PiP) live with notifications now —
+    // this is how a live game stays visible outside the app.
     final boardSettings = ref.watch(boardSettingsProviderNew).valueOrNull;
     final boardNotifier = ref.read(boardSettingsProviderNew.notifier);
 
@@ -155,12 +154,6 @@ class NotificationSettingsBody extends ConsumerWidget {
                   selected: boardSettings.pipMode,
                   onSelected: (mode) =>
                       trackPersist(boardNotifier.setPipMode(mode)),
-                ),
-                SizedBox(height: 18.h),
-                _LiveActivitySettingCard(
-                  selected: boardSettings.liveActivityMode,
-                  onSelected: (mode) =>
-                      trackPersist(boardNotifier.setLiveActivityMode(mode)),
                 ),
               ],
             ),
@@ -302,47 +295,6 @@ class _PipSettingCard extends StatelessWidget {
   }
 }
 
-/// Live Activity mode card. A move-only lock-screen card (board, players, last
-/// move, evaluation — no clocks); iOS repaints it on each move push.
-class _LiveActivitySettingCard extends StatelessWidget {
-  const _LiveActivitySettingCard({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final LiveActivityMode selected;
-  final ValueChanged<LiveActivityMode> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SettingCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Live Activity',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-              fontSize: 13.f,
-            ),
-          ),
-          SizedBox(height: 4.h),
-          Text(
-            'A lock-screen card with the board, players and evaluation, '
-            'updated on every move. A quick glance, not a live stream.',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textSecondary,
-              fontSize: 11.f,
-            ),
-          ),
-          SizedBox(height: 14.h),
-          _LiveActivityModeSelector(selected: selected, onSelected: onSelected),
-        ],
-      ),
-    );
-  }
-}
-
 class _PipModeSelector extends StatelessWidget {
   const _PipModeSelector({required this.selected, required this.onSelected});
 
@@ -370,101 +322,6 @@ class _PipModeSelector extends StatelessWidget {
   Widget _buildOption(
     BuildContext context, {
     required PipMode mode,
-    required IconData icon,
-  }) {
-    final isSelected = selected == mode;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onSelected(mode),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(vertical: 8.sp),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? kPrimaryColor.withValues(alpha: 0.08)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8.br),
-            border: Border.all(
-              color: isSelected ? kPrimaryColor : Colors.transparent,
-              width: isSelected ? 1.5 : 1.0,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: kPrimaryColor.withValues(alpha: 0.18),
-                      blurRadius: 8,
-                      spreadRadius: 0,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                color: isSelected
-                    ? context.colors.textPrimary
-                    : context.colors.textTertiary,
-                size: 20.ic,
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                mode.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected
-                      ? context.colors.textPrimary
-                      : context.colors.textTertiary,
-                  fontSize: 10.f,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveActivityModeSelector extends StatelessWidget {
-  const _LiveActivityModeSelector({
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final LiveActivityMode selected;
-  final ValueChanged<LiveActivityMode> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(4.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceRecessed,
-        borderRadius: BorderRadius.circular(12.br),
-      ),
-      child: Row(
-        children: [
-          _buildOption(
-            context,
-            mode: LiveActivityMode.off,
-            icon: Icons.block_rounded,
-          ),
-          SizedBox(width: 4.w),
-          _buildOption(
-            context,
-            mode: LiveActivityMode.live,
-            icon: Icons.sensors_rounded,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOption(
-    BuildContext context, {
-    required LiveActivityMode mode,
     required IconData icon,
   }) {
     final isSelected = selected == mode;

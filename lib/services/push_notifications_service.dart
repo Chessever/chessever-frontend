@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/sqlite/app_database.dart';
-import 'package:chessever2/services/live_updates_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -50,13 +49,7 @@ class PushNotificationsService {
       OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
     }
 
-    // OneSignal.LiveActivities.setupDefault() MUST run AFTER OneSignal.initialize().
-    // Called before init, the LiveActivities module has no appId/subscription, so it
-    // never forwards the Live Activity push token to OneSignal → server-side updates
-    // reach 0 recipients and the iOS card never updates. Order is load-bearing.
     OneSignal.initialize(normalizedAppId);
-    LiveUpdatesService.instance.markOneSignalReady();
-    await LiveUpdatesService.instance.setup();
 
     // The OS notification permission is the single source of truth for whether
     // push is "on" — it is not a separate app preference. Align the OneSignal

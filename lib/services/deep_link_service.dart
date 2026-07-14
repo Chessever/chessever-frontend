@@ -14,7 +14,6 @@ import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
-import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
@@ -43,7 +42,6 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
     show PlayerProfileDataSource;
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
     show PlayerProfileScreen;
-import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
@@ -312,11 +310,8 @@ class DeepLinkService {
       );
 
       if (gameId != null && gameId.isNotEmpty) {
-        if (uri.queryParameters['stop_live'] == '1') {
-          _stopLiveUpdates(gameId, ref);
-        }
-        // Live Activity / pinned-game taps carry the focused move's FEN so the
-        // board opens on that exact move (not the live tail).
+        // Pinned-game taps carry the focused move's FEN so the board opens on
+        // that exact move (not the live tail).
         final initialFen = uri.queryParameters['fen'];
         // `src=gamebase` marks a TWIC/gamebase archive game whose uuid lives
         // in the gamebase, not the app's games table.
@@ -411,12 +406,6 @@ class DeepLinkService {
         extras: _sanitizedUriData(uri),
       );
     }
-  }
-
-  void _stopLiveUpdates(String gameId, WidgetRef ref) {
-    final user = ref.read(currentUserProvider);
-    if (user == null) return;
-    unawaited(LiveUpdatesService.instance.stopForGame(gameId, user.id));
   }
 
   /// Navigate to the book preview screen for a shared book deep link.
@@ -958,7 +947,6 @@ class DeepLinkService {
       case 'game_started':
       case 'game_finished':
       case 'live_game_update':
-      case 'live_activity_update':
       case 'live_game_alert':
         if (gameId != null && gameId.isNotEmpty) {
           _navigateToGame(gameId, navigatorKey, ref);
