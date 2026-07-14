@@ -1078,6 +1078,7 @@ class _TabletGameCard extends ConsumerWidget {
       liveBatchKey: liveBatchKey,
       allowStockfishFallback: true,
       streamEnabled: true,
+      viewSource: ChessboardView.forYou,
       onChangedWithLiveGames:
           (updatedGames) => ref
               .read(gameCardWrapperProvider)
@@ -1213,6 +1214,7 @@ class _ForYouEventGames extends ConsumerWidget {
                   liveBatchKey: liveBatchKey,
                   allowStockfishFallback: true,
                   streamEnabled: true,
+                  viewSource: ChessboardView.forYou,
                   onChangedWithLiveGames:
                       (updatedGames) => ref
                           .read(gameCardWrapperProvider)
@@ -1246,6 +1248,7 @@ class _ForYouEventGames extends ConsumerWidget {
                           liveBatchKey: liveBatchKey,
                           allowStockfishFallback: true,
                           streamEnabled: true,
+                          viewSource: ChessboardView.forYou,
                           onChangedWithLiveGames:
                               (updatedGames) => ref
                                   .read(gameCardWrapperProvider)

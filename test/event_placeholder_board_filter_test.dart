@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.dart';
+import 'package:chessever2/screens/gamebase/models/gamebase_event_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,6 +53,20 @@ void main() {
 
       expect(isEventBoardGameVisible(pgnGame), isTrue);
     });
+
+    test('keeps completed virtual Gamebase games with header-only PGN', () {
+      final games = virtualGamesFromView(
+        _virtualEventView(),
+        virtualId: 'gamebase::6th elllobregat Open 2025',
+      );
+      final model = GamesTourModel.fromGame(games.single);
+
+      expect(model.source, GameSource.gamebase);
+      expect(model.gameStatus, GameStatus.whiteWins);
+      expect(model.lastMove, isNull);
+      expect(model.fen, isNull);
+      expect(isEventBoardGameVisible(model), isTrue);
+    });
   });
 }
 
@@ -89,5 +105,62 @@ PlayerCard _player(String name) {
     rating: 2500,
     countryCode: 'USA',
     team: null,
+  );
+}
+
+GamebaseEventView _virtualEventView() {
+  const white = GamebaseEventPlayerRef(
+    name: 'Player A',
+    fideId: '1',
+    title: 'GM',
+    elo: 2500,
+    fed: 'ESP',
+    team: null,
+  );
+  const black = GamebaseEventPlayerRef(
+    name: 'Player B',
+    fideId: '2',
+    title: 'IM',
+    elo: 2400,
+    fed: 'ESP',
+    team: null,
+  );
+  const game = GamebaseEventGame(
+    id: 'gamebase-game-1',
+    round: '1',
+    board: 1,
+    white: white,
+    black: black,
+    result: '1-0',
+    date: null,
+    eco: 'C50',
+    opening: 'Italian Game',
+  );
+
+  return const GamebaseEventView(
+    event: '6th elllobregat Open 2025',
+    site: 'Sant Boi ESP',
+    image: null,
+    format: 'regular',
+    formatLabel: null,
+    truncated: false,
+    about: GamebaseEventAbout(
+      gameCount: 1,
+      playerCount: 2,
+      teamCount: null,
+      roundCount: 1,
+      startDate: null,
+      endDate: null,
+      timeControl: 'CLASSICAL',
+      avgElo: 2450,
+      maxElo: 2500,
+      site: 'Sant Boi ESP',
+      image: null,
+    ),
+    rounds: [
+      GamebaseEventRound(label: '1', sortKey: 1, date: null, games: [game]),
+    ],
+    standings: GamebaseEventStandings(kind: 'player', players: [], teams: []),
+    games: [game],
   );
 }

@@ -174,27 +174,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
 
         if (gameWithPgn != null) {
           debugPrint('[GamebaseSearchGameCard] Gamebase API returned game');
-
-          // Try raw PGN first
-          if (gameWithPgn.pgn != null && gameWithPgn.pgn!.trim().isNotEmpty) {
-            if (pgnHasMoves(gameWithPgn.pgn)) {
-              pgn = gameWithPgn.pgn;
-              debugPrint(
-                '[GamebaseSearchGameCard] Using raw PGN from Gamebase',
-              );
-            }
-          }
-
-          // Try building from data field
-          if (pgn == null && gameWithPgn.data != null) {
-            final builtPgn = buildPgnFromGamebaseData(gameWithPgn.data);
-            if (builtPgn != null && pgnHasMoves(builtPgn)) {
-              pgn = builtPgn;
-              debugPrint(
-                '[GamebaseSearchGameCard] Built PGN from Gamebase data',
-              );
-            }
-          }
+          pgn = selectGamebaseBoardPgn(
+            rawPgn: gameWithPgn.pgn,
+            data: gameWithPgn.data,
+          );
         } else {
           debugPrint('[GamebaseSearchGameCard] Gamebase API returned null');
         }

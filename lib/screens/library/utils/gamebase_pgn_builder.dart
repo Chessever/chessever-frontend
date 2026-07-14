@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 
@@ -177,6 +178,31 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
   sb.write(headers['Result'] ?? '*');
 
   return sb.toString().trim();
+}
+
+/// Selects the Gamebase PGN handed to the chessboard.
+///
+/// Kept in one place so Library cards and board-side fallback fetches cannot
+/// silently apply different precedence rules to the same API response.
+String? selectGamebaseBoardPgn({
+  required String? rawPgn,
+  required Map<String, dynamic>? data,
+}) {
+  final raw = rawPgn?.trim();
+  final built = buildPgnFromGamebaseData(data)?.trim();
+  final usableRaw = raw != null && raw.isNotEmpty && pgnHasMoves(raw);
+  final usableBuilt = built != null && built.isNotEmpty && pgnHasMoves(built);
+
+  if (!usableRaw) return usableBuilt ? built : null;
+  if (!usableBuilt) return raw;
+
+  // Raw PGN is richer when it contains comments/variations, so retain it on a
+  // tie. Structured Gamebase moves are authoritative for clocks, however, and
+  // many archived raw PGNs contain the moves but no [%clk] annotations at all.
+  // Prefer whichever candidate preserves more of those clock snapshots.
+  final rawClockCount = extractPgnClockStringsFromText(raw).length;
+  final builtClockCount = extractPgnClockStringsFromText(built).length;
+  return builtClockCount > rawClockCount ? built : raw;
 }
 
 /// Gamebase move payloads carry the raw PGN clock capture under `ct`

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -25,6 +26,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   final bool allowStockfishFallback;
   final bool streamEnabled;
   final LiveGamesBatchKey? liveBatchKey;
+  final ChessboardView viewSource;
 
   const GridGameCardWrapperWidget({
     super.key,
@@ -38,6 +40,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     this.allowStockfishFallback = true,
     this.streamEnabled = true,
     this.liveBatchKey,
+    this.viewSource = ChessboardView.tour,
   });
 
   @override
@@ -81,6 +84,8 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       fixedBottomSide: fixedBottomSide,
       allowStockfishFallback: effectiveAllowStockfishFallback,
       liveBatchKey: effectiveLiveBatchKey,
+      scoreCardViewSource: viewSource,
+      scoreCardGamesContext: getUpdatedGamesList(),
     );
   }
 }

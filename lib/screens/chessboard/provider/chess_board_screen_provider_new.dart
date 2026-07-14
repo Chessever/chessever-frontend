@@ -1057,28 +1057,24 @@ class ChessBoardScreenNotifierNew
           final gameWithPgn = await gamebaseRepo.getGameWithPgn(game.gameId);
           if (gameWithPgn == null) return fallback;
 
-          // Prefer a PGN built from the structured `data` payload if available.
-          // This yields consistent formatting and reliable movetext.
-          final built = buildPgnFromGamebaseData(gameWithPgn.data);
-          final raw = gameWithPgn.pgn;
+          final selected = selectGamebaseBoardPgn(
+            rawPgn: gameWithPgn.pgn,
+            data: gameWithPgn.data,
+          );
+          if (selected != null) {
+            _releaseLog(
+              '✅ PGN fetch: Gamebase provided $expected for ${game.gameId}',
+            );
+            return selected;
+          }
 
-          for (final candidate in [built, raw]) {
-            final trimmed = candidate?.trim();
-            if (trimmed == null || trimmed.isEmpty) continue;
-
-            if (!requireMoves) {
-              _releaseLog(
-                '✅ PGN fetch: Gamebase provided $expected for ${game.gameId}',
-              );
-              return trimmed;
-            }
-
-            fallback ??= trimmed;
-            if (pgnHasMoves(trimmed)) {
-              _releaseLog(
-                '✅ PGN fetch: Gamebase provided $expected for ${game.gameId}',
-              );
-              return trimmed;
+          if (!requireMoves) {
+            final built = buildPgnFromGamebaseData(gameWithPgn.data);
+            for (final candidate in [built, gameWithPgn.pgn]) {
+              final trimmed = candidate?.trim();
+              if (trimmed != null && trimmed.isNotEmpty) {
+                return trimmed;
+              }
             }
           }
         } catch (e) {

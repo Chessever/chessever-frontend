@@ -496,6 +496,16 @@ bool isEventBoardGameVisible(GamesTourModel game) {
     return false;
   }
 
+  // Virtual Gamebase event rows deliberately carry a header-only PGN. Their
+  // completed result is enough proof that the game was played; the full PGN
+  // is fetched by Gamebase UUID when the board opens. Requiring embedded
+  // moves here filters every archived game out of the tournament Games tab.
+  if (game.source == GameSource.gamebase &&
+      isVirtualGamebaseId(game.tourId) &&
+      game.gameStatus.isFinished) {
+    return true;
+  }
+
   if (_hasPlayedPosition(game)) {
     return true;
   }

@@ -44,6 +44,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final bool showClock;
   final LiveGamesBatchKey? liveBatchKey;
   final ValueChanged<String>? onEditName;
+  final ChessboardView? scoreCardViewSource;
+  final List<GamesTourModel> scoreCardGamesContext;
 
   const PlayerFirstRowDetailWidget({
     super.key,
@@ -57,6 +59,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.showClock = true,
     this.liveBatchKey,
     this.onEditName,
+    this.scoreCardViewSource,
+    this.scoreCardGamesContext = const [],
   });
 
   @override
@@ -211,31 +215,47 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // Calculate move time from state if available, otherwise use game model's time
     final moveTime = useMemoized(() {
       String? calculatedMoveTime;
+      final moveTimes = chessBoardState?.moveTimes ?? const <String>[];
 
-      if (chessBoardState != null &&
-          chessBoardState!.moveTimes.isNotEmpty &&
-          effectiveMoveIndex >= 0) {
+      if (moveTimes.isNotEmpty && effectiveMoveIndex >= 0) {
         // Historical clock display is tied to the last move made by this player
-        // up to the currently navigated mainline ply.
+        // up to the currently navigated mainline ply. Skip placeholder entries
+        // so a partially-clocked PGN can fall back to an earlier real sample.
         for (int i = effectiveMoveIndex; i >= 0; i--) {
           final wasMoveByThisPlayer =
               (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
 
-          if (wasMoveByThisPlayer && i < chessBoardState!.moveTimes.length) {
-            calculatedMoveTime = chessBoardState!.moveTimes[i];
+          if (wasMoveByThisPlayer &&
+              i < moveTimes.length &&
+              hasUsableClockDisplay(moveTimes[i])) {
+            calculatedMoveTime = moveTimes[i];
             break;
           }
         }
       }
 
-      // Fallback to game model's time display (which comes from database or PGN)
-      calculatedMoveTime ??=
-          isWhitePlayer
-              ? effectiveGameModel.whiteTimeDisplay
-              : effectiveGameModel.blackTimeDisplay;
+      // Archived games open at the initial position (move index -1). There is
+      // no previous move to inspect there, so use this side's earliest PGN
+      // clock sample as the initial display. The same fallback covers a player
+      // whose first recorded move is still ahead of the current position.
+      if (calculatedMoveTime == null && moveTimes.isNotEmpty) {
+        for (int i = isWhitePlayer ? 0 : 1; i < moveTimes.length; i += 2) {
+          if (hasUsableClockDisplay(moveTimes[i])) {
+            calculatedMoveTime = moveTimes[i];
+            break;
+          }
+        }
+      }
 
-      if (calculatedMoveTime.trim().isEmpty) {
-        calculatedMoveTime = null;
+      // Final fallback to a usable game snapshot supplied by the database.
+      if (calculatedMoveTime == null) {
+        final snapshotTime =
+            isWhitePlayer
+                ? effectiveGameModel.whiteTimeDisplay
+                : effectiveGameModel.blackTimeDisplay;
+        if (hasUsableClockDisplay(snapshotTime)) {
+          calculatedMoveTime = snapshotTime;
+        }
       }
 
       return calculatedMoveTime;
@@ -556,7 +576,14 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
       // Get the current games context based on the chessboard view source
       // This ensures ScoreCardScreen displays games from the correct source
-      final view = ref.read(chessboardViewFromProviderNew);
+      final view =
+          scoreCardViewSource ??
+          ref.read(chessboardViewFromProviderNew) ??
+          ChessboardView.tour;
+      // A player-name tap bypasses the board card's onTap callback, so it must
+      // apply the wrapper's source explicitly instead of inheriting whichever
+      // source happened to be opened previously.
+      ref.read(chessboardViewFromProviderNew.notifier).state = view;
       List<GamesTourModel>? gamesContext;
       bool hasEventContext = false;
 
@@ -616,14 +643,18 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           }
           break;
         case ChessboardView.forYou:
-          // For "For You" view, use current game's tourId so ScoreCardScreen
-          // can fetch all event games. Don't rely on convertedForYouGamesProvider
-          // since it may not contain the current game (ChessBoardScreenNew receives
-          // resolved full event games from gameCardWrapperProvider).
+          // Seed ScoreCardScreen with the already-loaded games for this event.
+          // It will still fetch the complete event by tourId, while this list
+          // keeps cold-start navigation populated during loading or on failure.
           ref.read(selectedBroadcastModelProvider.notifier).state = null;
-          if (effectiveGameModel.tourId.isNotEmpty) {
-            // Pass current game - ScoreCardScreen will fetch all event games via tourId
-            gamesContext = [effectiveGameModel];
+          final currentTourId = effectiveGameModel.tourId;
+          if (currentTourId.isNotEmpty) {
+            final eventGames =
+                scoreCardGamesContext
+                    .where((game) => game.tourId == currentTourId)
+                    .toList();
+            gamesContext =
+                eventGames.isNotEmpty ? eventGames : [effectiveGameModel];
             hasEventContext = true;
           } else {
             // No tourId - can't determine event context

@@ -124,6 +124,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 fixedBottomSide: fixedBottomSide,
                 allowStockfishFallback: effectiveAllowStockfishFallback,
                 liveBatchKey: effectiveLiveBatchKey,
+                scoreCardViewSource: viewSource,
+                scoreCardGamesContext: getUpdatedGamesList(),
               )
               : GameCard(
                 key: ValueKey(keyValue),

@@ -1,5 +1,7 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +70,49 @@ void main() {
       expect(game.mainline[1].clockTime, '0:02:59');
       expect(game.mainline[2].clockTime, '12:34');
     });
+  });
+
+  group('Gamebase clock handoff', () {
+    test('preserves structured move clocks for the board parser', () {
+      final pgn = buildPgnFromGamebaseData({
+        'md': {'White': 'White', 'Black': 'Black', 'Result': '*'},
+        'm': [
+          {'u': 'e2e4', 'ct': '1:30:55'},
+          {'u': 'e7e5', 'ct': '1:30:17'},
+          {'u': 'g1f3', 'ct': '1:29:42'},
+          {'u': 'b8c6', 'ct': '1:29:07'},
+        ],
+      });
+
+      expect(pgn, isNotNull);
+      final parsed = parsePgnWorker(pgn!);
+
+      expect(parsed.moveTimes, ['1:30:55', '1:30:17', '1:29:42', '1:29:07']);
+    });
+
+    test(
+      'Library route prefers structured clocks over a clockless raw PGN',
+      () {
+        const rawPgn =
+            '[White "White"]\n[Black "Black"]\n[Result "*"]\n\n'
+            '1. e4 e5 2. Nf3 Nc6 *';
+        final data = <String, dynamic>{
+          'md': {'White': 'White', 'Black': 'Black', 'Result': '*'},
+          'm': [
+            {'u': 'e2e4', 'ct': '1:30:55'},
+            {'u': 'e7e5', 'ct': '1:30:17'},
+            {'u': 'g1f3', 'ct': '1:29:42'},
+            {'u': 'b8c6', 'ct': '1:29:07'},
+          ],
+        };
+
+        final selected = selectGamebaseBoardPgn(rawPgn: rawPgn, data: data);
+        final parsed = parsePgnWorker(selected!);
+
+        expect(selected, contains('[%clk 1:30:55]'));
+        expect(parsed.moveTimes, ['1:30:55', '1:30:17', '1:29:42', '1:29:07']);
+      },
+    );
   });
 
   group('GamesTourModel.fromGame', () {
