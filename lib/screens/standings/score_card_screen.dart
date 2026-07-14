@@ -179,8 +179,105 @@ String? _humanizeEventSlug(String? slug) {
   return title.isEmpty ? null : title;
 }
 
-class ScoreCardScreen extends ConsumerWidget {
+/// PageView host for the scorecard. Renders one [_ScoreCardPage] per player in
+/// the current tournament standings so horizontal swipes feel continuous —
+/// finger-tracked, rubber-banded and snapping — exactly like the chessboard's
+/// game PageView, instead of the old discrete "flip to next player" gesture.
+///
+/// Falls back to a single static page when there is no player list or fewer
+/// than two players (nothing to page through).
+class ScoreCardScreen extends ConsumerStatefulWidget {
   const ScoreCardScreen({super.key});
+
+  @override
+  ConsumerState<ScoreCardScreen> createState() => _ScoreCardScreenState();
+}
+
+class _ScoreCardScreenState extends ConsumerState<ScoreCardScreen> {
+  PageController? _pageController;
+  int _currentPage = 0;
+
+  @override
+  void dispose() {
+    _pageController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedPlayer = ref.watch(selectedPlayerProvider);
+
+    if (selectedPlayer == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final players = ref.watch(playerTourScreenProvider).valueOrNull;
+
+    // No pageable list (e.g. favorites/countrymen single-player context) or a
+    // player that isn't part of the current standings → static single card.
+    final selectedIndex =
+        players == null ? -1 : findScoreCardPlayerIndex(players, selectedPlayer);
+    if (players == null || players.length < 2 || selectedIndex < 0) {
+      return _ScoreCardPage(player: selectedPlayer);
+    }
+
+    // Lazily create the controller once the pageable list is known.
+    _pageController ??= PageController(initialPage: selectedIndex);
+    if (_currentPage >= players.length) {
+      _currentPage = selectedIndex;
+    }
+
+    // External selection changes (player-picker sheet, favorite flows) update
+    // selectedPlayerProvider directly — animate the page to match so the two
+    // stay in sync. Our own onPageChanged sets the same index, so the guard
+    // below makes that a no-op (no animation fight).
+    ref.listen<PlayerStandingModel?>(selectedPlayerProvider, (_, next) {
+      if (next == null) return;
+      final idx = findScoreCardPlayerIndex(players, next);
+      if (idx < 0 || idx == _currentPage) return;
+      final controller = _pageController;
+      if (controller == null || !controller.hasClients) return;
+      _currentPage = idx;
+      controller.animateToPage(
+        idx,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    });
+
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: players.length,
+      onPageChanged: (page) {
+        _currentPage = page;
+        // Sync the shared selection so the app bar, sheet and share flows all
+        // reflect the swiped-to player.
+        ref.read(selectedPlayerProvider.notifier).state = players[page];
+      },
+      itemBuilder: (context, index) {
+        return _ScoreCardPage(
+          player: players[index],
+          isActive: index == _currentPage,
+        );
+      },
+    );
+  }
+}
+
+/// A single player's scorecard page. Rendered directly (single-player contexts)
+/// or as one page inside [ScoreCardScreen]'s PageView.
+class _ScoreCardPage extends ConsumerWidget {
+  const _ScoreCardPage({required this.player, this.isActive = true});
+
+  /// The standings player this page renders. In the PageView this is the
+  /// per-index player; swipe navigation is driven by the parent PageView, not
+  /// by this widget.
+  final PlayerStandingModel player;
+
+  /// Whether this is the currently-visible page. Off-screen neighbour pages
+  /// (which the PageView pre-builds) must not arm the screenshot-share nudge,
+  /// or a single screenshot would trigger multiple nudges.
+  final bool isActive;
 
   double? _extractRatingFromPGN(String? pgn, bool isWhite) {
     if (pgn == null || pgn.isEmpty) return null;
@@ -288,11 +385,8 @@ class ScoreCardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedPlayer = ref.watch(selectedPlayerProvider);
+    final selectedPlayer = player;
 
-    if (selectedPlayer == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
     final backfilledPlayerAsync = ref.watch(
       backfilledStandingPlayerProvider(selectedPlayer),
     );
@@ -711,18 +805,6 @@ class ScoreCardScreen extends ConsumerWidget {
     // Gap between rating boxes
     final ratingBoxGap = ResponsiveHelper.adaptive(phone: 6.w, tablet: 10.sp);
 
-    void selectAdjacentPlayer(ScoreCardSwipeDirection direction) {
-      final players = ref.read(playerTourScreenProvider).valueOrNull;
-      if (players == null || players.length < 2) return;
-      final nextPlayer = adjacentScoreCardPlayerForSwipe(
-        players: players,
-        selectedPlayer: player,
-        direction: direction,
-      );
-      if (nextPlayer == null) return;
-      ref.read(selectedPlayerProvider.notifier).state = nextPlayer;
-    }
-
     final scoreCardScaffold = Scaffold(
       key: e2eKey(E2eIds.scorecardRoot),
       backgroundColor: context.colors.background,
@@ -736,18 +818,9 @@ class ScoreCardScreen extends ConsumerWidget {
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragEnd: (details) {
-                final velocity = details.primaryVelocity ?? 0;
-                if (velocity.abs() < 250) return;
-                selectAdjacentPlayer(
-                  velocity < 0
-                      ? ScoreCardSwipeDirection.next
-                      : ScoreCardSwipeDirection.previous,
-                );
-              },
-              child: CustomScrollView(
+            // Horizontal swipe between players is owned by the parent PageView
+            // (see [ScoreCardScreen]); this page only scrolls vertically.
+            child: CustomScrollView(
                 slivers: [
                   _SliverScoreboardAppBar(onShareProfile: sharePlayerProfile),
                   SliverToBoxAdapter(
