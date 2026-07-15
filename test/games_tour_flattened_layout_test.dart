@@ -213,6 +213,39 @@ void main() {
       expect(collapsedMatch.itemIndexForGameId('sf-1'), isNotNull);
     });
 
+    test('collapsed knockout matchups render latest-first by round start', () {
+      final stage = _round('knockout-stage-round-of-16', RoundStatus.completed);
+      // Eight-matchup RO16 collapsed into one stage. Two matchups share each
+      // calendar day, so ordering must fall back to the round start TIME, which
+      // the date-granular game rows cannot supply.
+      final games = [
+        _game('ju', identityOffset: 0, roundId: 'r-ju'), // 07-06 14:00
+        _game('vaishali', identityOffset: 100, roundId: 'r-vaishali'), // 07-06 16:30
+        _game('hou', identityOffset: 200, roundId: 'r-hou'), // 07-13 12:00
+        _game('polina', identityOffset: 300, roundId: 'r-polina'), // 07-13 14:30
+      ];
+
+      final layout = _layout(
+        rounds: [stage],
+        gamesByRound: {stage.id: games},
+        roundStartTimesById: {
+          'r-ju': DateTime.utc(2026, 7, 6, 14, 0),
+          'r-vaishali': DateTime.utc(2026, 7, 6, 16, 30),
+          'r-hou': DateTime.utc(2026, 7, 13, 12, 0),
+          'r-polina': DateTime.utc(2026, 7, 13, 14, 30),
+        },
+      );
+
+      final matchupOrder =
+          layout.entries
+              .whereType<GamesTourGameRowEntry>()
+              .map((entry) => entry.game1.gameId)
+              .toList();
+
+      // Descending datetime: latest day first, same-day tie broken by time.
+      expect(matchupOrder, ['polina', 'hou', 'vaishali', 'ju']);
+    });
+
     test('grid filtering maps both visible games to their actual row', () {
       final round = _round('knockout-stage-finals', RoundStatus.live);
       final games = [
@@ -295,6 +328,7 @@ GamesTourFlattenedLayout _layout({
   Map<String, bool> matchExpansionState = const {},
   Map<String, bool> roundExpansionState = const {},
   GameDisplayMode displayMode = GameDisplayMode.all,
+  Map<String, DateTime?> roundStartTimesById = const {},
 }) => buildGamesTourFlattenedLayout(
   rounds: rounds,
   gamesByRound: gamesByRound,
@@ -303,6 +337,7 @@ GamesTourFlattenedLayout _layout({
   roundExpansionState: roundExpansionState,
   isKnockoutTournament: true,
   displayMode: displayMode,
+  roundStartTimesById: roundStartTimesById,
 );
 
 GamesAppBarModel _round(String id, RoundStatus status, {DateTime? startsAt}) =>
@@ -314,6 +349,7 @@ GamesTourModel _game(
   String slug = 'game-1',
   GameStatus status = GameStatus.ongoing,
   int identityOffset = 0,
+  String? roundId,
 }) {
   final alpha = _player(
     'GM Alpha Player $identityOffset',
@@ -334,7 +370,7 @@ GamesTourModel _game(
     whiteClockCentiseconds: 0,
     blackClockCentiseconds: 0,
     gameStatus: status,
-    roundId: slug,
+    roundId: roundId ?? slug,
     roundSlug: slug,
     tourId: 'tour',
   );

@@ -124,9 +124,17 @@ class _EnhancedRoundedSearchBarState
   }
 
   void _onTextChange() {
-    final hasText = widget.controller.text.isNotEmpty;
-    ref.read(isSearchingProvider.notifier).state = hasText;
-    ref.read(searchQueryProvider.notifier).state = widget.controller.text;
+    final text = widget.controller.text;
+    final hasText = text.isNotEmpty;
+    // Only push state when it actually changes; StateProvider notifies (and
+    // rebuilds every watcher) on each assignment, so setting the same value
+    // per keystroke is wasted work.
+    if (ref.read(isSearchingProvider) != hasText) {
+      ref.read(isSearchingProvider.notifier).state = hasText;
+    }
+    if (ref.read(searchQueryProvider) != text) {
+      ref.read(searchQueryProvider.notifier).state = text;
+    }
 
     // Trigger debounced search query update (prevents heavy search on every keystroke)
     updateDebouncedSearchQuery(ref, widget.controller.text);

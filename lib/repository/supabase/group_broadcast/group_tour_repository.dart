@@ -461,9 +461,17 @@ class GroupBroadcastRepository extends BaseRepository {
       }
 
       // Fallback: if FTS returns few results, also try ilike on name (and
-      // word-order variants for multi-token queries).
-      if (resultsById.length < 20) {
-        for (final nameQuery in _nameSearchVariants(trimmedQuery)) {
+      // word-order variants for multi-token queries). Always run it for
+      // brand-glue queries ("chess com" tokenizes to the junk token "com",
+      // which floods FTS with 80 unrelated hits and would otherwise suppress
+      // this pass), so the punctuation-normalized name match still lands.
+      final nameVariants = _nameSearchVariants(trimmedQuery);
+      final hasBrandGlue = RegExp(
+        r'\bchess[\s.]?com\b',
+        caseSensitive: false,
+      ).hasMatch(trimmedQuery);
+      if (resultsById.length < 20 || hasBrandGlue) {
+        for (final nameQuery in nameVariants) {
           final trigramRes = await supabase
               .from('group_broadcasts')
               .select(
@@ -683,16 +691,21 @@ class GroupBroadcastRepository extends BaseRepository {
   };
 
   List<String> _extractSearchTokens(String query) {
+    // Keep dots that sit INSIDE a token so domain-style names survive as one
+    // token. The FTS parser stores "Chess.com" as the single lexeme
+    // 'chess.com', so splitting it into "chess" + "com" both drops "chess"
+    // (a stop word) and leaves a junk "com" token that matches nothing useful.
     final normalized =
-        query.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+        query.toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]+'), ' ').trim();
     if (normalized.isEmpty) return const [];
-    final tokens =
-        normalized
-            .split(RegExp(r'\s+'))
-            .where((t) => t.isNotEmpty && !_searchStopWords.contains(t))
-            .toSet()
-            .toList();
-    return tokens;
+    final tokens = <String>{};
+    for (final raw in normalized.split(RegExp(r'\s+'))) {
+      // Drop stray leading/trailing dots ("chess.com." -> "chess.com").
+      final token = raw.replaceAll(RegExp(r'^\.+|\.+$'), '');
+      if (token.isEmpty || _searchStopWords.contains(token)) continue;
+      tokens.add(token);
+    }
+    return tokens.toList();
   }
 
   List<String> _nameSearchVariants(String query) {
@@ -700,7 +713,10 @@ class GroupBroadcastRepository extends BaseRepository {
     if (trimmed.isEmpty) return const [];
 
     final variants = <String>{trimmed};
-    final chessCom = RegExp(r'\bchesscom\b', caseSensitive: false);
+    // "Chess.com" gets typed glued ("chesscom"), spaced ("chess com") or
+    // dotted; map every spelling to the canonical dotted form so an ilike on
+    // the event name matches regardless of how the user punctuated it.
+    final chessCom = RegExp(r'\bchess[\s.]?com\b', caseSensitive: false);
     if (chessCom.hasMatch(trimmed)) {
       variants.add(trimmed.replaceAll(chessCom, 'chess.com'));
       variants.add(trimmed.replaceAll(chessCom, 'chess com'));

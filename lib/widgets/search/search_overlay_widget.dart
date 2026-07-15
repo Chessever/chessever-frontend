@@ -47,10 +47,11 @@ class SearchOverlay extends ConsumerWidget {
     final debouncedQuery = ref.watch(debouncedSearchQueryProvider);
     final maxH = _computeMaxHeight(context);
 
-    // Show loading state while waiting for debounce if user is actively typing
-    final currentQuery = ref.watch(searchQueryProvider);
-    final isWaitingForDebounce =
-        currentQuery != debouncedQuery && currentQuery.isNotEmpty;
+    // NOTE: do NOT watch searchQueryProvider here. It changes on every
+    // keystroke; watching it in this build would rebuild the whole overlay
+    // (including the results list) each character and drop frames. The
+    // "waiting for debounce" spinner is isolated in a nested Consumer below,
+    // so only that tiny widget rebuilds while typing.
 
     return Container(
       decoration: BoxDecoration(
@@ -72,11 +73,26 @@ class SearchOverlay extends ConsumerWidget {
                         error: (e, _) =>
                             _buildErrorState(context, userFacingError(e), maxH),
                         data: (searchResult) {
-                          if (isWaitingForDebounce)
-                            return _buildLoadingState(maxH);
-                          if (searchResult.isEmpty)
+                          if (searchResult.isEmpty) {
                             return _buildEmptyState(context, maxH);
-                          return _buildSearchResults(context, searchResult);
+                          }
+                          // Only this Consumer re-runs per keystroke; while the
+                          // typed query is ahead of the debounced one show the
+                          // spinner, otherwise build the (stable) results once.
+                          return Consumer(
+                            builder: (context, ref, _) {
+                              final currentQuery = ref.watch(
+                                searchQueryProvider,
+                              );
+                              final isWaitingForDebounce =
+                                  currentQuery != debouncedQuery &&
+                                  currentQuery.isNotEmpty;
+                              if (isWaitingForDebounce) {
+                                return _buildLoadingState(maxH);
+                              }
+                              return _buildSearchResults(context, searchResult);
+                            },
+                          );
                         },
                       ),
         ),

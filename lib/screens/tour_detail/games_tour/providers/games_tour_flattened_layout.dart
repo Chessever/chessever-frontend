@@ -119,6 +119,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
   required GameDisplayMode displayMode,
   bool isSearchMode = false,
   MatchHeaderModel? matchFormatHeader,
+  Map<String, DateTime?> roundStartTimesById = const <String, DateTime?>{},
 }) {
   final entries = <GamesTourLayoutEntry>[];
   final orderedGames = <GamesTourModel>[];
@@ -138,7 +139,10 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
     final isKnockoutRound = _isKnockoutRound(isKnockoutTournament, round);
     final matches =
         isKnockoutRound
-            ? KnockoutMatchDetector.groupByMatches(roundGames)
+            ? _orderMatchesByRecencyDesc(
+              KnockoutMatchDetector.groupByMatches(roundGames),
+              roundStartTimesById,
+            )
             : const <String, List<GamesTourModel>>{};
     if (isKnockoutRound) {
       matchGroupsByRound[round.id] = matches;
@@ -231,6 +235,47 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
     roundHeaderIndices: Map<String, int>.unmodifiable(roundHeaderIndices),
     gameItemIndices: Map<String, int>.unmodifiable(gameItemIndices),
   );
+}
+
+/// Orders the collapsed matchups of a knockout stage so the most recently
+/// played matchup card sits on top (descending datetime), matching how a live
+/// bracket reads. The source round's scheduled start leads because it is the
+/// only signal with time precision — game rows carry date-granular play dates
+/// that tie two matchups played on the same day, and finished bulk imports
+/// often have no `lastMoveTime` at all. Game-level [GamesTourModel.bucketDate]
+/// is the fallback when a start time is missing; genuinely undated matchups
+/// sink to the bottom. Returns an insertion-ordered map so every downstream
+/// consumer (ordered games, match headers, index arithmetic) shares one order.
+Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
+  Map<String, List<GamesTourModel>> matches,
+  Map<String, DateTime?> roundStartTimesById,
+) {
+  if (matches.length <= 1) return matches;
+
+  DateTime? recency(List<GamesTourModel> games) {
+    DateTime? latest;
+    for (final game in games) {
+      final candidate = roundStartTimesById[game.roundId] ?? game.bucketDate;
+      if (candidate == null) continue;
+      if (latest == null || candidate.isAfter(latest)) latest = candidate;
+    }
+    return latest;
+  }
+
+  final entries =
+      matches.entries.toList()..sort((a, b) {
+        final aDate = recency(a.value);
+        final bDate = recency(b.value);
+        if (aDate == null && bDate == null) return a.key.compareTo(b.key);
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        final byDate = bDate.compareTo(aDate);
+        return byDate != 0 ? byDate : a.key.compareTo(b.key);
+      });
+
+  return <String, List<GamesTourModel>>{
+    for (final entry in entries) entry.key: entry.value,
+  };
 }
 
 void _appendGameRows({

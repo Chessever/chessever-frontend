@@ -8,6 +8,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_g
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/tour_round_start_times_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesTourListPresentation {
@@ -33,6 +35,21 @@ final gamesTourListPresentationProvider =
       final screen = ref.watch(gamesTourScreenProvider).valueOrNull;
       final viewMode = ref.watch(gamesListViewModeProvider);
       final isSearchMode = screen?.isSearchMode ?? false;
+      // Knockout matchup cards collapse several source rounds into one stage;
+      // order them by the source round start time so the latest matchup is
+      // top-most. Only knockout events collapse, so skip the fetch otherwise.
+      final tourId = ref.watch(
+        tourDetailScreenProvider.select(
+          (tourAsync) => tourAsync.valueOrNull?.aboutTourModel.id,
+        ),
+      );
+      final roundStartTimesById =
+          grouped.isKnockoutTournament && tourId != null
+              ? (ref
+                      .watch(tourRoundStartTimesProvider(tourId))
+                      .valueOrNull ??
+                  const <String, DateTime?>{})
+              : const <String, DateTime?>{};
       final displayRounds = selectGamesTourDisplayRounds(
         rounds: grouped.rounds,
         effectiveRounds: grouped.filteredRounds,
@@ -59,6 +76,7 @@ final gamesTourListPresentationProvider =
         displayMode: screen?.gameDisplayMode ?? GameDisplayMode.all,
         isSearchMode: isSearchMode,
         matchFormatHeader: grouped.matchFormatHeader,
+        roundStartTimesById: roundStartTimesById,
       );
 
       return GamesTourListPresentation(

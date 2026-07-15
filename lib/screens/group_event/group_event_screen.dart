@@ -657,7 +657,9 @@ class _SegmentedSwitcher extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(searchQueryProvider); // Watch to trigger rebuilds
+    // Tab labels depend only on the debounced query; watching the raw
+    // per-keystroke searchQueryProvider here rebuilt the whole tab bar on
+    // every character for no benefit.
     final searchTabQuery = ref.watch(searchTabQueryProvider);
 
     final options =
