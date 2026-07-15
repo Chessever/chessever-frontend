@@ -47,6 +47,8 @@ List<NotationDisplayToken> _buildTokens(
   NotationTree tree, {
   Map<int, LichessMoveAnnotation> lichessAnnotations = const {},
   Map<String, String> variationComments = const {},
+  Set<String> collapsedVariationIds = const {},
+  Set<String> expandedVariationIds = const {},
 }) {
   final pointerMap = <String, NotationMoveNode>{};
   return buildNotationTokens(
@@ -57,8 +59,8 @@ List<NotationDisplayToken> _buildTokens(
     forcedOpenIds: const {},
     variationComments: variationComments,
     lichessAnnotations: lichessAnnotations,
-    collapsedVariationIds: const {},
-    expandedVariationIds: const {},
+    collapsedVariationIds: collapsedVariationIds,
+    expandedVariationIds: expandedVariationIds,
   );
 }
 
@@ -67,6 +69,86 @@ List<NotationDisplayToken> _buildTokens(
 // ---------------------------------------------------------------------------
 
 void main() {
+  group('variation collapse defaults', () {
+    test('keeps long first- and second-level variations expanded', () {
+      final move = _treeFromSans(['e4']).mainline.first;
+
+      for (final depth in [1, 2]) {
+        final variation = NotationVariationNode(
+          id: 'long-depth-$depth',
+          parentPointer: const [0],
+          variationIndex: 0,
+          depth: depth,
+          moves: List<NotationMoveNode>.filled(34, move),
+        );
+
+        expect(
+          shouldCollapseByDefault(variation),
+          isFalse,
+          reason: 'Depth-$depth variations should open regardless of length.',
+        );
+      }
+    });
+
+    test('still collapses deeply nested variations', () {
+      final variation = NotationVariationNode(
+        id: 'deep-variation',
+        parentPointer: const [0, 0, 0],
+        variationIndex: 0,
+        depth: 3,
+        moves: const [],
+      );
+
+      expect(shouldCollapseByDefault(variation), isTrue);
+    });
+
+    test('manual collapse and expand override the defaults', () {
+      final tree = _treeFromSans(
+        ['e4'],
+        variation: [
+          _move(
+            'd4',
+            variations: [
+              [
+                _move(
+                  'd5',
+                  variations: [
+                    [_move('c4')],
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ],
+      );
+      final depthOne = tree.mainline.single.variations.single;
+      final depthTwo = depthOne.moves.single.variations.single;
+      final depthThree = depthTwo.moves.single.variations.single;
+
+      final manuallyCollapsed = _buildTokens(
+        tree,
+        collapsedVariationIds: {depthOne.id},
+      );
+      final collapsedToken = manuallyCollapsed.firstWhere(
+        (token) =>
+            token.type == NotationTokenType.openParen &&
+            token.variation?.id == depthOne.id,
+      );
+      expect(collapsedToken.isCollapsed, isTrue);
+
+      final manuallyExpanded = _buildTokens(
+        tree,
+        expandedVariationIds: {depthThree.id},
+      );
+      final expandedToken = manuallyExpanded.firstWhere(
+        (token) =>
+            token.type == NotationTokenType.openParen &&
+            token.variation?.id == depthThree.id,
+      );
+      expect(expandedToken.isCollapsed, isFalse);
+    });
+  });
+
   group('resolveAnnotationPresentation', () {
     test('evaluative types resolve to inlineSymbol', () {
       const evaluativeTypes = [

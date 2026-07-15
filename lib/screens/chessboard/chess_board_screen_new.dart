@@ -348,6 +348,23 @@ ChessMove? _moveForPointer(ChessGame? game, ChessMovePointer? pointer) {
   return move;
 }
 
+/// Resolves the played move whose annotations may be drawn on the board.
+///
+/// A principal-variation preview advances only the displayed position. Its
+/// move pointer intentionally remains anchored to the played game so the
+/// preview can be discarded without mutating notation history. That anchor
+/// must not leak the base move's NAGs or comment shapes onto every previewed
+/// engine move.
+@visibleForTesting
+ChessMove? resolveBoardMoveForAnnotations({
+  required ChessGame? game,
+  required ChessMovePointer? pointer,
+  required bool isPvPreviewActive,
+}) {
+  if (isPvPreviewActive) return null;
+  return _moveForPointer(game, pointer);
+}
+
 String _moveSansSignature(List<String> moveSans) {
   // Normalize: strip check indicators (+, #) for consistent signature matching
   // Different PGN parsers may or may not include these symbols
@@ -8417,7 +8434,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // not by recomputing playerSide here.
     final analysisGame = widget.chessBoardState.analysisState.game;
     final activeMovePointer = widget.chessBoardState.analysisState.movePointer;
-    final activeMove = _moveForPointer(analysisGame, activeMovePointer);
+    final activeMove = resolveBoardMoveForAnnotations(
+      game: analysisGame,
+      pointer: activeMovePointer,
+      isPvPreviewActive: widget.chessBoardState.isPvPreviewActive,
+    );
 
     // PERF: Use .select() to only rebuild when showPvArrows changes
     final showPvArrows = ref.watch(

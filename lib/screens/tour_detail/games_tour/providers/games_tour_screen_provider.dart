@@ -8,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
@@ -103,11 +104,12 @@ List<GamesTourModel> _processGamesWorker(_GamesProcessingArgs args) {
 
   // 2. Sort games
   final sortedGames = List<Games>.from(args.games);
+  final pinnedIdSet = args.pinnedIds.toSet();
   sortedGames.sort((a, b) {
     // FIRST PRIORITY: Pinned games (only in non-search mode)
     if (!args.isSearchMode) {
-      final aPinned = args.pinnedIds.contains(a.id);
-      final bPinned = args.pinnedIds.contains(b.id);
+      final aPinned = pinnedIdSet.contains(a.id);
+      final bPinned = pinnedIdSet.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
     }
@@ -169,6 +171,7 @@ class GamesTourScreenProvider
   final Ref ref;
   final AboutTourModel? aboutTourModel;
   final Object? error;
+  int _recomputeGeneration = 0;
 
   Future<void> _setupListeners() async {
     // The display-mode provider lives outside this notifier so it survives
@@ -195,7 +198,7 @@ class GamesTourScreenProvider
     ref.listen<AsyncValue<List<Games>>>(gamesTourProvider(aboutTourModel!.id), (
       previous,
       next,
-    ) async {
+    ) {
       final current = state.valueOrNull;
 
       // Only recompute if the games list actually changed
@@ -213,11 +216,6 @@ class GamesTourScreenProvider
           '🎮 GamesTourScreen: Initial data load - triggering recompute with ${nextGames.length} games',
         );
         _recompute();
-        if (nextGames.isNotEmpty) {
-          await ref
-              .read(gamesPinprovider(aboutTourModel!.id).notifier)
-              .computeAutoPins();
-        }
         return;
       }
 
@@ -230,6 +228,8 @@ class GamesTourScreenProvider
 
           if (prev == null ||
               prev.id != next.id ||
+              !haveSameRawGamePriorityInputs(prev, next) ||
+              prev.boardNr != next.boardNr ||
               prev.fen != next.fen ||
               prev.lastMove != next.lastMove ||
               prev.status != next.status) {
@@ -279,9 +279,6 @@ class GamesTourScreenProvider
         return;
       }
       _recompute();
-      await ref
-          .read(gamesPinprovider(aboutTourModel!.id).notifier)
-          .computeAutoPins();
     });
 
     ref.listen<GamesPinState>(gamesPinprovider(aboutTourModel!.id), (
@@ -289,18 +286,16 @@ class GamesTourScreenProvider
       pins,
     ) {
       final current = state.valueOrNull;
+      final allPins = pins.allPins;
+      if (current == null || listEquals(current.pinnedGamedIs, allPins)) {
+        return;
+      }
 
-      // If searching, keep the current search results and only update pins in state
-      if (current?.isSearchMode ?? false) {
-        if (mounted) {
-          state = AsyncValue.data(
-            current!.copyWith(pinnedGamedIs: pins.allPins),
-          );
-        }
-      } else {
-        if (previous?.allPins != pins.allPins) {
-          _recompute();
-        }
+      // Pin changes do not require reparsing and sorting every game in an
+      // isolate. The grouped presentation owns stable priority placement;
+      // this model only needs the latest ids for pin icons and navigation.
+      if (mounted) {
+        state = AsyncValue.data(current.copyWith(pinnedGamedIs: allPins));
       }
     });
   }
@@ -333,11 +328,13 @@ class GamesTourScreenProvider
   }) async {
     if (aboutTourModel == null) return;
 
+    int? generation;
     try {
       final gamesAsync = ref.read(gamesTourProvider(aboutTourModel!.id));
       if (gamesAsync.isLoading) {
         return;
       }
+      generation = ++_recomputeGeneration;
       final pins = ref.read(gamesPinprovider(aboutTourModel!.id));
 
       final allGames = gamesAsync.value ?? <Games>[];
@@ -401,6 +398,8 @@ class GamesTourScreenProvider
         ),
       );
 
+      if (!mounted || generation != _recomputeGeneration) return;
+
       // Read the persisted display mode so it survives notifier recreations
       // (category change, live-tour-id push). `current?.gameDisplayMode` is
       // null on a freshly recreated notifier, which is what produced the
@@ -410,20 +409,24 @@ class GamesTourScreenProvider
         gameDisplayModeProvider(aboutTourModel!.id),
       );
 
-      if (mounted) {
-        state = AsyncValue.data(
-          GamesScreenModel(
-            gamesTourModels: models,
-            // Show pins even in search mode for correct icon state.
-            pinnedGamedIs: pinnedIds,
-            isSearchMode: isSearchMode,
-            searchQuery: searchQuery,
-            gameDisplayMode: persistedDisplayMode,
-          ),
-        );
-      }
+      final latestPinnedIds =
+          pinnedIdsOverride ??
+          ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+      state = AsyncValue.data(
+        GamesScreenModel(
+          gamesTourModels: models,
+          // Show pins even in search mode for correct icon state.
+          pinnedGamedIs: latestPinnedIds,
+          isSearchMode: isSearchMode,
+          searchQuery: searchQuery,
+          gameDisplayMode: persistedDisplayMode,
+        ),
+      );
     } catch (e, st) {
-      if (mounted) state = AsyncValue.error(e, st);
+      if (mounted &&
+          (generation == null || generation == _recomputeGeneration)) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
@@ -661,9 +664,10 @@ class GamesTourScreenProvider
     }
 
     final sortedGames = List<Games>.from(games);
+    final pinnedIdSet = pinnedIds.toSet();
     sortedGames.sort((a, b) {
-      final aPinned = pinnedIds.contains(a.id);
-      final bPinned = pinnedIds.contains(b.id);
+      final aPinned = pinnedIdSet.contains(a.id);
+      final bPinned = pinnedIdSet.contains(b.id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
 

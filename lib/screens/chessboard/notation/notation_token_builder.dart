@@ -136,7 +136,6 @@ bool shouldCollapseByDefault(
   int autoCollapseMoveThreshold = 12,
 }) {
   if (variation.depth >= autoCollapseDepth) return true;
-  if (variation.moves.length >= autoCollapseMoveThreshold) return true;
   return false;
 }
 

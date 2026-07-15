@@ -15,6 +15,7 @@ import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -22,6 +23,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -97,7 +99,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
 
   void _resetExplorerState({bool fetch = false, bool preserveScope = true}) {
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
+    final evalNotifier = ref.read(explorerEvalProvider.notifier);
     final scopedPlayer = preserveScope ? widget.initialPlayer : null;
+
+    evalNotifier.clearPvPreview(resumeEvaluation: fetch);
 
     if (fetch && scopedPlayer != null) {
       notifier.enableLocalPlayerTree(scopedPlayer.id);
@@ -118,12 +123,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     // via its initState/didUpdateWidget to avoid double-start conflicts
     // that cause depth jitter and perpetual "..." states.
     if (!fetch) {
-      ref
-          .read(explorerEvalProvider.notifier)
-          .setEngineEnabled(
-            enabled: false,
-            fen: ref.read(gamebaseExplorerProvider).currentFen,
-          );
+      evalNotifier.setEngineEnabled(
+        enabled: false,
+        fen: ref.read(gamebaseExplorerProvider).currentFen,
+      );
     }
   }
 
@@ -241,6 +244,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   Future<void> _toggleEngineAnalysis() async {
     final current = ref.read(engineSettingsProviderNew).valueOrNull;
     final nextValue = !(current?.showEngineAnalysis ?? true);
+    if (!nextValue) {
+      ref
+          .read(explorerEvalProvider.notifier)
+          .clearPvPreview(resumeEvaluation: false);
+    }
     await ref
         .read(engineSettingsProviderNew.notifier)
         .toggleEngineAnalysis(nextValue);
@@ -251,6 +259,15 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     _backwardLongPressTimer = Timer.periodic(
       const Duration(milliseconds: 130),
       (_) {
+        final preview = ref.read(explorerEvalProvider).pvPreview;
+        if (preview != null) {
+          if (!preview.canMoveBackward) {
+            _stopLongPressBackward();
+            return;
+          }
+          ref.read(explorerEvalProvider.notifier).navigateLockedPvBackward();
+          return;
+        }
         final currentState = ref.read(gamebaseExplorerProvider);
         if (!currentState.canGoBack) {
           _stopLongPressBackward();
@@ -271,6 +288,15 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     _forwardLongPressTimer = Timer.periodic(const Duration(milliseconds: 130), (
       _,
     ) {
+      final preview = ref.read(explorerEvalProvider).pvPreview;
+      if (preview != null) {
+        if (!preview.canMoveForward) {
+          _stopLongPressForward();
+          return;
+        }
+        ref.read(explorerEvalProvider.notifier).navigateLockedPvForward();
+        return;
+      }
       final currentState = ref.read(gamebaseExplorerProvider);
       if (!currentState.canGoForward) {
         _stopLongPressForward();
@@ -323,6 +349,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         );
 
     final state = ref.watch(gamebaseExplorerProvider);
+    final preview = ref.watch(
+      explorerEvalProvider.select((value) => value.pvPreview),
+    );
+    final canMoveForward = preview?.canMoveForward ?? state.canGoForward;
+    final canMoveBackward = preview?.canMoveBackward ?? state.canGoBack;
     final scopedPlayerId = widget.initialPlayer?.id;
     if (scopedPlayerId != null && scopedPlayerId.isNotEmpty) {
       ref.listen<PlayerOpeningTreeState>(
@@ -366,25 +397,39 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               });
             },
             onRightMove:
-                state.canGoForward
+                canMoveForward
                     ? () async {
+                      if (preview != null) {
+                        ref
+                            .read(explorerEvalProvider.notifier)
+                            .navigateLockedPvForward();
+                        return;
+                      }
                       final allowed = await _ensureExplorerForwardAllowed();
                       if (!allowed) return;
                       ref.read(gamebaseExplorerProvider.notifier).goForward();
                     }
                     : null,
             onLeftMove:
-                state.canGoBack
-                    ? () => ref.read(gamebaseExplorerProvider.notifier).goBack()
+                canMoveBackward
+                    ? () {
+                      if (preview != null) {
+                        ref
+                            .read(explorerEvalProvider.notifier)
+                            .navigateLockedPvBackward();
+                        return;
+                      }
+                      ref.read(gamebaseExplorerProvider.notifier).goBack();
+                    }
                     : null,
             onLongPressBackwardStart:
-                state.canGoBack ? _startLongPressBackward : null,
+                canMoveBackward ? _startLongPressBackward : null,
             onLongPressBackwardEnd: _stopLongPressBackward,
             onLongPressForwardStart:
-                state.canGoForward ? _startLongPressForward : null,
+                canMoveForward ? _startLongPressForward : null,
             onLongPressForwardEnd: _stopLongPressForward,
-            canMoveForward: state.canGoForward,
-            canMoveBackward: state.canGoBack,
+            canMoveForward: canMoveForward,
+            canMoveBackward: canMoveBackward,
             showEngineAnalysis: showEngineAnalysis,
             showUnseenMoveBadge: false,
             showGamebaseButton: false,
@@ -423,6 +468,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     required bool showEngineAnalysis,
   }) {
     final state = ref.watch(gamebaseExplorerProvider);
+    final preview = ref.watch(
+      explorerEvalProvider.select((value) => value.pvPreview),
+    );
+    final boardFen = preview?.currentFen ?? state.currentFen;
     final boardSize = constraints.maxWidth - 48.sp - _evalBarWidth - 4.sp;
 
     return Center(
@@ -444,9 +493,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                   ),
                   SizedBox(width: 4.sp),
                   _GamebaseChessBoard(
-                    fen: state.currentFen,
+                    fen: boardFen,
                     boardSize: boardSize,
                     isFlipped: _isFlipped,
+                    isPreviewing: preview != null,
+                    lastMove: preview?.currentMove,
                   ),
                 ],
               ),
@@ -480,6 +531,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     required bool showEngineAnalysis,
   }) {
     final state = ref.watch(gamebaseExplorerProvider);
+    final preview = ref.watch(
+      explorerEvalProvider.select((value) => value.pvPreview),
+    );
+    final boardFen = preview?.currentFen ?? state.currentFen;
     final availableHeight = constraints.maxHeight;
     final verticalPadding = 8.sp * 2; // top + bottom
     final boardSize = (availableHeight - verticalPadding).clamp(
@@ -511,9 +566,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                     ),
                     SizedBox(width: 4.sp),
                     _GamebaseChessBoard(
-                      fen: state.currentFen,
+                      fen: boardFen,
                       boardSize: boardSize,
                       isFlipped: _isFlipped,
+                      isPreviewing: preview != null,
+                      lastMove: preview?.currentMove,
                     ),
                   ],
                 ),
@@ -553,6 +610,10 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     required bool showEngineAnalysis,
   }) {
     final state = ref.watch(gamebaseExplorerProvider);
+    final preview = ref.watch(
+      explorerEvalProvider.select((value) => value.pvPreview),
+    );
+    final boardFen = preview?.currentFen ?? state.currentFen;
     final contentMaxWidth = (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
     final boardSize = contentMaxWidth - 48.sp - _evalBarWidth - 4.sp;
 
@@ -576,9 +637,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                     ),
                     SizedBox(width: 4.sp),
                     _GamebaseChessBoard(
-                      fen: state.currentFen,
+                      fen: boardFen,
                       boardSize: boardSize,
                       isFlipped: _isFlipped,
+                      isPreviewing: preview != null,
+                      lastMove: preview?.currentMove,
                     ),
                   ],
                 ),
@@ -784,12 +847,16 @@ class _GamebaseChessBoard extends ConsumerStatefulWidget {
   const _GamebaseChessBoard({
     required this.fen,
     required this.boardSize,
+    required this.isPreviewing,
+    this.lastMove,
     this.isFlipped = false,
   });
 
   final String fen;
   final double boardSize;
   final bool isFlipped;
+  final bool isPreviewing;
+  final Move? lastMove;
 
   @override
   ConsumerState<_GamebaseChessBoard> createState() =>
@@ -811,14 +878,28 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
   @override
   void initState() {
     super.initState();
-    _boardController = ChessboardController(game: _gameDataFor(widget.fen));
+    _boardController = ChessboardController(
+      game: _gameDataFor(
+        widget.fen,
+        isPreviewing: widget.isPreviewing,
+        lastMove: widget.lastMove,
+      ),
+    );
   }
 
   @override
   void didUpdateWidget(covariant _GamebaseChessBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.fen != widget.fen) {
-      _boardController.updatePosition(_gameDataFor(widget.fen));
+    if (oldWidget.fen != widget.fen ||
+        oldWidget.isPreviewing != widget.isPreviewing ||
+        oldWidget.lastMove != widget.lastMove) {
+      _boardController.updatePosition(
+        _gameDataFor(
+          widget.fen,
+          isPreviewing: widget.isPreviewing,
+          lastMove: widget.lastMove,
+        ),
+      );
     }
   }
 
@@ -831,7 +912,11 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
   /// Builds chessground [GameData] from a fen. Falls back to a non-interactive
   /// snapshot when the fen is not a legal chess position (the board still
   /// renders the placement via the lenient [readFen]).
-  GameData _gameDataFor(String fen) {
+  GameData _gameDataFor(
+    String fen, {
+    required bool isPreviewing,
+    Move? lastMove,
+  }) {
     Chess? position;
     try {
       position = Chess.fromSetup(Setup.parseFen(fen));
@@ -844,14 +929,20 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
         playerSide: PlayerSide.none,
         sideToMove: Side.white,
         validMoves: const {},
+        lastMove: lastMove,
       );
     }
     return GameData(
       fen: fen,
       playerSide:
-          position.turn == Side.white ? PlayerSide.white : PlayerSide.black,
+          isPreviewing
+              ? PlayerSide.none
+              : (position.turn == Side.white
+                  ? PlayerSide.white
+                  : PlayerSide.black),
       sideToMove: position.turn,
       validMoves: makeLegalMoves(position),
+      lastMove: lastMove,
       kingSquareInCheck:
           position.isCheck ? position.board.kingOf(position.turn) : null,
     );
@@ -915,6 +1006,9 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                   // so onMove receives the fully-resolved move (promotion role
                   // already set) and lives on the widget, not GameData.
                   onMove: (Move move, {bool? viaDragAndDrop}) async {
+                    if (ref.read(explorerEvalProvider).pvPreview != null) {
+                      return;
+                    }
                     // Playing this move would land past the free-tier
                     // boundary — surface the paywall instead of advancing
                     // and then blurring the panel. Chessground snaps the
@@ -1869,43 +1963,150 @@ class _PlayerSearchResults extends ConsumerWidget {
   }
 }
 
-/// Compact engine analysis lines displayed above the move statistics.
-/// Shows up to 3 Stockfish PV lines, each as a single horizontal row
-/// with an eval badge and SAN moves.
-/// Format an engine PV into move-numbered SAN text (e.g. "1.e4 e5 2.Nf3").
-String _formatExplorerPvMoves(
-  List<String> sanMoves,
-  int startMoveNumber,
-  bool isWhiteToMove,
-) {
-  if (sanMoves.isEmpty) return '';
-  final buffer = StringBuffer();
-  var moveNum = startMoveNumber;
-  var isWhite = isWhiteToMove;
-  for (var i = 0; i < sanMoves.length; i++) {
-    if (isWhite) {
-      if (i > 0) buffer.write(' ');
-      buffer.write('$moveNum.');
-    } else if (i == 0) {
-      buffer.write('$moveNum...');
-    } else {
-      buffer.write(' ');
-    }
-    buffer.write(sanMoves[i]);
-    if (!isWhite) moveNum++;
-    isWhite = !isWhite;
-  }
-  return buffer.toString();
+class _ExplorerPvToken {
+  const _ExplorerPvToken(this.text, {this.moveIndex});
+
+  final String text;
+  final int? moveIndex;
 }
 
-class _ExplorerEngineLines extends ConsumerWidget {
+/// Compact engine analysis lines displayed above the move statistics.
+/// Every SAN move is independently tappable so it can open the same locked,
+/// non-committing PV preview used by the normal analysis board.
+class _ExplorerEngineLines extends ConsumerStatefulWidget {
   const _ExplorerEngineLines();
-  static const int _kMaxRows = 3;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ExplorerEngineLines> createState() =>
+      _ExplorerEngineLinesState();
+}
+
+class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
+  static const int _kMaxRows = 3;
+  static final RegExp _uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
+  final GlobalKey _previewCursorKey = GlobalKey();
+
+  List<_ExplorerPvToken> _formatTokens(
+    List<String> sanMoves,
+    int startMoveNumber,
+    bool isWhiteToMove,
+  ) {
+    final tokens = <_ExplorerPvToken>[];
+    var moveNumber = startMoveNumber;
+    var whiteToMove = isWhiteToMove;
+
+    for (var index = 0; index < sanMoves.length; index++) {
+      if (whiteToMove) {
+        tokens.add(_ExplorerPvToken('$moveNumber.'));
+      } else if (index == 0) {
+        tokens.add(_ExplorerPvToken('$moveNumber...'));
+      }
+      tokens.add(_ExplorerPvToken(sanMoves[index], moveIndex: index));
+      if (!whiteToMove) moveNumber++;
+      whiteToMove = !whiteToMove;
+    }
+    return tokens;
+  }
+
+  List<InlineSpan> _buildMoveSpans({
+    required BuildContext context,
+    required ExplorerPvLine line,
+    required int variantIndex,
+    required int startMoveNumber,
+    required bool isWhiteToMove,
+    required bool useFigurine,
+    required PieceAssets pieceAssets,
+    required Color accentColor,
+    required String baseFen,
+    required int? selectedMoveIndex,
+  }) {
+    final style = AppTypography.textXsMedium.copyWith(
+      color: context.colors.textPrimary.withValues(alpha: 0.95),
+      fontWeight: FontWeight.w600,
+    );
+    final spans = <InlineSpan>[];
+
+    for (final token in _formatTokens(
+      line.sanMoves,
+      startMoveNumber,
+      isWhiteToMove,
+    )) {
+      final moveIndex = token.moveIndex;
+      if (moveIndex == null) {
+        spans.add(TextSpan(text: '${token.text} ', style: style));
+        continue;
+      }
+
+      final selected = moveIndex == selectedMoveIndex;
+      final moveText =
+          useFigurine
+              ? Text.rich(
+                TextSpan(
+                  children: buildFigurineSpans(
+                    text: token.text,
+                    pieceAssets: pieceAssets,
+                    style: style,
+                    pieceSize: 12.sp,
+                  ),
+                ),
+              )
+              : Text(token.text, style: style);
+      final decoratedMove =
+          selected
+              ? Container(
+                padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(3.sp),
+                ),
+                child: moveText,
+              )
+              : moveText;
+
+      Widget target = GestureDetector(
+        key: ValueKey<String>(
+          'opening_explorer_pv_move_${variantIndex}_$moveIndex',
+        ),
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          final evalState = ref.read(explorerEvalProvider);
+          if (explorerFenPositionKey(evalState.fen) !=
+              explorerFenPositionKey(baseFen)) {
+            ref
+                .read(explorerEvalProvider.notifier)
+                .evaluatePosition(baseFen, force: true);
+            return;
+          }
+          ref
+              .read(explorerEvalProvider.notifier)
+              .previewPrincipalVariationMoveAt(
+                line,
+                variantIndex,
+                moveIndex,
+                baseFen: baseFen,
+              );
+        },
+        child: decoratedMove,
+      );
+      if (selected) {
+        target = KeyedSubtree(key: _previewCursorKey, child: target);
+      }
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Padding(padding: EdgeInsets.only(right: 4.sp), child: target),
+        ),
+      );
+    }
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final evalState = ref.watch(explorerEvalProvider);
     final pvLines = evalState.pvLines;
+    final preview = evalState.pvPreview;
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
@@ -1930,13 +2131,11 @@ class _ExplorerEngineLines extends ConsumerWidget {
 
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final linesView = engineSettings?.engineLinesView ?? EngineLinesView.cards;
-    final notifier = ref.read(gamebaseExplorerProvider.notifier);
-    final uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
 
     Future<void> playLine(ExplorerPvLine line) async {
       if (line.uciMoves.isEmpty) return;
       final firstUci = line.uciMoves.first.trim().toLowerCase();
-      if (!uciRegex.hasMatch(firstUci)) return;
+      if (!_uciRegex.hasMatch(firstUci)) return;
       if (!kDebugMode && !ref.read(subscriptionProvider).isSubscribed) {
         final currentMoveNumber =
             ref.read(gamebaseExplorerProvider).currentMoveNumber;
@@ -1946,7 +2145,38 @@ class _ExplorerEngineLines extends ConsumerWidget {
           if (!unlocked) return;
         }
       }
-      notifier.makeMove(firstUci);
+      ref
+          .read(explorerEvalProvider.notifier)
+          .clearPvPreview(resumeEvaluation: false);
+      ref.read(gamebaseExplorerProvider.notifier).makeMove(firstUci);
+    }
+
+    EnginePvItem buildItem(ExplorerPvLine line, int variantIndex) {
+      final accentColor = enginePvVariantColor(variantIndex, isSelected: true);
+      final isSelected = preview?.variantIndex == variantIndex;
+      final evalValue =
+          line.mate != null ? line.mate!.toDouble() : (line.evaluation ?? 0.0);
+      return EnginePvItem(
+        evalText: line.displayEval,
+        accentColor: accentColor,
+        moveSpans: _buildMoveSpans(
+          context: context,
+          line: line,
+          variantIndex: variantIndex,
+          startMoveNumber: startMoveNumber,
+          isWhiteToMove: isWhiteToMove,
+          useFigurine: useFigurine,
+          pieceAssets: pieceAssets,
+          accentColor: accentColor,
+          baseFen: baseFen,
+          selectedMoveIndex: isSelected ? preview?.moveIndex : null,
+        ),
+        isWhiteWinning: evalValue > 0,
+        isBlackWinning: evalValue < 0,
+        isPrimary: variantIndex == 0,
+        scrollTargetKey: isSelected ? _previewCursorKey : null,
+        onTap: preview != null ? null : () => playLine(line),
+      );
     }
 
     // ChessEver layout: horizontally swipeable engine cards. Honors the user's
@@ -1956,45 +2186,26 @@ class _ExplorerEngineLines extends ConsumerWidget {
         1,
         5,
       );
-      final cardLines = pvLines.take(pvCount).toList();
-      final moveStyle = AppTypography.textXsMedium.copyWith(
-        color: context.colors.textPrimary.withValues(alpha: 0.95),
-        fontWeight: FontWeight.w600,
-      );
-      final items = <EnginePvItem>[
-        for (final line in cardLines)
-          EnginePvItem(
-            evalText: line.displayEval,
-            accentColor: kPrimaryColor,
-            moveSpans:
-                useFigurine
-                    ? buildFigurineSpans(
-                      text: _formatExplorerPvMoves(
-                        line.sanMoves,
-                        startMoveNumber,
-                        isWhiteToMove,
-                      ),
-                      pieceAssets: pieceAssets,
-                      style: moveStyle,
-                      pieceSize: 12.sp,
-                    )
-                    : <InlineSpan>[
-                      TextSpan(
-                        text: _formatExplorerPvMoves(
-                          line.sanMoves,
-                          startMoveNumber,
-                          isWhiteToMove,
-                        ),
-                        style: moveStyle,
-                      ),
-                    ],
-            onTap: () => playLine(line),
-          ),
-      ];
+      final items =
+          preview != null
+              ? <EnginePvItem>[buildItem(preview.line, preview.variantIndex)]
+              : <EnginePvItem>[
+                for (
+                  var index = 0;
+                  index < pvLines.length && index < pvCount;
+                  index++
+                )
+                  buildItem(pvLines[index], index),
+              ];
       return Padding(
         key: e2eKey(E2eIds.openingExplorerEngineLines),
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
         child: EnginePvCardsView(
+          key: ValueKey<String>(
+            preview == null
+                ? 'opening_explorer_live_pvs'
+                : 'opening_explorer_locked_pv_${preview.variantIndex}',
+          ),
           items: items,
           cardHeight: 64.h,
           emptyPlaceholder: _EngineLinePlaceholder(
@@ -2006,52 +2217,22 @@ class _ExplorerEngineLines extends ConsumerWidget {
     }
 
     final lines = pvLines.take(_kMaxRows).toList();
+    final items = <EnginePvItem>[
+      for (var index = 0; index < lines.length; index++)
+        buildItem(
+          preview?.variantIndex == index ? preview!.line : lines[index],
+          index,
+        ),
+    ];
 
-    return Column(
+    return Padding(
       key: e2eKey(E2eIds.openingExplorerEngineLines),
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < _kMaxRows; i++) ...[
-          if (i > 0)
-            Divider(
-              height: 1,
-              color: context.colors.divider.withValues(alpha: 0.3),
-              indent: 12.sp,
-              endIndent: 12.sp,
-            ),
-          if (i < lines.length)
-            _EngineLine(
-              line: lines[i],
-              lineIndex: i,
-              isWhiteToMove: isWhiteToMove,
-              startMoveNumber: startMoveNumber,
-              useFigurine: useFigurine,
-              pieceAssets: pieceAssets,
-              onTap: () async {
-                if (lines[i].uciMoves.isEmpty) return;
-                final firstUci = lines[i].uciMoves.first.trim().toLowerCase();
-                if (!uciRegex.hasMatch(firstUci)) return;
-                if (!kDebugMode &&
-                    !ref.read(subscriptionProvider).isSubscribed) {
-                  final currentMoveNumber =
-                      ref.read(gamebaseExplorerProvider).currentMoveNumber;
-                  if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
-                    if (!context.mounted) return;
-                    final unlocked = await requirePremiumGuard(context, ref);
-                    if (!unlocked) return;
-                  }
-                }
-                notifier.makeMove(firstUci);
-              },
-            )
-          else
-            _EngineLinePlaceholder(
-              isPrimary: i == 0,
-              isEvaluating: evalState.isEvaluating,
-            ),
-        ],
-        Divider(color: context.colors.divider, height: 1),
-      ],
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 4.sp),
+      child: EnginePvListView(
+        items: items,
+        slotCount: _kMaxRows,
+        isEvaluating: evalState.isEvaluating,
+      ),
     );
   }
 }
@@ -2112,142 +2293,6 @@ class _EngineLinePlaceholder extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// Single engine line row: eval badge + SAN move text.
-class _EngineLine extends StatelessWidget {
-  const _EngineLine({
-    required this.line,
-    required this.lineIndex,
-    required this.isWhiteToMove,
-    required this.startMoveNumber,
-    required this.useFigurine,
-    required this.pieceAssets,
-    this.onTap,
-  });
-
-  final ExplorerPvLine line;
-  final int lineIndex;
-  final bool isWhiteToMove;
-  final int startMoveNumber;
-  final bool useFigurine;
-  final PieceAssets pieceAssets;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final evalText = line.displayEval;
-
-    // Eval badge: white bg for white advantage, dark for black, neutral for 0.0.
-    final bool isWhiteWinning =
-        (line.mate != null && line.mate! > 0) ||
-        (line.evaluation != null && line.evaluation! > 0);
-    final bool isBlackWinning =
-        (line.mate != null && line.mate! < 0) ||
-        (line.evaluation != null && line.evaluation! < 0);
-
-    Color evalBgColor;
-    Color evalTextColor;
-    if (isWhiteWinning) {
-      evalBgColor = context.colors.textPrimary;
-      evalTextColor = context.colors.surface;
-    } else if (isBlackWinning) {
-      evalBgColor = context.colors.divider;
-      evalTextColor = context.colors.textPrimary;
-    } else {
-      evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
-      evalTextColor = context.colors.textPrimary;
-    }
-
-    final moveText = _formatMoveText();
-    final moveStyle = TextStyle(
-      color: context.colors.textPrimary.withValues(
-        alpha: lineIndex == 0 ? 0.9 : 0.6,
-      ),
-      fontSize: 12.f,
-      fontWeight: lineIndex == 0 ? FontWeight.w500 : FontWeight.w400,
-    );
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
-          child: Row(
-            children: [
-              // Eval badge
-              Container(
-                width: 44.w,
-                padding: EdgeInsets.symmetric(vertical: 2.sp),
-                decoration: BoxDecoration(
-                  color: evalBgColor,
-                  borderRadius: BorderRadius.circular(3.br),
-                ),
-                child: Text(
-                  evalText,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: evalTextColor,
-                    fontSize: 11.f,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-              SizedBox(width: 8.sp),
-              // Moves
-              Expanded(
-                child:
-                    useFigurine
-                        ? RichText(
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          text: TextSpan(
-                            children: buildFigurineSpans(
-                              text: moveText,
-                              pieceAssets: pieceAssets,
-                              style: moveStyle,
-                              pieceSize: 14.f,
-                            ),
-                          ),
-                        )
-                        : Text(
-                          moveText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: moveStyle,
-                        ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatMoveText() {
-    if (line.sanMoves.isEmpty) return '';
-    final buffer = StringBuffer();
-    var moveNum = startMoveNumber;
-    var isWhite = isWhiteToMove;
-
-    for (var i = 0; i < line.sanMoves.length; i++) {
-      if (isWhite) {
-        if (i > 0) buffer.write(' ');
-        buffer.write('$moveNum.');
-      } else if (i == 0) {
-        buffer.write('$moveNum...');
-      } else {
-        buffer.write(' ');
-      }
-      buffer.write(line.sanMoves[i]);
-
-      if (!isWhite) moveNum++;
-      isWhite = !isWhite;
-    }
-    return buffer.toString();
   }
 }
 
@@ -2583,7 +2628,7 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
       }
     });
 
-    return PageView(
+    final pageView = PageView(
       controller: _pageController,
       onPageChanged: (page) {
         if (_showTutorialOverlay) return;
@@ -2597,6 +2642,63 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
         _ExplorerNotationView(
           key: const PageStorageKey<String>('opening-explorer-notation-panel'),
           isActive: ref.watch(explorerPageIndexProvider) == 1,
+        ),
+      ],
+    );
+
+    final preview = ref.watch(
+      explorerEvalProvider.select((value) => value.pvPreview),
+    );
+    if (preview == null) return pageView;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        pageView,
+        Material(
+          color: context.colors.surfaceRecessed.withValues(alpha: 0.94),
+          child: Semantics(
+            button: true,
+            label: 'Exit engine line preview',
+            child: InkWell(
+              key: const ValueKey<String>(
+                'opening_explorer_pv_preview_dismiss',
+              ),
+              onTap:
+                  () =>
+                      ref.read(explorerEvalProvider.notifier).clearPvPreview(),
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.sp),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.close_rounded,
+                        color: context.colors.textPrimary,
+                        size: 24.sp,
+                      ),
+                      SizedBox(height: 8.sp),
+                      Text(
+                        'Previewing engine line',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 4.sp),
+                      Text(
+                        'Tap to return to the explorer',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );

@@ -44,6 +44,7 @@ class _GroupEventGamesTourContentBodyState
       return const TourLoadingWidget();
     }
     final rounds = groupedData.rounds;
+    final gamesByRound = groupedData.gamesByRound;
     final selectedRoundId = gamesAppBar.value?.selectedId;
     final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
@@ -51,10 +52,7 @@ class _GroupEventGamesTourContentBodyState
     // Include upcoming only when user explicitly selected that round.
     final visibleRounds =
         rounds.where((round) {
-          final roundGames =
-              widget.gamesScreenModel.gamesTourModels
-                  .where((game) => game.roundId == round.id)
-                  .toList();
+          final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
           if (roundGames.isEmpty) return false;
 
           // Always include explicitly user-selected round
@@ -68,12 +66,12 @@ class _GroupEventGamesTourContentBodyState
       return const SizedBox.shrink();
     }
 
-    final orderedGamesData = ref
-        .read(gamesTourContentProvider)
-        .getOrderedGamesForChessBoard(
-          rounds: visibleRounds,
-          gamesScreenModel: widget.gamesScreenModel,
-        );
+    final orderedGamesData = widget.gamesScreenModel.copyWith(
+      gamesTourModels: <GamesTourModel>[
+        for (final round in visibleRounds)
+          ...(gamesByRound[round.id] ?? const <GamesTourModel>[]),
+      ],
+    );
     final liveBatchKeyByGameId = buildGroupEventLiveBatchKeys(
       orderedGamesData.gamesTourModels,
     );
@@ -93,6 +91,7 @@ class _GroupEventGamesTourContentBodyState
     return _buildAllRoundsView(
       context,
       visibleRounds,
+      gamesByRound,
       orderedGamesData,
       scrollController,
       itemPositionsListener,
@@ -107,6 +106,7 @@ class _GroupEventGamesTourContentBodyState
   Widget _buildAllRoundsView(
     BuildContext context,
     List<GamesAppBarModel> visibleRounds,
+    Map<String, List<GamesTourModel>> gamesByRound,
     GamesScreenModel orderedGamesData,
     ItemScrollController scrollController,
     ItemPositionsListener itemPositionsListener,
@@ -120,19 +120,16 @@ class _GroupEventGamesTourContentBodyState
     final allItems = <_GroupEventItem>[];
 
     for (final round in visibleRounds) {
+      final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
       // Get team groupings for this round
       final grouped = ref
           .read(gamesTourContentProvider)
           .getGroupHeader(
             selectedRoundId: round.id,
-            gamesScreenModel: widget.gamesScreenModel,
+            gamesScreenModel: orderedGamesData.copyWith(
+              gamesTourModels: roundGames,
+            ),
           );
-
-      // Get all games for this round to show in header
-      final roundGames =
-          widget.gamesScreenModel.gamesTourModels
-              .where((game) => game.roundId == round.id)
-              .toList();
 
       final isRoundExpanded = roundExpansionState[round.id] ?? true;
 

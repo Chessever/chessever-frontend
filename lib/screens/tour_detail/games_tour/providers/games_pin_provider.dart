@@ -1,30 +1,53 @@
 import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
-import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamesPinState {
   final List<String> manualPins;
-  final List<String> autoPins;
+  final List<String> favoriteAutoPins;
+  final List<String> countrymanAutoPins;
+  final bool favoritePriorityEnabled;
+  final bool countrymanPriorityEnabled;
+  final List<FavoritePlayer> favoritePlayersSnapshot;
+  final String selectedCountryCode;
   final List<String> unpinnedOverrides;
   final bool autoPinDisabled;
+  final bool hasResolvedAutoPins;
+  final bool isRefreshingAutoPins;
 
   const GamesPinState({
     this.manualPins = const [],
-    this.autoPins = const [],
+    this.favoriteAutoPins = const [],
+    this.countrymanAutoPins = const [],
+    this.favoritePriorityEnabled = false,
+    this.countrymanPriorityEnabled = false,
+    this.favoritePlayersSnapshot = const [],
+    this.selectedCountryCode = '',
     this.unpinnedOverrides = const [],
     this.autoPinDisabled = false,
+    this.hasResolvedAutoPins = false,
+    this.isRefreshingAutoPins = false,
   });
+
+  List<String> get autoPins =>
+      autoPinDisabled
+          ? const <String>[]
+          : mergePinListsPreservingOrder([
+            favoriteAutoPins,
+            countrymanAutoPins,
+          ]);
 
   List<String> get allPins {
     return mergeEffectivePins(
@@ -36,16 +59,78 @@ class GamesPinState {
 
   GamesPinState copyWith({
     List<String>? manualPins,
-    List<String>? autoPins,
+    List<String>? favoriteAutoPins,
+    List<String>? countrymanAutoPins,
+    bool? favoritePriorityEnabled,
+    bool? countrymanPriorityEnabled,
+    List<FavoritePlayer>? favoritePlayersSnapshot,
+    String? selectedCountryCode,
     List<String>? unpinnedOverrides,
     bool? autoPinDisabled,
+    bool? hasResolvedAutoPins,
+    bool? isRefreshingAutoPins,
   }) {
     return GamesPinState(
       manualPins: manualPins ?? this.manualPins,
-      autoPins: autoPins ?? this.autoPins,
+      favoriteAutoPins: favoriteAutoPins ?? this.favoriteAutoPins,
+      countrymanAutoPins: countrymanAutoPins ?? this.countrymanAutoPins,
+      favoritePriorityEnabled:
+          favoritePriorityEnabled ?? this.favoritePriorityEnabled,
+      countrymanPriorityEnabled:
+          countrymanPriorityEnabled ?? this.countrymanPriorityEnabled,
+      favoritePlayersSnapshot:
+          favoritePlayersSnapshot ?? this.favoritePlayersSnapshot,
+      selectedCountryCode: selectedCountryCode ?? this.selectedCountryCode,
       unpinnedOverrides: unpinnedOverrides ?? this.unpinnedOverrides,
       autoPinDisabled: autoPinDisabled ?? this.autoPinDisabled,
+      hasResolvedAutoPins: hasResolvedAutoPins ?? this.hasResolvedAutoPins,
+      isRefreshingAutoPins: isRefreshingAutoPins ?? this.isRefreshingAutoPins,
     );
+  }
+
+  Set<String> get effectiveFavoritePriorityIds =>
+      _effectivePriorityIds(favoriteAutoPins);
+
+  Set<String> get effectiveCountrymanPriorityIds =>
+      _effectivePriorityIds(countrymanAutoPins);
+
+  Set<String> effectiveFavoritePriorityIdsForGames(
+    Iterable<GamesTourModel> games,
+  ) {
+    if (favoritePriorityEnabled && favoritePlayersSnapshot.isNotEmpty) {
+      return _effectivePriorityIds(
+        favoritePlayerGameIdsForGames(
+          games: games,
+          favorites: favoritePlayersSnapshot,
+        ),
+      );
+    }
+    return effectiveFavoritePriorityIds;
+  }
+
+  Set<String> effectiveCountrymanPriorityIdsForGames(
+    Iterable<GamesTourModel> games,
+  ) {
+    if (countrymanPriorityEnabled && selectedCountryCode.isNotEmpty) {
+      final uniqueGames = <String, GamesTourModel>{
+        for (final game in games) game.gameId: game,
+      };
+      final ids = countrymanGameIdsForGames(
+        games: uniqueGames.values,
+        selectedCountryCode: selectedCountryCode,
+      );
+      // Preserve the existing behavior: country priority adds no value when
+      // the entire field consists of countrymen.
+      if (ids.length >= uniqueGames.length) return const <String>{};
+      return _effectivePriorityIds(ids);
+    }
+    return effectiveCountrymanPriorityIds;
+  }
+
+  Set<String> _effectivePriorityIds(Iterable<String> ids) {
+    if (autoPinDisabled || ids.isEmpty) return const <String>{};
+    final overrides = unpinnedOverrides.toSet();
+    return ids.where((id) => !overrides.contains(id)).toSet();
   }
 }
 
@@ -98,40 +183,41 @@ PinToggleMode resolvePinToggleMode({
   return PinToggleMode.repin;
 }
 
-final gamesPinprovider =
-    StateNotifierProvider.family<_GamesPinController, GamesPinState, String>((
-      ref,
-      tourId,
-    ) {
+final gamesPinprovider = StateNotifierProvider.autoDispose
+    .family<_GamesPinController, GamesPinState, String>((ref, tourId) {
       return _GamesPinController(ref: ref, tourId: tourId);
     });
 
 class _GamesPinController extends StateNotifier<GamesPinState> {
   _GamesPinController({required this.ref, required this.tourId})
     : super(GamesPinState()) {
-    loadPinnedGames();
     _listenToFavoritePlayers();
     _listenToKnockoutStages();
     _listenToCountrySelection();
     _listenToPrimaryGames();
     _listenToAutoPinPreferences();
+    if (_pinLoadInFlight == null) loadPinnedGames();
   }
 
   final Ref ref;
   final String tourId;
   final Set<String> _stageListeners = <String>{};
+  Future<void>? _pinLoadInFlight;
+  bool _reloadPinSnapshot = false;
 
   void _listenToFavoritePlayers() {
-    // Listen to favorite players changes and recompute auto-pins
-    ref.listen<AsyncValue<List<PlayerStandingModel>>>(
-      tournamentFavoritePlayersProvider,
-      (previous, next) {
-        next.whenData((players) {
-          // Recompute auto-pins when favorite players change
-          computeAutoPins();
-        });
-      },
-    );
+    // Observe the canonical favorites provider. Loading/error transitions do
+    // not clear the last resolved pin snapshot.
+    ref.listen<AsyncValue<List<FavoritePlayer>>>(favoritePlayersProviderNew, (
+      previous,
+      next,
+    ) {
+      if (!next.hasValue) return;
+      final prefs =
+          ref.read(autoPinPreferencesProvider).valueOrNull ??
+          AutoPinPreferences.defaults;
+      if (prefs.favoritePlayersAutoPinEnabled) computeAutoPins();
+    });
   }
 
   void _listenToKnockoutStages() {
@@ -165,10 +251,17 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
           )
           .map((tourModel) => tourModel.tour.id);
 
+      var addedStageListener = false;
       for (final stageId in relatedStageIds) {
+        // The selected tour already has the raw primary-games listener below.
+        // Listening to its derived knockout state as well would enqueue the
+        // same scan twice for one identity update.
+        if (stageId == tourId) continue;
+
         // Avoid wiring duplicate listeners
         if (_stageListeners.contains(stageId)) continue;
         _stageListeners.add(stageId);
+        addedStageListener = true;
 
         ref.listen<KnockoutTournamentState>(
           knockoutTournamentStateProvider(stageId),
@@ -181,9 +274,11 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
               computeAutoPins();
             }
           },
-          fireImmediately: true,
         );
       }
+
+      // One scan covers every newly wired stage and its current snapshot.
+      if (addedStageListener) computeAutoPins();
     }, fireImmediately: true);
   }
 
@@ -208,7 +303,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
       }
 
       computeAutoPins();
-    }, fireImmediately: true);
+    });
   }
 
   void _listenToCountrySelection() {
@@ -223,6 +318,11 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
       if (previousCode == nextCode) {
         return;
       }
+
+      final prefs =
+          ref.read(autoPinPreferencesProvider).valueOrNull ??
+          AutoPinPreferences.defaults;
+      if (!prefs.countrymenAutoPinEnabled) return;
 
       computeAutoPins();
     });
@@ -248,52 +348,86 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     List<GamesTourModel> previous,
     List<GamesTourModel> next,
   ) {
-    if (previous.length != next.length) {
-      return true;
-    }
-
-    final previousIds = previous.map((game) => game.gameId).toSet();
-    final nextIds = next.map((game) => game.gameId).toSet();
-    return !setEquals(previousIds, nextIds);
+    return didModelGamePriorityInputsChange(previous, next);
   }
 
   bool _didRawGamesChange(List<Games> previous, List<Games> next) {
-    if (previous.length != next.length) {
-      return true;
-    }
-
-    final previousIds = previous.map((game) => game.id).toSet();
-    final nextIds = next.map((game) => game.id).toSet();
-    return !setEquals(previousIds, nextIds);
+    return didRawGamePriorityInputsChange(previous, next);
   }
 
-  Future<void> loadPinnedGames() async {
-    final storage = ref.read(pinGameLocalStorage);
-    final relatedTourIds = _getRelatedTourIds();
-    final pinResults = await Future.wait<Object?>([
-      Future.wait(
-        relatedTourIds.map(
-          (relatedTourId) => storage.getPinnedGameIds(relatedTourId),
-        ),
-      ),
-      Future.wait(
-        relatedTourIds.map(
-          (relatedTourId) => storage.getUnpinnedGameIds(relatedTourId),
-        ),
-      ),
-      ref.read(autoPinLogicProvider).getAutoPinnedGames(tourId),
-    ]);
+  Future<void> loadPinnedGames() {
+    final inFlight = _pinLoadInFlight;
+    if (inFlight != null) {
+      _reloadPinSnapshot = true;
+      return inFlight;
+    }
 
-    final manualPinLists = pinResults[0]! as List<List<String>>;
-    final unpinnedOverrideLists = pinResults[1]! as List<List<String>>;
-    final autoPinnedGames = pinResults[2]! as (bool, List<String>);
+    final future = _drainPinLoads();
+    _pinLoadInFlight = future;
+    return future;
+  }
 
-    state = state.copyWith(
-      manualPins: mergePinListsPreservingOrder(manualPinLists),
-      autoPins: autoPinnedGames.$2,
-      unpinnedOverrides: mergePinListsPreservingOrder(unpinnedOverrideLists),
-      autoPinDisabled: autoPinnedGames.$1,
-    );
+  Future<void> _drainPinLoads() async {
+    try {
+      do {
+        _reloadPinSnapshot = false;
+        await _loadPinnedGamesOnce();
+      } while (mounted && _reloadPinSnapshot);
+    } finally {
+      _pinLoadInFlight = null;
+    }
+  }
+
+  Future<void> _loadPinnedGamesOnce() async {
+    try {
+      final storage = ref.read(pinGameLocalStorage);
+      final relatedTourIds = _getRelatedTourIds();
+      final pinResults = await Future.wait<Object?>([
+        Future.wait(
+          relatedTourIds.map(
+            (relatedTourId) => storage.getPinnedGameIds(relatedTourId),
+          ),
+        ),
+        Future.wait(
+          relatedTourIds.map(
+            (relatedTourId) => storage.getUnpinnedGameIds(relatedTourId),
+          ),
+        ),
+        ref.read(autoPinLogicProvider).getAutoPinnedGames(tourId),
+      ]);
+
+      if (!mounted || _reloadPinSnapshot) return;
+      final manualPinLists = pinResults[0]! as List<List<String>>;
+      final unpinnedOverrideLists = pinResults[1]! as List<List<String>>;
+      final autoPinnedGames = pinResults[2]! as AutoPinnedGamesResult;
+
+      final nextState = state.copyWith(
+        manualPins: mergePinListsPreservingOrder(manualPinLists),
+        favoriteAutoPins: autoPinnedGames.favoriteGameIds,
+        countrymanAutoPins: autoPinnedGames.countrymanGameIds,
+        favoritePriorityEnabled: autoPinnedGames.favoritePriorityEnabled,
+        countrymanPriorityEnabled: autoPinnedGames.countrymanPriorityEnabled,
+        favoritePlayersSnapshot: autoPinnedGames.favoritePlayersSnapshot,
+        selectedCountryCode: autoPinnedGames.selectedCountryCode,
+        unpinnedOverrides: mergePinListsPreservingOrder(unpinnedOverrideLists),
+        autoPinDisabled: autoPinnedGames.autoPinDisabled,
+        hasResolvedAutoPins: true,
+        isRefreshingAutoPins: false,
+      );
+      if (!_haveSamePinState(state, nextState)) state = nextState;
+    } catch (error, stackTrace) {
+      debugPrint('Failed to load pins for $tourId: $error\n$stackTrace');
+      if (mounted &&
+          !_reloadPinSnapshot &&
+          (!state.hasResolvedAutoPins || state.isRefreshingAutoPins)) {
+        // Never leave the Games tab behind a permanent loading state. Existing
+        // pin data remains intact and board-number ordering is the fallback.
+        state = state.copyWith(
+          hasResolvedAutoPins: true,
+          isRefreshingAutoPins: false,
+        );
+      }
+    }
   }
 
   Future<void> togglePin({
@@ -343,6 +477,9 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   }
 
   Future<void> computeAutoPins() async {
+    if (mounted && state.hasResolvedAutoPins && !state.isRefreshingAutoPins) {
+      state = state.copyWith(isRefreshingAutoPins: true);
+    }
     await loadPinnedGames();
   }
 
@@ -378,4 +515,21 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
 
     return relatedIds;
   }
+}
+
+bool _haveSamePinState(GamesPinState first, GamesPinState second) {
+  return first.autoPinDisabled == second.autoPinDisabled &&
+      first.hasResolvedAutoPins == second.hasResolvedAutoPins &&
+      first.isRefreshingAutoPins == second.isRefreshingAutoPins &&
+      first.favoritePriorityEnabled == second.favoritePriorityEnabled &&
+      first.countrymanPriorityEnabled == second.countrymanPriorityEnabled &&
+      first.selectedCountryCode == second.selectedCountryCode &&
+      listEquals(first.manualPins, second.manualPins) &&
+      listEquals(first.favoriteAutoPins, second.favoriteAutoPins) &&
+      listEquals(first.countrymanAutoPins, second.countrymanAutoPins) &&
+      listEquals(
+        first.favoritePlayersSnapshot,
+        second.favoritePlayersSnapshot,
+      ) &&
+      listEquals(first.unpinnedOverrides, second.unpinnedOverrides);
 }

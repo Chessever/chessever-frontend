@@ -55,7 +55,15 @@ LogicalKnockoutStage? resolveLogicalKnockoutStage(
     if (namedStage != null) return namedStage;
   }
 
+  // Matchup-labeled stages: Lichess names each knockout pairing round after the
+  // stage AND its players ("Round of 16: Ju Wenjun vs Pham Le Thao Nguyen",
+  // slug "round-of-16-ju-wenjun-vs-pham-le-thao-nguyen"). The trailing pairing
+  // defeats the end-anchored recognizers above, so read the stage from the
+  // leading token whenever a "vs" pairing follows it.
   final cleanSlug = _clean(slug).toLowerCase();
+  final matchupStage = _stageFromMatchupPairing(cleanName, cleanSlug);
+  if (matchupStage != null) return matchupStage;
+
   if (cleanSlug.isNotEmpty) {
     final stageSlug = cleanSlug
         .split('--')
@@ -80,6 +88,63 @@ LogicalKnockoutStage? resolveLogicalKnockoutStage(
   if (tourName != null &&
       (_isGenericLegName(cleanName) || _isGenericLegSlug(cleanSlug))) {
     return parseKnockoutTourStageDescriptor(tourName).stage;
+  }
+
+  return null;
+}
+
+/// Known stage token anchored at the START of a round name, mirroring the
+/// tokens [_recognizedStage] understands. Used to read the stage off a
+/// matchup-labeled round ("Round of 16: A vs B").
+final RegExp _leadingStageName = RegExp(
+  r'^(round\s+of\s+\d+'
+  r'|last\s+\d+'
+  r'|round\s+\d+(?:[._]\d+)?'
+  r'|quarter[ -]?finals?'
+  r'|semi[ -]?finals?'
+  r'|(?:third[ -]?place|bronze)(?:[ -]?match)?'
+  r'|finals?)\b',
+  caseSensitive: false,
+);
+
+/// Same token anchored at the START of a slug, requiring a `-` after it so a
+/// pairing ("round-of-16-a-vs-b") — not a bare stage slug — is what follows.
+final RegExp _leadingStageSlug = RegExp(
+  r'^(round-of-\d+'
+  r'|last-\d+'
+  r'|round-\d+(?:[-._]\d+)?'
+  r'|quarter-?finals?'
+  r'|semi-?finals?'
+  r'|(?:third-place|bronze)(?:-match)?'
+  r'|finals?)(?=-)',
+  caseSensitive: false,
+);
+
+/// A "vs" pairing separator (vs, vs., v, v.) between two players.
+final RegExp _matchupSeparator = RegExp(r'\bvs?\.?\b', caseSensitive: false);
+
+/// Resolves matchup-labeled rounds — "<Stage>: A vs B" / "<stage>-a-vs-b" —
+/// where the pairing appended after the stage defeats the end-anchored
+/// recognizers. Only fires when a pairing actually follows the leading stage
+/// token, so plain stage rounds keep flowing through the stricter parsers.
+LogicalKnockoutStage? _stageFromMatchupPairing(String name, String slug) {
+  if (name.isNotEmpty) {
+    final match = _leadingStageName.firstMatch(name);
+    if (match != null &&
+        _matchupSeparator.hasMatch(name.substring(match.end))) {
+      final stage = _recognizedStage(match.group(1)!);
+      if (stage != null) return stage;
+    }
+  }
+
+  if (slug.contains('-vs-')) {
+    final match = _leadingStageSlug.firstMatch(slug);
+    if (match != null) {
+      final stage = _recognizedStage(
+        match.group(1)!.replaceAll(RegExp(r'[-_]+'), ' '),
+      );
+      if (stage != null) return stage;
+    }
   }
 
   return null;

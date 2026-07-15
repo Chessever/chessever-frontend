@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_list_presentation_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
@@ -278,10 +278,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     }
 
     final vm = _ref.read(gamesAppBarProvider).valueOrNull;
-    if (vm == null) return <GamesAppBarModel>[];
-    final selectedId = vm.selectedId;
-    final userSelected = vm.userSelectedId;
-    final models = vm.gamesAppBarModels;
+    final selectedId = vm?.selectedId;
+    final userSelected = vm?.userSelectedId ?? false;
+    final models = _ref.read(gamesTourGroupedProvider).rounds;
     return models
         .where(
           (round) =>
@@ -433,17 +432,14 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   int _getTeamMatchupCardsInRound(String roundId) {
-    // Get games for this round
-    final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
-    if (gamesData == null) return 0;
-
     final roundGames = _getGamesForRound(roundId);
     if (roundGames.isEmpty) return 0;
 
     // Use the same grouping logic as the UI
-    final grouped = _ref
-        .read(gamesTourContentProvider)
-        .getGroupHeader(selectedRoundId: roundId, gamesScreenModel: gamesData);
+    final grouped = groupTeamGamesByMatchup(
+      selectedRoundId: roundId,
+      games: roundGames,
+    );
 
     // Return the number of team matchup cards
     return grouped.keys.length;
@@ -454,11 +450,8 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   List<GamesTourModel> _getGamesForRound(String roundId) {
-    final gamesData = _ref.read(gamesTourScreenProvider).valueOrNull;
-    if (gamesData == null) return const [];
-    return gamesData.gamesTourModels
-        .where((game) => game.roundId == roundId)
-        .toList(growable: false);
+    return _ref.read(gamesTourGroupedProvider).gamesByRound[roundId] ??
+        const <GamesTourModel>[];
   }
 
   @override

@@ -66,6 +66,21 @@ class SearchScorer {
     else if (textLower.contains(queryLower)) {
       score = 40.0 + (queryLower.length / textLower.length) * 10;
     }
+    // Punctuation/glue insensitive match. Brands are typed without their
+    // punctuation ("chesscom") while titles store it split ("Chess.com"), so
+    // compare a compacted form (all non-alphanumerics stripped) on both sides.
+    else if (_compact(queryLower).isNotEmpty &&
+        _compact(textLower).contains(_compact(queryLower))) {
+      final compactQuery = _compact(queryLower);
+      final compactText = _compact(textLower);
+      if (compactText == compactQuery) {
+        score = 100.0;
+      } else if (compactText.startsWith(compactQuery)) {
+        score = 80.0 + (compactQuery.length / compactText.length) * 10;
+      } else {
+        score = 40.0 + (compactQuery.length / compactText.length) * 10;
+      }
+    }
     // Fuzzy matching - calculate similarity
     else {
       score = _calculateFuzzyScore(queryLower, textLower);
@@ -120,6 +135,12 @@ class SearchScorer {
     final aliasTokenSet = aliasTokens.toSet();
     return requiredNameTokens.every(aliasTokenSet.contains);
   }
+
+  static final RegExp _nonAlnum = RegExp(r'[^a-z0-9]');
+
+  /// Strips every non-alphanumeric character from an already-lowercased string
+  /// so "chess.com", "chesscom" and "chess com" collapse to one comparable form.
+  static String _compact(String lowered) => lowered.replaceAll(_nonAlnum, '');
 
   static bool _tokensMatch(String queryToken, String textToken) {
     return textToken == queryToken || textToken.startsWith(queryToken);

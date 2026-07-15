@@ -263,6 +263,29 @@ void main() {
       isFalse,
     );
   });
+
+  test('priority refresh keeps loading when only new boards are visible', () {
+    expect(
+      shouldKeepPrioritySnapshotLoading(
+        isSearchMode: false,
+        hadGroupedGamesBeforeOrdering: true,
+        hasGroupedGamesAfterOrdering: false,
+        hasResolvedAutoPins: true,
+        isRefreshingAutoPins: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldKeepPrioritySnapshotLoading(
+        isSearchMode: false,
+        hadGroupedGamesBeforeOrdering: true,
+        hasGroupedGamesAfterOrdering: true,
+        hasResolvedAutoPins: true,
+        isRefreshingAutoPins: true,
+      ),
+      isFalse,
+    );
+  });
 }
 
 GamesTourFlattenedLayout _layout({

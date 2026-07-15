@@ -18,6 +18,7 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -7113,31 +7114,11 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  /// Show all 5 variant first moves as arrows with different opacity
-  /// Stable variant colors - always in this order regardless of evaluations
-  static const List<Color> _variantColors = [
-    Color.fromARGB(180, 152, 179, 154), // Green - Always 1st variant
-    Color.fromARGB(180, 100, 149, 237), // Blue - Always 2nd variant
-    Color.fromARGB(180, 255, 165, 0), // Orange - Always 3rd variant
-    Color.fromARGB(180, 255, 105, 180), // Pink - Always 4th variant
-    Color.fromARGB(180, 147, 112, 219), // Purple - Always 5th variant
-  ];
-
   /// Get color for a variant index (used for both arrows and card borders)
   /// Always returns the static variant color (Green/Blue/Orange/Pink/Purple)
   /// Selection is indicated by higher opacity, not different color
   Color getVariantColor(int variantIndex, bool isSelected) {
-    if (variantIndex >= 0 && variantIndex < _variantColors.length) {
-      // Use static variant color, adjust opacity for selection
-      return _variantColors[variantIndex].withValues(
-        alpha: isSelected ? 0.95 : 0.7,
-      );
-    }
-    // Cycle through colors for any index beyond 5
-    final colorIndex = variantIndex % _variantColors.length;
-    return _variantColors[colorIndex].withValues(
-      alpha: isSelected ? 0.95 : 0.7,
-    );
+    return enginePvVariantColor(variantIndex, isSelected: isSelected);
   }
 
   /// Get color for a variant board arrow.
@@ -7145,14 +7126,10 @@ class ChessBoardScreenNotifierNew
   /// opacity, not labels or hue changes, to separate engine recommendation
   /// priority on the board.
   Color getVariantArrowColor(int variantIndex) {
-    if (variantIndex >= 0 && variantIndex < _variantColors.length) {
-      return _engineArrowColorForRank(
-        _variantColors[variantIndex],
-        variantIndex,
-      );
-    }
-    final colorIndex = variantIndex % _variantColors.length;
-    return _engineArrowColorForRank(_variantColors[colorIndex], variantIndex);
+    return _engineArrowColorForRank(
+      enginePvVariantBaseColor(variantIndex),
+      variantIndex,
+    );
   }
 
   ISet<Shape> _getAllVariantArrowShapes(

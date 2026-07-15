@@ -420,13 +420,67 @@ class _EnginePvCardsViewState extends State<EnginePvCardsView> {
   }
 }
 
-class _PvCard extends StatelessWidget {
+class _PvCard extends StatefulWidget {
   const _PvCard({required this.item});
 
   final EnginePvItem item;
 
   @override
+  State<_PvCard> createState() => _PvCardState();
+}
+
+class _PvCardState extends State<_PvCard> {
+  final ScrollController _controller = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleFollow();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PvCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleFollow();
+  }
+
+  void _scheduleFollow() {
+    final key = widget.item.scrollTargetKey;
+    if (key == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients) return;
+      final targetContext = key.currentContext;
+      final targetBox = targetContext?.findRenderObject();
+      final scrollable =
+          targetContext == null ? null : Scrollable.maybeOf(targetContext);
+      final viewportBox = scrollable?.context.findRenderObject();
+      if (targetBox is! RenderBox || viewportBox is! RenderBox) return;
+
+      final dy = targetBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+      final current = _controller.offset;
+      final desired = (current +
+              dy +
+              targetBox.size.height / 2 -
+              viewportBox.size.height / 2)
+          .clamp(0.0, _controller.position.maxScrollExtent);
+      if ((desired - current).abs() < 1.0) return;
+      _controller.animateTo(
+        desired,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
     final borderColor = item.accentColor.withValues(alpha: 0.7);
     final backgroundColor = item.accentColor.withValues(alpha: 0.15);
 
@@ -469,6 +523,7 @@ class _PvCard extends StatelessWidget {
             ),
             Expanded(
               child: SingleChildScrollView(
+                controller: _controller,
                 primary: false,
                 scrollDirection: Axis.vertical,
                 physics: const BouncingScrollPhysics(

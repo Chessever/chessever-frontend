@@ -3,8 +3,10 @@ import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_stable_order_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/lichess_pairings_fallback_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
@@ -87,6 +89,12 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final isSearchMode = screenModelAsync.valueOrNull?.isSearchMode ?? false;
   final displayMode =
       screenModelAsync.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all;
+  final pinState =
+      tourId == null
+          ? const GamesPinState(hasResolvedAutoPins: true)
+          : ref.watch(gamesPinprovider(tourId));
+  final stableOrder =
+      tourId == null ? null : ref.watch(gamesTourStableOrderProvider(tourId));
 
   final providerGameCount = rawGames.length;
   final modelGameCount = allGamesScreenModel.length;
@@ -144,6 +152,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
 
   final gamesByRound = <String, List<GamesTourModel>>{};
   final seenGameIdsPerRound = <String, Set<String>>{};
+  var hasSupplementalPriorityGames = false;
 
   void ensureRoundEntry(String roundId) {
     gamesByRound.putIfAbsent(roundId, () => <GamesTourModel>[]);
@@ -381,6 +390,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         }
       }
       if (fallbackModels.isNotEmpty) {
+        hasSupplementalPriorityGames = true;
         ensureRoundEntry(fallbackRound.id);
         for (final model in fallbackModels) {
           if (seenGameIdsPerRound[fallbackRound.id]!.add(model.gameId)) {
@@ -392,14 +402,43 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   }
 
-  // The Games tab is a board list, so its final presentation order must come
-  // from the broadcaster's authoritative board number rather than arrival
-  // order, rating, live/finished state, or local pin order. Run this after DB
-  // and Lichess-fallback rows have been reconciled so every path obeys the
-  // same deterministic contract.
+  // This is the one final ordering seam for DB games, sibling stages, and
+  // Lichess fallback rows. Manual pins intentionally keep their existing
+  // icon-only behavior. Effective favorite auto-pins lead, countrymen follow
+  // only when enabled, and authoritative board number remains the default.
+  final allPriorityGamesById = <String, GamesTourModel>{
+    if (hasSupplementalPriorityGames) ...{
+      for (final game in allGamesScreenModel) game.gameId: game,
+      for (final games in gamesByRound.values)
+        for (final game in games) game.gameId: game,
+    },
+  };
+  final favoritePriorityIds =
+      hasSupplementalPriorityGames
+          ? pinState.effectiveFavoritePriorityIdsForGames(
+            allPriorityGamesById.values,
+          )
+          : pinState.effectiveFavoritePriorityIds;
+  final countrymanPriorityIds =
+      hasSupplementalPriorityGames
+          ? pinState.effectiveCountrymanPriorityIdsForGames(
+            allPriorityGamesById.values,
+          )
+          : pinState.effectiveCountrymanPriorityIds;
+  final hadGroupedGamesBeforeOrdering = gamesByRound.values.any(
+    (games) => games.isNotEmpty,
+  );
   for (final roundId in gamesByRound.keys.toList(growable: false)) {
-    gamesByRound[roundId] = sortTournamentRoundGamesByBoard(
-      gamesByRound[roundId]!,
+    final roundGames = gamesByRound[roundId]!;
+    gamesByRound[roundId] = resolveTournamentRoundPresentationOrder(
+      stableOrder: stableOrder,
+      roundId: roundId,
+      games: roundGames,
+      isSearchMode: isSearchMode,
+      hasResolvedAutoPins: pinState.hasResolvedAutoPins,
+      isRefreshingAutoPins: pinState.isRefreshingAutoPins,
+      favoriteGameIds: favoritePriorityIds,
+      countrymanGameIds: countrymanPriorityIds,
     );
   }
 
@@ -421,6 +460,13 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   // Pairing-only rounds always come last, nearest future round first.
   final filteredRounds = [...playedRounds, ...upcomingPairingRounds];
   final hasGroupedGames = gamesByRound.values.any((games) => games.isNotEmpty);
+  final isPrioritySnapshotLoading = shouldKeepPrioritySnapshotLoading(
+    isSearchMode: isSearchMode,
+    hadGroupedGamesBeforeOrdering: hadGroupedGamesBeforeOrdering,
+    hasGroupedGamesAfterOrdering: hasGroupedGames,
+    hasResolvedAutoPins: pinState.hasResolvedAutoPins,
+    isRefreshingAutoPins: pinState.isRefreshingAutoPins,
+  );
 
   return GroupedGamesData(
     filteredRounds: filteredRounds,
@@ -428,10 +474,12 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     matchFormatHeader: matchFormatHeader,
     isKnockoutTournament: isKnockoutTournament,
     isMultiStageKnockout: isMultiStageKnockout,
-    isLoading: shouldKeepGroupedGamesLoading(
-      representedSiblingIsLoading: representedSiblingIsLoading,
-      hasGroupedGames: hasGroupedGames,
-    ),
+    isLoading:
+        isPrioritySnapshotLoading ||
+        shouldKeepGroupedGamesLoading(
+          representedSiblingIsLoading: representedSiblingIsLoading,
+          hasGroupedGames: hasGroupedGames,
+        ),
     rounds: rounds,
     allGames: allGamesScreenModel,
     providerGameCount: providerGameCount,
@@ -481,28 +529,23 @@ bool shouldKeepGroupedGamesLoading({
 }) => representedSiblingIsLoading && !hasGroupedGames;
 
 @visibleForTesting
+bool shouldKeepPrioritySnapshotLoading({
+  required bool isSearchMode,
+  required bool hadGroupedGamesBeforeOrdering,
+  required bool hasGroupedGamesAfterOrdering,
+  required bool hasResolvedAutoPins,
+  required bool isRefreshingAutoPins,
+}) {
+  if (isSearchMode || !hadGroupedGamesBeforeOrdering) return false;
+  if (!hasResolvedAutoPins) return true;
+  return isRefreshingAutoPins && !hasGroupedGamesAfterOrdering;
+}
+
+@visibleForTesting
 List<GamesTourModel> sortTournamentRoundGamesByBoard(
   Iterable<GamesTourModel> games,
 ) {
-  final sorted = games.toList(growable: false);
-  sorted.sort((a, b) {
-    final aBoard = a.boardNr;
-    final bBoard = b.boardNr;
-    if (aBoard != null && bBoard != null) {
-      final boardOrder = aBoard.compareTo(bBoard);
-      if (boardOrder != 0) return boardOrder;
-    } else if (aBoard != null) {
-      return -1;
-    } else if (bBoard != null) {
-      return 1;
-    }
-
-    // Duplicate/missing board numbers occur in malformed or still-hydrating
-    // feeds. A stable identity fallback prevents cards from shuffling as
-    // realtime updates rebuild otherwise-equal model instances.
-    return a.gameId.compareTo(b.gameId);
-  });
-  return sorted;
+  return sortTournamentRoundGamesByPriority(games: games);
 }
 
 bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {

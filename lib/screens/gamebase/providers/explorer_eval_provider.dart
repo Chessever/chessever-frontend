@@ -37,6 +37,117 @@ class ExplorerPvLine {
   }
 }
 
+/// FEN identity used by engine results and PV previews. Move counters do not
+/// affect legality, while placement, turn, castling and en-passant rights do.
+String explorerFenPositionKey(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  if (parts.length < 4) return fen.trim();
+  return parts.take(4).join(' ');
+}
+
+/// Immutable, non-committing snapshot of one engine principal variation.
+///
+/// [positions] always contains the base position followed by one position per
+/// move. The selected [moveIndex] is relative to [line], so its board position
+/// lives at `positions[moveIndex + 1]`.
+@immutable
+class ExplorerPvPreview {
+  const ExplorerPvPreview({
+    required this.baseFen,
+    required this.line,
+    required this.variantIndex,
+    required this.moves,
+    required this.positions,
+    required this.moveIndex,
+  });
+
+  final String baseFen;
+  final ExplorerPvLine line;
+  final int variantIndex;
+  final List<Move> moves;
+  final List<Position> positions;
+  final int moveIndex;
+
+  String get currentFen => positions[moveIndex + 1].fen;
+  Move get currentMove => moves[moveIndex];
+  bool get canMoveForward => moveIndex < moves.length - 1;
+  bool get canMoveBackward => moveIndex > 0;
+
+  ExplorerPvPreview navigateTo(int targetMoveIndex) {
+    final nextIndex = targetMoveIndex.clamp(0, moves.length - 1);
+    if (nextIndex == moveIndex) return this;
+    return ExplorerPvPreview(
+      baseFen: baseFen,
+      line: line,
+      variantIndex: variantIndex,
+      moves: moves,
+      positions: positions,
+      moveIndex: nextIndex,
+    );
+  }
+
+  /// Parses and precomputes a legal prefix of [line]. An invalid first move
+  /// rejects the preview; a stale/invalid tail is truncated so navigation can
+  /// never land on a position that was not actually derived from [baseFen].
+  static ExplorerPvPreview? tryCreate({
+    required String baseFen,
+    required ExplorerPvLine line,
+    required int variantIndex,
+    required int targetMoveIndex,
+  }) {
+    if (line.uciMoves.isEmpty) return null;
+
+    try {
+      var position = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(baseFen),
+      );
+      final moves = <Move>[];
+      final positions = <Position>[position];
+      final sanMoves = <String>[];
+      final uciMoves = <String>[];
+
+      for (final rawUci in line.uciMoves) {
+        final uci = rawUci.trim().toLowerCase();
+        final NormalMove move;
+        try {
+          move = NormalMove.fromUci(uci);
+        } catch (_) {
+          break;
+        }
+        if (!position.isLegal(move)) break;
+
+        final (nextPosition, san) = position.makeSan(move);
+        moves.add(move);
+        positions.add(nextPosition);
+        sanMoves.add(san);
+        uciMoves.add(uci);
+        position = nextPosition;
+      }
+
+      if (moves.isEmpty) return null;
+      final lockedLine = ExplorerPvLine(
+        evaluation: line.evaluation,
+        mate: line.mate,
+        sanMoves: List<String>.unmodifiable(sanMoves),
+        uciMoves: List<String>.unmodifiable(uciMoves),
+      );
+      final selectedIndex = targetMoveIndex.clamp(0, moves.length - 1);
+
+      return ExplorerPvPreview(
+        baseFen: baseFen,
+        line: lockedLine,
+        variantIndex: variantIndex,
+        moves: List<Move>.unmodifiable(moves),
+        positions: List<Position>.unmodifiable(positions),
+        moveIndex: selectedIndex,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class ExplorerEvalState {
   final double? evaluation;
   final int? mate;
@@ -44,6 +155,7 @@ class ExplorerEvalState {
   final bool isEvaluating;
   final String fen;
   final List<ExplorerPvLine> pvLines;
+  final ExplorerPvPreview? pvPreview;
 
   const ExplorerEvalState({
     this.evaluation,
@@ -52,6 +164,7 @@ class ExplorerEvalState {
     this.isEvaluating = false,
     this.fen = '',
     this.pvLines = const [],
+    this.pvPreview,
   });
 
   ExplorerEvalState copyWith({
@@ -61,8 +174,10 @@ class ExplorerEvalState {
     bool? isEvaluating,
     String? fen,
     List<ExplorerPvLine>? pvLines,
+    ExplorerPvPreview? pvPreview,
     bool clearEval = false,
     bool clearMate = false,
+    bool clearPvPreview = false,
   }) {
     return ExplorerEvalState(
       evaluation: clearEval ? null : (evaluation ?? this.evaluation),
@@ -71,6 +186,7 @@ class ExplorerEvalState {
       isEvaluating: isEvaluating ?? this.isEvaluating,
       fen: fen ?? this.fen,
       pvLines: pvLines ?? this.pvLines,
+      pvPreview: clearPvPreview ? null : (pvPreview ?? this.pvPreview),
     );
   }
 }
@@ -104,14 +220,77 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   // ---------------------------------------------------------------
 
   String _positionKey(String fen) {
-    final parts = fen.trim().split(RegExp(r'\s+'));
-    if (parts.length < 4) return fen.trim();
-    return parts.take(4).join(' ');
+    return explorerFenPositionKey(fen);
   }
 
   // ---------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------
+
+  /// Locks [line] at the exact tapped move without changing the Opening
+  /// Explorer game tree. Engine callbacks are invalidated and the existing PV
+  /// result is retained so neither the line nor its rank color can shift while
+  /// the user traverses it.
+  bool previewPrincipalVariationMoveAt(
+    ExplorerPvLine line,
+    int variantIndex,
+    int targetMoveIndex, {
+    required String baseFen,
+  }) {
+    if (_isDisposed || !_engineEnabled) return false;
+    if (_positionKey(baseFen) != _positionKey(state.fen)) return false;
+
+    final preview = ExplorerPvPreview.tryCreate(
+      baseFen: baseFen,
+      line: line,
+      variantIndex: variantIndex,
+      targetMoveIndex: targetMoveIndex,
+    );
+    if (preview == null) return false;
+
+    _generation++;
+    _cancelWatchdog();
+    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_ownerId));
+    state = state.copyWith(pvPreview: preview, isEvaluating: false);
+    return true;
+  }
+
+  void navigateToPreviewMove(int targetMoveIndex) {
+    final preview = state.pvPreview;
+    if (preview == null) return;
+    final next = preview.navigateTo(targetMoveIndex);
+    if (identical(next, preview)) return;
+    state = state.copyWith(pvPreview: next, isEvaluating: false);
+  }
+
+  void navigateLockedPvForward() {
+    final preview = state.pvPreview;
+    if (preview == null || !preview.canMoveForward) return;
+    navigateToPreviewMove(preview.moveIndex + 1);
+  }
+
+  void navigateLockedPvBackward() {
+    final preview = state.pvPreview;
+    if (preview == null || !preview.canMoveBackward) return;
+    navigateToPreviewMove(preview.moveIndex - 1);
+  }
+
+  /// Restores the engine's base position. The Explorer's own FEN and move
+  /// pointer were never mutated, so clearing the lock is an exact restore.
+  void clearPvPreview({bool resumeEvaluation = true}) {
+    final preview = state.pvPreview;
+    if (preview == null) return;
+
+    state = state.copyWith(
+      clearPvPreview: true,
+      isEvaluating: resumeEvaluation && _engineEnabled,
+    );
+    if (resumeEvaluation && _engineEnabled) {
+      unawaited(
+        _evaluatePosition(preview.baseFen, force: true, restartExisting: true),
+      );
+    }
+  }
 
   void setEngineEnabled({
     required bool enabled,
@@ -134,6 +313,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     final fen = state.fen.trim();
     if (_isDisposed ||
         !_engineEnabled ||
+        state.pvPreview != null ||
         fen.isEmpty ||
         fen.split(' ').length < 4) {
       return;
@@ -144,7 +324,15 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     evaluatePosition(fen, force: true);
   }
 
-  Future<void> evaluatePosition(String fen, {bool force = false}) async {
+  Future<void> evaluatePosition(String fen, {bool force = false}) {
+    return _evaluatePosition(fen, force: force);
+  }
+
+  Future<void> _evaluatePosition(
+    String fen, {
+    bool force = false,
+    bool restartExisting = false,
+  }) async {
     final normalizedFen = fen.trim();
     if (_isDisposed ||
         !_engineEnabled ||
@@ -154,6 +342,17 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     }
 
     final normalizedKey = _positionKey(normalizedFen);
+    final activePreview = state.pvPreview;
+    if (activePreview != null) {
+      if (_positionKey(activePreview.baseFen) == normalizedKey) {
+        return;
+      }
+      // A real Explorer navigation occurred while previewing. Drop the lock
+      // and evaluate the new authoritative position rather than restoring the
+      // old preview base.
+      state = state.copyWith(clearPvPreview: true, isEvaluating: false);
+    }
+
     final stateKey = _positionKey(state.fen);
     final isSamePosition = stateKey == normalizedKey;
 
@@ -163,7 +362,12 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     }
 
     // Skip if forced but we already have meaningful results for this FEN.
-    if (force && isSamePosition && state.pvLines.isNotEmpty) return;
+    if (force &&
+        !restartExisting &&
+        isSamePosition &&
+        state.pvLines.isNotEmpty) {
+      return;
+    }
 
     // Bump generation so any in-flight callbacks from the previous
     // evaluation see a stale generation and are silently dropped.
@@ -192,6 +396,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       clearEval: !isSamePosition,
       clearMate: !isSamePosition,
       pvLines: isSamePosition ? state.pvLines : const [],
+      clearPvPreview: true,
     );
 
     final settings =
@@ -550,6 +755,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       pvLines: const [],
       clearEval: true,
       clearMate: true,
+      clearPvPreview: true,
     );
   }
 
