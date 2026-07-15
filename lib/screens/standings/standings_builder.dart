@@ -12,6 +12,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// and the smart event per-event standings sections. Extracted from
 /// [PlayerTourScreenNotifier] so both surfaces produce identical numbers.
 
+/// Uses the standings feed's played count when it is available. A zero value
+/// represents a missing/unavailable count in [TournamentPlayer], so only then
+/// do we fall back to the number of finished games found locally.
+int resolveStandingsPlayedCount({
+  required int sourcePlayed,
+  required int countedFinishedGames,
+}) => sourcePlayed > 0 ? sourcePlayed : countedFinishedGames;
+
 /// Signature over the parts of live games that can change standings. Watching
 /// `gamesTourProvider(tourId).select(standingsGamesSignature)` means move and
 /// clock ticks don't rebuild standings, but new games or result changes do.
@@ -200,8 +208,10 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
     //   surface it verbatim. Client-side calculation stays as the fallback
     //   for legacy/empty payloads only.
     final double finalScore = updatedPlayer.score ?? calculatedScore;
-    final int finalPlayed =
-        updatedPlayer.played > gamesPlayed ? updatedPlayer.played : gamesPlayed;
+    final int finalPlayed = resolveStandingsPlayedCount(
+      sourcePlayed: updatedPlayer.played,
+      countedFinishedGames: gamesPlayed,
+    );
     final int? finalRatingDiff =
         updatedPlayer.ratingDiff ??
         (hasCalculatedRatingDiff ? totalRatingDiff.round() : null);
