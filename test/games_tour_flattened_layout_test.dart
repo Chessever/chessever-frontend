@@ -163,8 +163,9 @@ void main() {
         layout.entries.whereType<GamesTourMatchHeaderEntry>(),
         hasLength(1),
       );
-      expect(layout.itemIndexForGameId('leg-1'), 2);
-      expect(layout.itemIndexForGameId('leg-2'), 3);
+      // Boards render latest-first inside the matchup: leg 2 above leg 1.
+      expect(layout.itemIndexForGameId('leg-2'), 2);
+      expect(layout.itemIndexForGameId('leg-1'), 3);
     });
 
     test('collapsed round and match shift the next header exactly', () {
@@ -310,9 +311,74 @@ void main() {
 
       expect(layout.itemIndexForGameId('live-1'), 2);
       expect(layout.itemIndexForGameId('live-2'), 2);
-      expect(layout.firstGameIdAt(2), 'live-1');
+      // Latest-first inside the matchup: game 2 leads the row.
+      expect(layout.firstGameIdAt(2), 'live-2');
       expect(layout.itemIndexForGameId('finished'), isNull);
       expect(layout.itemCount, 3);
+    });
+
+    test('live board floats above boards that finished after its last move', () {
+      final stage = _round('knockout-stage-semifinals', RoundStatus.live);
+      // Matchup-labeled feed (speed-championship shape): every game of the
+      // matchup shares one round slug, so slug order ties everywhere and only
+      // status plus actual play time can rank the boards. The live board must
+      // hold the top even while other boards finish after its last move.
+      final games = [
+        _game(
+          'finished-late',
+          slug: 'semifinals',
+          status: GameStatus.whiteWins,
+          lastMoveTime: DateTime.utc(2026, 7, 15, 20, 0),
+        ),
+        _game(
+          'live',
+          slug: 'semifinals',
+          lastMoveTime: DateTime.utc(2026, 7, 15, 19, 30),
+        ),
+        _game(
+          'finished-early',
+          slug: 'semifinals',
+          status: GameStatus.draw,
+          lastMoveTime: DateTime.utc(2026, 7, 15, 18, 0),
+        ),
+      ];
+
+      final layout = _layout(rounds: [stage], gamesByRound: {stage.id: games});
+
+      final boardOrder =
+          layout.entries
+              .whereType<GamesTourGameRowEntry>()
+              .map((entry) => entry.game1.gameId)
+              .toList();
+      expect(boardOrder, ['live', 'finished-late', 'finished-early']);
+    });
+
+    test('matchup with a live board outranks matchups that finished later', () {
+      final stage = _round('knockout-stage-semifinals', RoundStatus.live);
+      final games = [
+        _game(
+          'finished',
+          identityOffset: 0,
+          roundId: 'r-finished',
+          status: GameStatus.blackWins,
+          lastMoveTime: DateTime.utc(2026, 7, 15, 20, 0),
+        ),
+        _game(
+          'live',
+          identityOffset: 100,
+          roundId: 'r-live',
+          lastMoveTime: DateTime.utc(2026, 7, 15, 19, 30),
+        ),
+      ];
+
+      final layout = _layout(rounds: [stage], gamesByRound: {stage.id: games});
+
+      final matchupOrder =
+          layout.entries
+              .whereType<GamesTourGameRowEntry>()
+              .map((entry) => entry.game1.gameId)
+              .toList();
+      expect(matchupOrder, ['live', 'finished']);
     });
   });
 

@@ -144,14 +144,26 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
               roundStartTimesById,
             )
             : const <String, List<GamesTourModel>>{};
+    // Boards inside a matchup render latest-first (live on top). The
+    // chronological grouping in `matches` is kept for the match headers,
+    // whose player naming and score orientation key off game 1.
+    final displayMatches =
+        isKnockoutRound
+            ? <String, List<GamesTourModel>>{
+              for (final entry in matches.entries)
+                entry.key: KnockoutMatchDetector.orderMatchGamesLatestFirst(
+                  entry.value,
+                ),
+            }
+            : const <String, List<GamesTourModel>>{};
     if (isKnockoutRound) {
-      matchGroupsByRound[round.id] = matches;
+      matchGroupsByRound[round.id] = displayMatches;
     }
 
     final orderedRoundGames =
         isKnockoutRound
             ? <GamesTourModel>[
-              for (final matchGames in matches.values) ...matchGames,
+              for (final matchGames in displayMatches.values) ...matchGames,
             ]
             : roundGames;
     final roundStartIndex = orderedGames.length;
@@ -185,14 +197,15 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
     var matchOffset = 0;
     for (final matchEntry in matches.entries) {
       final matchKey = matchEntry.key;
-      final matchGames = matchEntry.value;
+      final chronologicalGames = matchEntry.value;
+      final matchGames = displayMatches[matchKey]!;
       entries.add(
         GamesTourMatchHeaderEntry(
           roundId: round.id,
           matchHeader: KnockoutMatchDetector.createMatchHeader(
             matchKey,
-            matchGames,
-            playedAt: matchupRecency(matchGames, roundStartTimesById),
+            chronologicalGames,
+            playedAt: matchupRecency(chronologicalGames, roundStartTimesById),
           ),
         ),
       );
@@ -240,8 +253,11 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
 
 /// Orders the collapsed matchups of a knockout stage so the most recently
 /// played matchup card sits on top (descending datetime), matching how a live
-/// bracket reads. Each matchup's recency is the LATEST of every signal we
-/// hold, because no single one survives all ingestion shapes:
+/// bracket reads. Matchups with a board still being played outrank everything:
+/// in a fast bracket some board finishes every few minutes, and a matchup
+/// whose player is mid-think must not keep sinking below just-finished
+/// matchups. Below the live tier, each matchup's recency is the LATEST of
+/// every signal we hold, because no single one survives all ingestion shapes:
 ///
 /// - source round `starts_at` — the only time-precise signal on bulk-imported
 ///   finished rounds (their `lastMoveTime` is null and play dates are
@@ -262,8 +278,17 @@ Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
 ) {
   if (matches.length <= 1) return matches;
 
+  final hasLiveBoardByKey = <String, bool>{
+    for (final entry in matches.entries)
+      entry.key: entry.value.any(
+        (game) => !game.effectiveGameStatus.isFinished,
+      ),
+  };
   final entries =
       matches.entries.toList()..sort((a, b) {
+        final aLive = hasLiveBoardByKey[a.key]!;
+        final bLive = hasLiveBoardByKey[b.key]!;
+        if (aLive != bLive) return aLive ? -1 : 1;
         final aDate = matchupRecency(a.value, roundStartTimesById);
         final bDate = matchupRecency(b.value, roundStartTimesById);
         if (aDate == null && bDate == null) return a.key.compareTo(b.key);

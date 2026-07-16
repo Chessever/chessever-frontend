@@ -141,6 +141,49 @@ class KnockoutMatchDetector {
     return matches;
   }
 
+  /// Display order for one matchup's boards: boards still being played
+  /// first, then latest-played first. Board numbers do not exist in a
+  /// knockout — the same two players meet again and again — and on
+  /// matchup-labeled feeds every game shares one round slug, so the
+  /// chronological slug sort ties everywhere and Dart's unstable sort
+  /// strands the live board among finished ones. Live boards outrank
+  /// everything (a long think must not let a just-finished board leapfrog
+  /// the game in progress); finished boards follow by actual play time,
+  /// with the chronological slug order reversed as the undated fallback and
+  /// gameId keeping the order total.
+  static List<GamesTourModel> orderMatchGamesLatestFirst(
+    List<GamesTourModel> games,
+  ) {
+    if (games.length < 2) return games;
+    // effectiveGameStatus parses the FEN for clock-flagged boards; resolve it
+    // once per game instead of once per comparison.
+    final sortKeyByGameId = <String, ({bool isLive, DateTime? playedAt})>{
+      for (final game in games)
+        game.gameId: (
+          isLive: !game.effectiveGameStatus.isFinished,
+          playedAt: game.lastMoveTime ?? game.bucketDate,
+        ),
+    };
+    return games.toList()..sort((a, b) {
+      final aKey = sortKeyByGameId[a.gameId]!;
+      final bKey = sortKeyByGameId[b.gameId]!;
+      if (aKey.isLive != bKey.isLive) return aKey.isLive ? -1 : 1;
+      final aPlayedAt = aKey.playedAt;
+      final bPlayedAt = bKey.playedAt;
+      if (aPlayedAt != null && bPlayedAt != null) {
+        final byPlayedAt = bPlayedAt.compareTo(aPlayedAt);
+        if (byPlayedAt != 0) return byPlayedAt;
+      } else if (aPlayedAt != null) {
+        return -1;
+      } else if (bPlayedAt != null) {
+        return 1;
+      }
+      final bySlug = _compareRoundSlugs(b.roundSlug, a.roundSlug);
+      if (bySlug != 0) return bySlug;
+      return a.gameId.compareTo(b.gameId);
+    });
+  }
+
   /// Extracts the tournament round name from tour name
   /// Examples:
   /// - "FIDE World Cup 2025 | Quarterfinals" → "Quarterfinals"
