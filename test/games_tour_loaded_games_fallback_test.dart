@@ -15,9 +15,10 @@ void main() {
     expect(resolution.rounds.map((round) => round.id), ['round-1']);
   });
 
-  test('canonical round metadata replaces game-derived fallback', () {
+  test('game evidence fills a missing canonical round start while live', () {
+    final detectedMoveTime = DateTime.utc(2026, 7, 16, 20, 29);
     const canonicalRound = GamesAppBarModel(
-      id: 'canonical-round',
+      id: 'round-1',
       name: 'Round One',
       startsAt: null,
       roundStatus: RoundStatus.live,
@@ -27,15 +28,42 @@ void main() {
       gamesAppBar: const AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: <GamesAppBarModel>[canonicalRound],
-          selectedId: 'canonical-round',
+          selectedId: 'round-1',
           userSelectedId: false,
         ),
       ),
-      rawGames: <Games>[_rawGame()],
+      rawGames: <Games>[_rawGame(lastMoveTime: detectedMoveTime)],
     );
 
     expect(resolution.isLoading, isFalse);
-    expect(resolution.rounds.single, same(canonicalRound));
+    expect(resolution.rounds.single.id, canonicalRound.id);
+    expect(resolution.rounds.single.name, canonicalRound.name);
+    expect(resolution.rounds.single.roundStatus, canonicalRound.roundStatus);
+    expect(resolution.rounds.single.startsAt, detectedMoveTime);
+  });
+
+  test('canonical round start remains authoritative over game evidence', () {
+    final canonicalStart = DateTime.utc(2026, 7, 16, 20, 27);
+    final detectedMoveTime = DateTime.utc(2026, 7, 16, 20, 29);
+    final canonicalRound = GamesAppBarModel(
+      id: 'round-1',
+      name: 'Round One',
+      startsAt: canonicalStart,
+      roundStatus: RoundStatus.live,
+    );
+
+    final resolution = resolveGamesTourRounds(
+      gamesAppBar: AsyncValue.data(
+        GamesAppBarViewModel(
+          gamesAppBarModels: <GamesAppBarModel>[canonicalRound],
+          selectedId: 'round-1',
+          userSelectedId: false,
+        ),
+      ),
+      rawGames: <Games>[_rawGame(lastMoveTime: detectedMoveTime)],
+    );
+
+    expect(resolution.rounds.single.startsAt, canonicalStart);
   });
 
   test('keeps initial shimmer when neither games nor rounds have loaded', () {
@@ -58,7 +86,7 @@ void main() {
   });
 }
 
-Games _rawGame({String roundSlug = 'Round 1'}) {
+Games _rawGame({String roundSlug = 'Round 1', DateTime? lastMoveTime}) {
   return Games(
     id: 'game-1',
     roundId: 'round-1',
@@ -67,6 +95,7 @@ Games _rawGame({String roundSlug = 'Round 1'}) {
     tourSlug: 'loaded-tour',
     status: '*',
     lastMove: 'e2e4',
+    lastMoveTime: lastMoveTime,
     fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2',
     players: <Player>[
       Player(

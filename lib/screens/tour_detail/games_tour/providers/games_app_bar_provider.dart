@@ -32,16 +32,37 @@ const int kPublishedRoundMissingSnapshotTolerance = 5;
 final userSelectedRoundProvider =
     StateProvider<({String id, bool userSelected})?>((ref) => null);
 
+/// Testable projections for the two upstream snapshots that own Games-tab
+/// round cards. Keeping these seams public also prevents this provider from
+/// reaching around its selected tour when the screen republishes state.
+final gamesAppBarTourIdProvider = Provider.autoDispose<String?>((ref) {
+  return ref.watch(
+    tourDetailScreenProvider.select(
+      (tourAsync) => tourAsync.valueOrNull?.aboutTourModel.id,
+    ),
+  );
+});
+
+final gamesAppBarGamesProvider = Provider.autoDispose
+    .family<AsyncValue<List<Games>>, String>((ref, tourId) {
+      return ref.watch(gamesTourProvider(tourId));
+    });
+
+/// Emits the changed round id for the selected tour. The repository also emits
+/// once when the channel is ready, closing the initial HTTP/Realtime race.
+final roundMetadataChangesProvider = StreamProvider.autoDispose
+    .family<String, String>((ref, tourId) {
+      return ref
+          .watch(roundRepositoryProvider)
+          .watchRoundMetadataChanges(tourId);
+    });
+
 /// Auto-disposed optimized provider
 final gamesAppBarProvider = StateNotifierProvider.autoDispose<
   _GamesAppBarNotifier,
   AsyncValue<GamesAppBarViewModel>
 >((ref) {
-  final tourId = ref.watch(
-    tourDetailScreenProvider.select(
-      (tourAsync) => tourAsync.valueOrNull?.aboutTourModel.id,
-    ),
-  );
+  final tourId = ref.watch(gamesAppBarTourIdProvider);
 
   return _GamesAppBarNotifier(ref: ref, tourId: tourId);
 });
@@ -70,7 +91,7 @@ class _GamesAppBarNotifier
     );
 
     if (tourId != null) {
-      ref.listen<AsyncValue<List<Games>>>(gamesTourProvider(tourId!), (
+      ref.listen<AsyncValue<List<Games>>>(gamesAppBarGamesProvider(tourId!), (
         previous,
         next,
       ) {
@@ -86,6 +107,14 @@ class _GamesAppBarNotifier
           return;
         }
         _refreshSelectionAfterGamesChange(games);
+      });
+
+      ref.listen<AsyncValue<String>>(roundMetadataChangesProvider(tourId!), (
+        previous,
+        next,
+      ) {
+        if (next.valueOrNull == null) return;
+        _scheduleRoundMetadataReload();
       });
 
       ref.listen<KnockoutTournamentState>(
@@ -119,10 +148,30 @@ class _GamesAppBarNotifier
   final Map<String, int> _roundMissingSnapshotCounts = <String, int>{};
   String? _lastRoundCountSignature;
   bool _selectionRefreshScheduled = false;
+  bool _roundMetadataReloadInFlight = false;
+  bool _roundMetadataReloadPending = false;
   final Set<String> _checkedUnknownLiveRoundIds = <String>{};
   Timer? _unknownGameRoundsRetryTimer;
   Set<String> _pendingUnknownGameRoundIds = const <String>{};
   int _unknownGameRoundsRetryGeneration = 0;
+
+  void _scheduleRoundMetadataReload() {
+    _roundMetadataReloadPending = true;
+    if (_roundMetadataReloadInFlight) return;
+    unawaited(_drainRoundMetadataReloads());
+  }
+
+  Future<void> _drainRoundMetadataReloads() async {
+    _roundMetadataReloadInFlight = true;
+    try {
+      while (mounted && _roundMetadataReloadPending) {
+        _roundMetadataReloadPending = false;
+        await _load(showLoading: false, scrollSelection: false);
+      }
+    } finally {
+      _roundMetadataReloadInFlight = false;
+    }
+  }
 
   Future<void> _maybeReloadForUnknownLiveRounds(
     List<String> liveRoundIds,
@@ -438,19 +487,22 @@ class _GamesAppBarNotifier
     bool showLoading = true,
     bool scrollSelection = false,
   }) async {
+    final visibleState = state.valueOrNull;
     if (tourId == null) {
-      if (showLoading) {
+      if (showLoading && visibleState == null) {
         state = const AsyncValue.loading();
       }
       return;
     }
 
-    if (showLoading) {
+    // Reloads must never hide an already-published round snapshot. This also
+    // keeps pull-to-refresh from replacing valid cards with a loading frame.
+    if (showLoading && visibleState == null) {
       state = const AsyncValue.loading();
     }
     try {
       if (isVirtualGamebaseId(tourId!)) {
-        final gamesAsync = ref.read(gamesTourProvider(tourId!));
+        final gamesAsync = ref.read(gamesAppBarGamesProvider(tourId!));
         final games = gamesAsync.valueOrNull;
         if (gamesAsync.isLoading || games == null) {
           if (showLoading) state = const AsyncValue.loading();
@@ -502,11 +554,16 @@ class _GamesAppBarNotifier
         models,
         sourceRounds: rounds,
       );
-      final processedModels = mergePublishedRoundModels(
+      var processedModels = mergePublishedRoundModels(
         previous: _knownRoundModels,
         incoming: incomingModels,
         liveRoundIds: _liveRounds,
         missingSnapshotCounts: _roundMissingSnapshotCounts,
+      );
+      processedModels = fillMissingRoundStartsFromGames(
+        processedModels,
+        ref.read(gamesAppBarGamesProvider(tourId!)).valueOrNull ??
+            const <Games>[],
       );
 
       final previouslyRepresentedIds = <String>{
@@ -536,7 +593,14 @@ class _GamesAppBarNotifier
         scrollSelection: scrollSelection,
       );
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      if (visibleState == null) {
+        state = AsyncValue.error(e, st);
+      } else {
+        debugPrint(
+          'GamesAppBarNotifier: Keeping visible round metadata after '
+          'refresh error: $e',
+        );
+      }
     }
   }
 
@@ -924,7 +988,9 @@ class _GamesAppBarNotifier
     } else {
       // Regular tournaments - count by actual round ID
       final rawGames =
-          tourId == null ? null : ref.read(gamesTourProvider(tourId!)).value;
+          tourId == null
+              ? null
+              : ref.read(gamesAppBarGamesProvider(tourId!)).value;
       if (rawGames != null) {
         final counts = <String, int>{};
         for (final game in rawGames) {
@@ -986,7 +1052,7 @@ class _GamesAppBarNotifier
     final rawGames =
         tourId == null
             ? null
-            : ref.read(gamesTourProvider(tourId!)).valueOrNull;
+            : ref.read(gamesAppBarGamesProvider(tourId!)).valueOrNull;
     if (rawGames != null) {
       return <String, bool>{
         for (final model in loadedModels)
@@ -1112,7 +1178,10 @@ class _GamesAppBarNotifier
       }
 
       if (current == null) return;
-      final reordered = List<GamesAppBarModel>.from(current.gamesAppBarModels);
+      final reordered = fillMissingRoundStartsFromGames(
+        current.gamesAppBarModels,
+        games,
+      );
       _sortRounds(reordered);
       final sticky = ref.read(userSelectedRoundProvider);
       final stickyId = sticky?.id;
@@ -1907,10 +1976,42 @@ List<GamesAppBarModel> buildGameDerivedRoundModels(List<Games> games) {
   }).toList();
 }
 
+/// Adds direct game-activity evidence only where canonical round metadata has
+/// no start time yet. This keeps every Games-tab consumer (headers and both
+/// dropdown variants) consistent while a newly-live round row is hydrating.
+/// A later canonical timestamp always wins because non-null values are kept.
+List<GamesAppBarModel> fillMissingRoundStartsFromGames(
+  Iterable<GamesAppBarModel> rounds,
+  List<Games> games,
+) {
+  final roundModels = rounds.toList();
+  if (roundModels.isEmpty || games.isEmpty) return roundModels;
+
+  final gameRoundsById = {
+    for (final round in buildGameDerivedRoundModels(games)) round.id: round,
+  };
+  return roundModels.map((round) {
+    if (round.startsAt != null) return round;
+
+    GamesAppBarModel? evidence = gameRoundsById[round.id];
+    if (evidence == null) {
+      for (final sourceRoundId in round.sourceRoundIds) {
+        evidence = gameRoundsById[sourceRoundId];
+        if (evidence != null) break;
+      }
+    }
+    final gameStart = evidence?.startsAt;
+    return gameStart == null ? round : round.copyWith(startsAt: gameStart);
+  }).toList();
+}
+
 DateTime? _earliestGameDate(List<Games> games) {
   DateTime? earliest;
   for (final game in games) {
-    final date = game.gameDay ?? game.dateStart ?? game.lastMoveTime;
+    // A last-move timestamp is direct evidence that this round is underway.
+    // Pairing/dateStart metadata can be published before play, so it is only a
+    // final fallback when the canonical round start is unavailable.
+    final date = game.lastMoveTime ?? game.gameDay ?? game.dateStart;
     if (date == null) continue;
     if (earliest == null || date.isBefore(earliest)) {
       earliest = date;

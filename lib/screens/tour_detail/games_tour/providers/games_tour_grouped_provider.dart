@@ -501,15 +501,18 @@ GamesTourRoundResolution resolveGamesTourRounds({
 }) {
   final appBarRounds =
       gamesAppBar.valueOrNull?.gamesAppBarModels ?? const <GamesAppBarModel>[];
+  final gameDerivedRounds = buildGameDerivedRoundModels(rawGames);
   if (appBarRounds.isNotEmpty) {
-    return (rounds: appBarRounds, isLoading: false);
+    return (
+      rounds: fillMissingRoundStartsFromGames(appBarRounds, rawGames),
+      isLoading: false,
+    );
   }
 
   // Games and round metadata are fetched independently. A slow or stalled
   // round request must not cover boards that have already arrived with an
   // endless shimmer. The game rows carry enough round identity for a complete
   // temporary grouping; canonical metadata replaces it on the next rebuild.
-  final gameDerivedRounds = buildGameDerivedRoundModels(rawGames);
   if (gameDerivedRounds.isNotEmpty) {
     return (rounds: gameDerivedRounds, isLoading: false);
   }

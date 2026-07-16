@@ -1,14 +1,70 @@
 // repositories/round_repository.dart
+import 'dart:async';
+
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final roundRepositoryProvider = AutoDisposeProvider<RoundRepository>((ref) {
   return RoundRepository();
 });
 
 class RoundRepository extends BaseRepository {
+  /// Emits a round id whenever metadata for [tourId] changes.
+  ///
+  /// The empty-string emission marks a successful subscription. Consumers
+  /// should reconcile once at that point to close the small gap between their
+  /// initial HTTP snapshot and the Realtime channel becoming ready.
+  Stream<String> watchRoundMetadataChanges(String tourId) {
+    late final StreamController<String> controller;
+    late final RealtimeChannel channel;
+
+    controller = StreamController<String>(
+      onListen: () {
+        channel = supabase
+            .channel('round-metadata-$tourId-${identityHashCode(controller)}')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'rounds',
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'tour_id',
+                value: tourId,
+              ),
+              callback: (payload) {
+                final changedId =
+                    payload.newRecord['id']?.toString() ??
+                    payload.oldRecord['id']?.toString();
+                if (changedId != null && !controller.isClosed) {
+                  controller.add(changedId);
+                }
+              },
+            )
+            .subscribe((status, error) {
+              if (status == RealtimeSubscribeStatus.subscribed) {
+                if (!controller.isClosed) controller.add('');
+                return;
+              }
+              if (status == RealtimeSubscribeStatus.channelError ||
+                  status == RealtimeSubscribeStatus.timedOut) {
+                debugPrint(
+                  'RoundRepository: rounds Realtime subscription issue '
+                  'for $tourId: $status${error == null ? '' : ' ($error)'}',
+                );
+              }
+            });
+      },
+      onCancel: () async {
+        await supabase.removeChannel(channel);
+      },
+    );
+
+    return controller.stream;
+  }
+
   Future<Map<String, DateTime>> getLatestPlayedRoundTimesByTourIds(
     List<String> tourIds, {
     DateTime? now,

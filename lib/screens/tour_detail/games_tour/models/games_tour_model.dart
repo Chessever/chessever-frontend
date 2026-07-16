@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:dartchess/dartchess.dart';
 
@@ -308,15 +309,21 @@ class GamesTourModel {
         resolvedEco ??= parsed.eco;
         resolvedOpening ??= parsed.opening;
       }
+      final freshestFen = resolveFreshestGameFen(
+        fen: game.fen,
+        pgn: game.pgn,
+        lastMove: game.lastMove,
+      );
 
       return GamesTourModel(
         gameId: game.id,
         // Gamebase-only events (synthesized into the broadcast view) carry a
         // sentinel tourId; tag their games so the board re-fetches the full
         // PGN by gamebase UUID instead of hitting Supabase.
-        source: isVirtualGamebaseId(game.tourId)
-            ? GameSource.gamebase
-            : GameSource.supabase,
+        source:
+            isVirtualGamebaseId(game.tourId)
+                ? GameSource.gamebase
+                : GameSource.supabase,
         whitePlayer: PlayerCard.fromPlayer(white),
         blackPlayer: PlayerCard.fromPlayer(black),
         whiteTimeDisplay: whiteTimeDisplay,
@@ -330,7 +337,7 @@ class GamesTourModel {
         roundSlug: game.roundSlug, // Include roundSlug for display
         tourId: game.tourId, // Include tourId in model
         tourSlug: game.tourSlug, // Include tourSlug for display
-        fen: game.fen?.isNotEmpty == true ? game.fen : null,
+        fen: freshestFen,
         pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
         lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
         boardNr: game.boardNr,

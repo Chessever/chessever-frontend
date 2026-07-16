@@ -116,6 +116,54 @@ void main() {
   });
 
   group('GamesTourModel.fromGame', () {
+    test('uses a completed PGN position over a stale initial FEN', () {
+      const completedPgn = '''
+[Event "3+0 Thursday"]
+
+1. e4 e5 2. Nf3 Nc6 1-0
+''';
+      const initialFen =
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      const completedFen =
+          'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
+
+      final game = Games(
+        id: 'game-completed',
+        roundId: 'round-3',
+        roundSlug: 'round-3',
+        tourId: 'tour-1',
+        tourSlug: 'tour-1',
+        lastMove: 'b8c6',
+        status: '1-0',
+        fen: initialFen,
+        pgn: completedPgn,
+        players: [
+          Player(
+            name: 'White Player',
+            title: 'GM',
+            rating: 2700,
+            fideId: 1,
+            fed: 'NOR',
+            clock: 0,
+            team: '',
+          ),
+          Player(
+            name: 'Black Player',
+            title: 'GM',
+            rating: 2680,
+            fideId: 2,
+            fed: 'IND',
+            clock: 0,
+            team: '',
+          ),
+        ],
+      );
+
+      final model = GamesTourModel.fromGame(game);
+
+      expect(model.fen, completedFen);
+    });
+
     test('falls back to PGN clocks when live snapshots are absent', () {
       const pgn =
           '1. d4 { [%clk 0:03:00] } 1... c5 { [%clk 0:03:00] } '

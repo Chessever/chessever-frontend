@@ -51,6 +51,17 @@ bool _usesLiveEventData(TournamentDetailScreenMode mode) =>
     mode == TournamentDetailScreenMode.games ||
     mode == TournamentDetailScreenMode.bracket;
 
+@visibleForTesting
+List<Games> retainGamesAcrossTransientEmptyRefresh(
+  List<Games> currentGames,
+  List<Games> incomingGames,
+) {
+  if (currentGames.isNotEmpty && incomingGames.isEmpty) {
+    return currentGames;
+  }
+  return incomingGames;
+}
+
 final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
   GamesTourNotifier,
   AsyncValue<List<Games>>,
@@ -118,6 +129,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   int _refreshGeneration = 0;
 
   Future<void> _loadInitialGames() async {
+    final visibleGames = state.valueOrNull ?? const <Games>[];
     try {
       // Gamebase-only event (sentinel tour id): build games from the cached
       // gamebase event view; these are finished games with no live feed, so
@@ -150,7 +162,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       final games = await gamesLocalStorageProvider.fetchAndSaveGames(tourId);
 
       if (mounted) {
-        state = AsyncValue.data(games);
+        state = AsyncValue.data(
+          retainGamesAcrossTransientEmptyRefresh(visibleGames, games),
+        );
 
         // Only start periodic refresh if streaming is enabled
         if (_shouldRunSafetyNet) {
@@ -159,7 +173,16 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
     } catch (error, stackTrace) {
       if (mounted) {
-        state = AsyncValue.error(error, stackTrace);
+        // A manual or automatic refresh must not blank already-visible boards
+        // because one request failed. Initial-load errors still surface.
+        if (visibleGames.isEmpty) {
+          state = AsyncValue.error(error, stackTrace);
+        } else {
+          debugPrint(
+            '🔥 GamesTourNotifier: Keeping visible games after refresh error: '
+            '$error',
+          );
+        }
       }
     }
   }
@@ -295,7 +318,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       if (hasChanges && _isRefreshActive(generation)) {
         state = AsyncValue.data(mergedGames);
       }
-    } catch (error, _) {
+    } catch (error) {
       // Suppress noise from races where the notifier is disposed mid-await.
       if (!mounted) return;
       debugPrint('🔥 GamesTourNotifier: Error checking for new games: $error');
@@ -329,7 +352,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           );
         })
         .toList(growable: false);
-    state = AsyncValue.data(mergedGames);
+    state = AsyncValue.data(
+      retainGamesAcrossTransientEmptyRefresh(currentGames, mergedGames),
+    );
   }
 
   bool _hasSafetyNetChange(Games current, TourGameSafetyNetSnapshot fresh) {
