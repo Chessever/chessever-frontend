@@ -244,6 +244,20 @@ void main() {
 
       // Descending datetime: latest day first, same-day tie broken by time.
       expect(matchupOrder, ['polina', 'hou', 'vaishali', 'ju']);
+
+      // Every matchup card carries the exact datetime the sort used, so the
+      // rendered order is verifiable at a glance.
+      final playedAts =
+          layout.entries
+              .whereType<GamesTourMatchHeaderEntry>()
+              .map((entry) => entry.matchHeader.playedAt)
+              .toList();
+      expect(playedAts, [
+        DateTime.utc(2026, 7, 13, 14, 30),
+        DateTime.utc(2026, 7, 13, 12, 0),
+        DateTime.utc(2026, 7, 6, 16, 30),
+        DateTime.utc(2026, 7, 6, 14, 0),
+      ]);
     });
 
     test('actual play time outranks a stale scheduled start', () {

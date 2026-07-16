@@ -206,8 +206,9 @@ class KnockoutMatchDetector {
   /// Creates a match header model for displaying match information
   static MatchHeaderModel createMatchHeader(
     String matchKey,
-    List<GamesTourModel> matchGames,
-  ) {
+    List<GamesTourModel> matchGames, {
+    DateTime? playedAt,
+  }) {
     if (matchGames.isEmpty) {
       throw ArgumentError('Match must have at least one game');
     }
@@ -231,6 +232,7 @@ class KnockoutMatchDetector {
       games: matchGames,
       roundName: roundName,
       isComplete: _isMatchComplete(matchGames),
+      playedAt: playedAt,
     );
   }
 
@@ -530,6 +532,11 @@ class MatchHeaderModel {
   final String roundName;
   final bool isComplete;
 
+  /// When this matchup was (or is scheduled to be) played — the same recency
+  /// signal the collapsed-stage ordering sorts by, surfaced so the card makes
+  /// the latest-first order verifiable at a glance.
+  final DateTime? playedAt;
+
   const MatchHeaderModel({
     required this.matchKey,
     required this.player1,
@@ -539,6 +546,7 @@ class MatchHeaderModel {
     required this.games,
     required this.roundName,
     required this.isComplete,
+    this.playedAt,
   });
 
   String get matchTitle => '$player1 vs $player2';

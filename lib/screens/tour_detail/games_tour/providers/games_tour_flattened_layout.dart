@@ -192,6 +192,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
           matchHeader: KnockoutMatchDetector.createMatchHeader(
             matchKey,
             matchGames,
+            playedAt: matchupRecency(matchGames, roundStartTimesById),
           ),
         ),
       );
@@ -261,26 +262,10 @@ Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
 ) {
   if (matches.length <= 1) return matches;
 
-  DateTime? recency(List<GamesTourModel> games) {
-    DateTime? latest;
-    void consider(DateTime? candidate) {
-      if (candidate == null) return;
-      final current = latest;
-      if (current == null || candidate.isAfter(current)) latest = candidate;
-    }
-
-    for (final game in games) {
-      consider(roundStartTimesById[game.roundId]);
-      consider(game.lastMoveTime);
-      consider(game.bucketDate);
-    }
-    return latest;
-  }
-
   final entries =
       matches.entries.toList()..sort((a, b) {
-        final aDate = recency(a.value);
-        final bDate = recency(b.value);
+        final aDate = matchupRecency(a.value, roundStartTimesById);
+        final bDate = matchupRecency(b.value, roundStartTimesById);
         if (aDate == null && bDate == null) return a.key.compareTo(b.key);
         if (aDate == null) return 1;
         if (bDate == null) return -1;
@@ -291,6 +276,30 @@ Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
   return <String, List<GamesTourModel>>{
     for (final entry in entries) entry.key: entry.value,
   };
+}
+
+/// The single recency signal for one matchup: the latest of the source round
+/// `starts_at`, actual per-game `lastMoveTime`, and date-granular
+/// [GamesTourModel.bucketDate]. Both the collapsed-stage sort and the
+/// matchup card's played-at label read from here so what the card shows is
+/// exactly what the ordering used.
+DateTime? matchupRecency(
+  List<GamesTourModel> games,
+  Map<String, DateTime?> roundStartTimesById,
+) {
+  DateTime? latest;
+  void consider(DateTime? candidate) {
+    if (candidate == null) return;
+    final current = latest;
+    if (current == null || candidate.isAfter(current)) latest = candidate;
+  }
+
+  for (final game in games) {
+    consider(roundStartTimesById[game.roundId]);
+    consider(game.lastMoveTime);
+    consider(game.bucketDate);
+  }
+  return latest;
 }
 
 void _appendGameRows({

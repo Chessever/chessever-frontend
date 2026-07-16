@@ -5,6 +5,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -163,6 +164,18 @@ class MatchHeader extends ConsumerWidget {
                         ),
                       ],
                     ),
+                    if (match.playedAt != null) ...[
+                      SizedBox(height: 6.h),
+                      Text(
+                        TimeUtils.formatRoundDateTime(match.playedAt),
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.45,
+                          ),
+                          fontSize: 10.sp,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
