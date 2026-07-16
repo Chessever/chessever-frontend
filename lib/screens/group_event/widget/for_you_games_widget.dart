@@ -347,6 +347,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
     return RefreshIndicator(
       onRefresh: () async {
+        // Saved smart cards resolve their membership server-side — refresh
+        // them together with the feed.
+        ref.invalidate(smartEventResolvedEventsProvider);
         await ref.read(forYouEventsProvider.notifier).refresh();
       },
       color: kPrimaryColor,
@@ -365,23 +368,18 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     List<FavoriteEvent> favoriteEvents,
   ) {
     final cards = <SmartEventCardData>[];
+    final seenCriteriaKeys = <String>{};
     for (final favorite in favoriteEvents) {
       if (!isSmartFavoriteEvent(favorite)) continue;
       final request = SmartEventRequest.fromFavoriteEvent(favorite);
-      if (request.events.isEmpty) continue;
-      final elos =
-          request.events
-              .map((event) => event.maxAvgElo)
-              .where((elo) => elo > 0)
-              .toList();
+      // One card per criteria — duplicate legacy rows collapse here (and get
+      // merged server-side by the snapshot refresher).
+      if (!seenCriteriaKeys.add(request.criteriaKey)) continue;
       cards.add(
         SmartEventCardData(
           request: request,
           eventCount: request.events.length,
-          avgElo:
-              elos.isEmpty
-                  ? 0
-                  : (elos.reduce((a, b) => a + b) / elos.length).round(),
+          avgElo: _eventsAvgElo(request.events),
         ),
       );
     }
@@ -391,6 +389,13 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       return bd.compareTo(ad);
     });
     return cards;
+  }
+
+  static int _eventsAvgElo(List<GroupEventCardModel> events) {
+    final elos =
+        events.map((event) => event.maxAvgElo).where((elo) => elo > 0).toList();
+    if (elos.isEmpty) return 0;
+    return (elos.reduce((a, b) => a + b) / elos.length).round();
   }
 
   Widget _buildLoadingState() {
@@ -529,27 +534,51 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   Widget _buildSmartEventCard(SmartEventCardData smartData) {
-    // Subtract tournaments the user hid from this smart event so the card
-    // count matches the About tab (and survives restarts via the same store).
-    final hidden = ref.watch(
-      smartEventDismissedEventIdsProvider(smartData.request.dismissScopeId),
+    // SERVER-FRESH face: count / Ø resolve from the criteria against the
+    // current broadcasts every build, so a saved smart event never shows the
+    // membership it happened to have at save time. The stored snapshot only
+    // covers the frames before the first resolution (and offline).
+    final resolvedAsync = ref.watch(
+      smartEventResolvedEventsProvider(smartData.request.criteria),
     );
-    final visibleCount =
-        smartData.request.events.where((e) => !hidden.contains(e.id)).length;
+    final resolvedEvents = resolvedAsync.valueOrNull;
+    final events = resolvedEvents ?? smartData.request.events;
+    final request =
+        resolvedEvents == null
+            ? smartData.request
+            : smartData.request.withEvents(resolvedEvents);
+
+    // Keep the saved row's server-side snapshot in step with what resolved
+    // (also migrates legacy v1 rows to the criteria-keyed v2 identity).
+    if (resolvedEvents != null) {
+      final savedFavorite = ref.watch(
+        smartEventSavedFavoriteProvider(smartData.request.criteriaKey),
+      );
+      if (savedFavorite != null) {
+        unawaited(
+          refreshSavedSmartEventSnapshot(
+            ref: ref,
+            favorite: savedFavorite,
+            resolvedEvents: resolvedEvents,
+          ),
+        );
+      }
+    }
+
     return SmartEventCard(
-      tierLabel: smartData.request.tierLabel,
-      minElo: smartData.request.minElo,
-      liveCount: visibleCount,
-      avgElo: smartData.avgElo,
-      titleSuffix: smartData.request.titleSuffix,
-      caption: smartData.request.caption,
-      countSingular: smartData.request.countSingular,
-      countPlural: smartData.request.countPlural,
-      accentColor: smartEventAccentColor(smartData.request.scopeId),
+      tierLabel: request.tierLabel,
+      minElo: request.minElo,
+      liveCount: events.length,
+      avgElo: _eventsAvgElo(events),
+      titleSuffix: request.titleSuffix,
+      caption: request.caption,
+      countSingular: request.countSingular,
+      countPlural: request.countPlural,
+      accentColor: smartEventAccentColor(request.scopeId),
       onTap:
           () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => SmartEventScreen(request: smartData.request),
+              builder: (_) => SmartEventScreen(request: request),
             ),
           ),
     );

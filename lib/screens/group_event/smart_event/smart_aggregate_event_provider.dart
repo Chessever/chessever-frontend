@@ -7,11 +7,15 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart'
+    show filterBroadcastsByPopupState, liveBroadcastIdsProvider;
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show RangeValues;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum SmartEventSource { forYou, current }
@@ -19,24 +23,6 @@ enum SmartEventSource { forYou, current }
 bool isSmartFavoriteEvent(FavoriteEvent favorite) {
   return favorite.metadata['type'] == 'smart_event' ||
       favorite.eventId.startsWith('smart_event:');
-}
-
-bool smartEventHasUnfinishedEvents(
-  SmartEventRequest request,
-  List<String> liveIds,
-) {
-  return request.events.any((event) {
-    return event.withLiveIds(liveIds).tourEventCategory !=
-        TourEventCategory.completed;
-  });
-}
-
-bool smartEventHasCurrentEvents(
-  SmartEventRequest request,
-  Set<String> currentEventIds,
-) {
-  if (request.events.isEmpty || currentEventIds.isEmpty) return false;
-  return request.events.any((event) => currentEventIds.contains(event.id));
 }
 
 @immutable
@@ -238,21 +224,45 @@ class SmartEventRequest {
 
   bool get hasEloRange => minElo > kFilterMinElo || maxElo < kFilterMaxElo;
 
-  String get scopeId =>
-      '${source.name}:$minElo-$maxElo:${stableEventIds.join('|')}';
+  /// The criteria this smart event is generated from, as a value object —
+  /// the key everything self-refreshing hangs off (server resolution,
+  /// saved-favorite identity, accent color). Deliberately excludes the
+  /// resolved event set and the source tab: a smart event IS its criteria;
+  /// the events matching them are recomputed from the server at view time.
+  SmartEventCriteria get criteria =>
+      SmartEventCriteria(
+        minElo: minElo,
+        maxElo: maxElo,
+        formatsAndStates: formatsAndStates,
+      );
 
-  /// Tier-independent scope: hiding a tournament from the About tab applies
-  /// across every tier re-keying of the same smart event.
-  String get dismissScopeId => '${source.name}:${stableEventIds.join('|')}';
+  /// Stable string form of [criteria].
+  String get criteriaKey => criteria.key;
+
+  String get scopeId => criteriaKey;
 
   /// Source- and event-independent key for hiding the generated smart card.
   ///
   /// The For You and Current tabs build separate [SmartEventRequest] instances
   /// from the same applied filters. Dismissing the card should therefore apply
   /// to the filter configuration, not to one tab's source or current event set.
-  String get cardDismissKey {
-    final criteria = formatsAndStates.toList(growable: false)..sort();
-    return 'smart_event_card:$minElo-$maxElo:${criteria.join('|')}';
+  String get cardDismissKey => 'smart_event_card:$criteriaKey';
+
+  /// The same request carrying a different (freshly resolved) event set.
+  SmartEventRequest withEvents(List<GroupEventCardModel> newEvents) {
+    return SmartEventRequest(
+      source: source,
+      tierLabel: tierLabel,
+      titleSuffix: titleSuffix,
+      minElo: minElo,
+      maxElo: maxElo,
+      caption: caption,
+      countSingular: countSingular,
+      countPlural: countPlural,
+      events: newEvents,
+      formatsAndStates: formatsAndStates,
+      savedAt: savedAt,
+    );
   }
 
   /// The same request with the Elo range opened up to the full scale. The
@@ -276,7 +286,12 @@ class SmartEventRequest {
     );
   }
 
-  String get favoriteEventId => 'smart_event:$scopeId';
+  /// Criteria-keyed saved identity (v2). v1 embedded the event-id snapshot,
+  /// which froze a saved smart event to whatever was live at save time —
+  /// v2 keys the row on the criteria alone so the same saved event resolves
+  /// fresh members forever. Legacy v1 rows are matched by parsed criteria
+  /// (see [smartEventSavedFavoriteProvider]) and migrated on refresh.
+  String get favoriteEventId => 'smart_event:v2:$criteriaKey';
 
   String get displayName => '$tierLabel $titleSuffix'.trim();
 
@@ -294,24 +309,7 @@ class SmartEventRequest {
       'countPlural': countPlural,
       'formatsAndStates': (formatsAndStates.toList(growable: false)..sort()),
       'savedAt': (savedAt ?? DateTime.now()).toIso8601String(),
-      'events': events
-          .map(
-            (event) => {
-              'id': event.id,
-              'title': event.title,
-              'dates': event.dates,
-              'maxAvgElo': event.maxAvgElo,
-              'timeUntilStart': event.timeUntilStart,
-              'tourEventCategory': event.tourEventCategory.name,
-              'timeControl': event.timeControl,
-              'startDate': event.startDate?.toIso8601String(),
-              'endDate': event.endDate?.toIso8601String(),
-              'location': event.location,
-              'searchTerms': event.searchTerms,
-              'eventSource': event.eventSource.name,
-            },
-          )
-          .toList(growable: false),
+      'events': encodeSmartEventsForMetadata(events),
     };
   }
 
@@ -548,40 +546,88 @@ class SmartEventGamesQuery {
   int get hashCode => Object.hash(request, filter, normalizedSearchQuery);
 }
 
+/// The generating criteria of a smart event as a value object — the family
+/// key for server-fresh member resolution.
 @immutable
-class SmartCurrentEventIdsQuery {
-  SmartCurrentEventIdsQuery(Iterable<String> eventIds)
-    : eventIds = List<String>.unmodifiable(
-        eventIds
-          .map((id) => id.trim())
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList(growable: false)..sort(),
-      );
+class SmartEventCriteria {
+  SmartEventCriteria({
+    required this.minElo,
+    required this.maxElo,
+    required Set<String> formatsAndStates,
+  }) : formatsAndStates = Set<String>.unmodifiable(
+         formatsAndStates
+             .map((value) => value.trim().toLowerCase())
+             .where((value) => value.isNotEmpty),
+       );
 
-  final List<String> eventIds;
+  final int minElo;
+  final int maxElo;
+  final Set<String> formatsAndStates;
 
-  bool get isEmpty => eventIds.isEmpty;
+  String get key {
+    final criteria = formatsAndStates.toList(growable: false)..sort();
+    return '$minElo-$maxElo:${criteria.join('|')}';
+  }
+
+  /// The criteria projected onto the home tabs' filter state, so the
+  /// resolver runs the events through the exact same filter function.
+  FilterPopupState toPopupState() {
+    return FilterPopupState(
+      formatsAndStates: formatsAndStates,
+      eloRange: RangeValues(
+        minElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo),
+        maxElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo),
+      ),
+    );
+  }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-        other is SmartCurrentEventIdsQuery &&
-            listEquals(eventIds, other.eventIds);
+        other is SmartEventCriteria &&
+            other.minElo == minElo &&
+            other.maxElo == maxElo &&
+            setEquals(other.formatsAndStates, formatsAndStates);
   }
 
   @override
-  int get hashCode => Object.hashAll(eventIds);
+  int get hashCode =>
+      Object.hash(minElo, maxElo, Object.hashAllUnordered(formatsAndStates));
 }
 
-final smartCurrentEventIdsProvider = FutureProvider.autoDispose
-    .family<Set<String>, SmartCurrentEventIdsQuery>((ref, query) async {
-      if (query.isEmpty) return const <String>{};
+/// SERVER-FRESH membership of a smart event: every broadcast in the server's
+/// `group_broadcasts_current` view that matches the criteria right now,
+/// filtered through [filterBroadcastsByPopupState] — the identical function
+/// the home Current tab uses, so a saved smart event always agrees with what
+/// the user would get by re-applying the same filters by hand.
+///
+/// Watches the strict live-id stream, so live/completed criteria (and the
+/// live badges on resolved cards) re-evaluate whenever liveness changes —
+/// this is what keeps a saved smart event refreshing itself while open.
+final smartEventResolvedEventsProvider = FutureProvider.autoDispose
+    .family<List<GroupEventCardModel>, SmartEventCriteria>((
+      ref,
+      criteria,
+    ) async {
+      List<String> liveIds;
+      try {
+        liveIds = await ref.watch(liveGroupBroadcastIdsProvider.future);
+      } catch (_) {
+        liveIds = ref.read(liveBroadcastIdsProvider);
+      }
 
-      final broadcasts = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getCurrentGroupBroadcastsByIds(query.eventIds);
-      return broadcasts.map((broadcast) => broadcast.id).toSet();
+      final broadcasts =
+          await ref.read(groupBroadcastRepositoryProvider)
+              .getCurrentGroupBroadcasts();
+      final matching = filterBroadcastsByPopupState(
+        broadcasts,
+        criteria.toPopupState(),
+        liveIds: liveIds,
+      );
+      return matching
+          .map((broadcast) =>
+              GroupEventCardModel.fromGroupBroadcast(broadcast, liveIds))
+          .toList(growable: false);
     });
 
 /// Generated level games gathered from every currently-live broadcast
@@ -633,36 +679,17 @@ class SmartAggregateEvent {
   );
 }
 
-/// Metadata key under which a saved smart event stores its hidden tournaments.
-const smartEventHiddenMetadataKey = 'hiddenEventIds';
-
-/// Parse the hidden-tournament IDs out of a favorite's `metadata` JSONB.
-Set<String> readSmartEventHiddenIds(Map<String, dynamic> metadata) {
-  final raw = metadata[smartEventHiddenMetadataKey];
-  if (raw is List) return raw.map((e) => e.toString()).toSet();
-  return const <String>{};
-}
-
-/// Live, session-only hidden tournaments for an UNSAVED smart event — there's
-/// no favorite row to persist to yet. Keyed by
-/// [SmartEventRequest.dismissScopeId]; folded into the saved row's metadata
-/// when the user saves the event. Intentionally NOT persisted: an unsaved smart
-/// event is a transient preview.
-final _smartEventSessionHiddenIdsProvider =
-    StateProvider.family<Set<String>, String>(
-      (ref, dismissScopeId) => const <String>{},
-    );
-
-/// The saved favorite (if any) whose smart event matches [dismissScopeId].
-/// `dismissScopeId` is tier/elo-independent, so this resolves the same saved
-/// event regardless of the in-screen tier dropdown.
+/// The saved favorite (if any) whose smart event matches [criteriaKey]
+/// ([SmartEventRequest.criteriaKey]). Matching parses each smart favorite and
+/// compares criteria — never row eventIds — so legacy v1 rows (whose ids
+/// embed a frozen event-id snapshot) resolve exactly like v2 rows.
 final smartEventSavedFavoriteProvider = Provider.family<FavoriteEvent?, String>(
-  (ref, dismissScopeId) {
+  (ref, criteriaKey) {
     final favorites = ref.watch(favoriteEventsProvider).valueOrNull ?? const [];
     for (final favorite in favorites) {
       if (!isSmartFavoriteEvent(favorite)) continue;
-      if (SmartEventRequest.fromFavoriteEvent(favorite).dismissScopeId ==
-          dismissScopeId) {
+      if (SmartEventRequest.fromFavoriteEvent(favorite).criteriaKey ==
+          criteriaKey) {
         return favorite;
       }
     }
@@ -670,83 +697,118 @@ final smartEventSavedFavoriteProvider = Provider.family<FavoriteEvent?, String>(
   },
 );
 
-/// The tournaments hidden from a smart event view, keyed by
-/// [SmartEventRequest.dismissScopeId]. Source of truth:
-///   • saved event   → its `user_favorite_events.metadata.hiddenEventIds`
-///                      (server-side via Supabase, synced across devices)
-///   • unsaved event → session-only [_smartEventSessionHiddenIdsProvider]
-///
-/// Because a saved event's config lives on its own row, DELETING the event
-/// drops the config automatically — re-creating an identical filter set later
-/// starts fresh instead of resurrecting the deleted event's hides. (The old
-/// content-keyed local store had no such lifecycle and leaked configs across
-/// re-creations.)
-final smartEventDismissedEventIdsProvider =
-    Provider.family<Set<String>, String>((ref, dismissScopeId) {
-      final favorite = ref.watch(
-        smartEventSavedFavoriteProvider(dismissScopeId),
-      );
-      if (favorite != null) return readSmartEventHiddenIds(favorite.metadata);
-      return ref.watch(_smartEventSessionHiddenIdsProvider(dismissScopeId));
-    });
-
-/// Persist the hidden tournaments for a smart event. Routes to the saved
-/// favorite's metadata (server-side, isolated to that row) when the event is
-/// saved, or to session state when it isn't yet saved.
-void setSmartEventHiddenIds(
-  WidgetRef ref,
-  String dismissScopeId,
-  Set<String> ids,
+/// The `metadata.events` encoding shared by saving and snapshot refreshing.
+List<Map<String, dynamic>> encodeSmartEventsForMetadata(
+  List<GroupEventCardModel> events,
 ) {
-  final favorite = ref.read(smartEventSavedFavoriteProvider(dismissScopeId));
-  if (favorite != null) {
-    unawaited(
-      ref.read(favoriteEventsProvider.notifier).updateMetadata(
-        favorite.eventId,
-        {smartEventHiddenMetadataKey: ids.toList(growable: false)},
-      ),
-    );
-  } else {
-    ref
-        .read(_smartEventSessionHiddenIdsProvider(dismissScopeId).notifier)
-        .state = ids;
+  return events
+      .map(
+        (event) => <String, dynamic>{
+          'id': event.id,
+          'title': event.title,
+          'dates': event.dates,
+          'maxAvgElo': event.maxAvgElo,
+          'timeUntilStart': event.timeUntilStart,
+          'tourEventCategory': event.tourEventCategory.name,
+          'timeControl': event.timeControl,
+          'startDate': event.startDate?.toIso8601String(),
+          'endDate': event.endDate?.toIso8601String(),
+          'location': event.location,
+          'searchTerms': event.searchTerms,
+          'eventSource': event.eventSource.name,
+        },
+      )
+      .toList(growable: false);
+}
+
+/// Rows currently being rewritten, keyed by row eventId — prevents duplicate
+/// concurrent writes while a refresh is in flight (rebuilds re-enter here).
+final _smartSnapshotRefreshInFlight = <String>{};
+
+/// Sync a saved smart event's server row to its freshly resolved membership.
+///
+/// The favorites row (`user_favorite_events`) is the server-side home of a
+/// saved smart event; its `metadata.events` snapshot exists only as an
+/// offline / first-paint fallback. Whenever the resolver produces a
+/// different member set, write it back so the row — and every other device
+/// reading it — stays current. Legacy v1 rows (event-set-keyed ids) are
+/// migrated to the criteria-keyed v2 id in the same pass.
+Future<void> refreshSavedSmartEventSnapshot({
+  required WidgetRef ref,
+  required FavoriteEvent favorite,
+  required List<GroupEventCardModel> resolvedEvents,
+}) async {
+  final parsed = SmartEventRequest.fromFavoriteEvent(favorite);
+  final fresh = parsed.withEvents(resolvedEvents);
+  final needsMigration = favorite.eventId != fresh.favoriteEventId;
+  final sameEvents = listEquals(parsed.stableEventIds, fresh.stableEventIds);
+  if (!needsMigration && sameEvents) return;
+
+  if (!_smartSnapshotRefreshInFlight.add(favorite.eventId)) return;
+  try {
+    final notifier = ref.read(favoriteEventsProvider.notifier);
+    if (needsMigration) {
+      final favorites =
+          ref.read(favoriteEventsProvider).valueOrNull ?? const [];
+      final v2AlreadyExists = favorites.any(
+        (row) => row.eventId == fresh.favoriteEventId,
+      );
+      await notifier.removeFavorite(favorite.eventId);
+      // Duplicate legacy saves of the same criteria collapse into one v2 row.
+      if (!v2AlreadyExists) {
+        await notifier.addFavorite(
+          eventId: fresh.favoriteEventId,
+          eventName: fresh.displayName,
+          maxAvgElo: fresh.minElo > 0 ? fresh.minElo : null,
+          extraMetadata: {
+            ...fresh.toFavoriteMetadata(),
+            // Carry user-owned flags the rebuild would otherwise reset.
+            'notificationsEnabled':
+                favorite.metadata['notificationsEnabled'] ?? false,
+          },
+        );
+      }
+      return;
+    }
+
+    await notifier.updateMetadata(favorite.eventId, {
+      'events': encodeSmartEventsForMetadata(resolvedEvents),
+    });
+  } catch (_) {
+    // Best-effort background sync — the next resolution retries it.
+  } finally {
+    _smartSnapshotRefreshInFlight.remove(favorite.eventId);
   }
 }
 
-/// Drop the unsaved/session hidden set for a scope. Call once its config has
-/// been folded into a saved row (on save) or when the event is deleted, so a
-/// later unsaved view of the same scope can't resurrect stale session hides.
-void resetSmartEventSessionHidden(WidgetRef ref, String dismissScopeId) {
-  ref.read(_smartEventSessionHiddenIdsProvider(dismissScopeId).notifier).state =
-      const <String>{};
-}
-
-/// THE single data path for the smart event view. One server fetch per query
-/// over the events carried by the request (live, current, or saved favorite
-/// history), then a deterministic client-side sort. No snapshot fallback, no
-/// second source: what loads is what renders, so the list can't reshuffle
-/// after first paint.
+/// THE single data path for the smart event view. The member events are
+/// resolved SERVER-FRESH from the criteria on every load (the request's
+/// carried snapshot is only an offline fallback), then one server fetch per
+/// query gathers their games, then a deterministic client-side sort. What
+/// loads is what renders, so the list can't reshuffle after first paint —
+/// and a saved smart event can never show a stale event set.
 final smartAggregateEventRepositoryProvider = FutureProvider.autoDispose
     .family<SmartAggregateEvent, SmartEventGamesQuery>((ref, query) async {
-      final dismissedIds = ref.watch(
-        smartEventDismissedEventIdsProvider(query.request.dismissScopeId),
-      );
-      return _loadAggregateEventFromRepository(
-        ref: ref,
-        query: query,
-        dismissedIds: dismissedIds,
-      );
+      return _loadAggregateEventFromRepository(ref: ref, query: query);
     });
 
 Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
   required Ref ref,
   required SmartEventGamesQuery query,
-  required Set<String> dismissedIds,
 }) async {
   final request = query.request;
-  final activeEvents = request.events
-      .where((event) => !dismissedIds.contains(event.id))
-      .toList(growable: false);
+  List<GroupEventCardModel> activeEvents;
+  try {
+    // Watch (not read): liveness changes and pull-to-refresh invalidations
+    // re-resolve the membership and flow straight into this aggregate.
+    activeEvents = await ref.watch(
+      smartEventResolvedEventsProvider(request.criteria).future,
+    );
+  } catch (_) {
+    // Offline / transient failure: fall back to the snapshot the request
+    // carried in (saved metadata or the generating tab's list).
+    activeEvents = request.events;
+  }
   if (activeEvents.isEmpty) return SmartAggregateEvent.empty;
 
   final eventIds = activeEvents

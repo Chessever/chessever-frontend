@@ -44,17 +44,10 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
   }
 
   Widget _buildSmartCard(SmartEventCardData smartData) {
-    // Subtract tournaments the user hid from this smart event so the card
-    // count matches the About tab (and survives restarts via the same store).
-    final hidden = ref.watch(
-      smartEventDismissedEventIdsProvider(smartData.request.dismissScopeId),
-    );
-    final visibleCount =
-        smartData.request.events.where((e) => !hidden.contains(e.id)).length;
     return SmartEventCard(
       tierLabel: smartData.request.tierLabel,
       minElo: smartData.request.minElo,
-      liveCount: visibleCount,
+      liveCount: smartData.request.events.length,
       avgElo: smartData.avgElo,
       titleSuffix: smartData.request.titleSuffix,
       caption: smartData.request.caption,
