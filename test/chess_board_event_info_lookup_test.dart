@@ -32,29 +32,6 @@ GamesTourModel _game({String tourId = '', String? tourSlug, String? pgn}) {
 }
 
 void main() {
-  group('notation annotation collapse defaults', () {
-    test('collapses imported and saved-library annotations', () {
-      expect(
-        shouldCollapseNotationAnnotationsByDefault(GameSource.boardEditor),
-        isTrue,
-      );
-      expect(
-        shouldCollapseNotationAnnotationsByDefault(GameSource.savedAnalysis),
-        isTrue,
-      );
-    });
-
-    test('keeps existing annotation behavior for other sources', () {
-      for (final source in GameSource.values.where(
-        (source) =>
-            source != GameSource.boardEditor &&
-            source != GameSource.savedAnalysis,
-      )) {
-        expect(shouldCollapseNotationAnnotationsByDefault(source), isFalse);
-      }
-    });
-  });
-
   group('event info fallback lookup title', () {
     test('uses PGN Event title even when tourId is only a UUID', () {
       final game = _game(

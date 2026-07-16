@@ -10661,10 +10661,6 @@ class _NextMoveOptionsPanel extends StatelessWidget {
   }
 }
 
-bool shouldCollapseNotationAnnotationsByDefault(GameSource source) {
-  return source == GameSource.boardEditor || source == GameSource.savedAnalysis;
-}
-
 class _MovesDisplay extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -11717,15 +11713,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   /// Editorial block-quote for a comment — full-width, depth-colored left
-  /// rail, soft white wash. Imported and saved-library comments begin as a
-  /// compact Annotation row; elsewhere, only long comments fold.
+  /// rail, soft white wash. Long comments fold to a "Read more" toggle.
   ///
   /// Edit is **double-tap or long-press** — never a lone single-tap. Single-tap
   /// used to open the editor for short comments and mistapped when users aimed
   /// for the bottom-nav → control under a full-width comment. Long comments
   /// still expand/collapse on a confirmed single tap; short ones ignore it.
-  /// Imported and saved-library comments instead use a direct single-tap
-  /// expand/collapse interaction and retain long-press editing.
   Widget _buildCommentBlock(
     NotationDisplayToken token,
     ChessBoardProviderParams params,
@@ -11735,13 +11728,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final id = token.pointerId ?? token.variation?.id;
     if (id == null) return const SizedBox.shrink();
 
-    final collapseByDefault = shouldCollapseNotationAnnotationsByDefault(
-      widget.game.source,
-    );
     final isExpanded = _expandedCommentIds.contains(id);
     final isLong = fullText.length > _variationCommentPreviewChars;
     final displayText =
-        (!collapseByDefault && isLong && !isExpanded)
+        (isLong && !isExpanded)
             ? '${fullText.substring(0, _variationCommentPreviewChars).trimRight()}…'
             : fullText;
 
@@ -11756,55 +11746,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _editNotationComment(token, params, fullText);
     }
 
-    if (collapseByDefault && !isExpanded) {
-      return Padding(
-        padding: EdgeInsets.only(top: 5.sp, bottom: 5.sp),
-        child: Semantics(
-          button: true,
-          label: 'Expand annotation',
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _toggleCommentExpansion(id, false),
-            onLongPress: openEditor,
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.fromLTRB(8.sp, 7.sp, 11.sp, 7.sp),
-              decoration: BoxDecoration(
-                color: context.colors.textPrimary.withValues(alpha: 0.045),
-                borderRadius: BorderRadius.only(
-                  topRight: Radius.circular(6.sp),
-                  bottomRight: Radius.circular(6.sp),
-                ),
-                border: Border(
-                  left: BorderSide(
-                    color: accent.withValues(alpha: 0.65),
-                    width: 3,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 18.sp,
-                    color: accent.withValues(alpha: 0.95),
-                  ),
-                  SizedBox(width: 4.sp),
-                  Text(
-                    'Annotation',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.78),
-                      fontSize: 12.sp,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     return Padding(
       padding: EdgeInsets.only(top: 5.sp, bottom: 5.sp),
       child: GestureDetector(
@@ -11812,14 +11753,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         // opens the editor, so accidental hits while aiming for → stay harmless.
         behavior: HitTestBehavior.opaque,
         onTap:
-            collapseByDefault
-                ? () => _toggleCommentExpansion(id, true)
-                : () => _handleCommentTap(
-                  id: id,
-                  isLong: isLong,
-                  isExpanded: isExpanded,
-                  openEditor: openEditor,
-                ),
+            () => _handleCommentTap(
+              id: id,
+              isLong: isLong,
+              isExpanded: isExpanded,
+              openEditor: openEditor,
+            ),
         onLongPress: openEditor,
         child: Container(
           width: double.infinity,
@@ -11846,12 +11785,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                     letterSpacing: 0.05,
                   ),
                 ),
-                if (collapseByDefault || isLong)
+                if (isLong)
                   TextSpan(
-                    text:
-                        collapseByDefault || isExpanded
-                            ? '   Show less'
-                            : '   Read more',
+                    text: isExpanded ? '   Show less' : '   Read more',
                     style: AppTypography.textXsMedium.copyWith(
                       color: accent.withValues(alpha: 0.95),
                       fontSize: 11.sp,
