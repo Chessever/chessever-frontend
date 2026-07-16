@@ -358,7 +358,7 @@ SPEC CHECKSUMS:
   firebase_core: 995454a784ff288be5689b796deb9e9fa3601818
   FirebaseCore: efb3893e5b94f32b86e331e3bd6dadf18b66568e
   FirebaseCoreInternal: 9afa45b1159304c963da48addb78275ef701c6b4
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   flutter_native_splash: c32d145d68aeda5502d5f543ee38c192065986cf
   flutter_screenshot_detect: 1617896225a428f4aef698050c8900460566e1ff
   flutter_soloud: d9969a9777b511239e85da6e108e05b429207baf

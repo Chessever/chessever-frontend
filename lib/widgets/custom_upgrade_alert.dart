@@ -88,7 +88,7 @@ class CustomUpgradeAlert extends StatelessWidget {
         upgrader: upgrader,
         navigatorKey: navigatorKey,
         showIgnore: false,
-        showLater: false,
+        showLater: true,
         shouldPopScope:
             () => kDebugMode, // Block back button in release, allow in debug
         barrierDismissible: kDebugMode, // Allow tap outside in debug only

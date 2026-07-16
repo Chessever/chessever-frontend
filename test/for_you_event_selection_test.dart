@@ -125,7 +125,7 @@ void main() {
       expect(selected.id, 'tour-b');
     });
 
-    test('ignores upcoming saved selection when a started tour exists', () {
+    test('honors fresh saved upcoming selection over a started tour', () {
       final now = DateTime.now();
       final liveTour = _makeTour(
         id: 'tour-live',
@@ -150,10 +150,10 @@ void main() {
         savedTourId: 'tour-upcoming',
       );
 
-      expect(selected.id, 'tour-live');
+      expect(selected.id, 'tour-upcoming');
     });
 
-    test('live category overrides a stale saved started category', () {
+    test('fresh saved category overrides a live category', () {
       final now = DateTime.now();
       final liveRapid = _makeTour(
         id: 'rapid-live',
@@ -184,7 +184,7 @@ void main() {
         },
       );
 
-      expect(selected.id, 'rapid-live');
+      expect(selected.id, 'classical-saved');
     });
 
     test(
@@ -228,7 +228,7 @@ void main() {
     );
 
     test(
-      'chooses the category with the latest played round before saved state',
+      'chooses the category with the latest played round when nothing is saved',
       () {
         final now = DateTime.now();
         final older = _makeTour(
@@ -248,7 +248,6 @@ void main() {
             TourModel(tour: recent, roundStatus: RoundStatus.ongoing),
           ],
           liveTourIds: const [],
-          savedTourId: 'older',
           latestPlayedRoundAtByTourId: {
             'older': now.subtract(const Duration(days: 1)),
             'recent': now.subtract(const Duration(hours: 2)),

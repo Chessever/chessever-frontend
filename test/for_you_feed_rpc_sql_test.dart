@@ -19,62 +19,64 @@ void main() {
       );
     });
 
+    test('latest get_for_you_top_games locks one tour and round', () {
+      final migration = _latestMigrationDefining(
+        'create or replace function public.get_for_you_top_games',
+      );
+      final sql = migration.readAsStringSync();
+
+      expect(
+        sql,
+        contains('selected_round_sources as ('),
+        reason: 'Each event must resolve one tour and round before boards.',
+      );
+      expect(
+        sql,
+        contains('join public.tours t on t.id = srs.selected_tour_id'),
+      );
+      expect(
+        sql,
+        contains('join public.rounds r on r.id = srs.source_round_id'),
+      );
+      expect(
+        sql,
+        isNot(contains('t.avg_elo is not distinct from srs.category_avg_elo')),
+        reason: 'Average Elo is priority metadata, not category identity.',
+      );
+      expect(
+        sql,
+        contains('partition by srs.event_id'),
+        reason:
+            'All ranked boards for an event must belong to its selected tour.',
+      );
+    });
+
     test(
-      'latest get_for_you_top_games selects one tour before ranking boards',
+      'latest get_for_you_top_games picks a today round by Elo before recency',
       () {
         final migration = _latestMigrationDefining(
           'create or replace function public.get_for_you_top_games',
         );
         final sql = migration.readAsStringSync();
 
-        expect(
-          sql,
-          contains('selected_round_sources as ('),
-          reason: 'Each event must resolve one tour and round before boards.',
-        );
-        expect(
-          sql,
-          contains('join public.tours t on t.id = rs.selected_tour_id'),
-        );
-        expect(
-          sql,
-          contains('join public.rounds r on r.id = rs.source_round_id'),
-        );
-        expect(
-          sql,
-          isNot(contains('t.avg_elo is not distinct from rs.category_avg_elo')),
-          reason: 'Average Elo is priority metadata, not category identity.',
-        );
-        expect(
-          sql,
-          contains('partition by rs.event_id, rs.selected_tour_id'),
-          reason:
-              'All ranked boards for an event must belong to its selected tour.',
-        );
-      },
-    );
-
-    test(
-      'latest get_for_you_top_games picks live category by Elo before recency',
-      () {
-        final migration = _latestMigrationDefining(
-          'create or replace function public.get_for_you_top_games',
-        );
-        final sql = migration.readAsStringSync();
-
-        final liveSourcesStart = sql.indexOf('live_round_sources as (');
+        final todaySourcesStart = sql.indexOf('today_round_sources as (');
         final fallbackSourcesStart = sql.indexOf('fallback_round_sources as (');
-        expect(liveSourcesStart, isNonNegative);
-        expect(fallbackSourcesStart, greaterThan(liveSourcesStart));
+        expect(todaySourcesStart, isNonNegative);
+        expect(fallbackSourcesStart, greaterThan(todaySourcesStart));
 
-        final liveSourcesSql = sql.substring(
-          liveSourcesStart,
+        final todaySourcesSql = sql.substring(
+          todaySourcesStart,
           fallbackSourcesStart,
         );
-        final categoryEloOrder = liveSourcesSql.indexOf(
+        expect(
+          todaySourcesSql,
+          contains('where er.has_today'),
+          reason: 'The locked round itself must contain a played game today.',
+        );
+        final categoryEloOrder = todaySourcesSql.indexOf(
           'er.category_avg_elo desc nulls last',
         );
-        final sourceRoundTimeOrder = liveSourcesSql.indexOf(
+        final sourceRoundTimeOrder = todaySourcesSql.indexOf(
           'er.source_round_time desc nulls last',
         );
 
@@ -84,28 +86,46 @@ void main() {
     );
 
     test(
-      'latest get_for_you_top_games backfills by round inside selected tour',
+      'latest get_for_you_top_games fallback picks Elo before latest round',
       () {
         final migration = _latestMigrationDefining(
           'create or replace function public.get_for_you_top_games',
         );
         final sql = migration.readAsStringSync();
 
-        expect(
-          sql,
-          contains('selected_tour_rounds as ('),
-          reason: 'Backfill rounds must remain scoped to the selected tour.',
+        final fallbackSourcesStart = sql.indexOf('fallback_round_sources as (');
+        final selectedSourcesStart = sql.indexOf('selected_round_sources as (');
+        expect(fallbackSourcesStart, isNonNegative);
+        expect(selectedSourcesStart, greaterThan(fallbackSourcesStart));
+
+        final fallbackSourcesSql = sql.substring(
+          fallbackSourcesStart,
+          selectedSourcesStart,
+        );
+        final categoryEloOrder = fallbackSourcesSql.indexOf(
+          'er.category_avg_elo desc nulls last',
+        );
+        final sourceRoundTimeOrder = fallbackSourcesSql.indexOf(
+          'er.source_round_time desc nulls last',
         );
 
-        final eventRankingStart = sql.indexOf('partition by cg.event_id');
-        expect(eventRankingStart, isNonNegative);
+        expect(categoryEloOrder, isNonNegative);
+        expect(sourceRoundTimeOrder, greaterThan(categoryEloOrder));
+      },
+    );
 
-        final eventRankingSql = sql.substring(eventRankingStart);
-        final roundRankOrder = eventRankingSql.indexOf('cg.round_rank asc');
-        final boardRankOrder = eventRankingSql.indexOf('cg.board_rank asc');
+    test(
+      'latest get_for_you_top_games never backfills after locking a round',
+      () {
+        final migration = _latestMigrationDefining(
+          'create or replace function public.get_for_you_top_games',
+        );
+        final sql = migration.readAsStringSync();
 
-        expect(roundRankOrder, isNonNegative);
-        expect(boardRankOrder, greaterThan(roundRankOrder));
+        expect(sql, isNot(contains('selected_tour_rounds as (')));
+        expect(sql, isNot(contains('round_rank')));
+        expect(sql, contains('g.board_nr asc nulls last'));
+        expect(sql, contains('top_games.board_rank <= p.board_count'));
       },
     );
   });

@@ -71,6 +71,14 @@ Tour selectDefaultTour({
     return currentTour;
   }
 
+  // An explicit dropdown pick. The repo layer enforces a 12-hour TTL, so a
+  // non-null savedTourId is always a fresh user choice — it overrides the
+  // whole default strategy below, including the upcoming-category filter.
+  final savedTour = findTourById(tourModels, savedTourId);
+  if (savedTour != null) {
+    return savedTour;
+  }
+
   final liveModels =
       tourModels
           .where((model) => model.roundStatus == RoundStatus.live)
@@ -109,11 +117,6 @@ Tour selectDefaultTour({
   final activityTour = findSelectableTour(activityTourId);
   if (activityTour != null) {
     return activityTour;
-  }
-
-  final savedTour = findSelectableTour(savedTourId);
-  if (savedTour != null) {
-    return savedTour;
   }
 
   final selectableModels =
