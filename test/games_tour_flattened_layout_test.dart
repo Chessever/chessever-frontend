@@ -246,6 +246,39 @@ void main() {
       expect(matchupOrder, ['polina', 'hou', 'vaishali', 'ju']);
     });
 
+    test('actual play time outranks a stale scheduled start', () {
+      final stage = _round('knockout-stage-round-of-16', RoundStatus.completed);
+      // The "postponed matchup" shape: scheduled for the earlier slot but
+      // actually streamed a day later, while the broadcast's starts_at was
+      // never corrected. The live-streamed lastMoveTime must win.
+      final games = [
+        _game(
+          'postponed',
+          identityOffset: 0,
+          roundId: 'r-postponed',
+          lastMoveTime: DateTime.utc(2026, 7, 11, 20, 14),
+        ),
+        _game('on-schedule', identityOffset: 100, roundId: 'r-on-schedule'),
+      ];
+
+      final layout = _layout(
+        rounds: [stage],
+        gamesByRound: {stage.id: games},
+        roundStartTimesById: {
+          'r-postponed': DateTime.utc(2026, 7, 10, 14, 0),
+          'r-on-schedule': DateTime.utc(2026, 7, 10, 16, 30),
+        },
+      );
+
+      final matchupOrder =
+          layout.entries
+              .whereType<GamesTourGameRowEntry>()
+              .map((entry) => entry.game1.gameId)
+              .toList();
+
+      expect(matchupOrder, ['postponed', 'on-schedule']);
+    });
+
     test('grid filtering maps both visible games to their actual row', () {
       final round = _round('knockout-stage-finals', RoundStatus.live);
       final games = [
@@ -350,6 +383,7 @@ GamesTourModel _game(
   GameStatus status = GameStatus.ongoing,
   int identityOffset = 0,
   String? roundId,
+  DateTime? lastMoveTime,
 }) {
   final alpha = _player(
     'GM Alpha Player $identityOffset',
@@ -373,6 +407,7 @@ GamesTourModel _game(
     roundId: roundId ?? slug,
     roundSlug: slug,
     tourId: 'tour',
+    lastMoveTime: lastMoveTime,
   );
 }
 

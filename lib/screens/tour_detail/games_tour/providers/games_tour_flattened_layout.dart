@@ -239,13 +239,22 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
 
 /// Orders the collapsed matchups of a knockout stage so the most recently
 /// played matchup card sits on top (descending datetime), matching how a live
-/// bracket reads. The source round's scheduled start leads because it is the
-/// only signal with time precision — game rows carry date-granular play dates
-/// that tie two matchups played on the same day, and finished bulk imports
-/// often have no `lastMoveTime` at all. Game-level [GamesTourModel.bucketDate]
-/// is the fallback when a start time is missing; genuinely undated matchups
-/// sink to the bottom. Returns an insertion-ordered map so every downstream
-/// consumer (ordered games, match headers, index arithmetic) shares one order.
+/// bracket reads. Each matchup's recency is the LATEST of every signal we
+/// hold, because no single one survives all ingestion shapes:
+///
+/// - source round `starts_at` — the only time-precise signal on bulk-imported
+///   finished rounds (their `lastMoveTime` is null and play dates are
+///   date-granular, so two matchups on the same day would otherwise tie);
+/// - game `lastMoveTime` — actual play time on live-streamed rounds, which
+///   outranks a stale scheduled start when a matchup is postponed and the
+///   broadcast's `starts_at` is never corrected;
+/// - game [GamesTourModel.bucketDate] — date-granular last resort.
+///
+/// Taking the max is safe: date-only fallbacks sit at midnight and can never
+/// beat a same-day scheduled start, while a genuinely later actual-play date
+/// always wins. Genuinely undated matchups sink to the bottom. Returns an
+/// insertion-ordered map so every downstream consumer (ordered games, match
+/// headers, index arithmetic) shares one order.
 Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
   Map<String, List<GamesTourModel>> matches,
   Map<String, DateTime?> roundStartTimesById,
@@ -254,10 +263,16 @@ Map<String, List<GamesTourModel>> _orderMatchesByRecencyDesc(
 
   DateTime? recency(List<GamesTourModel> games) {
     DateTime? latest;
+    void consider(DateTime? candidate) {
+      if (candidate == null) return;
+      final current = latest;
+      if (current == null || candidate.isAfter(current)) latest = candidate;
+    }
+
     for (final game in games) {
-      final candidate = roundStartTimesById[game.roundId] ?? game.bucketDate;
-      if (candidate == null) continue;
-      if (latest == null || candidate.isAfter(latest)) latest = candidate;
+      consider(roundStartTimesById[game.roundId]);
+      consider(game.lastMoveTime);
+      consider(game.bucketDate);
     }
     return latest;
   }
