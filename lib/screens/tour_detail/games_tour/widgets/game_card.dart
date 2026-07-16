@@ -597,21 +597,26 @@ class _TimerWidget extends StatelessWidget {
                   )
                   : null,
         ),
-        child: AtomicCountdownText(
-          clockSeconds:
-              clockSeconds, // Primary source: time in seconds from last_clock fields
-          clockCentiseconds:
-              clockCentiseconds, // Fallback source: raw database clock
-          lastMoveTime: gamesTourModel.lastMoveTime,
-          isActive:
-              isClockRunning, // Clock frozen if game is effectively finished
-          style: AppTypography.textXsMedium.copyWith(
-            color:
-                isGameFinished
-                    ? context.colors.textPrimary
-                    : (shouldHighlightClock
-                        ? kPrimaryColor
-                        : context.colors.textPrimaryMuted),
+        child: FittedBox(
+          // Clock box is fixed-width; scale down instead of clipping digits
+          // off both ends (e.g. "1:07:32" rendering as "1:07:3").
+          fit: BoxFit.scaleDown,
+          child: AtomicCountdownText(
+            clockSeconds:
+                clockSeconds, // Primary source: time in seconds from last_clock fields
+            clockCentiseconds:
+                clockCentiseconds, // Fallback source: raw database clock
+            lastMoveTime: gamesTourModel.lastMoveTime,
+            isActive:
+                isClockRunning, // Clock frozen if game is effectively finished
+            style: AppTypography.textXsMedium.copyWith(
+              color:
+                  isGameFinished
+                      ? context.colors.textPrimary
+                      : (shouldHighlightClock
+                          ? kPrimaryColor
+                          : context.colors.textPrimaryMuted),
+            ),
           ),
         ),
       ),

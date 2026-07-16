@@ -169,33 +169,41 @@ class AtomicCountdownText extends ConsumerWidget {
 
   /// Formats time string to include hours if over 60 minutes
   /// Input can be either MM:SS or HH:MM:SS format, or already formatted time from ChessClockExtension
+  /// Output is h:mm:ss (hours unpadded to save width) with minutes and
+  /// seconds always 2 digits, or mm:ss when under an hour.
   static String _formatTimeWithHours(String timeString) {
-    // If it's already in the correct format or contains 'h' (like "1h23m"), return as is
-    if (timeString.contains('h') ||
-        timeString.contains(':') && timeString.split(':').length == 3) {
-      return timeString;
+    if (timeString.contains('h')) {
+      return timeString; // "1h23m" style from ChessClockExtension
     }
 
-    // Parse MM:SS format
     final timeParts = timeString.split(':');
-    if (timeParts.length != 2) {
-      return timeString; // Return original if not in expected format
-    }
 
     try {
+      if (timeParts.length == 3) {
+        // Normalize HH:MM:SS: strip hour zero-pad, keep mm/ss at 2 digits
+        final hours = int.parse(timeParts[0]);
+        final minutes = int.parse(timeParts[1]);
+        final seconds = int.parse(timeParts[2]);
+        return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      }
+
+      if (timeParts.length != 2) {
+        return timeString; // Return original if not in expected format
+      }
+
       final minutes = int.parse(timeParts[0]);
       final seconds = int.parse(timeParts[1]);
 
-      // If less than 60 minutes, return as MM:SS (with zero padding if missing)
+      // If less than 60 minutes, return as MM:SS (always 2-digit padded)
       if (minutes < 60) {
-        return timeString;
+        return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
       }
 
-      // Convert to HH:MM:SS format
+      // Convert to h:mm:ss format
       final hours = minutes ~/ 60;
       final remainingMinutes = minutes % 60;
 
-      return '${hours.toString().padLeft(2, '0')}:${remainingMinutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      return '$hours:${remainingMinutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     } catch (e) {
       return timeString; // Return original if parsing fails
     }
