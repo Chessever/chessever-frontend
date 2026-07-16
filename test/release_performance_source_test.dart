@@ -59,6 +59,62 @@ void main() {
     );
   });
 
+  test('iOS PiP uses square 720 board stack with player rows, not landscape column', () {
+    final pipSource =
+        File('ios/Runner/ChessPipController.swift').readAsStringSync();
+
+    // Frame size: square content at the pre-shrink resolution.
+    expect(
+      pipSource,
+      contains('CGSize(width: 720, height: 720)'),
+      reason: 'PiP must render a 720x720 square frame matching the in-app board.',
+    );
+    expect(
+      pipSource,
+      isNot(contains('CGSize(width: 768, height: 540)')),
+      reason: 'Landscape 768x540 shrink frame must not remain the active size.',
+    );
+    expect(
+      pipSource,
+      isNot(contains('768x540')),
+      reason: 'No landscape shrink size comments/call should remain active.',
+    );
+
+    // Layout: top/bottom single-line player rows around the board (not side column).
+    expect(
+      pipSource,
+      contains('drawPlayerRow'),
+      reason: 'Square layout draws PlayerFirstRow-style rows above/below the board.',
+    );
+    expect(
+      pipSource,
+      isNot(contains('drawPlayerBlock')),
+      reason: 'Side-column stacked player blocks were the shrink regression.',
+    );
+    expect(
+      pipSource,
+      contains('[title, name, rating]'),
+      reason: 'Player row label is single-line title/name/rating, not split lines.',
+    );
+
+    // Piece-asset fix from the same commit must stay.
+    expect(
+      pipSource,
+      contains('.webp'),
+      reason: 'Native piece loaders must keep chessground v10 .webp paths.',
+    );
+    expect(
+      pipSource,
+      contains('"totoy"'),
+      reason: 'The totoy piece set must remain registered on iOS.',
+    );
+    expect(
+      pipSource,
+      isNot(contains('pieceCode).png"')),
+      reason: 'Do not reintroduce broken .png piece paths.',
+    );
+  });
+
   test('player opening-tree polling is owned by visible consumers', () {
     final providerSource =
         File(

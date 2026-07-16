@@ -324,11 +324,9 @@ final class ChessPipController: NSObject {
     }
     let isActive = pipController?.isPictureInPictureActive == true
     if renderDirty || isActive || cachedPixelBuffer == nil || cachedFormatDescription == nil {
-      // Landscape frame on purpose: iOS sizes the PiP window from the content's
-      // aspect ratio (there is no size API), and a square board frame produced a
-      // window covering nearly half the screen. 768x540 keeps the board readable
-      // while the window comes up noticeably smaller.
-      guard let rendered = ChessPipRenderer.render(payload: payload, size: CGSize(width: 768, height: 540)) else {
+      // Square 720 frame matches the in-app board stack (player rows above/below
+      // the board). iOS sizes the PiP window from content aspect ratio.
+      guard let rendered = ChessPipRenderer.render(payload: payload, size: CGSize(width: 720, height: 720)) else {
         return
       }
       guard cachePixelBuffer(image: rendered) else { return }
@@ -733,36 +731,34 @@ private enum ChessPipRenderer {
       UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1).setFill()
       context.cgContext.fill(CGRect(origin: .zero, size: size))
 
-      // Landscape composition: eval bar | full-height board | player column.
-      // Player rows moved off the top/bottom into a right-hand column so the
-      // frame can be wider than tall — that aspect ratio is the only handle
-      // iOS gives us over how large the PiP window comes up.
-      let h = size.height
-      let margin = h * 0.033
-      let boardSize = h - margin * 2
-      let evalW = h * 0.045
-      let evalGap = h * 0.026
-      let boardRect = CGRect(x: margin + evalW + evalGap, y: margin, width: boardSize, height: boardSize)
-      let columnX = boardRect.maxX + h * 0.03
-      let columnRect = CGRect(x: columnX, y: margin, width: size.width - columnX - margin, height: boardSize)
+      // Square composition: top player row → eval bar + board → bottom player row.
+      // Mirrors the in-app board stack (PlayerFirstRowDetailWidget above/below).
+      let side = min(size.width, size.height)
+      let left = (size.width - side) / 2
+      let headerH = side * 0.07
+      let footerH = side * 0.07
+      let evalW = side * 0.028
+      let evalGap = side * 0.018
+      let horizontalMargin = side * 0.06
+      let maxBoardWidth = side - horizontalMargin * 2 - evalW - evalGap
+      let maxBoardHeight = side - headerH - footerH - side * 0.025
+      let boardSize = min(maxBoardWidth, maxBoardHeight)
+      let groupWidth = evalW + evalGap + boardSize
+      let groupLeft = left + (side - groupWidth) / 2
+      let totalHeight = headerH + boardSize + footerH
+      let top = (size.height - totalHeight) / 2
+      let boardRect = CGRect(x: groupLeft + evalW + evalGap, y: top + headerH, width: boardSize, height: boardSize)
 
-      drawEvalBar(payload: payload, rect: CGRect(x: margin, y: boardRect.minY, width: evalW, height: boardRect.height))
+      drawPlayerRow(payload: payload, isWhite: false, rect: CGRect(x: boardRect.minX, y: top, width: boardRect.width, height: headerH))
+      drawEvalBar(payload: payload, rect: CGRect(x: groupLeft, y: boardRect.minY, width: evalW, height: boardRect.height))
       drawBoard(payload: payload, rect: boardRect)
-      drawPlayerBlock(payload: payload, isWhite: false, column: columnRect, anchorTop: true)
-      drawPlayerBlock(payload: payload, isWhite: true, column: columnRect, anchorTop: false)
+      drawPlayerRow(payload: payload, isWhite: true, rect: CGRect(x: boardRect.minX, y: boardRect.maxY, width: boardRect.width, height: footerH))
     }
     return image.cgImage
   }
 
-  // One player's info stacked in the side column: flag + title/name line,
-  // rating line, clock line. Black anchors to the top of the column (mirroring
-  // the board orientation), white to the bottom.
-  private static func drawPlayerBlock(
-    payload: [String: Any],
-    isWhite: Bool,
-    column: CGRect,
-    anchorTop: Bool
-  ) {
+  // Single-line player row: flag + [title, name, rating] on the left, clock pill on the right.
+  private static func drawPlayerRow(payload: [String: Any], isWhite: Bool, rect: CGRect) {
     let prefix = isWhite ? "white" : "black"
     let title = payload["\(prefix)Title"] as? String ?? ""
     let name = payload["\(prefix)Name"] as? String ?? ""
@@ -770,53 +766,32 @@ private enum ChessPipRenderer {
     let rating = ratingValue > 0 ? "\(ratingValue)" : ""
     let fed = (payload["\(prefix)Fed"] as? String ?? "").uppercased()
     let clock = displayClock(payload: payload, isWhite: isWhite)
-    let label = [title, name].filter { !$0.isEmpty }.joined(separator: " ")
-
-    let nameSize = column.height * 0.055
-    let ratingSize = column.height * 0.048
-    let clockSize = column.height * 0.075
-    let nameH = nameSize * 1.35
-    let ratingH = rating.isEmpty ? 0 : ratingSize * 1.3
-    let clockH = clock.isEmpty ? 0 : clockSize * 1.5
-    let lineGap = column.height * 0.012
-    let blockH = nameH + ratingH + clockH + lineGap * 2
-    var y = anchorTop ? column.minY : column.maxY - blockH
+    let label = [title, name, rating].filter { !$0.isEmpty }.joined(separator: " ")
 
     let flag = flagDisplay(for: fed)
-    var nameX = column.minX
-    if let flag {
-      let flagRect = CGRect(x: column.minX, y: y + nameH * 0.12, width: nameH * 0.95, height: nameH * 0.76)
-      drawText(flag, in: flagRect, size: nameH * 0.62, color: .white, alignment: .center)
-      nameX += nameH * 1.1
-    }
-    drawText(
-      label,
-      in: CGRect(x: nameX, y: y, width: column.maxX - nameX, height: nameH),
-      size: nameSize,
-      color: .white,
-      alignment: .left
-    )
-    y += nameH + lineGap
-
-    if !rating.isEmpty {
-      drawText(
-        rating,
-        in: CGRect(x: column.minX, y: y, width: column.width, height: ratingH),
-        size: ratingSize,
-        color: UIColor(white: 0.72, alpha: 1),
-        alignment: .left
-      )
-      y += ratingH + lineGap
+    if flag != nil {
+      let flagRect = CGRect(x: rect.minX, y: rect.minY + rect.height * 0.16, width: rect.height * 0.9, height: rect.height * 0.68)
+      drawText(flag!, in: flagRect, size: rect.height * 0.58, color: .white, alignment: .center)
     }
 
+    let clockW = clock.isEmpty ? 0 : rect.height * 1.9
     if !clock.isEmpty {
-      let clockRect = CGRect(x: column.minX, y: y, width: column.width, height: clockH)
+      let clockRect = CGRect(x: rect.maxX - clockW, y: rect.minY, width: clockW, height: rect.height)
       if isOngoing(payload: payload) && isWhiteToMove(payload: payload) == isWhite {
         UIColor(red: 0.13, green: 0.66, blue: 0.82, alpha: 1).setFill()
         UIRectFill(clockRect)
       }
-      drawText(clock, in: clockRect, size: clockSize, color: .white, alignment: .center)
+      drawText(clock, in: clockRect, size: rect.height * 0.5, color: .white, alignment: .center)
     }
+
+    let nameX = rect.minX + (flag == nil ? 0 : rect.height * 1.08)
+    let textRect = CGRect(
+      x: nameX,
+      y: rect.minY,
+      width: rect.maxX - nameX - clockW - rect.height * 0.1,
+      height: rect.height
+    )
+    drawText(label, in: textRect, size: rect.height * 0.48, color: .white, alignment: .left)
   }
 
   private static func displayClock(payload: [String: Any], isWhite: Bool) -> String {
