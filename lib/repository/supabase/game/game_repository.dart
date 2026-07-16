@@ -1343,10 +1343,10 @@ class GameRepository extends BaseRepository {
   ///
   /// This is the direct database-backed path for synthetic smart events. It
   /// pushes every filter the schema can represent down to PostgREST. The smart
-  /// event's exact rating semantics are game-average based, while the DB stores
-  /// `player_max_rating`; [minAverageEloForPrefilter] is therefore only used as
-  /// a safe lower-bound prefilter and the exact average range is checked after
-  /// decoding by the provider.
+  /// event's rating semantics are top-player based — a board qualifies when at
+  /// least one player clears the floor — which is exactly what the DB's
+  /// `player_max_rating` stores, so [minTopElo] is an exact lower-bound filter
+  /// (the provider re-checks only the optional upper bound after decoding).
   ///
   /// Pages through every matching row ([_tourGamesFetchPageSize] per request,
   /// like [getGamesByTourId]) up to [limit] TOTAL rows. A single-page fetch
@@ -1356,7 +1356,7 @@ class GameRepository extends BaseRepository {
     required List<String> tourIds,
     GameFilter? filter,
     String? query,
-    int? minAverageEloForPrefilter,
+    int? minTopElo,
     int limit = 6000,
     int offset = 0,
   }) async {
@@ -1410,7 +1410,7 @@ class GameRepository extends BaseRepository {
           query: dbQuery,
           filter: filter,
           tcDb: tcDb,
-          minAverageEloForPrefilter: minAverageEloForPrefilter,
+          minTopElo: minTopElo,
         );
 
         final response = await dbQuery
@@ -2158,9 +2158,9 @@ class GameRepository extends BaseRepository {
     required dynamic query,
     required GameFilter? filter,
     required String? tcDb,
-    required int? minAverageEloForPrefilter,
+    required int? minTopElo,
   }) {
-    if (filter == null && minAverageEloForPrefilter == null) return query;
+    if (filter == null && minTopElo == null) return query;
 
     if (filter != null && filter.hasActiveFilters) {
       switch (filter.live) {
@@ -2218,9 +2218,9 @@ class GameRepository extends BaseRepository {
 
     final filterMinRating = filter?.minRating ?? GameFilter.defaultMinRating;
     final safeMinRating =
-        minAverageEloForPrefilter != null &&
-                minAverageEloForPrefilter > filterMinRating
-            ? minAverageEloForPrefilter
+        minTopElo != null &&
+                minTopElo > filterMinRating
+            ? minTopElo
             : filterMinRating;
     if (safeMinRating > GameFilter.defaultMinRating) {
       query = query.gte('player_max_rating', safeMinRating);

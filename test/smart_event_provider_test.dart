@@ -312,6 +312,17 @@ void main() {
     });
   });
 
+  group('smartGameTopElo', () {
+    test('is the strongest player, not the average — one qualifying player '
+        'is enough for a tier', () {
+      expect(smartGameTopElo(_game(whiteRating: 2600, blackRating: 2300)), 2600);
+    });
+
+    test('falls back to the rated side when one rating is missing', () {
+      expect(smartGameTopElo(_game(whiteRating: 0, blackRating: 2450)), 2450);
+    });
+  });
+
   group('sortSmartGamesForTest', () {
     test('groups by day, then pinned first, then average rating', () {
       final today = DateTime(2026, 6, 9, 12);
