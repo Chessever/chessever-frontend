@@ -374,10 +374,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         },
       ),
     );
+    // Android: X (Twitter) drops EXTRA_STREAM when EXTRA_TEXT is present, so
+    // the shared image never reaches its composer. Omit the text there — the
+    // overlay's link bar still exposes the URL for copying.
+    final shareText =
+        (!kIsWeb && io.Platform.isAndroid) ? null : _effectiveShareUrl;
     return Share.shareXFiles(
       files,
       subject: _shareSubject,
-      text: _effectiveShareUrl,
+      text: shareText,
       sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
     );
   }
