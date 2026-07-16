@@ -35,4 +35,29 @@ void main() {
       );
     },
   );
+
+  test(
+    'PV preview does not resolve the pointer that keys user-applied NAGs',
+    () {
+      final basePointer = resolveBoardMovePointerForAnnotations(
+        pointer: const [3],
+        isPvPreviewActive: false,
+      );
+      final previewPointer = resolveBoardMovePointerForAnnotations(
+        pointer: const [3],
+        isPvPreviewActive: true,
+      );
+
+      expect(basePointer, const [3]);
+      expect(
+        previewPointer,
+        isNull,
+        reason:
+            'User NAGs are stored keyed by the encoded move pointer, which '
+            'stays anchored to the played move during a PV preview — resolving '
+            'it would pin the base move\'s annotation badge onto every '
+            'previewed engine position.',
+      );
+    },
+  );
 }

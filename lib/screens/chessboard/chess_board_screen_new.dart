@@ -365,6 +365,19 @@ ChessMove? resolveBoardMoveForAnnotations({
   return _moveForPointer(game, pointer);
 }
 
+/// Pointer counterpart of [resolveBoardMoveForAnnotations]: user-applied NAGs
+/// are keyed by the encoded move pointer, which also stays anchored to the
+/// played game during a PV preview — so it must not resolve the base move's
+/// user NAGs onto previewed engine positions either.
+@visibleForTesting
+ChessMovePointer? resolveBoardMovePointerForAnnotations({
+  required ChessMovePointer? pointer,
+  required bool isPvPreviewActive,
+}) {
+  if (isPvPreviewActive) return null;
+  return pointer;
+}
+
 String _moveSansSignature(List<String> moveSans) {
   // Normalize: strip check indicators (+, #) for consistent signature matching
   // Different PGN parsers may or may not include these symbols
@@ -8439,6 +8452,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       pointer: activeMovePointer,
       isPvPreviewActive: widget.chessBoardState.isPvPreviewActive,
     );
+    final annotationMovePointer = resolveBoardMovePointerForAnnotations(
+      pointer: activeMovePointer,
+      isPvPreviewActive: widget.chessBoardState.isPvPreviewActive,
+    );
 
     // PERF: Use .select() to only rebuild when showPvArrows changes
     final showPvArrows = ref.watch(
@@ -8506,7 +8523,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           // $10+) return null so Path B renders the Unicode glyph badge.
           final mergedNags = _mergeUserNagsForMovePointer(
             activeMove,
-            activeMovePointer,
+            annotationMovePointer,
             widget.chessBoardState.moveNags,
           );
           if (mergedNags.isNotEmpty) {
@@ -8552,7 +8569,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           // user-applied NAGs from widget.state.moveNags.
           final mergedNags = _mergeUserNagsForMovePointer(
             activeMove,
-            activeMovePointer,
+            annotationMovePointer,
             widget.chessBoardState.moveNags,
           );
           final nag = primaryBoardNag(mergedNags);
