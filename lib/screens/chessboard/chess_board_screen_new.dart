@@ -10697,7 +10697,6 @@ class _MovesDisplay extends ConsumerStatefulWidget {
 
 class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   static const int _autoCollapseDepth = 3;
-  static const int _autoCollapseMoveThreshold = 12;
   final ScrollController _scrollController = ScrollController();
   final Map<String, GlobalKey> _moveKeys = {};
   final ListEquality<int> _pointerEquality = const ListEquality<int>();
@@ -10880,7 +10879,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       collapsedVariationIds: _collapsedVariationIds,
       expandedVariationIds: _expandedVariationIds,
       autoCollapseDepth: _autoCollapseDepth,
-      autoCollapseMoveThreshold: _autoCollapseMoveThreshold,
       rawPgnMode: rawPgnMode,
     );
 

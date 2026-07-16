@@ -130,13 +130,14 @@ String formatMoveText(
 // Collapse heuristic
 // ---------------------------------------------------------------------------
 
+// Only nesting depth decides the initial collapse state — line length never
+// does, so long top-level analysis lines open in full instead of hiding
+// behind a "... N moves" placeholder (Trello #959).
 bool shouldCollapseByDefault(
   NotationVariationNode variation, {
   int autoCollapseDepth = 3,
-  int autoCollapseMoveThreshold = 12,
 }) {
-  if (variation.depth >= autoCollapseDepth) return true;
-  return false;
+  return variation.depth >= autoCollapseDepth;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +156,6 @@ List<NotationDisplayToken> buildNotationTokens(
   required Set<String> collapsedVariationIds,
   required Set<String> expandedVariationIds,
   int autoCollapseDepth = 3,
-  int autoCollapseMoveThreshold = 12,
   bool rawPgnMode = false,
 }) {
   final tokens = <NotationDisplayToken>[];
@@ -253,7 +253,6 @@ List<NotationDisplayToken> buildNotationTokens(
       final defaultCollapsed = shouldCollapseByDefault(
         variation,
         autoCollapseDepth: autoCollapseDepth,
-        autoCollapseMoveThreshold: autoCollapseMoveThreshold,
       );
       final forcedOpen = forcedOpenIds.contains(variation.id);
       final manuallyCollapsed = collapsedVariationIds.contains(variation.id);
@@ -327,7 +326,6 @@ List<NotationDisplayToken> buildNotationTokens(
             collapsedVariationIds: collapsedVariationIds,
             expandedVariationIds: expandedVariationIds,
             autoCollapseDepth: autoCollapseDepth,
-            autoCollapseMoveThreshold: autoCollapseMoveThreshold,
             rawPgnMode: rawPgnMode,
           ),
         );

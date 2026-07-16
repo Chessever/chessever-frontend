@@ -2707,7 +2707,6 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
 
 class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
   static const int _autoCollapseDepth = 3;
-  static const int _autoCollapseMoveThreshold = 12;
   static const List<Color> _variationDepthPalette = [
     Color(0xFFE9EDCC),
     Color(0xFFD6E3BC),
@@ -2796,7 +2795,6 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
       collapsedVariationIds: _collapsedVariationIds,
       expandedVariationIds: _expandedVariationIds,
       autoCollapseDepth: _autoCollapseDepth,
-      autoCollapseMoveThreshold: _autoCollapseMoveThreshold,
       rawPgnMode: rawPgnMode,
     );
 
