@@ -1015,7 +1015,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     return BoardSquare(file, 8 - rankValue)
   }
 
-  // Piece set folder names matching chessground PieceSet.values order (index 0..38),
+  // Piece set folder names matching chessground PieceSet.values order (index 0..39),
   // so pieceStyleIndex selects the same set the in-app board renders.
   private val pieceSetNames = listOf(
     "cburnett", "merida", "pirouetti", "chessnut", "chess7", "alpha", "reillycraig",
@@ -1023,7 +1023,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     "california", "caliente", "pixel", "firi", "rhosgfx", "maestro", "fresca",
     "cardinal", "gioco", "tatiana", "staunty", "governor", "dubrovny", "icpieces",
     "mpchess", "monarchy", "cooke", "shapes", "kiwen-suwi", "horsey", "anarcandy",
-    "xkcd", "letter", "disguised", "symmetric",
+    "xkcd", "letter", "disguised", "symmetric", "totoy",
   )
 
   private fun pieceSetName(index: Int): String = pieceSetNames.getOrElse(index) { "cburnett" }
@@ -1047,7 +1047,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
   }
 
   private fun loadPieceFromAssets(set: String, code: String): Bitmap? {
-    val path = "flutter_assets/packages/chessground/assets/piece_sets/$set/$code.png"
+    val path = "flutter_assets/packages/chessground/assets/piece_sets/$set/$code.webp"
     return try {
       context.assets.open(path).use { BitmapFactory.decodeStream(it) }
     } catch (_: Exception) {
