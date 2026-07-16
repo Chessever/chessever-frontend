@@ -169,17 +169,17 @@ final engineDepthStatusProvider = Provider<EngineDepthSnapshot?>((ref) {
 /// (board screen + Library opening explorer). Index order MUST match the
 /// `engine_lines_view_index` column: 0 = cards, 1 = list.
 enum EngineLinesView {
-  /// ChessEver style — horizontally swipeable PV cards (default).
+  /// ChessEver style — horizontally swipeable PV cards.
   cards,
 
-  /// Traditional style — vertical, one line per row.
+  /// Traditional style — vertical, one line per row (default).
   list,
 }
 
-/// Map a persisted integer index to [EngineLinesView], defaulting to cards.
+/// Map a persisted integer index to [EngineLinesView], defaulting to list.
 EngineLinesView engineLinesViewFromIndex(int? index) {
   if (index == null || index < 0 || index >= EngineLinesView.values.length) {
-    return EngineLinesView.cards;
+    return EngineLinesView.list;
   }
   return EngineLinesView.values[index];
 }
@@ -192,7 +192,7 @@ class EngineSettings {
     this.showPvArrows = true,
     this.showEngineAnalysis = true,
     this.searchTimeIndex = 0,
-    this.engineLinesView = EngineLinesView.cards,
+    this.engineLinesView = EngineLinesView.list,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
     int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
   }) : principalVariationIndex =

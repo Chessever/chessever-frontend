@@ -13702,7 +13702,7 @@ class _PrincipalVariationListState
 
     // Traditional layout: stack the engine lines vertically instead of the
     // swipeable cards. Reuses the same tokens/spans/interactions.
-    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.cards;
+    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
     if (linesView == EngineLinesView.list) {
       return _buildPvListLayout(
         context: context,

@@ -2130,7 +2130,7 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
         fenParts.length > 5 ? (int.tryParse(fenParts[5]) ?? 1) : 1;
 
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.cards;
+    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
 
     Future<void> playLine(ExplorerPvLine line) async {
       if (line.uciMoves.isEmpty) return;
