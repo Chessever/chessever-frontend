@@ -343,6 +343,9 @@ class TourInfo {
   final String? location; // Tournament location
   final String? timeZone; // Time zone
   final String? standings; // Standings URL
+  /// Authoritative Lichess team-event marker. Null for legacy broadcasts that
+  /// predate server-side preservation of `tour.teamTable`.
+  final bool? teamTable;
   // Set by the data hub when it reorders [Tour.players] from an external
   // source (currently 'chess-results'). Absent => Lichess-feed order, and
   // consumers should compute their own standings.
@@ -358,6 +361,7 @@ class TourInfo {
     this.location,
     this.timeZone,
     this.standings,
+    this.teamTable,
     this.standingsSource,
     this.standingsUpdatedAt,
   });
@@ -372,6 +376,7 @@ class TourInfo {
       location: json['location'] as String?,
       timeZone: json['timeZone'] as String?,
       standings: json['standings'] as String?,
+      teamTable: json['teamTable'] as bool?,
       standingsSource: json['standingsSource'] as String?,
       standingsUpdatedAt: _parseTimestamp(json['standingsUpdatedAt']),
     );
@@ -392,6 +397,7 @@ class TourInfo {
       if (location != null) 'location': location,
       if (timeZone != null) 'timeZone': timeZone,
       if (standings != null) 'standings': standings,
+      if (teamTable != null) 'teamTable': teamTable,
       if (standingsSource != null) 'standingsSource': standingsSource,
       if (standingsUpdatedAt != null)
         'standingsUpdatedAt': standingsUpdatedAt!.toIso8601String(),

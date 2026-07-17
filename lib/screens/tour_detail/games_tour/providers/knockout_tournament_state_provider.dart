@@ -104,8 +104,12 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
   final formatSaysPlayer = lowerFormat.contains('player');
   final allPlayersHaveTeam =
       teamPlayers.isNotEmpty && teamPlayers.every((p) => p.team != null);
-  final isTeamEvent =
-      formatSaysTeam || (!formatSaysPlayer && allPlayersHaveTeam);
+  final isTeamEvent = resolveTeamEventClassification(
+    teamTable: tourMetadata?.info.teamTable,
+    formatSaysTeam: formatSaysTeam,
+    formatSaysPlayer: formatSaysPlayer,
+    allPlayersHaveTeam: allPlayersHaveTeam,
+  );
 
   // Check format string first (fast), only analyze games if inconclusive
   final explicitKnockout =
@@ -168,6 +172,17 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
     allGames: models,
   );
 });
+
+/// Prefer Lichess's explicit `tour.teamTable` signal. The older heuristics are
+/// retained only for rows ingested before the data hub preserved that field.
+bool resolveTeamEventClassification({
+  required bool? teamTable,
+  required bool formatSaysTeam,
+  required bool formatSaysPlayer,
+  required bool allPlayersHaveTeam,
+}) =>
+    teamTable ??
+    (formatSaysTeam || (!formatSaysPlayer && allPlayersHaveTeam));
 
 typedef KnockoutRoundMetadataRequest = ({String tourId, String tourName});
 
