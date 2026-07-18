@@ -348,6 +348,11 @@ class TourInfo {
   // consumers should compute their own standings.
   final String? standingsSource;
   final DateTime? standingsUpdatedAt;
+  // Lichess `BroadcastTour.teamTable` ("Show a team leaderboard"), copied
+  // verbatim by the data hub into `tours.info.teamTable`. Older tours were
+  // ingested before the hub started stamping it, so ABSENT means unknown —
+  // never false. Kept nullable to preserve that distinction.
+  final bool? teamTable;
 
   const TourInfo({
     this.tc,
@@ -360,6 +365,7 @@ class TourInfo {
     this.standings,
     this.standingsSource,
     this.standingsUpdatedAt,
+    this.teamTable,
   });
 
   factory TourInfo.fromJson(Map<String, dynamic> json) {
@@ -374,6 +380,7 @@ class TourInfo {
       standings: json['standings'] as String?,
       standingsSource: json['standingsSource'] as String?,
       standingsUpdatedAt: _parseTimestamp(json['standingsUpdatedAt']),
+      teamTable: json['teamTable'] is bool ? json['teamTable'] as bool : null,
     );
   }
 
@@ -395,6 +402,7 @@ class TourInfo {
       if (standingsSource != null) 'standingsSource': standingsSource,
       if (standingsUpdatedAt != null)
         'standingsUpdatedAt': standingsUpdatedAt!.toIso8601String(),
+      if (teamTable != null) 'teamTable': teamTable,
     };
   }
 

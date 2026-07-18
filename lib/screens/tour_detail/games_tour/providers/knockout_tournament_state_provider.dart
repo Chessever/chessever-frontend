@@ -15,8 +15,10 @@ const String kKnockoutStagePrefix = 'knockout-stage';
 class KnockoutTournamentState {
   final bool isKnockout;
 
-  /// True when this tour is a team event (`N-team` format or every player
-  /// teamed and not an explicit `N-player` knockout). Drives the 4-tab layout.
+  /// True when this tour is a team event. Primary signal is the explicit
+  /// lichess `tours.info.teamTable` flag; when absent, format-token and
+  /// roster/game heuristics decide — see [resolveIsTeamEvent]. Drives the
+  /// 4-tab layout.
   final bool isTeamEvent;
   final bool isDetectionPending;
   final String? stageName;
@@ -84,8 +86,10 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
   // shatters a team-vs-team round (many boards) into meaningless
   // single-game "matches". Route these to the group-event (team) view.
   //
-  // The discriminator is the curated FORMAT token, NOT "every player has a
-  // team". Two look-alikes prove why:
+  // The primary discriminator is the explicit lichess `teamTable` flag
+  // (`tours.info.teamTable`); when it is absent (older ingests) we fall back
+  // to the curated FORMAT token plus heuristics — NOT a bare "every player
+  // has a team" test. Two look-alikes prove why:
   //  - A 16-team double-leg knockout has repeated pairs + "game-1/2" slugs,
   //    so the structural detector ALSO flags it as knockout — gating must
   //    cover the inferred path too, not just the format string.
@@ -94,18 +98,18 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
   //    test would wrongly demote them out of the (correct) knockout view.
   // Hence: "N-team" => team event; an explicit "N-player" format always
   // stays a player knockout even when team metadata is present; a bare
-  // "Knockout" with every player teamed (e.g. corporate brackets) is team.
+  // "Knockout" with the roster teamed (e.g. corporate brackets) is team.
+  // See [resolveIsTeamEvent] for the full precedence.
   final teamPlayers =
       (tourMetadata?.players.isNotEmpty ?? false)
           ? tourMetadata!.players
           : (tourDetail?.aboutTourModel.players ?? const <TournamentPlayer>[]);
-  final lowerFormat = (formatString ?? '').toLowerCase();
-  final formatSaysTeam = lowerFormat.contains('team');
-  final formatSaysPlayer = lowerFormat.contains('player');
-  final allPlayersHaveTeam =
-      teamPlayers.isNotEmpty && teamPlayers.every((p) => p.team != null);
-  final isTeamEvent =
-      formatSaysTeam || (!formatSaysPlayer && allPlayersHaveTeam);
+  final isTeamEvent = resolveIsTeamEvent(
+    teamTable: tourMetadata?.info.teamTable,
+    formatString: formatString,
+    players: teamPlayers,
+    games: models,
+  );
 
   // Check format string first (fast), only analyze games if inconclusive
   final explicitKnockout =
@@ -262,6 +266,92 @@ bool _isGenericKnockoutLeg(String name, String slug) {
       RegExp(
         r'^(?:game|leg|tie-?breaks?|rapid|blitz|armageddon)(?:-|$)',
       ).hasMatch(normalizedSlug);
+}
+
+/// Decides whether a tour is a board-vs-board team event.
+///
+/// Signal precedence:
+///  1. `teamTable == true` — the explicit lichess `BroadcastTour.teamTable`
+///     flag ("Show a team leaderboard"), copied by the data hub into
+///     `tours.info.teamTable`. Authoritative positive: short-circuits.
+///  2. `teamTable == false` — a strong negative HINT, not a veto (the flag
+///     is organizer-set and occasionally wrong): the roster/game heuristics
+///     are skipped, but an explicit `team` token in the curated format still
+///     wins.
+///  3. `teamTable == null` (older ingests never stamped the key — absence
+///     means unknown, not false) — heuristics:
+///     - "team battle" / "arena" formats are excluded outright: lichess
+///       arena team battles are pairing pools, not board-vs-board matches.
+///     - `team` must appear as a whole word ("7-round Swiss (team)",
+///       "16-team Knockout"), never as a substring ("Steam").
+///     - An explicit `player` format token ("206-player Knockout") vetoes
+///       the inferred signals: individual events like the FIDE World Cup
+///       club-tag every player and must stay non-team.
+///     - Otherwise a tour is team when its games show real team matches
+///       ([gamesShowTeamMatches]) or most of the roster (>= 80%) carries a
+///       non-empty team tag.
+bool resolveIsTeamEvent({
+  required bool? teamTable,
+  required String? formatString,
+  required List<TournamentPlayer> players,
+  required List<GamesTourModel> games,
+}) {
+  if (teamTable == true) return true;
+
+  // Normalize like [formatRulesOutKnockout]: separators become spaces so
+  // "team-battle" / "team_battle" and "N-team" all tokenize cleanly.
+  final normalized = (formatString ?? '')
+      .toLowerCase()
+      .replaceAll('_', ' ')
+      .replaceAll('-', ' ');
+  final isTeamBattle =
+      normalized.contains('team battle') ||
+      RegExp(r'\barenas?\b').hasMatch(normalized);
+  if (isTeamBattle) return false;
+
+  final formatSaysTeam = RegExp(r'\bteams?\b').hasMatch(normalized);
+  if (teamTable == false) return formatSaysTeam;
+
+  final formatSaysPlayer = RegExp(r'\bplayers?\b').hasMatch(normalized);
+  return formatSaysTeam ||
+      (!formatSaysPlayer &&
+          (gamesShowTeamMatches(games) || _mostPlayersHaveTeam(players)));
+}
+
+/// True when at least 80% of a non-empty roster carries a non-empty
+/// (trimmed) team tag. The old `every((p) => p.team != null)` test broke on
+/// a single untagged substitute; a handful of gaps must not flip the layout.
+bool _mostPlayersHaveTeam(List<TournamentPlayer> players) {
+  if (players.isEmpty) return false;
+  final teamed =
+      players.where((p) => p.team?.trim().isNotEmpty ?? false).length;
+  return teamed * 5 >= players.length * 4;
+}
+
+/// Structural team signal from the games themselves: true when at least one
+/// (round, unordered team pair) group holds two or more boards — i.e. two
+/// different games in the same round between the same two (distinct) teams.
+///
+/// Mirrors the match grouping in `team_standings_builder.dart`. Individual
+/// events that merely club-tag players (FIDE-World-Cup-style) pair each
+/// player against a different opponent, so their (round, pair) groups stay
+/// at one board and this returns false.
+bool gamesShowTeamMatches(List<GamesTourModel> games) {
+  final boardsPerMatch = <String, int>{};
+  for (final g in games) {
+    final wTeam = g.whitePlayer.team?.trim();
+    final bTeam = g.blackPlayer.team?.trim();
+    if (wTeam == null || wTeam.isEmpty || bTeam == null || bTeam.isEmpty) {
+      continue;
+    }
+    if (wTeam == bTeam) continue; // clubmates paired 1v1: no team match
+    final pair = ([wTeam, bTeam]..sort()).join('\u0001');
+    final key = '${g.roundId}\u0001$pair';
+    final boards = (boardsPerMatch[key] ?? 0) + 1;
+    if (boards >= 2) return true;
+    boardsPerMatch[key] = boards;
+  }
+  return false;
 }
 
 /// True when the current tour is a team event (drives the 4-tab layout).
