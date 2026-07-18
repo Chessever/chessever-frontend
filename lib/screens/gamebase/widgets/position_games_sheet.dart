@@ -17,6 +17,7 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 
@@ -479,8 +480,23 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     );
   }
 
-  static GamesTourModel _mapPreviewToTourModel(Map<String, dynamic> row) {
-    int parseInt(dynamic value) {
+  static GamesTourModel _mapPreviewToTourModel(Map<String, dynamic> row) =>
+      mapGamebasePreviewToTourModel(row);
+
+  static Future<void> _openGame(
+    BuildContext context,
+    WidgetRef ref,
+    GamesTourModel game,
+    List<GamesTourModel> allGames,
+    int currentIndex,
+    String? initialFen,
+  ) => openGamebaseGame(context, ref, game, allGames, currentIndex, initialFen);
+}
+
+/// Maps a gamebase `GameSearchPreview` row into the app's [GamesTourModel].
+/// Shared by [PositionGamesSheet] and the explorer's inline games section.
+GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
+  int parseInt(dynamic value) {
       if (value is int) return value;
       if (value is num) return value.toInt();
       return int.tryParse(value?.toString() ?? '') ?? 0;
@@ -579,18 +595,25 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     );
   }
 
-  static Future<void> _openGame(
-    BuildContext context,
-    WidgetRef ref,
-    GamesTourModel game,
-    List<GamesTourModel> allGames,
-    int currentIndex,
-    String? initialFen,
-  ) async {
+/// Opens a gamebase game into the full board screen: premium guard → loading
+/// modal → PGN fetch → [ChessBoardScreenNew]. Shared by [PositionGamesSheet]
+/// and the explorer's inline games section.
+Future<void> openGamebaseGame(
+  BuildContext context,
+  WidgetRef ref,
+  GamesTourModel game,
+  List<GamesTourModel> allGames,
+  int currentIndex,
+  String? initialFen,
+) async {
     // Premium guard - show paywall if not subscribed
     final hasPremium = await requirePremiumGuard(context, ref);
     if (!hasPremium) return;
     if (!context.mounted) return;
+
+    // Any lingering explorer-card focus must not hijack the pushed board
+    // screen's arrows (Trello #984).
+    ref.read(explorerFocusedGameProvider.notifier).clear();
 
     // Ensure the chessboard screen renders as a "tour game" view.
     ref.read(chessboardViewFromProviderNew.notifier).state =
@@ -668,7 +691,6 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
     }
-  }
 }
 
 class _PositionGamesFooter extends StatelessWidget {

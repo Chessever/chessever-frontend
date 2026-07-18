@@ -1606,6 +1606,10 @@ class GamebasePositionGamesQuery {
   final int pageNumber; // 0-indexed
   final int pageSize;
 
+  /// 1–20 asks the backend to attach a `continuation` UCI slice per row,
+  /// starting from the queried position. 0 (default) omits it.
+  final int notationPlies;
+
   const GamebasePositionGamesQuery({
     required this.fen,
     this.moves = const <String>[],
@@ -1623,6 +1627,7 @@ class GamebasePositionGamesQuery {
     this.sortDirection = GamebaseSortDirection.desc,
     this.pageNumber = 0,
     this.pageSize = 20,
+    this.notationPlies = 0,
   });
 
   @override
@@ -1643,7 +1648,8 @@ class GamebasePositionGamesQuery {
         other.sortBy == sortBy &&
         other.sortDirection == sortDirection &&
         other.pageNumber == pageNumber &&
-        other.pageSize == pageSize;
+        other.pageSize == pageSize &&
+        other.notationPlies == notationPlies;
   }
 
   @override
@@ -1664,6 +1670,7 @@ class GamebasePositionGamesQuery {
     sortDirection,
     pageNumber,
     pageSize,
+    notationPlies,
   );
 }
 
@@ -1688,6 +1695,7 @@ final positionGamesProvider = FutureProvider.autoDispose
         yearTo: query.yearTo,
         sortBy: query.sortBy,
         sortDirection: query.sortDirection,
+        notationPlies: query.notationPlies,
         pageNumber: query.pageNumber,
         pageSize: query.pageSize,
       );

@@ -99,6 +99,7 @@ import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
+import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/models/gamebase_game.dart'
     show TimeControl, TimeControlExtension;
@@ -6390,6 +6391,24 @@ class _BottomNavBar extends ConsumerWidget {
       clearNotifier.state++;
     }
 
+    // Trello #984: while an explorer game card is focused, the arrows walk
+    // that card's continuation instead of the main board. Swiping the
+    // explorer panel away must hand the arrows back instantly.
+    final explorerFocus = ref.watch(explorerFocusedGameProvider);
+    final explorerFocusNotifier = ref.read(
+      explorerFocusedGameProvider.notifier,
+    );
+    ref.listen<AsyncValue<bool>>(gamebaseOverlayEnabledProvider, (
+      previous,
+      next,
+    ) {
+      final wasEnabled = previous?.valueOrNull ?? true;
+      final enabled = next.valueOrNull ?? true;
+      if (wasEnabled && !enabled) {
+        ref.read(explorerFocusedGameProvider.notifier).clear();
+      }
+    });
+
     return ChessBoardBottomNavBar(
       key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
       gameIndex: index,
@@ -6406,10 +6425,15 @@ class _BottomNavBar extends ConsumerWidget {
         });
       },
       onRightMove:
-          // Normal board arrows only navigate saved notation/PV-preview moves.
-          // Do not fall through to engine/PV insertion at the end of notation;
-          // engine moves must come from explicit PV/engine UI actions.
-          effectiveCanMoveForward
+          explorerFocus != null
+              ? (explorerFocus.canGoForward
+                  ? explorerFocusNotifier.forward
+                  : null)
+              // Normal board arrows only navigate saved notation/PV-preview
+              // moves. Do not fall through to engine/PV insertion at the end
+              // of notation; engine moves must come from explicit PV/engine
+              // UI actions.
+              : effectiveCanMoveForward
               ? () {
                 clearBoardSelection();
                 notifier.moveForward().then((_) {
@@ -6430,27 +6454,42 @@ class _BottomNavBar extends ConsumerWidget {
               }
               : null,
       onLeftMove:
-          effectiveCanMoveBackward
+          explorerFocus != null
+              ? (explorerFocus.canGoBackward
+                  ? explorerFocusNotifier.backward
+                  : null)
+              : effectiveCanMoveBackward
               ? () {
                 clearBoardSelection();
                 notifier.moveBackward();
               }
               : null,
-      onLongPressBackwardStart: () {
-        clearBoardSelection();
-        notifier.startLongPressBackward();
-      },
-      onLongPressBackwardEnd: () => notifier.stopLongPress(),
+      onLongPressBackwardStart:
+          explorerFocus != null
+              ? (explorerFocus.canGoBackward
+                  ? explorerFocusNotifier.backward
+                  : null)
+              : () {
+                clearBoardSelection();
+                notifier.startLongPressBackward();
+              },
+      onLongPressBackwardEnd:
+          explorerFocus != null ? null : () => notifier.stopLongPress(),
       onLongPressForwardStart:
-          effectiveCanMoveForward
+          explorerFocus != null
+              ? (explorerFocus.canGoForward
+                  ? explorerFocusNotifier.forward
+                  : null)
+              : effectiveCanMoveForward
               ? () {
                 clearBoardSelection();
                 notifier.startLongPressForward();
               }
               : null,
-      onLongPressForwardEnd: () => notifier.stopLongPress(),
-      canMoveForward: effectiveCanMoveForward,
-      canMoveBackward: effectiveCanMoveBackward,
+      onLongPressForwardEnd:
+          explorerFocus != null ? null : () => notifier.stopLongPress(),
+      canMoveForward: explorerFocus?.canGoForward ?? effectiveCanMoveForward,
+      canMoveBackward: explorerFocus?.canGoBackward ?? effectiveCanMoveBackward,
       showEngineAnalysis: state.showEngineAnalysis,
       showUnseenMoveBadge: state.hasUnseenMoves,
       onGamebaseToggle: onGamebaseToggle,

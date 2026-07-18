@@ -922,6 +922,10 @@ class GamebaseRepository {
   /// List example games for a given position (and optionally a specific move from that position).
   ///
   /// Pagination is 0-indexed per the API spec for this endpoint.
+  ///
+  /// [notationPlies] (1–20) asks the backend to include a `continuation`
+  /// UCI-move slice per row, starting from the queried position. `0` (default)
+  /// omits it.
   Future<GamebaseSearchQueryResponse> getPositionGames({
     required String fen,
     List<String> moves = const [],
@@ -937,6 +941,7 @@ class GamebaseRepository {
     GamebaseSortField? sortBy,
     GamebaseSortDirection? sortDirection,
     bool? isOnline,
+    int notationPlies = 0,
     int pageNumber = 0,
     int pageSize = 20,
   }) async {
@@ -986,6 +991,7 @@ class GamebaseRepository {
                   if (yearFrom != null) 'yearFrom': yearFrom,
                   if (yearTo != null) 'yearTo': yearTo,
                   if (isOnline != null) 'isOnline': isOnline,
+                  if (notationPlies > 0) 'notationPlies': notationPlies,
                   if (orderBy != null) 'orderBy': orderBy,
                   if (sortBy != null) 'sortBy': sortBy.name,
                   if (sortDirection != null)
@@ -1011,6 +1017,7 @@ class GamebaseRepository {
                   if (yearFrom != null) 'yearFrom': yearFrom,
                   if (yearTo != null) 'yearTo': yearTo,
                   if (isOnline != null) 'isOnline': isOnline,
+                  if (notationPlies > 0) 'notationPlies': notationPlies,
                   if (sortBy != null) 'sortBy': sortBy.name,
                   if (sortDirection != null)
                     'sortDirection': sortDirection.name,
@@ -1051,6 +1058,7 @@ class GamebaseRepository {
     GamebaseSortField? sortBy,
     GamebaseSortDirection? sortDirection,
     bool? isOnline,
+    int notationPlies = 0,
     int pageNumber = 0,
     int pageSize = 20,
   }) async {
@@ -1074,6 +1082,7 @@ class GamebaseRepository {
           if (yearFrom != null) 'yearFrom': yearFrom,
           if (yearTo != null) 'yearTo': yearTo,
           if (isOnline != null) 'isOnline': isOnline,
+          if (notationPlies > 0) 'notationPlies': notationPlies,
           if (sortBy != null) 'sortBy': sortBy.name,
           if (sortDirection != null) 'sortDirection': sortDirection.name,
         },

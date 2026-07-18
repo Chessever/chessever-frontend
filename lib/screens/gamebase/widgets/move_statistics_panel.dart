@@ -16,8 +16,10 @@ import 'package:intl/intl.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
+import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
+import 'explorer_game_card.dart';
 import 'position_games_sheet.dart';
 
 const double _kMoveColumnWidth = 74;
@@ -29,6 +31,10 @@ const double _kColumnGap = 6;
 /// (ply 20). `currentMoveNumber` is `ply + 1`, so anything above 20 means the
 /// current position is *past* move 10 and premium is required.
 const int kFreeExplorerMoveNumberLimit = 20;
+
+/// When this many games (or fewer) remain in the explored position, the panel
+/// appends an inline games section under the move table (Trello #984).
+const int kExplorerInlineGamesLimit = 10;
 
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
@@ -193,50 +199,15 @@ class MoveStatisticsPanel extends ConsumerWidget {
                           (_, index) => _MoveStatisticsSkeletonRow(seed: index),
                     ),
                   )
-                  : ListView.separated(
+                  : ListView(
                     padding: EdgeInsets.zero,
-                    itemCount:
-                        state.moveAggregates.isEmpty && showGate
-                            ? 5
-                            : state.moveAggregates.length,
-                    separatorBuilder:
-                        (_, __) => Divider(
-                          color: context.colors.divider,
-                          height: 1,
-                          indent: 12.sp,
-                        ),
-                    itemBuilder: (context, index) {
-                      if (state.moveAggregates.isEmpty && showGate) {
-                        return const _MoveStatisticsPlaceholderRow();
-                      }
-                      final aggregate = state.moveAggregates[index];
-                      return _MoveStatisticsRow(
-                        aggregate: aggregate,
-                        currentFen: state.currentFen,
-                        exploredMoves: state.exploredMoves,
-                        filters: state.filters,
-                        onTap: () async {
-                          if (showGate) {
-                            await requirePremiumGuard(context, ref);
-                            return;
-                          }
-                          if (nextStepCrossesLimit) {
-                            final unlocked = await requirePremiumGuard(
-                              context,
-                              ref,
-                            );
-                            if (!unlocked) return;
-                          }
-                          if (onMove != null) {
-                            onMove!(aggregate.uci);
-                          } else {
-                            ref
-                                .read(gamebaseExplorerProvider.notifier)
-                                .makeMove(aggregate.uci);
-                          }
-                        },
-                      );
-                    },
+                    children: _buildListChildren(
+                      context,
+                      ref,
+                      state,
+                      showGate: showGate,
+                      nextStepCrossesLimit: nextStepCrossesLimit,
+                    ),
                   ),
         ),
       ],
@@ -266,6 +237,152 @@ class MoveStatisticsPanel extends ConsumerWidget {
     }
 
     return mainContent;
+  }
+
+  List<Widget> _buildListChildren(
+    BuildContext context,
+    WidgetRef ref,
+    GamebaseExplorerState state, {
+    required bool showGate,
+    required bool nextStepCrossesLimit,
+  }) {
+    Widget divider() =>
+        Divider(color: context.colors.divider, height: 1, indent: 12.sp);
+
+    final children = <Widget>[];
+
+    if (state.moveAggregates.isEmpty && showGate) {
+      for (var i = 0; i < 5; i++) {
+        if (i > 0) children.add(divider());
+        children.add(const _MoveStatisticsPlaceholderRow());
+      }
+      return children;
+    }
+
+    for (var i = 0; i < state.moveAggregates.length; i++) {
+      final aggregate = state.moveAggregates[i];
+      if (i > 0) children.add(divider());
+      children.add(
+        _MoveStatisticsRow(
+          aggregate: aggregate,
+          currentFen: state.currentFen,
+          exploredMoves: state.exploredMoves,
+          filters: state.filters,
+          onTap: () async {
+            // A move-row tap always releases a focused game card so the
+            // arrows return to the main board instantly (Trello #984).
+            ref.read(explorerFocusedGameProvider.notifier).clear();
+            if (showGate) {
+              await requirePremiumGuard(context, ref);
+              return;
+            }
+            if (nextStepCrossesLimit) {
+              final unlocked = await requirePremiumGuard(context, ref);
+              if (!unlocked) return;
+            }
+            if (onMove != null) {
+              onMove!(aggregate.uci);
+            } else {
+              ref
+                  .read(gamebaseExplorerProvider.notifier)
+                  .makeMove(aggregate.uci);
+            }
+          },
+        ),
+      );
+    }
+
+    // Lichess-style '∑' totals row — hidden when only one move remains.
+    if (state.moveAggregates.length > 1) {
+      children.add(divider());
+      children.add(_MoveStatisticsSummaryRow(aggregates: state.moveAggregates));
+    }
+
+    // Inline games section once few enough games remain in this position.
+    // The blur gate already covers the whole panel past the free limit, so
+    // no extra gating is needed here.
+    final totalGames = state.totalGames;
+    if (!showGate &&
+        !state.isLoading &&
+        state.moveAggregates.isNotEmpty &&
+        totalGames > 0 &&
+        totalGames <= kExplorerInlineGamesLimit) {
+      children.add(divider());
+      children.add(
+        ExplorerGamesSection(
+          fen: state.currentFen,
+          moves: state.exploredMoves,
+          filters: state.filters,
+        ),
+      );
+    }
+
+    return children;
+  }
+}
+
+/// Totals row summing every move row above it ('∑'): weighted W/D/L bar,
+/// aggregate game count, and the most recent last-played date. Mirrors the
+/// per-row column geometry so it reads as part of the table.
+class _MoveStatisticsSummaryRow extends StatelessWidget {
+  const _MoveStatisticsSummaryRow({required this.aggregates});
+
+  final List<MoveAggregate> aggregates;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = MoveAggregatesSummary.fromAggregates(aggregates);
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _kMoveColumnWidth.w,
+            child: Text(
+              '∑',
+              style: TextStyle(
+                color: context.colors.textPrimary,
+                fontSize: 14.f,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          Expanded(
+            child: _StatisticsBar(
+              whiteRate: summary.whiteRate,
+              drawRate: summary.drawRate,
+              blackRate: summary.blackRate,
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          SizedBox(
+            width: _kGamesColumnWidth.w,
+            child: Text(
+              summary.formattedTotal,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: kPrimaryColor,
+                fontSize: 12.f,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          SizedBox(
+            width: _kLastColumnWidth.w,
+            child: Text(
+              _formatLastPlayed(summary.lastPlayed),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: context.colors.textSecondary,
+                fontSize: 12.f,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

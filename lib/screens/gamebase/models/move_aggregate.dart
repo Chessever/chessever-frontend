@@ -59,12 +59,69 @@ class MoveAggregate with MoveAggregateMappable {
   String get drawPercent => '${(drawRate * 100).toStringAsFixed(0)}%';
 
   /// Formatted total games string (e.g., "1.2K", "3.5M")
-  String get formattedTotal {
-    if (total >= 1000000) {
-      return '${(total / 1000000).toStringAsFixed(1)}M';
-    } else if (total >= 1000) {
-      return '${(total / 1000).toStringAsFixed(1)}K';
-    }
-    return total.toString();
+  String get formattedTotal => formatGamebaseGameCount(total);
+}
+
+/// Formats a game count compactly (e.g. "1.2K", "3.5M").
+String formatGamebaseGameCount(int total) {
+  if (total >= 1000000) {
+    return '${(total / 1000000).toStringAsFixed(1)}M';
+  } else if (total >= 1000) {
+    return '${(total / 1000).toStringAsFixed(1)}K';
   }
+  return total.toString();
+}
+
+/// Weighted W/D/L totals across a set of move aggregates — powers the
+/// explorer's lichess-style '∑' summary row.
+class MoveAggregatesSummary {
+  const MoveAggregatesSummary({
+    required this.white,
+    required this.draws,
+    required this.black,
+    required this.total,
+    this.lastPlayed,
+  });
+
+  factory MoveAggregatesSummary.fromAggregates(
+    Iterable<MoveAggregate> aggregates,
+  ) {
+    var white = 0;
+    var draws = 0;
+    var black = 0;
+    var total = 0;
+    DateTime? lastPlayed;
+    for (final aggregate in aggregates) {
+      white += aggregate.white;
+      draws += aggregate.draws;
+      black += aggregate.black;
+      total += aggregate.total;
+      final played = aggregate.lastPlayed;
+      if (played != null &&
+          (lastPlayed == null || played.isAfter(lastPlayed))) {
+        lastPlayed = played;
+      }
+    }
+    return MoveAggregatesSummary(
+      white: white,
+      draws: draws,
+      black: black,
+      total: total,
+      lastPlayed: lastPlayed,
+    );
+  }
+
+  final int white;
+  final int draws;
+  final int black;
+  final int total;
+
+  /// Most recent game date across all aggregated moves.
+  final DateTime? lastPlayed;
+
+  double get whiteRate => total > 0 ? white / total : 0.0;
+  double get drawRate => total > 0 ? draws / total : 0.0;
+  double get blackRate => total > 0 ? black / total : 0.0;
+
+  String get formattedTotal => formatGamebaseGameCount(total);
 }

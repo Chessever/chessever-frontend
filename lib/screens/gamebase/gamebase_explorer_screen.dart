@@ -38,6 +38,7 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
@@ -259,6 +260,15 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     _backwardLongPressTimer = Timer.periodic(
       const Duration(milliseconds: 130),
       (_) {
+        final focusState = ref.read(explorerFocusedGameProvider);
+        if (focusState != null) {
+          if (!focusState.canGoBackward) {
+            _stopLongPressBackward();
+            return;
+          }
+          ref.read(explorerFocusedGameProvider.notifier).backward();
+          return;
+        }
         final preview = ref.read(explorerEvalProvider).pvPreview;
         if (preview != null) {
           if (!preview.canMoveBackward) {
@@ -288,6 +298,15 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     _forwardLongPressTimer = Timer.periodic(const Duration(milliseconds: 130), (
       _,
     ) {
+      final focusState = ref.read(explorerFocusedGameProvider);
+      if (focusState != null) {
+        if (!focusState.canGoForward) {
+          _stopLongPressForward();
+          return;
+        }
+        ref.read(explorerFocusedGameProvider.notifier).forward();
+        return;
+      }
       final preview = ref.read(explorerEvalProvider).pvPreview;
       if (preview != null) {
         if (!preview.canMoveForward) {
@@ -352,8 +371,24 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     final preview = ref.watch(
       explorerEvalProvider.select((value) => value.pvPreview),
     );
-    final canMoveForward = preview?.canMoveForward ?? state.canGoForward;
-    final canMoveBackward = preview?.canMoveBackward ?? state.canGoBack;
+    // Trello #984: a focused explorer game card owns the arrows and walks its
+    // continuation; the explorer position stays put until focus is released.
+    final explorerFocus = ref.watch(explorerFocusedGameProvider);
+    final explorerFocusNotifier = ref.read(
+      explorerFocusedGameProvider.notifier,
+    );
+    // Swiping the panel over to the notation page releases the focus.
+    ref.listen<int>(explorerPageIndexProvider, (previous, next) {
+      if (next != 0) {
+        ref.read(explorerFocusedGameProvider.notifier).clear();
+      }
+    });
+    final canMoveForward =
+        explorerFocus?.canGoForward ??
+        (preview?.canMoveForward ?? state.canGoForward);
+    final canMoveBackward =
+        explorerFocus?.canGoBackward ??
+        (preview?.canMoveBackward ?? state.canGoBack);
     final scopedPlayerId = widget.initialPlayer?.id;
     if (scopedPlayerId != null && scopedPlayerId.isNotEmpty) {
       ref.listen<PlayerOpeningTreeState>(
@@ -397,7 +432,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               });
             },
             onRightMove:
-                canMoveForward
+                explorerFocus != null
+                    ? (explorerFocus.canGoForward
+                        ? explorerFocusNotifier.forward
+                        : null)
+                    : canMoveForward
                     ? () async {
                       if (preview != null) {
                         ref
@@ -411,7 +450,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                     }
                     : null,
             onLeftMove:
-                canMoveBackward
+                explorerFocus != null
+                    ? (explorerFocus.canGoBackward
+                        ? explorerFocusNotifier.backward
+                        : null)
+                    : canMoveBackward
                     ? () {
                       if (preview != null) {
                         ref
