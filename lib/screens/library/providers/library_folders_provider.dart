@@ -18,6 +18,22 @@ final kTwicFolder = LibraryFolder(
   updatedAt: DateTime(2000),
 );
 
+/// Special Miniatures database identifier — not a real Supabase folder.
+const kMiniaturesBookId = '__miniatures__';
+
+/// Synthetic Miniatures folder (community database of short decisive games),
+/// pinned right after the TWIC master database in the library list.
+final kMiniaturesFolder = LibraryFolder(
+  id: kMiniaturesBookId,
+  userId: '',
+  name: 'Miniatures',
+  color: '#0FB4E5',
+  icon: 'miniatures',
+  orderIndex: -1,
+  createdAt: DateTime(2000),
+  updatedAt: DateTime(2000),
+);
+
 final libraryFoldersStreamProvider =
     StreamProvider.autoDispose<List<LibraryFolder>>((ref) {
       final repository = ref.watch(libraryRepositoryProvider);

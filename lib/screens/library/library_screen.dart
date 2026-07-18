@@ -5,6 +5,7 @@ import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
@@ -290,6 +291,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       return;
     }
 
+    if (folder.id == kMiniaturesBookId) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const MiniaturesScreen()));
+      return;
+    }
+
     if (folder.isLikedGames) {
       Navigator.of(
         context,
@@ -528,6 +536,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final allFolders = <LibraryFolder>[
       if (likedIdx != -1) folders[likedIdx],
       kTwicFolder,
+      kMiniaturesFolder,
       ...rest,
     ];
     final filteredFolders = _filterFolders(allFolders);
@@ -561,6 +570,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               folder: filteredFolders[index],
               isExpanded: true,
               isFeatured: filteredFolders[index].id == kTwicBookId ||
+                  filteredFolders[index].id == kMiniaturesBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),
@@ -581,6 +591,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               folder: filteredFolders[index],
               isExpanded: true,
               isFeatured: filteredFolders[index].id == kTwicBookId ||
+                  filteredFolders[index].id == kMiniaturesBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
             ),

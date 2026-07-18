@@ -8,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 
@@ -394,6 +395,42 @@ class GamebaseRepository {
         debugPrint('[GamebaseRepository] getGameWithPgn error: $e');
       }
       return null;
+    }
+  }
+
+  /// Fetch decisive short games from the Gamebase miniatures index.
+  ///
+  /// The backend defines miniatures as decisive games ending by move 25.
+  /// Pagination is offset-based; sorting/filtering happens server-side via
+  /// [MiniatureGamesFilter.queryParameters] (mirrors the desktop app).
+  Future<GamebaseMiniaturesPage> getMiniatures({
+    MiniatureGamesFilter filter = MiniatureGamesFilter.defaultFilter,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/miniatures',
+        queryParameters: filter.queryParameters(limit: limit, offset: offset),
+        options: Options(headers: _headers),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return GamebaseMiniaturesPage.fromJson(Map<String, dynamic>.from(data));
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getMiniatures DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+      }
+      throw Exception(
+        'Failed to load miniatures: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
+    } catch (e) {
+      throw Exception('Failed to load miniatures: $e');
     }
   }
 

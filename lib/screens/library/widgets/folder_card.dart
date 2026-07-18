@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
+import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -59,6 +61,12 @@ class FolderCard extends ConsumerWidget {
       ).push(MaterialPageRoute(builder: (_) => const MyLikesScreen()));
       return;
     }
+    if (folder.id == kMiniaturesBookId) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const MiniaturesScreen()));
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => FolderContentsScreen(folder: folder)),
     );
@@ -85,6 +93,13 @@ class FolderCard extends ConsumerWidget {
   }) {
     if (isLiked) {
       return Icon(Icons.favorite, size: size, color: context.colors.danger);
+    }
+    if (folder.id == kMiniaturesBookId) {
+      return Icon(
+        Icons.bolt_rounded,
+        size: size,
+        color: context.colors.iconPrimary,
+      );
     }
     if (folder.isDatabase) {
       return _ChessDatabaseGlyph(
@@ -150,9 +165,10 @@ class FolderCard extends ConsumerWidget {
 
   Widget _buildExpandedCard(BuildContext context, WidgetRef ref) {
     final isTwic = folder.id == kTwicBookId;
+    final isMiniatures = folder.id == kMiniaturesBookId;
     final isLiked = folder.isLikedGames;
     // Synthetic / special, permanent collections — no rename/delete/share menu.
-    final isProtected = isTwic || isLiked;
+    final isProtected = isTwic || isMiniatures || isLiked;
 
     // CSS specs: featured = 64x64 icon, ~18px radius; regular = 36x36 icon, 10px radius
     final iconSize = isFeatured ? 64.0.h : 36.0.h;
@@ -176,6 +192,23 @@ class FolderCard extends ConsumerWidget {
             ),
         loading: () => Text('Master games', style: twicLabelStyle),
         error: (_, __) => Text('Master games', style: twicLabelStyle),
+      );
+    } else if (isMiniatures) {
+      final miniaturesTotalAsync = ref.watch(miniaturesTotalCountProvider);
+      final miniaturesLabelStyle = AppTypography.textXsRegular.copyWith(
+        color: const Color(0xFFA1A1A1),
+        height: 16 / 12,
+      );
+      countWidget = miniaturesTotalAsync.when(
+        data:
+            (count) => Text(
+              count > 0
+                  ? '${formatCompactCount(count)} miniatures'
+                  : 'Short decisive games',
+              style: miniaturesLabelStyle,
+            ),
+        loading: () => Text('Short decisive games', style: miniaturesLabelStyle),
+        error: (_, __) => Text('Short decisive games', style: miniaturesLabelStyle),
       );
     } else if (folder.isFolder) {
       final childCount =
