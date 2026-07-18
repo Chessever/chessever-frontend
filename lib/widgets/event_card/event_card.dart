@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -92,9 +93,18 @@ class EventCard extends ConsumerWidget {
         tourEventCardModel.eventSource == EventSource.lichessBroadcast &&
         tourEventCardModel.tourEventCategory != TourEventCategory.completed &&
         tourEventCardModel.tourEventCategory != TourEventCategory.live;
+    // Shimmer only while the FIRST resolve is in flight. Invalidations (the
+    // For You feed re-resolves the round line on its refresh paths) keep the
+    // previous value via AsyncValue.copyWithPrevious, so a refresh must not
+    // flip an already-rendered card back to its skeleton.
+    final nextRoundAsync =
+        needsRound
+            ? ref.watch(eventNextRoundProvider(tourEventCardModel.id))
+            : null;
     final nextRoundLoading =
-        needsRound &&
-        ref.watch(eventNextRoundProvider(tourEventCardModel.id)).isLoading;
+        nextRoundAsync != null &&
+        nextRoundAsync.isLoading &&
+        !nextRoundAsync.hasValue;
 
     final body =
         (ResponsiveHelper.isTablet && !forceCompactLayout)
@@ -1127,16 +1137,31 @@ class _NextRoundLine extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    if (category == TourEventCategory.live) {
+    // The category prop only re-derives on feed refreshes, so it can lag
+    // right as a round starts; the strict live-ids stream is the authority.
+    // Never render a stale "starts in X" countdown for an event that is
+    // actually live — prefer the LIVE label.
+    final isLiveNow =
+        category == TourEventCategory.live ||
+        ref.watch(
+          liveGroupBroadcastIdsProvider.select(
+            (liveIds) => liveIds.valueOrNull?.contains(eventId) ?? false,
+          ),
+        );
+    if (isLiveNow) {
       return _LiveLabel(onLight: onLight);
     }
 
     final nextRoundAsync = ref.watch(eventNextRoundProvider(eventId));
     final nextRound = nextRoundAsync.valueOrNull;
-    final isLoading = nextRoundAsync.isLoading;
+    // Invalidations keep the previous value, so only the very first resolve
+    // renders the placeholder skeleton shape below.
+    final isInitialLoading =
+        nextRoundAsync.isLoading && !nextRoundAsync.hasValue;
 
-    // Once the fetch has settled with no future round, hide the line.
-    if (!isLoading && nextRound == null) return const SizedBox.shrink();
+    // Once the fetch has settled (or is re-resolving) with no future round,
+    // hide the line.
+    if (!isInitialLoading && nextRound == null) return const SizedBox.shrink();
 
     // Placeholder values keep the shimmer skeleton the same shape/size as the
     // eventually-rendered line so the card doesn't reflow when data lands.

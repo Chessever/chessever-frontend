@@ -27,6 +27,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -213,6 +214,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     // Catch up on events that started while the app was backgrounded; the
     // 5-minute staleness gate keeps quick app switches cheap.
     ref.listen<int>(appResumedSignalProvider, (_, __) {
+      // The frozen "Round N · starts in X" line is the first thing to go
+      // stale while backgrounded; re-resolve it even when the staleness gate
+      // below skips the full feed refetch.
+      _invalidateNextRoundLines();
       if (ref.read(forYouSurfaceVisibleProvider)) {
         unawaited(refreshIfStale());
       } else {
@@ -286,9 +291,23 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       _queuedFeedRefresh = true;
       return;
     }
+    _invalidateNextRoundLines();
     _offset = 0;
     state = state.copyWith(isLoading: true, error: null);
     await _fetchPage(isInitial: true);
+  }
+
+  /// Re-resolves the "Round N · starts in X" line for every event currently
+  /// in the feed. `eventNextRoundProvider` is deliberately non-autoDispose
+  /// (see its doc) and nothing else invalidates it, so a pre-play `starts_at`
+  /// ingestion estimate would otherwise stay frozen for the whole session.
+  /// Piggybacking on the already-throttled refresh paths keeps it honest
+  /// without extra polling; consumers keep the previous value while the
+  /// future re-resolves, so this never flips cards back to shimmer.
+  void _invalidateNextRoundLines() {
+    for (final event in state.events) {
+      ref.invalidate(eventNextRoundProvider(event.id));
+    }
   }
 
   Future<void> refreshIfStale({
