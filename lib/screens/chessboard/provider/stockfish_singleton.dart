@@ -179,6 +179,10 @@ class StockfishSingleton {
     bool isCurrentPosition =
         false, // Priority flag for user's currently viewed position
     bool allowCache = true,
+    // Explicit opt-in for workflows such as Game Review that must be testable
+    // with the real engine in debug. Ordinary board analysis keeps the debug
+    // hot-restart protection below.
+    bool allowInDebug = false,
     String? ownerId, // Owner ID for per-provider job isolation
   }) async {
     // Validate depth range (only if using depth-based search)
@@ -193,9 +197,9 @@ class StockfishSingleton {
 
     // Debug-only: the local engine is disabled in debug builds (see
     // [kEnableStockfishInDebug]) because its native FFI isolates hang hot
-    // restart. Resolve to an empty/cancelled eval so callers degrade gracefully
-    // without ever spawning the engine. Release builds are unaffected.
-    if (kDebugMode && !kEnableStockfishInDebug) {
+    // restart. Resolve to an empty/cancelled eval unless this caller explicitly
+    // opts in. Release builds are unaffected.
+    if (kDebugMode && !kEnableStockfishInDebug && !allowInDebug) {
       return EnhancedCloudEval(
         fen: fen,
         knodes: 0,

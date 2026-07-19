@@ -14,6 +14,9 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 // import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 // import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
@@ -242,6 +245,8 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
         return '!';
       case LichessMoveAnnotationType.bestMove:
         return '!';
+      case LichessMoveAnnotationType.forced:
+        return '■';
       case LichessMoveAnnotationType.bookMove:
         return '';
       case LichessMoveAnnotationType.inaccuracy:
@@ -269,6 +274,8 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
         return 'assets/svgs/good_move.svg';
       case LichessMoveAnnotationType.bestMove:
         return 'assets/svgs/best_move.svg';
+      case LichessMoveAnnotationType.forced:
+        return 'assets/svgs/forced_move.svg';
       case LichessMoveAnnotationType.bookMove:
         return 'assets/svgs/book_move.svg';
     }
@@ -284,6 +291,8 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
         return const Color(0xFF177A68);
       case LichessMoveAnnotationType.bestMove:
         return const Color(0xFF28833A);
+      case LichessMoveAnnotationType.forced:
+        return const Color(0xFF6B7A8A);
       case LichessMoveAnnotationType.bookMove:
         return const Color(0xFF4E5B4F);
       case LichessMoveAnnotationType.inaccuracy:
@@ -295,6 +304,19 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
     }
   }
 }
+
+LichessMoveAnnotationType _annotationTypeForGameReport(
+  GameMoveClassification classification,
+) => switch (classification) {
+  GameMoveClassification.brilliant => LichessMoveAnnotationType.brilliant,
+  GameMoveClassification.goodMove => LichessMoveAnnotationType.goodMove,
+  GameMoveClassification.bestMove => LichessMoveAnnotationType.bestMove,
+  GameMoveClassification.forced => LichessMoveAnnotationType.forced,
+  GameMoveClassification.inaccuracy => LichessMoveAnnotationType.inaccuracy,
+  GameMoveClassification.mistake => LichessMoveAnnotationType.mistake,
+  GameMoveClassification.blunder => LichessMoveAnnotationType.blunder,
+  GameMoveClassification.missedWin => LichessMoveAnnotationType.missedWin,
+};
 
 /// Merge NAGs baked into the PGN with NAGs the user has applied locally.
 /// PGN NAGs come first (preserving authoring order), user NAGs append after —
@@ -1813,6 +1835,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         chessBoardScreenProviderNew(prevParams).notifier,
       );
       unawaited(prevNotifier.onBecameInvisible());
+      ref.read(mobileGameReviewProvider(prevParams)).setActive(false);
     } catch (e) {
       debugPrint('Error cancelling previous game evaluation: $e');
     }
@@ -1870,6 +1893,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
     _ensureAudioListener(params);
+    ref.read(mobileGameReviewProvider(params)).setActive(true);
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     if (boardSettings?.soundEnabled == true) {
       unawaited(AudioPlayerService.instance.prepareForForegroundPlayback());
@@ -1894,6 +1918,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
+    ref.read(mobileGameReviewProvider(params)).setActive(false);
     try {
       final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
       unawaited(notifier.onBecameInvisible());
@@ -8552,6 +8577,24 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           final lichessAnnotations =
               lichessAnnotationsAsync.valueOrNull ??
               const <int, LichessMoveAnnotation>{};
+          final reviewState = ref.watch(mobileGameReviewProvider(params)).state;
+          final report = reviewState.reportState.report;
+          final reportAnnotations = <int, LichessMoveAnnotation>{
+            if (reviewState.classificationsRevealed &&
+                report != null &&
+                report.fingerprint == gameReportFingerprint(analysisGame))
+              for (final move in report.moves)
+                if (move.classification != null)
+                  move.ply - 1: LichessMoveAnnotation(
+                    type: _annotationTypeForGameReport(move.classification!),
+                    comment: '',
+                    useClassificationIcon: true,
+                  ),
+          };
+          final moveAnnotations = <int, LichessMoveAnnotation>{
+            ...lichessAnnotations,
+            ...reportAnnotations,
+          };
 
           final isOnMainline =
               activeMovePointer.isEmpty || activeMovePointer.length == 1;
@@ -8580,8 +8623,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           if (isOnMainline) {
             final currentMoveIndex =
                 activeMovePointer.isEmpty ? -1 : activeMovePointer[0].toInt();
-            if (currentMoveIndex >= 0 && lichessAnnotations.isNotEmpty) {
-              final annotation = lichessAnnotations[currentMoveIndex];
+            if (currentMoveIndex >= 0 && moveAnnotations.isNotEmpty) {
+              final annotation = moveAnnotations[currentMoveIndex];
               if (annotation != null) return annotation;
             }
           }
@@ -10781,6 +10824,19 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
+    final reviewController = ref.watch(mobileGameReviewProvider(params));
+    final isActivePage = widget.index == widget.currentPageIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      reviewController.configure(
+        game: navigatorState.game,
+        active: isActivePage,
+        finished: widget.game.effectiveGameStatus.isFinished,
+        whiteRating: widget.game.whitePlayer.rating,
+        blackRating: widget.game.blackPlayer.rating,
+      );
+    });
+    final reviewState = reviewController.state;
     final signature = notationGameSignature(navigatorState.game);
     final mainlineSans =
         navigatorState.game.mainline.map((move) => move.san).toList();
@@ -10804,6 +10860,23 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final lichessAnnotations =
         lichessAnnotationsAsync.valueOrNull ??
         const <int, LichessMoveAnnotation>{};
+    final report = reviewState.reportState.report;
+    final reportAnnotations = <int, LichessMoveAnnotation>{
+      if (reviewState.classificationsRevealed &&
+          report != null &&
+          report.fingerprint == gameReportFingerprint(navigatorState.game))
+        for (final move in report.moves)
+          if (move.classification != null)
+            move.ply - 1: LichessMoveAnnotation(
+              type: _annotationTypeForGameReport(move.classification!),
+              comment: '',
+              useClassificationIcon: true,
+            ),
+    };
+    final moveAnnotations = <int, LichessMoveAnnotation>{
+      ...lichessAnnotations,
+      ...reportAnnotations,
+    };
 
     // Debug: Log annotation state
     if (lichessAnnotations.isNotEmpty) {
@@ -10904,7 +10977,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
 
     final effectiveLichessAnnotations =
-        rawPgnMode ? const <int, LichessMoveAnnotation>{} : lichessAnnotations;
+        rawPgnMode ? const <int, LichessMoveAnnotation>{} : moveAnnotations;
 
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(
@@ -10926,6 +10999,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             ? pointerMap[pointerForHighlightId]
             : null;
     final currentPly = currentNode?.ply ?? -1;
+    final activeReportPly =
+        currentNode == null ? 0 : currentNode.ply - tree.startingPly + 1;
+
+    void openGameReview() {
+      unawaited(
+        showMobileGameReviewSheet(
+          context: context,
+          controller: reviewController,
+          game: widget.game,
+          activePly: activeReportPly,
+          onJumpToPly: (ply) {
+            notifier.goToMovePointer(
+              ply <= 0 ? const <Number>[] : <Number>[ply - 1],
+            );
+          },
+          onVisibilityChanged: notifier.setGameReviewVisible,
+        ),
+      );
+    }
 
     final rows = _buildNotationRows(
       tokens,
@@ -10988,7 +11080,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             topRight: Radius.circular(12.sp),
           ),
         ),
-        child: notationContent,
+        child: Column(
+          children: [
+            Expanded(child: notationContent),
+            GameAnalysisButton(
+              key: const ValueKey('game-analysis-button'),
+              state: reviewState,
+              onPressed: openGameReview,
+            ),
+          ],
+        ),
       );
       return content;
     }
@@ -11213,6 +11314,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ],
             ),
           ),
+          GameAnalysisButton(
+            key: const ValueKey('game-analysis-button'),
+            state: reviewState,
+            onPressed: openGameReview,
+          ),
           if (showNextMovePanel)
             _NextMoveOptionsPanel(
               options: nextMoveOptions,
@@ -11345,7 +11451,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             : null;
 
     // Evaluative annotations: append colored symbol inline after the SAN text
-    if (annotationPres == AnnotationPresentation.inlineSymbol) {
+    if (annotationPres == AnnotationPresentation.inlineSymbol &&
+        annotation?.useClassificationIcon != true) {
       moveSpans.add(
         TextSpan(
           text: annotation!.type.symbol,
@@ -11415,6 +11522,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ),
             )
             : null;
+    final Widget? classificationBadge =
+        annotation?.useClassificationIcon == true
+            ? Container(
+              width: 17.sp,
+              height: 17.sp,
+              margin: EdgeInsets.only(left: 4.sp),
+              padding: EdgeInsets.all(4.sp),
+              decoration: BoxDecoration(
+                color: annotation!.type.color,
+                shape: BoxShape.circle,
+              ),
+              child: RepaintBoundary(
+                child: SvgPicture.asset(
+                  annotation.type.iconAssetPath,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            )
+            : null;
 
     return GestureDetector(
       key: key,
@@ -11458,7 +11584,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 width: 0.7,
               ),
             ),
-            child: Text.rich(TextSpan(children: moveSpans)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text.rich(TextSpan(children: moveSpans)),
+                if (classificationBadge != null) classificationBadge,
+              ],
+            ),
           ),
           if (isTail && widget.state.hasUnseenMoves)
             Positioned(
@@ -14127,9 +14259,10 @@ class _PrincipalVariationListState
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
           // Tag the highlighted move so the list row can auto-scroll to it.
-          child: (isSelectedMove && selectedMoveKey != null)
-              ? KeyedSubtree(key: selectedMoveKey, child: spanChild)
-              : spanChild,
+          child:
+              (isSelectedMove && selectedMoveKey != null)
+                  ? KeyedSubtree(key: selectedMoveKey, child: spanChild)
+                  : spanChild,
         ),
       );
     }

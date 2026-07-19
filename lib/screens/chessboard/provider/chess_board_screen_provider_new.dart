@@ -178,6 +178,7 @@ class ChessBoardScreenNotifierNew
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
+  bool _gameReviewVisible = false;
 
   /// Tracks whether the user is auto-following the latest live move.
   /// Set to false when the user manually navigates backwards, true when they
@@ -1832,6 +1833,24 @@ class ChessBoardScreenNotifierNew
 
   void evaluateCurrentPosition() {
     _updateEvaluation();
+  }
+
+  /// Lets the whole-game report borrow this board page's Stockfish slot while
+  /// its progress UI is visible. Cancellation stays owner-scoped, so the
+  /// report and other engine consumers are never stopped with the board job.
+  Future<void> setGameReviewVisible(bool visible) async {
+    if (_gameReviewVisible == visible) return;
+    _gameReviewVisible = visible;
+    if (visible) {
+      EasyDebounce.cancel('evaluation-$index');
+      _cancelEvaluation = true;
+      _cancelEvalWatchdog(resetPending: true);
+      _clearActiveEvalState();
+      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+      return;
+    }
+    _cancelEvaluation = false;
+    _updateEvaluation(force: true);
   }
 
   void goToMovePointer(ChessMovePointer pointer) {
@@ -5559,6 +5578,7 @@ class ChessBoardScreenNotifierNew
     bool preserveDepthProgress = false,
     bool skipPvUpdates = false,
   }) async {
+    if (_gameReviewVisible) return;
     int? requestId;
     String? lastEvaluatedFen;
     try {
@@ -7229,7 +7249,7 @@ class ChessBoardScreenNotifierNew
     bool preserveCurrentPvs = false,
     bool preserveDepthProgress = false,
   }) {
-    if (_isLongPressing) return;
+    if (_isLongPressing || _gameReviewVisible) return;
 
     if (force) {
       // Force requests should interrupt any pending scheduled evaluations

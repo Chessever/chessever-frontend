@@ -85,6 +85,7 @@ AnnotationPresentation resolveAnnotationPresentation(
     case LichessMoveAnnotationType.brilliant:
     case LichessMoveAnnotationType.goodMove:
     case LichessMoveAnnotationType.bestMove:
+    case LichessMoveAnnotationType.forced:
     case LichessMoveAnnotationType.inaccuracy:
     case LichessMoveAnnotationType.mistake:
     case LichessMoveAnnotationType.blunder:
@@ -193,6 +194,31 @@ List<NotationDisplayToken> buildNotationTokens(
         variationColorKey: variationContext?.id,
       ),
     );
+
+    // Analysis comments belong only to the original mainline. Variations can
+    // reuse the same numeric ply, so indexing them into this map would attach
+    // a mainline explanation to the wrong move. Book badges intentionally do
+    // not create a prose block.
+    final analysisAnnotation =
+        !rawPgnMode && depth == 0 && moveIndex >= 0
+            ? lichessAnnotations[moveIndex]
+            : null;
+    if (analysisAnnotation != null &&
+        analysisAnnotation.comment.trim().isNotEmpty &&
+        resolveAnnotationPresentation(analysisAnnotation.type) ==
+            AnnotationPresentation.inlineSymbol) {
+      tokens.add(
+        NotationDisplayToken(
+          type: NotationTokenType.lichessComment,
+          text: analysisAnnotation.comment.trim(),
+          depth: depth,
+          pointerId: pointerId,
+          moveIndex: moveIndex,
+          node: node,
+          pointer: pointerList,
+        ),
+      );
+    }
 
     // Add PGN comments (skipped in raw PGN mode, or once the user has
     // overridden this move's comment — the override replaces the original
