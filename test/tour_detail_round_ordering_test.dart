@@ -196,6 +196,85 @@ void main() {
       },
     );
 
+    test(
+      'does not promote over a live round whose loaded boards all report finished',
+      () {
+        // 59th Biel International Masters, blitz category: round 5 was live
+        // while every board we had loaded for it already reported a result, so
+        // the fully-played gate opened and round 6 bubbled above the live round.
+        final now = DateTime(2026, 3, 30, 16);
+        final rounds = [
+          _round(
+            id: 'r4',
+            name: 'Round 4',
+            startsAt: now.subtract(const Duration(hours: 3)),
+            status: RoundStatus.completed,
+          ),
+          _round(
+            id: 'r5',
+            name: 'Round 5',
+            startsAt: now.subtract(const Duration(minutes: 25)),
+            status: RoundStatus.live,
+          ),
+          _round(
+            id: 'r6',
+            name: 'Round 6',
+            startsAt: now.add(const Duration(minutes: 35)),
+            status: RoundStatus.upcoming,
+          ),
+          _round(
+            id: 'r7',
+            name: 'Round 7',
+            startsAt: now.add(const Duration(minutes: 95)),
+            status: RoundStatus.upcoming,
+          ),
+        ];
+
+        final sorted = sortRoundsForDisplay(
+          rounds,
+          resolveDate: (round) => round.startsAt,
+          isRoundFullyPlayed: (_) => true,
+          now: now,
+        );
+
+        expect(_ids(sorted), ['r5', 'r4', 'r6', 'r7']);
+      },
+    );
+
+    test('does not promote over a live round that has no games loaded yet', () {
+      final now = DateTime(2026, 3, 30, 16);
+      final rounds = [
+        _round(
+          id: 'r4',
+          name: 'Round 4',
+          startsAt: now.subtract(const Duration(hours: 3)),
+          status: RoundStatus.completed,
+        ),
+        _round(
+          id: 'r5',
+          name: 'Round 5',
+          startsAt: now.subtract(const Duration(minutes: 5)),
+          status: RoundStatus.live,
+        ),
+        _round(
+          id: 'r6',
+          name: 'Round 6',
+          startsAt: now.add(const Duration(minutes: 35)),
+          status: RoundStatus.upcoming,
+        ),
+      ];
+
+      final sorted = sortRoundsForDisplay(
+        rounds,
+        resolveDate: (round) => round.startsAt,
+        hasGames: (round) => round.id != 'r5',
+        isRoundFullyPlayed: (round) => round.id == 'r4',
+        now: now,
+      );
+
+      expect(_ids(sorted), ['r5', 'r4', 'r6']);
+    });
+
     test('promotes the next round at exactly two hours', () {
       final now = DateTime(2026, 3, 30, 16);
       final rounds = [

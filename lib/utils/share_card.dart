@@ -1,11 +1,13 @@
-import 'dart:typed_data';
+import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Renders [child] to PNG bytes by briefly mounting it off-screen in a real
 /// [Overlay] wrapped in a [RepaintBoundary], pumping a few frames so async
@@ -109,6 +111,31 @@ Future<Uint8List?> captureBoundaryPng(
   } finally {
     image.dispose();
   }
+}
+
+/// Shares [files] through the native sheet, dropping [text] on Android.
+///
+/// X (Twitter) on Android ignores `EXTRA_STREAM` whenever `EXTRA_TEXT` is also
+/// set, so an image-plus-URL share arrives in its composer as text only and the
+/// card is silently lost. Every share here pairs the image with a "Share Link"
+/// action (and the board overlay's link bar), so the URL stays reachable
+/// without riding along on the file share. iOS and web keep the text — they
+/// attach both correctly.
+///
+/// Use this instead of calling [Share.shareXFiles] with a `text:` directly.
+Future<void> shareFilesWithText(
+  List<XFile> files, {
+  String? text,
+  String? subject,
+  Rect? sharePositionOrigin,
+}) {
+  final isAndroid = !kIsWeb && io.Platform.isAndroid;
+  return Share.shareXFiles(
+    files,
+    text: isAndroid ? null : text,
+    subject: subject,
+    sharePositionOrigin: sharePositionOrigin,
+  );
 }
 
 /// Shows the captured share image in a preview bottom sheet with up to two

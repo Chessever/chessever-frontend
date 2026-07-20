@@ -1329,7 +1329,7 @@ class _ScoreCardPage extends ConsumerWidget {
         context,
         imageBytes: imageBytes,
         onShareImage: () async {
-          await Share.shareXFiles(
+          await shareFilesWithText(
             [XFile(file.path, mimeType: 'image/png')],
             text: playerShareUrl,
             subject: subject,
