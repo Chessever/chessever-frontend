@@ -35,10 +35,18 @@ String normalizeFenForGamebase(String fen) {
 String _positionKeyForComparison(String fen) =>
     normalizeFenForGamebase(fen).split(RegExp(r'\s+')).take(4).join(' ');
 
-/// Backend exact indexed coverage ends at positions after 60 played plies
-/// (30 full moves). The next position after this enters the replay-backed
-/// cold path, so broad prefetch should stop before crossing that boundary.
-const int _kExactIndexedExplorerMaxPly = 60;
+/// Backend fast (materialized-view / FEN-indexed) coverage ends at positions
+/// after 20 played plies — `OPENING_EXPLORER_MAX_INDEXED_PLY` / `MV_MAX_PLY`
+/// server-side. The next position after this needs the replay-backed path,
+/// which is materially more expensive, so broad prefetch must stop before
+/// crossing that boundary.
+///
+/// This was 60 (30 full moves), which is where exact indexed *storage* ends,
+/// not where the fast lookup does. The effect was that every navigation
+/// between ply 21 and 60 fanned out 3-4 extra replay-path queries, starving
+/// the request the user was actually waiting on right at the depth the
+/// explorer starts to matter.
+const int _kExactIndexedExplorerMaxPly = 20;
 
 /// Convert a 6-field FEN into number of played plies.
 int _pliesFromFen(String fen) {
@@ -187,11 +195,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
     _inFlightAggregateRequests[cacheKey] = future;
     unawaited(
-      future.whenComplete(() {
-        if (identical(_inFlightAggregateRequests[cacheKey], future)) {
-          _inFlightAggregateRequests.remove(cacheKey);
-        }
-      }),
+      future
+          .whenComplete(() {
+            if (identical(_inFlightAggregateRequests[cacheKey], future)) {
+              _inFlightAggregateRequests.remove(cacheKey);
+            }
+          })
+          .catchError((_) {
+            // The request owner (or the prefetch call site) reports the
+            // failure. This bookkeeping future must not rethrow into the
+            // zone as an unhandled async error.
+            return const <MoveAggregate>[];
+          }),
     );
 
     return future;
@@ -966,9 +981,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             if (needsInitialFetch) _scheduleFetch();
             return;
           }
+          // Enter the loading state with the position change itself, not when
+          // the debounced fetch finally starts. Otherwise there is a window
+          // (the debounce delay, plus the whole request past the indexed
+          // boundary) where `isLoading` is false and `moveAggregates` is the
+          // previous position's — or empty — and the panel renders a bogus
+          // "No games found for this position".
           state = state.copyWith(
             currentFen: normalized,
             movePointer: existingPointer,
+            isLoading: true,
+            error: null,
+            moveAggregates: const [],
           );
           _scheduleFetch();
           return;
@@ -1031,6 +1055,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
       state = state.copyWith(
         currentFen: normalized,
+        // Same reason as the fast path above: never leave a settled-but-empty
+        // table on screen while the new position's fetch is pending.
+        isLoading: true,
+        error: null,
+        moveAggregates: const [],
         game: ChessGame(
           gameId: 'explorer_sync_${DateTime.now().millisecondsSinceEpoch}',
           startingFen: pathMatchesTarget ? actualStartingFen : normalized,

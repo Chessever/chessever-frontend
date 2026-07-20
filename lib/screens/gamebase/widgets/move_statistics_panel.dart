@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:intl/intl.dart';
@@ -19,6 +20,7 @@ import '../models/models.dart';
 import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
+import '../utils/explorer_move_sort.dart';
 import 'explorer_game_card.dart';
 import 'position_games_sheet.dart';
 
@@ -36,9 +38,154 @@ const int kFreeExplorerMoveNumberLimit = 20;
 /// appends an inline games section under the move table (Trello #984).
 const int kExplorerInlineGamesLimit = 10;
 
+/// Empty state for the move table.
+///
+/// Mirrors the desktop explorer's `_ExplorerEmpty`: an icon, a title that
+/// states the outcome, and a line explaining what it means, so a deep or rare
+/// position does not read as a broken lookup. Collapses to just the text when
+/// the panel is short (the swipe panel can be very short in landscape).
+class _ExplorerEmpty extends StatelessWidget {
+  const _ExplorerEmpty({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxHeight = constraints.maxHeight;
+        final compact = maxHeight.isFinite && maxHeight < 132;
+        final ultraCompact = maxHeight.isFinite && maxHeight < 76;
+
+        return Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: (compact ? 16 : 24).sp,
+              vertical: (ultraCompact ? 6 : (compact ? 10 : 24)).sp,
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 360.w),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!ultraCompact) ...[
+                    Icon(
+                      Icons.menu_book_outlined,
+                      size: (compact ? 18 : 24).ic,
+                      color: context.colors.textSecondary,
+                    ),
+                    SizedBox(height: (compact ? 6 : 10).sp),
+                  ],
+                  Text(
+                    title,
+                    maxLines: compact ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.colors.textPrimary,
+                      fontSize: (compact ? 12 : 13).f,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
+                  ),
+                  SizedBox(height: (compact ? 2 : 4).sp),
+                  Text(
+                    message,
+                    maxLines: compact ? 1 : 3,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      fontSize: (compact ? 10.5 : 11).f,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Tappable column header. Cycles ascending -> descending -> unsorted, the
+/// same three states the desktop header cycles through. Touch has no hover,
+/// so the idle affordance is a permanently dimmed sort glyph rather than the
+/// desktop's hover-revealed one.
+class _SortHeader extends StatelessWidget {
+  const _SortHeader({
+    required this.label,
+    required this.field,
+    required this.align,
+    required this.sort,
+    required this.onSort,
+    this.color,
+  });
+
+  final String label;
+  final ExplorerMoveSortField field;
+  final TextAlign align;
+  final ExplorerMoveSort? sort;
+  final ValueChanged<ExplorerMoveSortField> onSort;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = sort?.field == field;
+    final ascending = sort?.ascending ?? true;
+    final rightAligned = align == TextAlign.right;
+
+    final children = <Widget>[
+      Flexible(
+        child: Text(
+          label,
+          textAlign: align,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color:
+                active
+                    ? context.colors.textPrimary
+                    : (color ?? context.colors.textSecondary),
+            fontSize: 11.f,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+          ),
+        ),
+      ),
+      SizedBox(width: 2.sp),
+      Icon(
+        active
+            ? (ascending
+                ? Icons.arrow_upward_rounded
+                : Icons.arrow_downward_rounded)
+            : Icons.unfold_more_rounded,
+        size: 11.ic,
+        color:
+            active
+                ? kPrimaryColor
+                : context.colors.textSecondary.withValues(alpha: 0.45),
+      ),
+    ];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onSort(field),
+      child: Row(
+        mainAxisAlignment:
+            rightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: rightAligned ? children.reversed.toList() : children,
+      ),
+    );
+  }
+}
+
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
-class MoveStatisticsPanel extends ConsumerWidget {
+class MoveStatisticsPanel extends HookConsumerWidget {
   const MoveStatisticsPanel({super.key, this.onMove});
 
   /// Optional handler for move taps. When supplied, taps invoke this callback
@@ -51,6 +198,19 @@ class MoveStatisticsPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gamebaseExplorerProvider);
     final hasStaleData = state.moveAggregates.isNotEmpty;
+
+    // Column ordering is view state: it survives navigation between positions
+    // (like desktop) but never leaves this panel.
+    final sort = useState<ExplorerMoveSort?>(null);
+    void cycleSort(ExplorerMoveSortField field) {
+      sort.value = ExplorerMoveSort.cycle(sort.value, field);
+    }
+
+    final sortedAggregates = applyExplorerMoveSort(
+      state.moveAggregates,
+      sort.value,
+      state.currentFen,
+    );
 
     final isSubscribed = ref.watch(
       subscriptionProvider.select((s) => s.isSubscribed),
@@ -88,18 +248,13 @@ class MoveStatisticsPanel extends ConsumerWidget {
     }
 
     if (state.moveAggregates.isEmpty && !showGate && !state.isLoading) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(16.sp),
-          child: Text(
-            'No games found for this position',
-            style: TextStyle(
-              color: context.colors.textSecondary,
-              fontSize: 14.f,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ),
+      // Match the desktop explorer's wording. "No games found" reads like a
+      // failure; the position simply has no indexed games, which is the
+      // normal outcome once a line runs past what the database covers.
+      return const _ExplorerEmpty(
+        title: 'No games match this position',
+        message:
+            'No master/online games are indexed for the position on the board.',
       );
     }
 
@@ -118,51 +273,45 @@ class MoveStatisticsPanel extends ConsumerWidget {
             children: [
               SizedBox(
                 width: _kMoveColumnWidth.w,
-                child: Text(
-                  'Move',
-                  style: TextStyle(
-                    color: context.colors.textSecondary,
-                    fontSize: 11.f,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: _SortHeader(
+                  label: 'Move',
+                  field: ExplorerMoveSortField.move,
+                  align: TextAlign.left,
+                  sort: sort.value,
+                  onSort: cycleSort,
                 ),
               ),
               SizedBox(width: _kColumnGap.sp),
               Expanded(
-                child: Text(
-                  'Score',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: context.colors.textSecondary,
-                    fontSize: 11.f,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: _SortHeader(
+                  label: 'Score',
+                  field: ExplorerMoveSortField.score,
+                  align: TextAlign.center,
+                  sort: sort.value,
+                  onSort: cycleSort,
                 ),
               ),
               SizedBox(width: _kColumnGap.sp),
               SizedBox(
                 width: _kGamesColumnWidth.w,
-                child: Text(
-                  'Games',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: kPrimaryColor,
-                    fontSize: 11.f,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: _SortHeader(
+                  label: 'Games',
+                  field: ExplorerMoveSortField.games,
+                  align: TextAlign.right,
+                  sort: sort.value,
+                  onSort: cycleSort,
+                  color: kPrimaryColor,
                 ),
               ),
               SizedBox(width: _kColumnGap.sp),
               SizedBox(
                 width: _kLastColumnWidth.w,
-                child: Text(
-                  'Last',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: context.colors.textSecondary,
-                    fontSize: 11.f,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: _SortHeader(
+                  label: 'Last',
+                  field: ExplorerMoveSortField.last,
+                  align: TextAlign.right,
+                  sort: sort.value,
+                  onSort: cycleSort,
                 ),
               ),
             ],
@@ -205,6 +354,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                       context,
                       ref,
                       state,
+                      aggregates: sortedAggregates,
                       showGate: showGate,
                       nextStepCrossesLimit: nextStepCrossesLimit,
                     ),
@@ -243,6 +393,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     GamebaseExplorerState state, {
+    required List<MoveAggregate> aggregates,
     required bool showGate,
     required bool nextStepCrossesLimit,
   }) {
@@ -251,7 +402,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
 
     final children = <Widget>[];
 
-    if (state.moveAggregates.isEmpty && showGate) {
+    if (aggregates.isEmpty && showGate) {
       for (var i = 0; i < 5; i++) {
         if (i > 0) children.add(divider());
         children.add(const _MoveStatisticsPlaceholderRow());
@@ -259,8 +410,8 @@ class MoveStatisticsPanel extends ConsumerWidget {
       return children;
     }
 
-    for (var i = 0; i < state.moveAggregates.length; i++) {
-      final aggregate = state.moveAggregates[i];
+    for (var i = 0; i < aggregates.length; i++) {
+      final aggregate = aggregates[i];
       if (i > 0) children.add(divider());
       children.add(
         _MoveStatisticsRow(
@@ -293,9 +444,9 @@ class MoveStatisticsPanel extends ConsumerWidget {
     }
 
     // Lichess-style '∑' totals row — hidden when only one move remains.
-    if (state.moveAggregates.length > 1) {
+    if (aggregates.length > 1) {
       children.add(divider());
-      children.add(_MoveStatisticsSummaryRow(aggregates: state.moveAggregates));
+      children.add(_MoveStatisticsSummaryRow(aggregates: aggregates));
     }
 
     // Inline games section once few enough games remain in this position.
@@ -304,7 +455,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
     final totalGames = state.totalGames;
     if (!showGate &&
         !state.isLoading &&
-        state.moveAggregates.isNotEmpty &&
+        aggregates.isNotEmpty &&
         totalGames > 0 &&
         totalGames <= kExplorerInlineGamesLimit) {
       children.add(divider());

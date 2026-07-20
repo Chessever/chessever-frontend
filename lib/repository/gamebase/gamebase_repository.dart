@@ -74,6 +74,17 @@ class GamebaseRepository {
 
   bool get hasApiKey => _apiKey.isNotEmpty;
 
+  /// Cold replay-backed aggregate queries (any position past the server's
+  /// fast indexed window) can legitimately outlast the repository-wide
+  /// 30s receive timeout, so this endpoint gets a wider per-request window
+  /// and one retry. Without it a slow deep position surfaces as an error
+  /// instead of a move table.
+  static const Duration _aggregateReceiveTimeout = Duration(seconds: 75);
+  static const Duration _aggregateTimeoutRetryDelay = Duration(
+    milliseconds: 400,
+  );
+  static const int _aggregateReceiveTimeoutRetries = 1;
+
   Map<String, String> get _headers {
     if (!hasApiKey) throw const MissingGamebaseApiKeyException();
     return {'X-API-Key': _apiKey, 'Accept': 'application/json'};
@@ -132,11 +143,41 @@ class GamebaseRepository {
 
       // Use POST /aggregates/query so the backend can compute deep move trees
       // beyond the pre-indexed opening window.
-      final response = await _dio.post(
-        '$_baseUrl/api/game-position/aggregates/query',
-        data: body,
-        options: Options(headers: _headers),
-      );
+      late final Response<dynamic> response;
+      for (var attempt = 0; ; attempt++) {
+        try {
+          response = await _dio.post(
+            '$_baseUrl/api/game-position/aggregates/query',
+            data: body,
+            options: Options(
+              headers: _headers,
+              receiveTimeout: _aggregateReceiveTimeout,
+            ),
+          );
+          break;
+        } on DioException catch (e) {
+          // Treat "no data for this position" as an empty result, not an
+          // error. This is common for uncommon/midgame positions.
+          if (e.response?.statusCode == 404) {
+            return const GamebaseResponse(
+              status: 'success',
+              data: GamebaseData(moves: []),
+            );
+          }
+
+          if (e.type == DioExceptionType.receiveTimeout &&
+              attempt < _aggregateReceiveTimeoutRetries) {
+            if (kDebugMode) {
+              debugPrint(
+                '[GamebaseRepository] aggregates receive timeout; retrying once',
+              );
+            }
+            await Future<void>.delayed(_aggregateTimeoutRetryDelay);
+            continue;
+          }
+          rethrow;
+        }
+      }
 
       if (kDebugMode) {
         final moves = response.data['data']?['moves'] as List?;
