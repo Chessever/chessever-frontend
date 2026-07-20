@@ -285,4 +285,98 @@ void main() {
       containerDisposed = true;
     },
   );
+
+  // Depth coverage for the swipe-to-explorer panel. Past 20 played plies the
+  // backend leaves its fast FEN-indexed path, so the panel MUST ship the full
+  // move line — dropping or truncating it collapses the server onto the
+  // position-only lookup, which is empty there and renders as
+  // "No games match this position".
+  for (final ply in <int>[24, 40, 60]) {
+    testWidgets('board explorer ships the full line at ply $ply', (
+      tester,
+    ) async {
+      final fakeRepository = _FakeGamebaseRepository();
+      final container = ProviderContainer(
+        overrides: [
+          gamebaseRepositoryProvider.overrideWithValue(fakeRepository),
+        ],
+      );
+      var containerDisposed = false;
+      addTearDown(() {
+        if (!containerDisposed) container.dispose();
+      });
+
+      // A real broadcast game, 91 plies, including queenside castling — a
+      // move dartchess and the backend spell differently, so the line has to
+      // survive that rewrite too.
+      final game = ChessGame.fromPgn(
+        'deep',
+        '1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Nc6 5. Nc3 Qc7 6. Be3 a6 '
+            '7. Qf3 Nf6 8. O-O-O h5 9. Nxc6 dxc6 10. h3 b5 11. e5 Nd5 '
+            '12. Bf4 Bb7 13. Nxd5 cxd5 14. Bd3 Rc8 15. Kb1 Be7 16. Rhg1 g6 '
+            '17. Rc1 Qc6 18. g4 h4 19. Rge1 Qc7 20. Bd2 Bc6 21. Qe2 Qb7 '
+            '22. f4 d4 23. f5 gxf5 24. gxf5 Bd5 25. Qg4 Qb6 26. Be4 Qc6 '
+            '27. fxe6 fxe6 28. Bg6+ Kd7 29. Qxd4 Qc4 30. Qxc4 Rxc4 31. Bd3 Rcc8 '
+            '32. Rg1 Rhg8 33. Be2 Bc5 34. Rxg8 Rd8 35. Rf8 Rxf8 36. Bg4 Rg8 '
+            '37. Re1 Bf2 38. Rf1 Bg3 39. Rf7+ Ke8 40. Bh5 Kd8 41. Bb4 Bxe5 0-1',
+      );
+
+      final expectedMoves =
+          game.mainline.take(ply).map((m) => m.uci).toList(growable: false);
+
+      final state = ChessBoardStateNew(
+        game: _dummyGame(),
+        isAnalysisMode: true,
+        position: null,
+        analysisState: AnalysisBoardState(
+          position: Position.setupPosition(
+            Rule.chess,
+            Setup.parseFen(game.mainline[ply - 1].fen),
+          ),
+          startingPosition: Chess.initial,
+          allMoves: expectedMoves.map(NormalMove.fromUci).toList(),
+          game: game,
+          movePointer: [ply - 1],
+          currentMoveIndex: ply - 1,
+        ),
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  body: BoardOpeningExplorerPanel(
+                    state: state,
+                    onMoveSelected: (_) {},
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(
+        container.read(gamebaseExplorerProvider).exploredMoves,
+        expectedMoves,
+        reason: 'panel dropped or truncated the move line at ply $ply',
+      );
+
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        fakeRepository.lastMoves,
+        expectedMoves,
+        reason: 'repository was queried without the full line at ply $ply',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      containerDisposed = true;
+    });
+  }
 }
