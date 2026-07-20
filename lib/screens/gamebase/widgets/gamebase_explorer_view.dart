@@ -3,9 +3,9 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
+import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/gamebase_filter_panel.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -45,20 +45,11 @@ class GamebaseExplorerView extends HookConsumerWidget {
     // Always use analysisState.position - it's non-nullable and tracks the
     // actual displayed position on the board regardless of mode (analysis,
     // library game, live game, etc.).
-    final currentPosition = state.analysisState.position;
+    final analysisState = state.analysisState;
+    final currentPosition = analysisState.position;
     final currentFen = currentPosition.fen;
-    final startingFen = state.analysisState.startingPosition?.fen;
-    final combinedMoves = state.analysisState.combinedMoves;
-    final currentMoveIndex = state.analysisState.currentMoveIndex;
-    final movesToCurrentCount =
-        currentMoveIndex < 0
-            ? 0
-            : (currentMoveIndex + 1).clamp(0, combinedMoves.length);
-    final lineToCurrent = combinedMoves
-        .take(movesToCurrentCount)
-        .map((m) => m.uci.trim().toLowerCase())
-        .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
-        .toList(growable: false);
+    final startingFen = resolveExplorerStartingFen(analysisState);
+    final lineToCurrent = resolveExplorerMoveLine(analysisState);
     final lineKey = lineToCurrent.join(' ');
 
     // Sync Gamebase provider with current board position AND explored line.

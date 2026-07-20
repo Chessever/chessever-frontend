@@ -8,6 +8,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
+import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart' as skel;
 
@@ -29,6 +30,10 @@ class FigmaPlayerCard extends ConsumerWidget {
   final VoidCallback? onToggleFavorite;
   final ValueChanged<LongPressStartDetails>? onLongPress;
 
+  /// When set, the avatar is wrapped in a [Heroine] so the photo can fly
+  /// into a detail screen that uses the same tag (e.g. miniature scorecard).
+  final String? avatarHeroTag;
+
   const FigmaPlayerCard({
     super.key,
     required this.player,
@@ -38,6 +43,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     required this.onTap,
     this.onToggleFavorite,
     this.onLongPress,
+    this.avatarHeroTag,
   });
 
   String _getInitials(String name) {
@@ -56,6 +62,69 @@ class FigmaPlayerCard extends ConsumerWidget {
     return name.isNotEmpty
         ? name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase()
         : '';
+  }
+
+  Widget _buildAvatar({
+    required BuildContext context,
+    required AsyncValue<String?> photoAsync,
+    required String initials,
+    required double avatarSize,
+  }) {
+    final tag = avatarHeroTag;
+    final useHero = tag != null && tag.isNotEmpty;
+
+    // When a heroine flight is active, keep the same avatar widget type so the
+    // flight does not jump between a skeleton box and a photo/initials face.
+    final avatar = photoAsync.when(
+      data:
+          (photoUrl) => PlayerInitialsAvatar(
+            photoUrl: photoUrl,
+            initials: initials,
+            size: avatarSize,
+            borderRadius: 8.br,
+            title: player.title,
+          ),
+      loading:
+          () =>
+              useHero
+                  ? PlayerInitialsAvatar(
+                    initials: initials,
+                    size: avatarSize,
+                    borderRadius: 8.br,
+                    title: player.title,
+                  )
+                  : skel.Skeletonizer(
+                    enabled: true,
+                    effect: const skel.ShimmerEffect(
+                      baseColor: Color(0xFF2A2A2A),
+                      highlightColor: Color(0xFF3A3A3A),
+                    ),
+                    child: Container(
+                      width: avatarSize,
+                      height: avatarSize,
+                      decoration: BoxDecoration(
+                        color: context.colors.surfaceRecessed,
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                    ),
+                  ),
+      error:
+          (_, __) => PlayerInitialsAvatar(
+            initials: initials,
+            size: avatarSize,
+            borderRadius: 8.br,
+            title: player.title,
+          ),
+    );
+
+    if (!useHero) return avatar;
+
+    return Heroine(
+      tag: tag,
+      motion: const CupertinoMotion.smooth(),
+      flightShuttleBuilder: const FadeShuttleBuilder(),
+      child: avatar,
+    );
   }
 
   @override
@@ -108,38 +177,11 @@ class FigmaPlayerCard extends ConsumerWidget {
             ),
             SizedBox(width: 12.w),
             // Player photo with title badge overlay
-            photoAsync.when(
-              data:
-                  (photoUrl) => PlayerInitialsAvatar(
-                    photoUrl: photoUrl,
-                    initials: initials,
-                    size: avatarSize,
-                    borderRadius: 8.br,
-                    title: player.title,
-                  ),
-              loading:
-                  () => skel.Skeletonizer(
-                    enabled: true,
-                    effect: const skel.ShimmerEffect(
-                      baseColor: Color(0xFF2A2A2A),
-                      highlightColor: Color(0xFF3A3A3A),
-                    ),
-                    child: Container(
-                      width: avatarSize,
-                      height: avatarSize,
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
-                    ),
-                  ),
-              error:
-                  (_, __) => PlayerInitialsAvatar(
-                    initials: initials,
-                    size: avatarSize,
-                    borderRadius: 8.br,
-                    title: player.title,
-                  ),
+            _buildAvatar(
+              context: context,
+              photoAsync: photoAsync,
+              initials: initials,
+              avatarSize: avatarSize,
             ),
             SizedBox(width: 12.w),
             // Player info (name + flag/rating)

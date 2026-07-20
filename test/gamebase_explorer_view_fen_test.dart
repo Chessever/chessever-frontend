@@ -1,7 +1,9 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/gamebase_explorer_view.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -54,7 +56,7 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     position = position.play(move);
   }
 
-  for (var i = 0; i < 15; i++) {
+  for (var i = 0; i < 37; i++) {
     play('g1f3');
     play('g8f6');
     play('f3g1');
@@ -148,7 +150,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
   });
 
-  testWidgets('GamebaseExplorerView passes the full move line for deep nodes', (
+  testWidgets('GamebaseExplorerView replays flat history to its deep FEN', (
     tester,
   ) async {
     final fakeRepository = _FakeGamebaseRepository();
@@ -165,7 +167,7 @@ void main() {
       analysisState: AnalysisBoardState(
         position: longLine.position,
         allMoves: longLine.moves,
-        currentMoveIndex: longLine.moves.length - 1,
+        currentMoveIndex: longLine.moves.length - 2,
       ),
     );
 
@@ -193,7 +195,94 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(fakeRepository.lastFen, longLine.position.fen);
-    expect(fakeRepository.lastMoves, hasLength(62));
+    expect(fakeRepository.lastMoves, hasLength(150));
     expect(fakeRepository.lastMoves, longLine.moves.map((m) => m.uci));
   });
+
+  testWidgets(
+    'board explorer uses the canonical game path when the flat index lags at ply 21',
+    (tester) async {
+      final fakeRepository = _FakeGamebaseRepository();
+      final container = ProviderContainer(
+        overrides: [
+          gamebaseRepositoryProvider.overrideWithValue(fakeRepository),
+        ],
+      );
+      var containerDisposed = false;
+      addTearDown(() {
+        if (!containerDisposed) container.dispose();
+      });
+
+      final activeGame = ChessGame.fromPgn(
+        'deep-node',
+        '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 '
+            '5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O '
+            '9. h3 Nb8 10. d4 Nbd7 11. c4',
+      );
+      final expectedMoves = activeGame.mainline
+          .map((move) => move.uci)
+          .toList(growable: false);
+      final targetPosition = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(activeGame.mainline.last.fen),
+      );
+
+      expect(expectedMoves, hasLength(21));
+      expect(
+        targetPosition.fen,
+        'r1bq1rk1/2pnbppp/p2p1n2/1p2p3/2PPP3/1B3N1P/PP3PP1/RNBQR1K1 b - - 0 11',
+      );
+
+      final state = ChessBoardStateNew(
+        game: _dummyGame(),
+        isAnalysisMode: true,
+        position: null,
+        analysisState: AnalysisBoardState(
+          position: targetPosition,
+          startingPosition: Chess.initial,
+          allMoves: expectedMoves.map(NormalMove.fromUci).toList(),
+          // The navigator pointer is authoritative. The flat index can lag
+          // briefly while a live-game update and navigator sync interleave.
+          game: activeGame,
+          movePointer: const [20],
+          currentMoveIndex: 19,
+        ),
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  body: BoardOpeningExplorerPanel(
+                    state: state,
+                    onMoveSelected: (_) {},
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(
+        container.read(gamebaseExplorerProvider).exploredMoves,
+        expectedMoves,
+      );
+
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(fakeRepository.lastMoves, expectedMoves);
+
+      // BoardOpeningExplorerPanel mounts the app's subscription provider,
+      // which owns a periodic timer. Dispose it inside fake time so the test
+      // cannot leak that timer into Flutter's invariant check.
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      containerDisposed = true;
+    },
+  );
 }

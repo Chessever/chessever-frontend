@@ -102,6 +102,7 @@ class MiniatureGamesFilter {
     this.dateFrom,
     this.dateTo,
     this.player,
+    this.playerId,
   });
 
   final MiniatureGamesWindow window;
@@ -123,9 +124,20 @@ class MiniatureGamesFilter {
   final String? dateTo;
   final String? player;
 
+  /// Exact player-uuid scope (`Player.id`), used by the miniature player
+  /// scorecard screen. Distinct from [player], which is a fuzzy name search —
+  /// this is never editable from the filter dialog, only set by the screen
+  /// that owns it and carried through every copy/reset/apply unchanged.
+  final String? playerId;
+
   static const defaultFilter = MiniatureGamesFilter();
 
   bool get hasActiveFilters => activeFilterCount > 0;
+
+  /// Whether a non-default sort is applied. Sort shapes presentation, not the
+  /// result set, so it is kept out of [activeFilterCount] but still folds
+  /// into the filter-dialog badge alongside it (desktop parity).
+  bool get hasActiveSort => sort != MiniatureGamesSort.recent;
 
   /// Count of everything that narrows the backend query (desktop parity).
   int get activeFilterCount {
@@ -151,6 +163,11 @@ class MiniatureGamesFilter {
     final windowActive = window != MiniatureGamesWindow.all ? 1 : 0;
     return activeFilterCount - windowActive;
   }
+
+  /// [dialogFilterCount] plus sort, since the filter dialog now surfaces both
+  /// behind a single icon (search field + one filter/sort button, mirroring
+  /// the Favorites and Countrymen games tabs — no separate sort dropdown).
+  int get dialogActiveCount => dialogFilterCount + (hasActiveSort ? 1 : 0);
 
   MiniatureGamesFilter copyWith({
     MiniatureGamesWindow? window,
@@ -180,6 +197,7 @@ class MiniatureGamesFilter {
     bool clearDates = false,
     String? player,
     bool clearPlayer = false,
+    String? playerId,
   }) {
     return MiniatureGamesFilter(
       window: window ?? this.window,
@@ -200,6 +218,7 @@ class MiniatureGamesFilter {
       dateFrom: clearDates ? null : (dateFrom ?? this.dateFrom),
       dateTo: clearDates ? null : (dateTo ?? this.dateTo),
       player: clearPlayer ? null : (player ?? this.player),
+      playerId: playerId ?? this.playerId,
     );
   }
 
@@ -246,6 +265,8 @@ class MiniatureGamesFilter {
     if (to != null) query['dateTo'] = to;
     final normalizedPlayer = _cleanText(player);
     if (normalizedPlayer != null) query['player'] = normalizedPlayer;
+    final normalizedPlayerId = _cleanText(playerId);
+    if (normalizedPlayerId != null) query['playerId'] = normalizedPlayerId;
 
     return query;
   }
@@ -308,7 +329,8 @@ class MiniatureGamesFilter {
         other.maxMoves == maxMoves &&
         other.dateFrom == dateFrom &&
         other.dateTo == dateTo &&
-        other.player == player;
+        other.player == player &&
+        other.playerId == playerId;
   }
 
   @override
@@ -331,6 +353,7 @@ class MiniatureGamesFilter {
     dateFrom,
     dateTo,
     player,
+    playerId,
   );
 }
 
@@ -520,6 +543,296 @@ class GamebaseMiniature {
   }
 }
 
+/// FIDE titles the Players tab offers as quick filters, in descending
+/// prestige. `null` (no chip selected) means "every player".
+enum MiniaturePlayerTitle {
+  gm('GM'),
+  im('IM'),
+  fm('FM');
+
+  const MiniaturePlayerTitle(this.apiValue);
+
+  final String apiValue;
+
+  String get label => apiValue;
+}
+
+enum MiniaturePlayerSort {
+  games('games', 'Most miniatures'),
+  wins('wins', 'Most wins'),
+  fastest('fastest', 'Fastest win');
+
+  const MiniaturePlayerSort(this.apiValue, this.label);
+
+  final String apiValue;
+  final String label;
+}
+
+/// One row of the "most miniatures" leaderboard: a player plus how they fared
+/// across every miniature they appear in, on either colour.
+class MiniaturePlayer {
+  const MiniaturePlayer({
+    required this.playerId,
+    required this.name,
+    required this.games,
+    required this.wins,
+    required this.losses,
+    this.title,
+    this.fed,
+    this.fideId,
+    this.rating,
+    this.fastestWin,
+    this.peakAvgRating,
+  });
+
+  final String playerId;
+  final String name;
+  final int games;
+  final int wins;
+  final int losses;
+  final String? title;
+  final String? fed;
+  final int? fideId;
+  final int? rating;
+
+  /// Fewest moves in a miniature this player *won*, null if they never won one.
+  final int? fastestWin;
+  final int? peakAvgRating;
+
+  double get winRate => games == 0 ? 0 : (wins / games) * 100;
+
+  /// Shared [Heroine] tag for list card → scorecard → fullscreen photo.
+  String get avatarHeroTag => 'player_avatar_mini_$playerId';
+
+  factory MiniaturePlayer.fromJson(Map<String, dynamic> json) {
+    return MiniaturePlayer(
+      playerId: _readString(json['playerId']),
+      name: _readString(json['name']),
+      games: _readInt(json['games']),
+      wins: _readInt(json['wins']),
+      losses: _readInt(json['losses']),
+      title: _readNullableString(json['title']),
+      fed: _readNullableString(json['fed']),
+      fideId: _readNullableInt(json['fideId']),
+      rating: _readNullableInt(json['rating']),
+      fastestWin: _readNullableInt(json['fastestWin']),
+      peakAvgRating: _readNullableInt(json['peakAvgRating']),
+    );
+  }
+}
+
+class MiniaturePlayersPage {
+  const MiniaturePlayersPage({
+    required this.items,
+    required this.total,
+    required this.limit,
+    required this.offset,
+  });
+
+  final List<MiniaturePlayer> items;
+  final int total;
+  final int limit;
+  final int offset;
+
+  bool get hasMore => offset + items.length < total;
+
+  factory MiniaturePlayersPage.fromJson(Map<String, dynamic> json) {
+    final data = Map<String, dynamic>.from(json['data'] as Map? ?? const {});
+    return MiniaturePlayersPage(
+      items:
+          (data['items'] as List?)
+              ?.whereType<Map>()
+              .map(
+                (item) =>
+                    MiniaturePlayer.fromJson(Map<String, dynamic>.from(item)),
+              )
+              .toList(growable: false) ??
+          const <MiniaturePlayer>[],
+      total: _readInt(data['total']),
+      limit: _readInt(data['limit']),
+      offset: _readInt(data['offset']),
+    );
+  }
+}
+
+/// A count bucket that also carries its own White/Black split, used for both
+/// the time-control and the ECO-category breakdowns.
+class MiniatureResultBucket {
+  const MiniatureResultBucket({
+    required this.value,
+    required this.games,
+    required this.whiteWins,
+    required this.blackWins,
+  });
+
+  /// Null when the underlying column was null (games with no ECO letter).
+  final String? value;
+  final int games;
+  final int whiteWins;
+  final int blackWins;
+
+  double get whiteWinRate => games == 0 ? 0 : (whiteWins / games) * 100;
+
+  factory MiniatureResultBucket.fromJson(
+    Map<String, dynamic> json,
+    String valueKey,
+  ) {
+    return MiniatureResultBucket(
+      value: _readNullableString(json[valueKey]),
+      games: _readInt(json['games']),
+      whiteWins: _readInt(json['whiteWins']),
+      blackWins: _readInt(json['blackWins']),
+    );
+  }
+}
+
+class MiniatureOpeningStat {
+  const MiniatureOpeningStat({
+    required this.games,
+    required this.avgMoves,
+    this.eco,
+    this.opening,
+  });
+
+  final int games;
+  final double avgMoves;
+  final String? eco;
+  final String? opening;
+
+  /// Opening names come straight from PGN headers and are often blank, so the
+  /// ECO code is the only label guaranteed to be there.
+  String get displayName {
+    final openingClean = (opening ?? '').trim();
+    final ecoClean = (eco ?? '').trim();
+    if (openingClean.isNotEmpty) return openingClean;
+    if (ecoClean.isNotEmpty) return ecoClean;
+    return 'Unclassified';
+  }
+
+  factory MiniatureOpeningStat.fromJson(Map<String, dynamic> json) {
+    return MiniatureOpeningStat(
+      games: _readInt(json['games']),
+      avgMoves: _readDouble(json['avgMoves']),
+      eco: _readNullableString(json['eco']),
+      opening: _readNullableString(json['opening']),
+    );
+  }
+}
+
+class MiniatureDailyCount {
+  const MiniatureDailyCount({required this.date, required this.games});
+
+  final String date; // yyyy-MM-dd
+  final int games;
+
+  DateTime? get parsedDate => DateTime.tryParse(date);
+
+  factory MiniatureDailyCount.fromJson(Map<String, dynamic> json) {
+    return MiniatureDailyCount(
+      date: _readString(json['date']),
+      games: _readInt(json['games']),
+    );
+  }
+}
+
+/// Everything the About tab renders. Mirrors `GET /api/miniatures/stats`.
+class MiniatureStats {
+  const MiniatureStats({
+    required this.total,
+    required this.whiteWins,
+    required this.blackWins,
+    required this.whiteWinRate,
+    required this.blackWinRate,
+    required this.avgMoves,
+    required this.avgPlies,
+    required this.avgRating,
+    required this.dailyDays,
+    required this.perDayAverage,
+    required this.byTimeControl,
+    required this.byEcoCategory,
+    required this.byOpening,
+    required this.daily,
+    required this.shortestGames,
+    required this.topRatedGames,
+    this.minMoves,
+    this.maxMoves,
+    this.maxRating,
+    this.busiestDay,
+    this.ratedSampleSize,
+  });
+
+  final int total;
+  final int whiteWins;
+  final int blackWins;
+  final double whiteWinRate;
+  final double blackWinRate;
+  final double avgMoves;
+  final double avgPlies;
+  final int avgRating;
+  final int dailyDays;
+  final double perDayAverage;
+  final List<MiniatureResultBucket> byTimeControl;
+  final List<MiniatureResultBucket> byEcoCategory;
+  final List<MiniatureOpeningStat> byOpening;
+  final List<MiniatureDailyCount> daily;
+  final List<GamebaseMiniature> shortestGames;
+  final List<GamebaseMiniature> topRatedGames;
+  final int? minMoves;
+  final int? maxMoves;
+  final int? maxRating;
+  final MiniatureDailyCount? busiestDay;
+
+  /// How many games the rating figures are actually based on — games import
+  /// with no rating are common, so `avgRating` alone overstates its coverage.
+  final int? ratedSampleSize;
+
+  factory MiniatureStats.fromJson(Map<String, dynamic> json) {
+    final data = Map<String, dynamic>.from(json['data'] as Map? ?? const {});
+
+    List<T> mapList<T>(Object? raw, T Function(Map<String, dynamic>) build) {
+      return (raw as List?)
+              ?.whereType<Map>()
+              .map((item) => build(Map<String, dynamic>.from(item)))
+              .toList(growable: false) ??
+          <T>[];
+    }
+
+    final busiest = data['busiestDay'];
+    return MiniatureStats(
+      total: _readInt(data['total']),
+      whiteWins: _readInt(data['whiteWins']),
+      blackWins: _readInt(data['blackWins']),
+      whiteWinRate: _readDouble(data['whiteWinRate']),
+      blackWinRate: _readDouble(data['blackWinRate']),
+      avgMoves: _readDouble(data['avgMoves']),
+      avgPlies: _readDouble(data['avgPlies']),
+      avgRating: _readInt(data['avgRating']),
+      dailyDays: _readInt(data['dailyDays']),
+      perDayAverage: _readDouble(data['perDayAverage']),
+      byTimeControl: mapList(
+        data['byTimeControl'],
+        (item) => MiniatureResultBucket.fromJson(item, 'timeControl'),
+      ),
+      byEcoCategory: mapList(
+        data['byEcoCategory'],
+        (item) => MiniatureResultBucket.fromJson(item, 'ecoCategory'),
+      ),
+      byOpening: mapList(data['byOpening'], MiniatureOpeningStat.fromJson),
+      daily: mapList(data['daily'], MiniatureDailyCount.fromJson),
+      shortestGames: mapList(data['shortestGames'], GamebaseMiniature.fromJson),
+      topRatedGames: mapList(data['topRatedGames'], GamebaseMiniature.fromJson),
+      minMoves: _readNullableInt(data['minMoves']),
+      maxMoves: _readNullableInt(data['maxMoves']),
+      maxRating: _readNullableInt(data['maxRating']),
+      busiestDay:
+          busiest is Map
+              ? MiniatureDailyCount.fromJson(Map<String, dynamic>.from(busiest))
+              : null,
+      ratedSampleSize: _readNullableInt(data['ratedSampleSize']),
+    );
+  }
+}
+
 String _readString(Object? value) => value?.toString().trim() ?? '';
 
 String? _readNullableString(Object? value) {
@@ -536,6 +849,12 @@ int _readInt(Object? value) {
 int? _readNullableInt(Object? value) {
   if (value == null) return null;
   return _readInt(value);
+}
+
+double _readDouble(Object? value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
 bool _readBool(Object? value) {

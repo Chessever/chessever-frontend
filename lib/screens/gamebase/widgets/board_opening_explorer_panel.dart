@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -28,19 +29,11 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentPosition = state.analysisState.position;
+    final analysisState = state.analysisState;
+    final currentPosition = analysisState.position;
     final currentFen = currentPosition.fen;
-    final startingFen = state.analysisState.startingPosition?.fen;
-    final combinedMoves = state.analysisState.combinedMoves;
-    final currentMoveIndex = state.analysisState.currentMoveIndex;
-    final movesToCurrentCount = currentMoveIndex < 0
-        ? 0
-        : (currentMoveIndex + 1).clamp(0, combinedMoves.length);
-    final lineToCurrent = combinedMoves
-        .take(movesToCurrentCount)
-        .map((m) => m.uci.trim().toLowerCase())
-        .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
-        .toList(growable: false);
+    final startingFen = resolveExplorerStartingFen(analysisState);
+    final lineToCurrent = resolveExplorerMoveLine(analysisState);
     final lineKey = lineToCurrent.join(' ');
 
     useEffect(() {

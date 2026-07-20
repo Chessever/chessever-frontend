@@ -11,9 +11,10 @@ import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
 
-/// Shows the miniatures filter dialog. Returns the new filter or null if
-/// cancelled. Window / sort / order / search are owned by the screen's own
-/// controls and pass through unchanged.
+/// Shows the miniatures filter (and sort) dialog behind the single tune icon
+/// next to search — the same shape as the Favorites and Countrymen games tabs.
+/// Returns the new filter or null if cancelled. Window / search are owned by
+/// the screen's own controls and pass through unchanged.
 Future<MiniatureGamesFilter?> showMiniaturesFilterDialog({
   required BuildContext context,
   required MiniatureGamesFilter currentFilter,
@@ -39,6 +40,8 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
   static final int _maxYear = DateTime.now().year;
   static const int _minYear = GameFilter.absoluteMinYear;
 
+  late MiniatureGamesSort _sort;
+
   /// null = any result.
   MiniatureGameResult? _result;
 
@@ -60,6 +63,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
   void initState() {
     super.initState();
     final filter = widget.initialFilter;
+    _sort = filter.sort;
     _result = filter.results.length == 1 ? filter.results.first : null;
     _timeControl =
         filter.timeControls.length == 1 ? filter.timeControls.first : null;
@@ -129,6 +133,19 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _sectionLabel('Sort'),
+                    SizedBox(height: 8.h),
+                    _chipGrid<MiniatureGamesSort>(
+                      values: MiniatureGamesSort.values,
+                      selected: _sort,
+                      label: (v) => v.label,
+                      onTap: (v) {
+                        HapticFeedbackService.selection();
+                        setState(() => _sort = v);
+                      },
+                    ),
+                    SizedBox(height: 20.h),
+
                     _sectionLabel('Result'),
                     SizedBox(height: 8.h),
                     _chipGrid<MiniatureGameResult?>(
@@ -166,9 +183,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
                     _chipGrid<int?>(
                       values: const <int?>[null, 20, 15],
                       selected: _maxMoves,
-                      label:
-                          (v) =>
-                              v == null ? 'By move 25' : 'By move $v',
+                      label: (v) => v == null ? 'By move 25' : 'By move $v',
                       onTap: (v) {
                         HapticFeedbackService.selection();
                         setState(() => _maxMoves = v);
@@ -282,6 +297,13 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
       );
     }
 
+    if (_sort != MiniatureGamesSort.recent) {
+      activeChipWidgets.add(
+        buildChip('Sort: ${_sort.label}', () {
+          setState(() => _sort = MiniatureGamesSort.recent);
+        }),
+      );
+    }
     if (_result != null) {
       activeChipWidgets.add(
         buildChip('Result: ${_result!.label}', () {
@@ -435,14 +457,14 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
 
   void _resetFilters() {
     HapticFeedbackService.buttonPress();
-    // Preserve everything owned by the screen's own controls.
+    // Preserve everything owned by the screen's own controls; sort resets to
+    // its default since this dialog now owns it.
     final initial = widget.initialFilter;
     Navigator.of(context).pop(
       MiniatureGamesFilter(
         window: initial.window,
-        sort: initial.sort,
-        order: initial.order,
         search: initial.search,
+        playerId: initial.playerId,
       ),
     );
   }
@@ -461,9 +483,14 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
     Navigator.of(context).pop(
       MiniatureGamesFilter(
         window: initial.window,
-        sort: initial.sort,
-        order: initial.order,
+        sort: _sort,
+        // "Fewest moves" reads ascending; the rest read best/newest first.
+        order:
+            _sort == MiniatureGamesSort.moves
+                ? MiniatureGamesSortOrder.asc
+                : MiniatureGamesSortOrder.desc,
         search: initial.search,
+        playerId: initial.playerId,
         results: _result == null ? const {} : {_result!},
         timeControls: _timeControl == null ? const {} : {_timeControl!},
         maxMoves: _maxMoves,

@@ -21,8 +21,13 @@ class _CapturingAdapter implements HttpClientAdapter {
     if (options.data is Map<String, dynamic>) {
       lastBody = Map<String, dynamic>.from(options.data as Map);
     }
+    final responseJson =
+        options.path.endsWith('/games/query')
+            ? '{"status":"success","data":[],"metadata":'
+                '{"pageNumber":0,"pageSize":20,"hasMore":false}}'
+            : '{"status":"success","data":{"moves":[]}}';
     return ResponseBody.fromString(
-      '{"status":"success","data":{"moves":[]}}',
+      responseJson,
       200,
       headers: {
         'content-type': ['application/json'],
@@ -135,7 +140,7 @@ void main() {
       expect(sentMoves, isEmpty);
     });
 
-    test('keeps a full 62-ply deep line in aggregate requests', () async {
+    test('keeps a full 150-ply indexed line in aggregate requests', () async {
       final adapter = _CapturingAdapter();
       final dio = Dio()..httpClientAdapter = adapter;
       final repo = GamebaseRepository(
@@ -154,11 +159,10 @@ void main() {
         position = position.play(move);
       }
 
-      // 15 full knight-shuffle cycles = 60 plies, then two more plies.
-      // This intentionally crosses the old shallow boundary and the new
-      // 30-full-move indexed boundary without relying on a specific database
-      // game being present.
-      for (var i = 0; i < 15; i++) {
+      // 37 full knight-shuffle cycles = 148 plies, then two more plies.
+      // This reaches the backend's complete exact-index depth without relying
+      // on a specific database game being present.
+      for (var i = 0; i < 37; i++) {
         play('g1f3');
         play('g8f6');
         play('f3g1');
@@ -174,8 +178,60 @@ void main() {
         endsWith('/api/game-position/aggregates/query'),
       );
       final sentMoves = (adapter.lastBody!['moves'] as List).cast<String>();
-      expect(sentMoves.length, 62);
+      expect(sentMoves.length, 150);
       expect(sentMoves, moves);
     });
   });
+
+  test(
+    'position games use the sequence-aware POST route at the 21-ply boundary',
+    () async {
+      final adapter = _CapturingAdapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      final repo = GamebaseRepository(
+        dio,
+        baseUrl: 'http://test',
+        apiKey: 'test',
+      );
+
+      const fen =
+          'r1bq1rk1/2pnbppp/p2p1n2/1p2p3/2PPP3/1B3N1P/PP3PP1/RNBQR1K1 b - - 0 11';
+      final moves = <String>[
+        'e2e4',
+        'e7e5',
+        'g1f3',
+        'b8c6',
+        'f1b5',
+        'a7a6',
+        'b5a4',
+        'g8f6',
+        'e1h1',
+        'f8e7',
+        'f1e1',
+        'b7b5',
+        'a4b3',
+        'd7d6',
+        'c2c3',
+        'e8h8',
+        'h2h3',
+        'c6b8',
+        'd2d4',
+        'b8d7',
+        'c3c4',
+      ];
+
+      await repo.getPositionGames(fen: fen, moves: moves);
+
+      expect(adapter.lastRequest?.method, 'POST');
+      expect(
+        adapter.lastRequest?.path,
+        endsWith('/api/game-position/games/query'),
+      );
+      final sentMoves = (adapter.lastBody!['moves'] as List).cast<String>();
+      expect(sentMoves, hasLength(21));
+      expect(sentMoves[8], 'e1g1');
+      expect(sentMoves[15], 'e8g8');
+      expect(sentMoves.last, 'c3c4');
+    },
+  );
 }

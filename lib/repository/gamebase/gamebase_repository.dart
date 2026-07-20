@@ -434,6 +434,97 @@ class GamebaseRepository {
     }
   }
 
+  /// Aggregate figures for the Miniatures About tab.
+  ///
+  /// The backend applies the same filter builder as the list endpoint, so the
+  /// stats always describe the slice the user is currently looking at.
+  Future<MiniatureStats> getMiniatureStats({
+    MiniatureGamesFilter filter = MiniatureGamesFilter.defaultFilter,
+    int dailyDays = 30,
+    int openingLimit = 12,
+    int notableLimit = 5,
+  }) async {
+    try {
+      // Reuse the list query params, then drop the paging/sorting keys the
+      // stats endpoint does not accept.
+      final params = Map<String, dynamic>.from(
+        filter.queryParameters(limit: 1, offset: 0),
+      )..removeWhere(
+        (key, _) => const {'limit', 'offset', 'sort', 'order'}.contains(key),
+      );
+      params['dailyDays'] = dailyDays;
+      params['openingLimit'] = openingLimit;
+      params['notableLimit'] = notableLimit;
+
+      final response = await _dio.get(
+        '$_baseUrl/api/miniatures/stats',
+        queryParameters: params,
+        options: Options(headers: _headers),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return MiniatureStats.fromJson(Map<String, dynamic>.from(data));
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getMiniatureStats DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+      }
+      throw Exception(
+        'Failed to load miniature stats: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
+    } catch (e) {
+      throw Exception('Failed to load miniature stats: $e');
+    }
+  }
+
+  /// Leaderboard of the players appearing in the most miniatures.
+  Future<MiniaturePlayersPage> getMiniaturePlayers({
+    MiniatureGamesWindow window = MiniatureGamesWindow.all,
+    MiniaturePlayerSort sort = MiniaturePlayerSort.games,
+    Set<MiniaturePlayerTitle> titles = const {},
+    String? search,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      final searchClean = (search ?? '').trim();
+      final response = await _dio.get(
+        '$_baseUrl/api/miniatures/players',
+        queryParameters: {
+          'window': window.apiValue,
+          'sort': sort.apiValue,
+          'limit': limit,
+          'offset': offset,
+          if (titles.isNotEmpty)
+            'title': titles.map((t) => t.apiValue).join(','),
+          if (searchClean.isNotEmpty) 'q': searchClean,
+        },
+        options: Options(headers: _headers),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return MiniaturePlayersPage.fromJson(Map<String, dynamic>.from(data));
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getMiniaturePlayers DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+      }
+      throw Exception(
+        'Failed to load miniature players: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
+    } catch (e) {
+      throw Exception('Failed to load miniature players: $e');
+    }
+  }
+
   Future<CloudEval?> getEvalByFen(String fen) async {
     try {
       final normalizedFen = _normalizeEvalFenForLookup(fen);
