@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
@@ -39,6 +40,35 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     return const GamebaseResponse(
       status: 'success',
       data: GamebaseData(moves: []),
+    );
+  }
+
+  /// Past the indexed window the panel double-checks an empty aggregate
+  /// result against the FEN-keyed endpoint before reporting "no games", so
+  /// the fake has to answer that too or the widget reaches the network.
+  @override
+  Future<GamebaseSearchQueryResponse> getFenPositionGames({
+    required String fen,
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) async {
+    return const GamebaseSearchQueryResponse(
+      status: 'success',
+      data: <Map<String, dynamic>>[],
+      metadata: GamebasePaginationMetadata(pageNumber: 0, pageSize: 1),
     );
   }
 }

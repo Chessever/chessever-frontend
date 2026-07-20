@@ -12,6 +12,7 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_sort.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:dio/dio.dart';
@@ -91,6 +92,59 @@ String _fenAfter(int plies) {
 }
 
 void main() {
+
+  group('fen-keyed existence check', () {
+    test('reports games when the FEN endpoint has them', () async {
+      final repo = _FenGamesRepo(fenHasGames: true);
+      final container = ProviderContainer(
+        overrides: [gamebaseRepositoryProvider.overrideWithValue(repo)],
+      );
+      addTearDown(container.dispose);
+
+      final hasGames = await container.read(
+        fenPositionHasGamesProvider(_fenAfter(24)).future,
+      );
+
+      expect(
+        hasGames,
+        isTrue,
+        reason:
+            'a position the FEN endpoint has games for must not be reported '
+            'as having none',
+      );
+      expect(repo.fenCalls, 1);
+    });
+
+    test('reports none for a genuinely unknown position', () async {
+      final container = ProviderContainer(
+        overrides: [
+          gamebaseRepositoryProvider.overrideWithValue(
+            _FenGamesRepo(fenHasGames: false),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(
+        await container.read(
+          fenPositionHasGamesProvider(_fenAfter(24)).future,
+        ),
+        isFalse,
+      );
+    });
+
+    test('an empty fen is not queried', () async {
+      final repo = _FenGamesRepo(fenHasGames: true);
+      final container = ProviderContainer(
+        overrides: [gamebaseRepositoryProvider.overrideWithValue(repo)],
+      );
+      addTearDown(container.dispose);
+
+      expect(await container.read(fenPositionHasGamesProvider('').future), isFalse);
+      expect(repo.fenCalls, 0);
+    });
+  });
+
   group('explorer move sort', () {
     test('null sort keeps the backend order', () {
       expect(_order(null), _sortFixture.map((a) => a.uci).toList());
@@ -342,3 +396,47 @@ List<String> _order(ExplorerMoveSort? sort) => applyExplorerMoveSort(
   sort,
   Chess.initial.fen,
 ).map((a) => a.uci).toList();
+
+
+/// Aggregates come back empty while the FEN-keyed endpoint still has games —
+/// the state a transposition (or any position past the aggregate window)
+/// lands in, and the one where claiming "no games" is simply false.
+class _FenGamesRepo extends GamebaseRepository {
+  _FenGamesRepo({required this.fenHasGames})
+    : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
+
+  final bool fenHasGames;
+  int fenCalls = 0;
+
+  @override
+  Future<GamebaseSearchQueryResponse> getFenPositionGames({
+    required String fen,
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) async {
+    fenCalls++;
+    return GamebaseSearchQueryResponse(
+      status: 'success',
+      data:
+          fenHasGames
+              ? <Map<String, dynamic>>[
+                <String, dynamic>{'id': 'g1'},
+              ]
+              : <Map<String, dynamic>>[],
+      metadata: const GamebasePaginationMetadata(pageNumber: 0, pageSize: 1),
+    );
+  }
+}

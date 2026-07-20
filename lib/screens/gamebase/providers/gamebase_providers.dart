@@ -1350,6 +1350,24 @@ class _PositionAggregateCacheEntry {
 }
 
 /// Main provider for Gamebase explorer state.
+/// Whether any indexed game reaches [fen], asked via the FEN-keyed endpoint.
+///
+/// Move aggregates are only answerable when the client can supply the move
+/// line from the initial position. They come back empty for a position
+/// reached without one — a transposition, a board opened at a FEN — and,
+/// while the backend's deep FEN aggregate index is gated off, for every
+/// position past ply 20. `/api/game-position/fen/games` is not subject to
+/// that, so it is the honest answer to "does this position occur in any
+/// game", and it keeps the panel from claiming there are none when there are.
+final fenPositionHasGamesProvider = FutureProvider.autoDispose
+    .family<bool, String>((ref, fen) async {
+      if (fen.trim().isEmpty) return false;
+      final response = await ref
+          .read(gamebaseRepositoryProvider)
+          .getFenPositionGames(fen: fen, pageNumber: 0, pageSize: 1);
+      return response.data.isNotEmpty;
+    });
+
 final gamebaseExplorerProvider = StateNotifierProvider.autoDispose<
   GamebaseExplorerNotifier,
   GamebaseExplorerState

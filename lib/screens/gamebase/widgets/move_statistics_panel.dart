@@ -38,6 +38,12 @@ const int kFreeExplorerMoveNumberLimit = 20;
 /// appends an inline games section under the move table (Trello #984).
 const int kExplorerInlineGamesLimit = 10;
 
+/// Backend move statistics are answerable from the FEN alone only through 20
+/// played plies (`OPENING_EXPLORER_MAX_INDEXED_PLY`). `currentMoveNumber` is
+/// `ply + 1`, so above this the aggregate result is no longer authoritative:
+/// an empty answer can mean "not indexed this deep" rather than "no games".
+const int kExplorerIndexedAggregateMoveNumberLimit = 21;
+
 /// Empty state for the move table.
 ///
 /// Mirrors the desktop explorer's `_ExplorerEmpty`: an icon, a title that
@@ -45,10 +51,18 @@ const int kExplorerInlineGamesLimit = 10;
 /// position does not read as a broken lookup. Collapses to just the text when
 /// the panel is short (the swipe panel can be very short in landscape).
 class _ExplorerEmpty extends StatelessWidget {
-  const _ExplorerEmpty({required this.title, required this.message});
+  const _ExplorerEmpty({
+    required this.title,
+    required this.message,
+    this.action,
+  });
 
   final String title;
   final String message;
+
+  /// Optional affordance rendered under the message. Used to offer the games
+  /// that reached this position when move statistics are unavailable.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -101,12 +115,64 @@ class _ExplorerEmpty extends StatelessWidget {
                       height: 1.2,
                     ),
                   ),
+                  if (action != null && !ultraCompact) ...[
+                    SizedBox(height: (compact ? 8 : 12).sp),
+                    action!,
+                  ],
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// Opens the games that reached the board position, via the FEN-keyed
+/// endpoint that answers at depths the aggregate endpoint cannot.
+class _ViewPositionGamesButton extends StatelessWidget {
+  const _ViewPositionGamesButton({required this.fen, required this.filters});
+
+  final String fen;
+  final GamebaseFilters filters;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder:
+              (_) => PositionGamesSheet(
+                fen: fen,
+                title: 'Games at this position',
+                filters: filters,
+                useFenEndpoint: true,
+              ),
+        );
+      },
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.list_alt_rounded, size: 14.ic, color: kPrimaryColor),
+            SizedBox(width: 6.sp),
+            Text(
+              'View games',
+              style: TextStyle(
+                color: kPrimaryColor,
+                fontSize: 12.f,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -248,13 +314,60 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     }
 
     if (state.moveAggregates.isEmpty && !showGate && !state.isLoading) {
-      // Match the desktop explorer's wording. "No games found" reads like a
-      // failure; the position simply has no indexed games, which is the
-      // normal outcome once a line runs past what the database covers.
-      return const _ExplorerEmpty(
-        title: 'No games match this position',
-        message:
-            'No master/online games are indexed for the position on the board.',
+      // Empty aggregates do NOT always mean the position is unknown. Move
+      // statistics can only be computed when the client supplies the move
+      // line from the initial position, so past the backend's indexed window
+      // they come back empty for a transposition, for a board opened at a
+      // FEN, and for every position while its deep FEN aggregate index is
+      // unavailable — on positions with hundreds of real games behind them.
+      //
+      // Inside the indexed window the aggregate answer IS authoritative, so
+      // only second-guess it past that boundary; that also keeps this from
+      // costing an extra request on ordinary empty openings.
+      final pastIndexedWindow =
+          state.currentMoveNumber > kExplorerIndexedAggregateMoveNumberLimit;
+
+      if (!pastIndexedWindow) {
+        return const _ExplorerEmpty(
+          title: 'No games match this position',
+          message:
+              'No master/online games are indexed for the position on the '
+              'board.',
+        );
+      }
+
+      // Past the boundary, ask the FEN-keyed endpoint before claiming there
+      // is nothing here, and offer those games when there are.
+      final hasFenGames = ref.watch(
+        fenPositionHasGamesProvider(state.currentFen),
+      );
+
+      return hasFenGames.maybeWhen(
+        data:
+            (hasGames) =>
+                hasGames
+                    ? _ExplorerEmpty(
+                      title: 'No move statistics for this position',
+                      message:
+                          'Move statistics need the full line from the start. '
+                          'Games that reached this position are still available.',
+                      action: _ViewPositionGamesButton(
+                        fen: state.currentFen,
+                        filters: state.filters,
+                      ),
+                    )
+                    : const _ExplorerEmpty(
+                      title: 'No games match this position',
+                      message:
+                          'No master/online games are indexed for the position '
+                          'on the board.',
+                    ),
+        // While the check is in flight, say nothing we might have to retract.
+        orElse:
+            () => const _ExplorerEmpty(
+              title: 'No move statistics for this position',
+              message: 'Checking for games that reached it…',
+            ),
       );
     }
 
