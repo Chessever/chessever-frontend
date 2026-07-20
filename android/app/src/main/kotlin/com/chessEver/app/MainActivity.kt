@@ -12,6 +12,8 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -54,6 +56,12 @@ class MainActivity : FlutterActivity() {
   private var lastReportedPipMode = false
   private var pipLayoutListener: View.OnLayoutChangeListener? = null
   private var lastSoundedMove: String? = null
+  // PiP move SFX are played natively: once the activity is in PiP, Flutter reports
+  // `paused` and AudioPlayerService hibernates the SoLoud engine 300ms later, so
+  // bouncing the request back into Dart never made a sound.
+  private var sfxPool: SoundPool? = null
+  private var moveSfxId = 0
+  private var captureSfxId = 0
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -68,6 +76,7 @@ class MainActivity : FlutterActivity() {
           } else {
             pipPayload = args.toMutableMap()
             lastSoundedMove = args["lastMoveUci"] as? String
+            preloadPipSfx()
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
             if (isCurrentlyInPip()) {
@@ -85,6 +94,7 @@ class MainActivity : FlutterActivity() {
           } else {
             mergePayload(args)
             lastSoundedMove = args["lastMoveUci"] as? String
+            preloadPipSfx()
             pipOverlay?.payload = pipPayload
             pipOverlay?.invalidate()
             if (isCurrentlyInPip()) {
@@ -142,6 +152,8 @@ class MainActivity : FlutterActivity() {
     stopClockTicker()
     stopNativePolling()
     removePipOverlay()
+    sfxPool?.release()
+    sfxPool = null
     pipChannel?.setMethodCallHandler(null)
     super.onDestroy()
   }
@@ -404,7 +416,14 @@ class MainActivity : FlutterActivity() {
     val previousFen = payload["fen"] as? String
 
     if (row.has("fen") && !row.isNull("fen")) {
-      row.optString("fen").takeIf { it.isNotBlank() }?.let { payload["fen"] = it }
+      row.optString("fen").takeIf { it.isNotBlank() }?.let {
+        payload["fen"] = it
+        // The polled row is now the freshest thing we have, so the side-to-move it
+        // carries beats the hint Flutter sent at PiP entry. Leaving that hint in
+        // place would pin the ticking clock to the wrong player for the rest of
+        // the PiP session.
+        payload.remove("clockTurnIsWhite")
+      }
     }
     if (row.has("last_move") && !row.isNull("last_move")) {
       row.optString("last_move").takeIf { it.isNotBlank() }?.let {
@@ -443,16 +462,42 @@ class MainActivity : FlutterActivity() {
         newMove != lastSoundedMove) {
       lastSoundedMove = newMove
       val captured = fenPieceCount(payload["fen"] as? String) < fenPieceCount(previousFen)
-      requestDartSfx(if (captured) "takeover" else "move")
+      playPipSfx(captured)
     }
   }
 
-  private fun requestDartSfx(type: String) {
-    try {
-      pipChannel?.invokeMethod("playSfx", mapOf("type" to type))
+  // Build the pool while still foreground so SoundPool.load (async) has finished
+  // long before the first live move lands in PiP — a sample that is still loading
+  // is dropped silently.
+  private fun preloadPipSfx() {
+    if (sfxPool != null) return
+    val attributes = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_GAME)
+      .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+      .build()
+    val pool = SoundPool.Builder().setMaxStreams(2).setAudioAttributes(attributes).build()
+    moveSfxId = loadSfx(pool, "flutter_assets/assets/sfx/piece_move.wav")
+    captureSfxId = loadSfx(pool, "flutter_assets/assets/sfx/piece_takeover.wav")
+    sfxPool = pool
+  }
+
+  private fun loadSfx(pool: SoundPool, path: String): Int {
+    return try {
+      // openFd (not open) because SoundPool needs an offset/length into the APK.
+      // .wav is in aapt2's no-compress list, so the entry is stored uncompressed.
+      assets.openFd(path).use { pool.load(it, 1) }
     } catch (e: Exception) {
-      Log.w("ChessPiP", "Failed to request Dart SFX", e)
+      Log.w("ChessPiP", "Failed to load PiP SFX $path", e)
+      0
     }
+  }
+
+  private fun playPipSfx(captured: Boolean) {
+    val pool = sfxPool ?: return
+    val soundId = if (captured) captureSfxId else moveSfxId
+    if (soundId == 0) return
+    // No audio focus request: a move blip should not duck the user's music.
+    pool.play(soundId, 1f, 1f, 1, 0, 1f)
   }
 
   private fun fenPieceCount(fen: String?): Int {
@@ -669,7 +714,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
     if (clock.isNotBlank()) {
       val clockRect = RectF(x + width - clockW, y, x + width, y + height)
       Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(32, 169, 210) }.also {
-        if (isOngoing(data) && isWhiteToMove(data) == isWhite) canvas.drawRect(clockRect, it)
+        if (isOngoing(data) && clockSideIsWhite(data) == isWhite) canvas.drawRect(clockRect, it)
       }
       val cp = Paint(textPaint).apply {
         color = Color.WHITE
@@ -729,7 +774,7 @@ private class ChessPipOverlayView(context: Context) : View(context) {
   private fun displayClock(data: Map<String, Any?>, isWhite: Boolean): String {
     val prefix = if (isWhite) "white" else "black"
     val fallback = data["${prefix}Clock"] as? String ?: ""
-    if (!isOngoing(data) || data["followLive"] == false || isWhiteToMove(data) != isWhite) return fallback
+    if (!isOngoing(data) || data["followLive"] == false || clockSideIsWhite(data) != isWhite) return fallback
 
     val baseSeconds = intValue(data["${prefix}ClockSeconds"]) ?: return fallback
     val lastMoveMillis = instantMillis(data["lastMoveTime"] as? String) ?: return fallback
@@ -740,6 +785,16 @@ private class ChessPipOverlayView(context: Context) : View(context) {
   private fun isOngoing(data: Map<String, Any?>): Boolean {
     val status = (data["status"] as? String ?: "").trim().lowercase()
     return status.isEmpty() || status == "ongoing" || status == "*"
+  }
+
+  // Which side's clock is running. Flutter sends `clockTurnIsWhite` taken from the
+  // same model it builds the clock values from; the board FEN can legitimately sit
+  // a move behind that model, and deriving the ticking side from it would run the
+  // wrong player's clock. Falls back to the FEN once the native poll takes over as
+  // the source of truth (mergeLiveRow drops the key when it lands a fresh FEN).
+  private fun clockSideIsWhite(data: Map<String, Any?>): Boolean {
+    (data["clockTurnIsWhite"] as? Boolean)?.let { return it }
+    return isWhiteToMove(data)
   }
 
   private fun isWhiteToMove(data: Map<String, Any?>): Boolean {

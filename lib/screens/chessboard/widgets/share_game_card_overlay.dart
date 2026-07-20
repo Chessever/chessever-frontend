@@ -20,6 +20,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -374,15 +375,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         },
       ),
     );
-    // Android: X (Twitter) drops EXTRA_STREAM when EXTRA_TEXT is present, so
-    // the shared image never reaches its composer. Omit the text there — the
-    // overlay's link bar still exposes the URL for copying.
-    final shareText =
-        (!kIsWeb && io.Platform.isAndroid) ? null : _effectiveShareUrl;
-    return Share.shareXFiles(
+    // Text is dropped on Android inside the helper (X eats EXTRA_STREAM when
+    // EXTRA_TEXT is set); the overlay's link bar still exposes the URL.
+    return shareFilesWithText(
       files,
       subject: _shareSubject,
-      text: shareText,
+      text: _effectiveShareUrl,
       sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
     );
   }

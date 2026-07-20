@@ -187,6 +187,16 @@ GamesAppBarModel? pickUpcomingRoundForPromotion(
       isRoundFullyPlayed?.call(model) ??
       model.roundStatus == RoundStatus.completed;
 
+  // A live round always owns the top slot. Check this before (and independently
+  // of) the fully-played gate below, which is not a reliable live signal: a
+  // blitz round can have every currently loaded game report `isFinished`
+  // between pairings, and a live round with no games loaded yet is filtered out
+  // of `startedRounds` by `include` entirely. Both would otherwise let an
+  // upcoming round bubble above a round that is still being played.
+  if (models.any((model) => model.roundStatus == RoundStatus.live)) {
+    return null;
+  }
+
   final startedRounds = models.where(
     (model) =>
         include(model) && _isStartedRound(model, effectiveNow, resolveDate),

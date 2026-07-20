@@ -90,7 +90,7 @@ Future<void> shareTournamentStandings(
       context,
       imageBytes: imageBytes,
       onShareImage: () async {
-        await Share.shareXFiles(
+        await shareFilesWithText(
           [XFile(file.path, mimeType: 'image/png')],
           text: shareUrl,
           subject: subject,

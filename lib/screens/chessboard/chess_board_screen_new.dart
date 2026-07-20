@@ -61,6 +61,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
@@ -1555,7 +1556,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (!mounted) return;
     if (_isRouteCovered) return;
     _scheduleAndroidPipBoardRecovery();
-    unawaited(_syncCurrentPipState());
+    // Force: leaving PiP tears down the native polling and re-arms the audio
+    // session, and the payload signature is usually IDENTICAL to the one we sent
+    // on the way in (the foreground signature ignores clock/eval churn, and a
+    // short PiP session often ends with no new move). Without force this
+    // short-circuits, no `setActiveGame` reaches native, and the next PiP attempt
+    // finds a stale native side — which is why PiP would not start a second time.
+    unawaited(_syncCurrentPipState(force: true));
   }
 
   void _scheduleAndroidPipBoardRecovery() {
@@ -1583,7 +1590,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     notifier.state = notifier.state + 1;
   }
 
-  Future<void> _syncCurrentPipState() async {
+  Future<void> _syncCurrentPipState({bool force = false}) async {
     if (!mounted || widget.games.isEmpty) return;
     if (_isRouteCovered) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
@@ -1594,10 +1601,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       await _syncPipGameSnapshot(game);
       return;
     }
-    await _syncPipState(state);
+    await _syncPipState(state, force: force);
   }
 
-  Future<void> _syncPipState(ChessBoardStateNew state) async {
+  Future<void> _syncPipState(
+    ChessBoardStateNew state, {
+    bool force = false,
+  }) async {
     if (_isRouteCovered) return;
     if (!_isPipEligible(state.game)) {
       // PiP off / ineligible: clear the native side ONCE, then no-op on every
@@ -1619,7 +1629,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // position/game/settings changes and immediately before entering PiP.
     final isInPip = PipService.instance.isInPip;
     final sig = _pipPayloadSignature(payload, isInPip: isInPip);
-    if (sig == _lastPipSig) return;
+    // `force` is used on the way into PiP: the foreground signature deliberately
+    // ignores clock/eval churn, so without it the native side would hand PiP a
+    // clock+eval snapshot from whenever a *whitelisted* field last changed and
+    // then visibly snap to the truth on the first background poll.
+    if (!force && sig == _lastPipSig) return;
     _lastPipSig = sig;
     if (isInPip) {
       await PipService.instance.updatePosition(payload);
@@ -1638,6 +1652,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       payload['eligible'],
       payload['followLive'],
       payload['gameId'],
+      payload['isBoardFlipped'],
+      // The shared clock model can advance a move before the board's own state
+      // does, so this flips independently of `fen` — it has to be its own trigger
+      // or the native side keeps ticking the previous player's clock.
+      payload['clockTurnIsWhite'],
       payload['fen'],
       payload['lastMoveUci'],
       payload['lastMove'],
@@ -1706,6 +1725,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // of where the user scrolled. `isAtLiveTail` is the reliable signal (set in
     // _syncAnalysisFromNavigator from the navigator's mainline-tail check).
     final followLive = state?.isAtLiveTail ?? true;
+    final clockGame = _pipClockGame(game);
     final eventName =
         game.tourSlug != null && game.tourSlug!.isNotEmpty
             ? StringUtils.slugToTitle(game.tourSlug!)
@@ -1719,14 +1739,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       'eligible': true,
       'followLive': followLive,
       'gameId': game.gameId,
+      // PiP renders the board itself, so it needs the same orientation the user
+      // is looking at — otherwise flipping in-app makes the floating board
+      // appear to jump to the mirrored position.
+      'isBoardFlipped':
+          state?.isBoardFlipped ?? ref.read(activeBoardFlippedProvider),
       'fen': fen,
       'lastMoveUci': lastMoveUci,
       'lastMove': game.lastMove ?? '',
       'lastMoveSan': lastMoveSan,
       'soundEnabled': boardSettings?.soundEnabled == true,
       'status': game.gameStatus.name,
-      if (game.lastMoveTime != null)
-        'lastMoveTime': game.lastMoveTime!.toUtc().toIso8601String(),
+      if (clockGame.lastMoveTime != null)
+        'lastMoveTime': clockGame.lastMoveTime!.toUtc().toIso8601String(),
+      // Which side's clock is ticking, taken from the same model the clocks come
+      // from. Native would otherwise derive it from the payload FEN, which is the
+      // *board's* position — and the board can legitimately sit a move behind the
+      // clock model, which would tick the wrong player's clock in PiP.
+      if (clockGame.activePlayer != null)
+        'clockTurnIsWhite': clockGame.activePlayer == Side.white,
       if (evaluation != null) 'evalCp': (evaluation * 100).round(),
       if (state?.mate != null) 'mate': state!.mate,
       'whiteName': game.whitePlayer.name,
@@ -1743,25 +1774,49 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           game.blackPlayer.countryCode.isNotEmpty
               ? game.blackPlayer.countryCode
               : game.blackPlayer.federation,
-      if (game.whiteClockSeconds != null)
-        'whiteClockSeconds': game.whiteClockSeconds,
-      if (game.blackClockSeconds != null)
-        'blackClockSeconds': game.blackClockSeconds,
+      if (clockGame.whiteClockSeconds != null)
+        'whiteClockSeconds': clockGame.whiteClockSeconds,
+      if (clockGame.blackClockSeconds != null)
+        'blackClockSeconds': clockGame.blackClockSeconds,
       'whiteClock': _formatPipClock(
-        game.whiteClockSeconds,
-        game.whiteClockCentiseconds,
-        game.whiteTimeDisplay,
+        clockGame.whiteClockSeconds,
+        clockGame.whiteClockCentiseconds,
+        clockGame.whiteTimeDisplay,
       ),
       'blackClock': _formatPipClock(
-        game.blackClockSeconds,
-        game.blackClockCentiseconds,
-        game.blackTimeDisplay,
+        clockGame.blackClockSeconds,
+        clockGame.blackClockCentiseconds,
+        clockGame.blackTimeDisplay,
       ),
       if (eventName != null) 'eventName': eventName,
       if (roundName != null) 'roundName': roundName,
       'boardThemeIndex': boardSettings?.boardThemeIndex ?? 9,
       'pieceStyleIndex': boardSettings?.pieceStyleIndex ?? 0,
     };
+  }
+
+  /// The game model the PiP clocks must be built from.
+  ///
+  /// The on-screen clock does NOT render from `state.game` — it renders from
+  /// `baseGameProvider(gameId)` (via `watchLiveGameClock`), which is fed by this
+  /// screen's game stream AND by the still-mounted list cards' batched realtime
+  /// stream. `state.game` only ever sees the first of those, so it can trail by a
+  /// move. Handing PiP that trailing model gave it a stale clock base *and* a
+  /// stale `lastMoveTime` anchor, so PiP over-counted elapsed time and opened
+  /// showing less time than the board did — then snapped up when the native poll
+  /// (which fires immediately on PiP start) replaced it with the truth. That snap
+  /// is the "clocks changed the moment I entered PiP" bug.
+  ///
+  /// Only prefer the shared model when it is genuinely fresher, so a stale or
+  /// half-populated entry can never drag the clocks backwards.
+  GamesTourModel _pipClockGame(GamesTourModel game) {
+    final shared = ref.read(baseGameProvider(game.gameId));
+    if (shared == null) return game;
+    final sharedTime = shared.lastMoveTime;
+    final gameTime = game.lastMoveTime;
+    if (sharedTime == null) return game;
+    if (gameTime == null) return shared;
+    return sharedTime.isBefore(gameTime) ? game : shared;
   }
 
   String _formatPipClock(int? seconds, int centiseconds, String fallback) {
@@ -1881,10 +1936,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       debugPrint('Error refreshing Stockfish on resume: $e');
     }
 
+    // Force for the same reason as the PiP-exit path: coming back from background
+    // (with or without PiP) must re-arm the native side, and the signature is
+    // frequently unchanged so a non-forced sync would send nothing at all.
     unawaited(
       _syncPipState(
         ref.read(chessBoardScreenProviderNew(params)).valueOrNull ??
             ChessBoardStateNew(game: currentGame),
+        force: true,
       ),
     );
   }
@@ -1909,7 +1968,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final params = _createParams(currentGame, safeIndex);
     final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
     if (state != null) {
-      await _syncPipState(state);
+      // Force: PiP is about to take over rendering, so it needs the live clock,
+      // eval and orientation as they are right now, not the last signature hit.
+      await _syncPipState(state, force: true);
     } else {
       await _syncPipGameSnapshot(currentGame);
     }

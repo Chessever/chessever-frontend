@@ -26,9 +26,18 @@ final class ChessPipController: NSObject {
   private var moveSoundPlayer: AVAudioPlayer?
   private var captureSoundPlayer: AVAudioPlayer?
   private var lastSoundedMove: String?
+  // Whether our last `setActive(true)` actually succeeded. `AVAudioSession.category`
+  // only reflects the last `setCategory`, so it cannot be used to detect a session
+  // that is category .playback but deactivated — that state plays no audio.
+  private var isSessionActive = false
+  // True once a PiP-eligible board is on its way to (or already in) PiP. While set,
+  // the session must be non-mixable: iOS refuses background playback for a mixable
+  // session that holds no playback assertion.
+  private var wantsExclusivePlayback = false
 
   private override init() {
     super.init()
+    observeAudioSessionAndLifecycle()
   }
 
   func configure(binaryMessenger: FlutterBinaryMessenger) {
@@ -104,12 +113,18 @@ final class ChessPipController: NSObject {
   private func prepareIfNeeded() {
     guard #available(iOS 15.0, *) else { return }
     guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
-    if pipController != nil { return }
 
-    // Audio session must be active and use a category that supports PiP
-    // BEFORE the controller is created and while we are still foreground.
+    // Audio session must be active and use a category that supports PiP BEFORE the
+    // controller is created and while we are still foreground. This deliberately
+    // sits ABOVE the `pipController != nil` early return: the controller is created
+    // once and never torn down, but `clear()` hands the session back to .ambient on
+    // every resume — so the 2nd and later PiP entries would otherwise background
+    // with a category PiP cannot start from. Same for the sound players: a single
+    // failed load must not be permanent.
     configureAudioSession()
     preloadSounds()
+
+    if pipController != nil { return }
 
     let layer = AVSampleBufferDisplayLayer()
     layer.videoGravity = .resizeAspect
@@ -176,7 +191,7 @@ final class ChessPipController: NSObject {
 
   private func enterIfEligible() -> Bool {
     guard payload?["eligible"] as? Bool == true else { return false }
-    configureAudioSession()
+    armExclusivePlayback()
     prepareIfNeeded()
     enqueueFrame()
     startRenderLoop()
@@ -212,40 +227,151 @@ final class ChessPipController: NSObject {
   }
 
   private func configureAudioSession() {
+    activateAudioSession(exclusive: wantsExclusivePlayback)
+  }
+
+  /// Put the shared session into .playback and activate it.
+  ///
+  /// `exclusive` decides whether we keep `.mixWithOthers`. This is the crux of
+  /// background PiP audio: a mixable .playback session lands in CoreMedia's
+  /// "mixable playback" privilege class, and a backgrounded app that is only awake
+  /// because PiP is on screen holds no assertion for that class. iOS then denies
+  /// playback outright (`CMSUtility_IsAllowedToStartPlaying: ... does not have
+  /// assertions to start mixable playback`, surfaced as
+  /// AVAudioSession.ErrorCode.cannotStartPlaying) — `AVAudioPlayer.play()` just
+  /// returns false and nothing is heard. So while PiP is armed we must take a
+  /// non-mixable session, which interrupts whatever else is playing; the rest of
+  /// the time we stay mixable so browsing a board never stops the user's music.
+  private func activateAudioSession(exclusive: Bool) {
+    let session = AVAudioSession.sharedInstance()
+    let options: AVAudioSession.CategoryOptions = exclusive ? [] : [.mixWithOthers]
     do {
-      let session = AVAudioSession.sharedInstance()
-      try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
+      if session.category != .playback || session.categoryOptions != options {
+        try session.setCategory(.playback, mode: .moviePlayback, options: options)
+      }
       try session.setActive(true)
+      isSessionActive = true
     } catch {
-      print("[PiP] Failed to configure audio session: \(error)")
+      isSessionActive = false
+      print("[PiP] Failed to activate audio session (exclusive=\(exclusive)): \(error)")
     }
   }
 
-  // Re-assert .playback if something (e.g. flutter_soloud lazily initializing on
-  // the first move sound) reset the category to .ambient. PiP requires .playback
-  // to be the active category at the moment the app backgrounds.
+  /// Re-assert the session PiP needs. Called every render tick while PiP is
+  /// visible, so a denied activation (contended route, an interruption that ended
+  /// while we were backgrounded) self-heals on the next tick instead of leaving
+  /// PiP permanently silent.
   private func ensurePlaybackAudioSession() {
     let session = AVAudioSession.sharedInstance()
-    guard session.category != .playback else { return }
-    do {
-      try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
-      try session.setActive(true)
-    } catch {
-      print("[PiP] Failed to re-assert playback audio session: \(error)")
-    }
+    let categoryWrong =
+      session.category != .playback || session.categoryOptions.contains(.mixWithOthers)
+    guard categoryWrong || !isSessionActive else { return }
+    activateAudioSession(exclusive: true)
   }
 
   private func restoreAmbientAudioSession() {
     // Runs on resume (via clear()) when no game is PiP-eligible. setCategory can
     // block when the route is contended right after foregrounding, so hand the
     // session back OFF the main thread to keep the resume frame responsive.
-    DispatchQueue.global(qos: .userInitiated).async {
+    handBackSession(to: .ambient, mode: .default)
+  }
+
+  /// PiP is about to take over (app resigning active with a game armed, or AVKit
+  /// telling us PiP is starting). Grab the non-mixable session while we still have
+  /// the foreground assertion that makes the request succeed — asking for it after
+  /// the app has backgrounded is the request iOS denies.
+  private func armExclusivePlayback() {
+    guard payload?["eligible"] as? Bool == true else { return }
+    wantsExclusivePlayback = true
+    activateAudioSession(exclusive: true)
+  }
+
+  /// No PiP in play: give the user's audio back. A board is still open, so stay on
+  /// .playback (that is the category PiP must start from) but go mixable again.
+  private func relinquishExclusivePlayback() {
+    guard wantsExclusivePlayback else { return }
+    handBackSession(to: .playback, mode: .moviePlayback)
+  }
+
+  /// Drop exclusivity and settle on `category`. The `setActive(false,
+  /// .notifyOthersOnDeactivation)` is the important part: without it the music or
+  /// podcast we interrupted to take the exclusive session never resumes, and the
+  /// user is left in silence after PiP closes.
+  private func handBackSession(
+    to category: AVAudioSession.Category,
+    mode: AVAudioSession.Mode
+  ) {
+    let wasExclusive = wantsExclusivePlayback
+    wantsExclusivePlayback = false
+    isSessionActive = false
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      let session = AVAudioSession.sharedInstance()
       do {
-        try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        if wasExclusive {
+          try session.setActive(false, options: [.notifyOthersOnDeactivation])
+        }
+        try session.setCategory(category, mode: mode, options: [.mixWithOthers])
+        try session.setActive(true)
+        DispatchQueue.main.async { self?.isSessionActive = true }
       } catch {
-        print("[PiP] Failed to restore ambient audio session: \(error)")
+        print("[PiP] Failed to hand back audio session (\(category.rawValue)): \(error)")
       }
     }
+  }
+
+  private func observeAudioSessionAndLifecycle() {
+    let center = NotificationCenter.default
+    // An interruption (call, alarm, Siri, another app taking the route) deactivates
+    // our session but leaves the category untouched, so nothing else would notice.
+    center.addObserver(
+      self,
+      selector: #selector(handleAudioSessionInterruption(_:)),
+      name: AVAudioSession.interruptionNotification,
+      object: nil
+    )
+    center.addObserver(
+      self,
+      selector: #selector(handleAppWillResignActive),
+      name: UIApplication.willResignActiveNotification,
+      object: nil
+    )
+    center.addObserver(
+      self,
+      selector: #selector(handleAppDidBecomeActive),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+  }
+
+  @objc private func handleAudioSessionInterruption(_ notification: Notification) {
+    guard
+      let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+      let type = AVAudioSession.InterruptionType(rawValue: raw)
+    else { return }
+    switch type {
+    case .began:
+      isSessionActive = false
+    case .ended:
+      guard wantsExclusivePlayback else { return }
+      activateAudioSession(exclusive: true)
+    @unknown default:
+      break
+    }
+  }
+
+  @objc private func handleAppWillResignActive() {
+    // Last moment we are still foreground. If a PiP-eligible board is armed, take
+    // the exclusive session now — requesting it after the app has backgrounded is
+    // exactly the request iOS denies.
+    armExclusivePlayback()
+  }
+
+  @objc private func handleAppDidBecomeActive() {
+    // Came back without PiP ever starting (notification centre, control centre, a
+    // banner). Give the user's audio back rather than sitting on an exclusive
+    // session we never used.
+    guard pipController?.isPictureInPictureActive != true else { return }
+    relinquishExclusivePlayback()
   }
 
   private func preloadSounds() {
@@ -294,6 +420,9 @@ final class ChessPipController: NSObject {
     newFen: String?
   ) {
     guard pipController?.isPictureInPictureActive == true else { return }
+    // Dart owns the user's sound preference; honour it here too, otherwise a user
+    // who muted the board still gets move SFX out of the PiP window.
+    guard (payload?["soundEnabled"] as? Bool) != false else { return }
     guard
       let newMove,
       !newMove.isEmpty,
@@ -303,9 +432,22 @@ final class ChessPipController: NSObject {
     lastSoundedMove = newMove
 
     let captured = Self.pieceCount(newFen) < Self.pieceCount(previousFen)
-    let player = (captured ? captureSoundPlayer : moveSoundPlayer) ?? moveSoundPlayer
-    player?.currentTime = 0
-    player?.play()
+    guard let player = (captured ? captureSoundPlayer : moveSoundPlayer) ?? moveSoundPlayer
+    else {
+      // Load failed on first prepare; prepareIfNeeded() retries it from now on.
+      print("[PiP] move SFX skipped: no player loaded")
+      return
+    }
+    player.currentTime = 0
+    guard !player.play() else { return }
+    // play() returning false in the background almost always means the session lost
+    // its playback assertion. Re-take it and retry once.
+    print("[PiP] move SFX denied — re-activating session and retrying")
+    activateAudioSession(exclusive: true)
+    player.currentTime = 0
+    if !player.play() {
+      print("[PiP] move SFX retry failed (category=\(AVAudioSession.sharedInstance().category.rawValue), options=\(AVAudioSession.sharedInstance().categoryOptions.rawValue))")
+    }
   }
 
   private static func pieceCount(_ fen: String?) -> Int {
@@ -556,6 +698,11 @@ final class ChessPipController: NSObject {
 
     if let fen = row["fen"] as? String, !fen.isEmpty {
       payload["fen"] = fen
+      // The polled row is now the freshest thing we have, so the side-to-move it
+      // carries beats the hint Flutter sent at PiP entry. Leaving that hint in
+      // place would pin the ticking clock to the wrong player for the rest of the
+      // PiP session.
+      payload.removeValue(forKey: "clockTurnIsWhite")
     }
     if let lastMove = row["last_move"] as? String, !lastMove.isEmpty {
       payload["lastMoveUci"] = lastMove
@@ -600,6 +747,13 @@ final class ChessPipController: NSObject {
 }
 
 extension ChessPipController: AVPictureInPictureControllerDelegate {
+  func pictureInPictureControllerWillStartPictureInPicture(
+    _ pictureInPictureController: AVPictureInPictureController
+  ) {
+    // Backstop for the willResignActive path (PiP can also be started manually).
+    armExclusivePlayback()
+  }
+
   func pictureInPictureControllerDidStartPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {
@@ -612,7 +766,20 @@ extension ChessPipController: AVPictureInPictureControllerDelegate {
     _ pictureInPictureController: AVPictureInPictureController
   ) {
     stopNativePolling()
-    stopRenderLoop()
+    if payload == nil {
+      stopRenderLoop()
+    } else {
+      // Do NOT stop the render loop while a game is still armed.
+      // `isPictureInPicturePossible` is false whenever the sample-buffer layer is
+      // idle, so tearing the loop down here is what made the SECOND PiP entry fail:
+      // Flutter's payload signature is unchanged after a short PiP session, so no
+      // `setActiveGame` arrives to restart it, and the layer stays dark forever.
+      // The foreground tick only re-enqueues a cached frame, so keeping it is cheap.
+      startRenderLoop()
+    }
+    // PiP is gone, so the exclusive session has no reason to keep the user's music
+    // interrupted. `clear()` may follow on resume and take it further to .ambient.
+    relinquishExclusivePlayback()
     channel?.invokeMethod("onPipModeChanged", arguments: ["isInPip": false])
   }
 
@@ -777,7 +944,7 @@ private enum ChessPipRenderer {
     let clockW = clock.isEmpty ? 0 : rect.height * 1.9
     if !clock.isEmpty {
       let clockRect = CGRect(x: rect.maxX - clockW, y: rect.minY, width: clockW, height: rect.height)
-      if isOngoing(payload: payload) && isWhiteToMove(payload: payload) == isWhite {
+      if isOngoing(payload: payload) && clockSideIsWhite(payload: payload) == isWhite {
         UIColor(red: 0.13, green: 0.66, blue: 0.82, alpha: 1).setFill()
         UIRectFill(clockRect)
       }
@@ -800,7 +967,7 @@ private enum ChessPipRenderer {
     guard
       isOngoing(payload: payload),
       (payload["followLive"] as? Bool) != false,
-      isWhiteToMove(payload: payload) == isWhite,
+      clockSideIsWhite(payload: payload) == isWhite,
       let baseSeconds = intValue(payload["\(prefix)ClockSeconds"]),
       let lastMoveTime = dateValue(payload["lastMoveTime"] as? String)
     else {
@@ -814,6 +981,16 @@ private enum ChessPipRenderer {
   private static func isOngoing(payload: [String: Any]) -> Bool {
     let status = (payload["status"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     return status.isEmpty || status == "ongoing" || status == "*"
+  }
+
+  /// Which side's clock is running. Flutter sends `clockTurnIsWhite` taken from the
+  /// same model it builds the clock values from; the board FEN can legitimately sit
+  /// a move behind that model, and deriving the ticking side from it would run the
+  /// wrong player's clock. Falls back to the FEN once the native poll takes over as
+  /// the source of truth (`mergeLiveRow` drops the key when it lands a fresh FEN).
+  private static func clockSideIsWhite(payload: [String: Any]) -> Bool {
+    if let explicit = payload["clockTurnIsWhite"] as? Bool { return explicit }
+    return isWhiteToMove(payload: payload)
   }
 
   private static func isWhiteToMove(payload: [String: Any]) -> Bool {

@@ -593,7 +593,7 @@ class TournamentMenuButton extends ConsumerWidget {
         context,
         imageBytes: imageBytes,
         onShareImage: () async {
-          await Share.shareXFiles(
+          await shareFilesWithText(
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
             subject: subject,
@@ -676,7 +676,7 @@ class TournamentMenuButton extends ConsumerWidget {
         context,
         imageBytes: imageBytes,
         onShareImage: () async {
-          await Share.shareXFiles(
+          await shareFilesWithText(
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
             subject: subject,
@@ -774,7 +774,7 @@ class TournamentMenuButton extends ConsumerWidget {
         context,
         imageBytes: imageBytes,
         onShareImage: () async {
-          await Share.shareXFiles(
+          await shareFilesWithText(
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
             subject: subject,
