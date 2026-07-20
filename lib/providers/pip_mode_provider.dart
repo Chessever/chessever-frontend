@@ -21,3 +21,10 @@ extension PipModeInfo on PipMode {
     return PipMode.values[index];
   }
 }
+
+// A PiP board-size setting used to live here. It was removed: neither platform
+// lets an app choose the PiP window's size (iOS derives it from the aspect
+// ratio in SpringBoard, Android's PictureInPictureParams has no size setter),
+// and users already pinch-resize the window themselves. The unused
+// `user_engine_settings.pip_board_size` column is left in place — it is
+// NOT NULL DEFAULT 1, so writes that omit it are fine.
