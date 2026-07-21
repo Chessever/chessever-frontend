@@ -74,7 +74,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
           children: [
             Text(
               '${index + 1}.',
-              style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdBold.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(width: 10.w),
             if (countryCode.trim().isNotEmpty) ...[
@@ -123,17 +125,21 @@ class ScoreboardCardWidget extends ConsumerWidget {
                     color: context.colors.textPrimary,
                   ),
                 ),
-                if (scoreChange != null && scoreChange != 0.0) ...[
-                  SizedBox(width: 4.w),
-                  Text(
-                    scoreChange! > 0
-                        ? '+${scoreChange!.toStringAsFixed(0)}'
-                        : scoreChange!.toStringAsFixed(0),
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: scoreChange! > 0 ? kGreenColor : kRedColor,
-                    ),
-                  ),
-                ],
+                SizedBox(width: 4.w),
+                SizedBox(
+                  width: 30.w,
+                  child:
+                      scoreChange != null && scoreChange != 0.0
+                          ? Text(
+                            scoreChange! > 0
+                                ? '+${scoreChange!.toStringAsFixed(0)}'
+                                : scoreChange!.toStringAsFixed(0),
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: scoreChange! > 0 ? kGreenColor : kRedColor,
+                            ),
+                          )
+                          : null,
+                ),
               ],
             ),
             SizedBox(width: 14.w),
@@ -148,7 +154,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
                       isWhite!
                           ? null
                           : Border.all(
-                            color: context.colors.textPrimary.withValues(alpha: 0.35),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.35,
+                            ),
                             width: 1.1,
                           ),
                 ),
@@ -168,7 +176,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
               Text(
                 matchScore!,
                 textAlign: TextAlign.start,
-                style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textMdBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
           ],
         ),
