@@ -11,14 +11,20 @@ enum LichessMoveAnnotationType {
   inaccuracy,
   goodMove,
   bestMove,
+  forced,
   bookMove,
 }
 
 class LichessMoveAnnotation {
   final LichessMoveAnnotationType type;
   final String comment;
+  final bool useClassificationIcon;
 
-  const LichessMoveAnnotation({required this.type, required this.comment});
+  const LichessMoveAnnotation({
+    required this.type,
+    required this.comment,
+    this.useClassificationIcon = false,
+  });
 }
 
 class LichessMoveAnnotationsService {
@@ -160,6 +166,10 @@ class LichessMoveAnnotationsService {
       case 'best_move':
       case 'best':
         return LichessMoveAnnotationType.bestMove;
+      case 'forced':
+      case 'forced move':
+      case 'forced_move':
+        return LichessMoveAnnotationType.forced;
       case 'book move':
       case 'book_move':
       case 'book':
