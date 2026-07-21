@@ -49,7 +49,10 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spo
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart'
-    show watchLiveGamePosition, liveBatchKeysForGames;
+    show
+        baseGameProvider,
+        watchLiveGamePosition,
+        liveBatchKeysForGames;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
