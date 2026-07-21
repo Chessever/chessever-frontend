@@ -45,34 +45,66 @@ class _GameCardWrapperProvider {
   Future<_ResolvedNavigation> _resolveNavigationGames({
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
+    // Kept for call-site clarity; expansion is now decided from the game list's
+    // shape (single-event vs cross-event) rather than the view, so EVERY route
+    // that funnels through here hydrates the switcher identically.
     required ChessboardView viewSource,
   }) async {
-    if (viewSource != ChessboardView.forYou || orderedGames.isEmpty) {
+    if (orderedGames.isEmpty) {
       return _ResolvedNavigation(games: orderedGames, index: gameIndex);
     }
 
     final safeIndex = gameIndex.clamp(0, orderedGames.length - 1);
     final tappedGame = orderedGames[safeIndex];
-    final tourId = tappedGame.tourId;
 
-    // A For You card only carries the top-N preview games for its event, so the
-    // board's game-switcher dropdown would otherwise show an incomplete,
-    // re-ranked subset. Resolve the full event game list — the same set and
-    // order the event's Games tab shows — so the dropdown matches navigating in
-    // through the event card → Games tab. Virtual gamebase events have no
-    // broadcast tour to expand, so they keep the passed list as-is.
+    // The board's game-switcher dropdown (and its round timeline) must list the
+    // FULL event — every round — no matter which screen opened the board. Most
+    // entry points (For You, smart events, brackets, single-round pins, …) hand
+    // us only a subset of one event's games, so the switcher would otherwise
+    // show just the tapped game's round. This resolver is the single chokepoint
+    // every game-card tap funnels through, so expand any single-event subset to
+    // the whole event right here.
+    //
+    // Guards — leave the list EXACTLY as passed when expanding is wrong/unneeded:
+    //  - games span multiple tours → an intentionally cross-event list (player
+    //    profile, favorites, countrymen); there is no single event to expand.
+    //  - virtual gamebase / empty tourId → no broadcast tour to fetch.
+    //  - the list already covers 2+ rounds → it is already the full multi-round
+    //    event list (e.g. the Games tab), so never refetch or reorder it.
+    final tourIds = orderedGames.map((g) => g.tourId).toSet();
+    if (tourIds.length != 1) {
+      return _ResolvedNavigation(games: orderedGames, index: safeIndex);
+    }
+    final tourId = tourIds.first;
     if (tourId.isEmpty || isVirtualGamebaseId(tourId)) {
+      return _ResolvedNavigation(games: orderedGames, index: safeIndex);
+    }
+    // For You always carries a re-ranked top-N preview (never the full event),
+    // so it always expands. Every other single-event source only expands when
+    // it covers a SINGLE round — a strong signal it is a partial subset — so a
+    // deliberately multi-round list (Games tab, a filtered view already showing
+    // several rounds) is left untouched, never refetched or reordered.
+    final coveredRounds = orderedGames.map((g) => g.roundId).toSet();
+    if (viewSource != ChessboardView.forYou && coveredRounds.length >= 2) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
     }
 
     try {
-      // Cache-only read: the For You feed already fetched and persisted this
-      // event's games, so we reuse that cache instead of hitting the network —
-      // a blocking fetch here would make the tap feel laggy. Both the cache
-      // decode and the sort/convert run in background isolates, so the main
-      // thread stays free. If nothing is cached we fall back to the preview
-      // subset rather than blocking on the network.
-      final rawGames = await _ref.read(gamesLocalStorage).getCachedGames(tourId);
+      final storage = _ref.read(gamesLocalStorage);
+      // Cache-first: reuse the persisted full-event list when it exists (fast,
+      // isolate decode, no network). BUT the For You feed only fetches the
+      // top-N preview per event via a pure RPC (`getForYouTopGamesByEventIds`)
+      // that never writes the games cache — so an event reached ONLY through
+      // For You (never opened via its event card / Games tab) has NO cached
+      // games. In that cold case the old code fell back to the 4-game preview
+      // subset, and the board's game-switcher showed only the tapped game's
+      // round. Fetch the full event once so the dropdown lists every round,
+      // exactly like entering through the Games tab. `fetchAndSaveGames` also
+      // persists it, so every re-open of this event stays network-free.
+      var rawGames = await storage.getCachedGames(tourId);
+      if (rawGames.isEmpty) {
+        rawGames = await storage.fetchAndSaveGames(tourId);
+      }
       if (rawGames.isEmpty) {
         return _ResolvedNavigation(games: orderedGames, index: safeIndex);
       }
