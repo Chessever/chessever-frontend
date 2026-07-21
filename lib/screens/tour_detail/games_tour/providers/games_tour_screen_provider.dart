@@ -11,6 +11,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_pr
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_stable_order_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -244,13 +245,12 @@ class GamesTourScreenProvider
         }
       }
 
-      // During search mode or filter mode, we need to re-apply the filter
-      // when significant game changes occur (like status changes)
+      // During search / finished-only filter mode, re-apply only filters that
+      // still hide rows. Focus-on-live (hideFinishedGames) is sort-only with a
+      // frozen snapshot — never re-snapshot or re-filter on status stream ticks.
       if (current?.isSearchMode == true) {
-        // If this is a filter mode (not text search), re-apply the filter
         final displayMode = current?.gameDisplayMode;
-        if (displayMode != null && displayMode != GameDisplayMode.all) {
-          // Check if any game status changed (finished/started)
+        if (displayMode == GameDisplayMode.showfinishedGame) {
           bool statusChanged = false;
           for (
             int i = 0;
@@ -265,17 +265,12 @@ class GamesTourScreenProvider
 
           if (statusChanged) {
             debugPrint(
-              '🎮 GamesTourScreen: Game status changed during filter mode - re-applying filter',
+              '🎮 GamesTourScreen: Game status changed during finished-only filter - re-applying',
             );
-            // Re-apply the current filter
-            if (displayMode == GameDisplayMode.hideFinishedGames) {
-              hideFinishedGames();
-            } else if (displayMode == GameDisplayMode.showfinishedGame) {
-              showFinishedGames();
-            }
+            showFinishedGames();
           }
         }
-        // For text search mode, keep the current search results
+        // Text search and focus-on-live keep the current results / snapshot.
         return;
       }
       _recompute();
@@ -532,13 +527,16 @@ class GamesTourScreenProvider
   Future<void> showFinishedGames() async {
     if (aboutTourModel == null) return;
 
-    final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    final tourId = aboutTourModel!.id;
+    final pinnedIds = ref.read(gamesPinprovider(tourId)).allPins;
     final allGames = _collectGamesAcrossVisibleStages();
     final finishedGames = allGames.where((g) => g.status != '*').toList();
     final sortedGames = _sortGamesForFilters(finishedGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
-    ref.read(gameDisplayModeProvider(aboutTourModel!.id).notifier).state =
+    // Finished-only is a real filter; clear any live-focus snapshot.
+    ref.read(liveFocusSnapshotProvider(tourId).notifier).state = null;
+    ref.read(gameDisplayModeProvider(tourId).notifier).state =
         GameDisplayMode.showfinishedGame;
 
     state = AsyncValue.data(
@@ -551,16 +549,24 @@ class GamesTourScreenProvider
     );
   }
 
+  /// Activates "Focus on live games": keep every board visible and freeze a
+  /// live-first order from the current liveness snapshot. Re-calling after
+  /// deactivate+reactivate takes a fresh snapshot; while active, stream
+  /// status updates do not re-snapshot (see liveFocusSnapshotProvider).
   Future<void> hideFinishedGames() async {
     if (aboutTourModel == null) return;
 
-    final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    final tourId = aboutTourModel!.id;
+    final pinnedIds = ref.read(gamesPinprovider(tourId)).allPins;
     final allGames = _collectGamesAcrossVisibleStages();
-    final unfinishedGames = allGames.where((g) => g.status == '*').toList();
-    final sortedGames = _sortGamesForFilters(unfinishedGames, pinnedIds);
+    // Full membership — focus mode must not drop finished boards.
+    final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
+    final liveSnapshot = liveGameIdsForFocusSnapshot(models);
 
-    ref.read(gameDisplayModeProvider(aboutTourModel!.id).notifier).state =
+    ref.read(liveFocusSnapshotProvider(tourId).notifier).state =
+        Set<String>.unmodifiable(liveSnapshot);
+    ref.read(gameDisplayModeProvider(tourId).notifier).state =
         GameDisplayMode.hideFinishedGames;
 
     state = AsyncValue.data(
@@ -576,13 +582,14 @@ class GamesTourScreenProvider
   Future<void> showAllGames() async {
     if (aboutTourModel == null) return;
 
-    final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+    final tourId = aboutTourModel!.id;
+    final pinnedIds = ref.read(gamesPinprovider(tourId)).allPins;
     final allGames = _collectGamesAcrossVisibleStages();
     final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
-    ref.read(gameDisplayModeProvider(aboutTourModel!.id).notifier).state =
-        GameDisplayMode.all;
+    ref.read(liveFocusSnapshotProvider(tourId).notifier).state = null;
+    ref.read(gameDisplayModeProvider(tourId).notifier).state = GameDisplayMode.all;
 
     state = AsyncValue.data(
       GamesScreenModel(

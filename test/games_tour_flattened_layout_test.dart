@@ -294,7 +294,7 @@ void main() {
       expect(matchupOrder, ['postponed', 'on-schedule']);
     });
 
-    test('grid filtering maps both visible games to their actual row', () {
+    test('focus-on-live mode keeps finished boards visible in the grid', () {
       final round = _round('knockout-stage-finals', RoundStatus.live);
       final games = [
         _game('live-1', slug: 'game-1'),
@@ -306,6 +306,7 @@ void main() {
         rounds: [round],
         gamesByRound: {round.id: games},
         mode: GamesListViewMode.chessBoardGrid,
+        // hideFinishedGames is the Focus-on-live mode: sort-only, no filter.
         displayMode: GameDisplayMode.hideFinishedGames,
       );
 
@@ -313,8 +314,9 @@ void main() {
       expect(layout.itemIndexForGameId('live-2'), 2);
       // Latest-first inside the matchup: game 2 leads the row.
       expect(layout.firstGameIdAt(2), 'live-2');
-      expect(layout.itemIndexForGameId('finished'), isNull);
-      expect(layout.itemCount, 3);
+      // Finished board stays in the layout (focus mode no longer filters).
+      expect(layout.itemIndexForGameId('finished'), isNotNull);
+      expect(layout.itemCount, greaterThanOrEqualTo(3));
     });
 
     test('live board floats above boards that finished after its last move', () {

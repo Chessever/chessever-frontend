@@ -370,8 +370,10 @@ bool _isKnockoutRound(bool isKnockoutTournament, GamesAppBarModel round) {
 
 bool _shouldShowGame(GameDisplayMode mode, GamesTourModel game) {
   switch (mode) {
+    // Focus-on-live is sort-only; finished boards stay visible. Ordering is
+    // applied upstream via liveFocusSnapshotProvider + applyLiveFocusOrder.
     case GameDisplayMode.hideFinishedGames:
-      return !game.gameStatus.isFinished;
+      return true;
     case GameDisplayMode.showfinishedGame:
       return game.gameStatus.isFinished;
     case GameDisplayMode.all:

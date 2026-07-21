@@ -524,6 +524,170 @@ void main() {
       expect(grouped.keys, <String>['Alpha vs Beta', 'Gamma vs Delta']);
     });
   });
+
+  group('focus on live games order', () {
+    test('keeps finished boards and bubbles live ids first', () {
+      // Priority order first (board number): 1,2,3,4 — then focus partition.
+      final priorityOrdered = sortTournamentRoundGamesByPriority(
+        games: <GamesTourModel>[
+          _game('finished-early', boardNr: 1, status: GameStatus.whiteWins),
+          _game('live-a', boardNr: 2),
+          _game('finished-late', boardNr: 3, status: GameStatus.draw),
+          _game('live-b', boardNr: 4),
+        ],
+      );
+      final snapshot = liveGameIdsForFocusSnapshot(priorityOrdered);
+      final focused = applyLiveFocusOrder(
+        games: priorityOrdered,
+        liveGameIdsAtSnapshot: snapshot,
+      );
+
+      expect(focused.map((g) => g.gameId), <String>[
+        'live-a',
+        'live-b',
+        'finished-early',
+        'finished-late',
+      ]);
+      expect(focused.length, 4);
+      expect(snapshot, <String>{'live-a', 'live-b'});
+    });
+
+    test('freezes order when a live board finishes after activation', () {
+      final activationGames = <GamesTourModel>[
+        _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
+        _game('board-2', boardNr: 2), // live at snapshot
+        _game('board-3', boardNr: 3), // live at snapshot
+        _game('board-4', boardNr: 4, status: GameStatus.draw),
+      ];
+      final priorityOrdered = sortTournamentRoundGamesByPriority(
+        games: activationGames,
+      );
+      final snapshot = liveGameIdsForFocusSnapshot(priorityOrdered);
+      final atActivation = applyLiveFocusOrder(
+        games: priorityOrdered,
+        liveGameIdsAtSnapshot: snapshot,
+      );
+
+      // Board 2 finishes while focus stays on — same frozen snapshot.
+      final afterStatusChange = applyLiveFocusOrder(
+        games: sortTournamentRoundGamesByPriority(
+          games: <GamesTourModel>[
+            _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
+            _game('board-2', boardNr: 2, status: GameStatus.blackWins),
+            _game('board-3', boardNr: 3),
+            _game('board-4', boardNr: 4, status: GameStatus.draw),
+          ],
+        ),
+        liveGameIdsAtSnapshot: snapshot,
+      );
+
+      expect(atActivation.map((g) => g.gameId), <String>[
+        'board-2',
+        'board-3',
+        'board-1',
+        'board-4',
+      ]);
+      expect(afterStatusChange.map((g) => g.gameId), <String>[
+        'board-2',
+        'board-3',
+        'board-1',
+        'board-4',
+      ]);
+      // Content updates still flow through the frozen id order.
+      expect(afterStatusChange[0].gameStatus, GameStatus.blackWins);
+    });
+
+    test('re-activation takes a fresh live snapshot', () {
+      final firstSnapshot = liveGameIdsForFocusSnapshot(<GamesTourModel>[
+        _game('a', boardNr: 1),
+        _game('b', boardNr: 2),
+        _game('c', boardNr: 3, status: GameStatus.draw),
+      ]);
+      final afterFirst = applyLiveFocusOrder(
+        games: sortTournamentRoundGamesByPriority(
+          games: <GamesTourModel>[
+            _game('a', boardNr: 1),
+            _game('b', boardNr: 2),
+            _game('c', boardNr: 3, status: GameStatus.draw),
+          ],
+        ),
+        liveGameIdsAtSnapshot: firstSnapshot,
+      );
+
+      // User deactivates then reactivates when only b is still live.
+      final secondSnapshot = liveGameIdsForFocusSnapshot(<GamesTourModel>[
+        _game('a', boardNr: 1, status: GameStatus.whiteWins),
+        _game('b', boardNr: 2),
+        _game('c', boardNr: 3, status: GameStatus.draw),
+      ]);
+      final afterSecond = applyLiveFocusOrder(
+        games: sortTournamentRoundGamesByPriority(
+          games: <GamesTourModel>[
+            _game('a', boardNr: 1, status: GameStatus.whiteWins),
+            _game('b', boardNr: 2),
+            _game('c', boardNr: 3, status: GameStatus.draw),
+          ],
+        ),
+        liveGameIdsAtSnapshot: secondSnapshot,
+      );
+
+      expect(afterFirst.map((g) => g.gameId), <String>['a', 'b', 'c']);
+      expect(firstSnapshot, <String>{'a', 'b'});
+      expect(afterSecond.map((g) => g.gameId), <String>['b', 'a', 'c']);
+      expect(secondSnapshot, <String>{'b'});
+    });
+
+    test('all-finished round keeps membership and stable relative order', () {
+      final games = <GamesTourModel>[
+        _game('r1-b1', boardNr: 1, status: GameStatus.whiteWins),
+        _game('r1-b2', boardNr: 2, status: GameStatus.draw),
+        _game('r1-b3', boardNr: 3, status: GameStatus.blackWins),
+      ];
+      final priorityOrdered = sortTournamentRoundGamesByPriority(games: games);
+      final snapshot = liveGameIdsForFocusSnapshot(priorityOrdered);
+      final focused = applyLiveFocusOrder(
+        games: priorityOrdered,
+        liveGameIdsAtSnapshot: snapshot,
+      );
+
+      expect(snapshot, isEmpty);
+      expect(focused.map((g) => g.gameId), priorityOrdered.map((g) => g.gameId));
+      expect(focused.length, 3);
+    });
+
+    test('composes under favorite priority within live and non-live groups', () {
+      final priorityOrdered = sortTournamentRoundGamesByPriority(
+        games: <GamesTourModel>[
+          _game('reg-live', boardNr: 1),
+          _game('fav-finished', boardNr: 2, status: GameStatus.draw),
+          _game('fav-live', boardNr: 5),
+          _game('reg-finished', boardNr: 3, status: GameStatus.whiteWins),
+        ],
+        favoriteGameIds: const <String>{'fav-finished', 'fav-live'},
+      );
+      // Priority alone: fav-finished, fav-live, reg-live, reg-finished
+      expect(priorityOrdered.map((g) => g.gameId), <String>[
+        'fav-finished',
+        'fav-live',
+        'reg-live',
+        'reg-finished',
+      ]);
+
+      final snapshot = liveGameIdsForFocusSnapshot(priorityOrdered);
+      final focused = applyLiveFocusOrder(
+        games: priorityOrdered,
+        liveGameIdsAtSnapshot: snapshot,
+      );
+
+      // Live group keeps priority (fav before regular); finished group same.
+      expect(focused.map((g) => g.gameId), <String>[
+        'fav-live',
+        'reg-live',
+        'fav-finished',
+        'reg-finished',
+      ]);
+    });
+  });
 }
 
 GamesTourModel _game(

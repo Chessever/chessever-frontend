@@ -219,6 +219,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ref.invalidate(gamesAppBarProvider);
       ref.invalidate(gamesTourScreenProvider);
       ref.invalidate(gameDisplayModeProvider);
+      ref.invalidate(liveFocusSnapshotProvider);
       ref.invalidate(playerTourScreenProvider);
       ref.invalidate(searchQueryProvider);
       // Scroll provider is scoped per screen; it will dispose with the ProviderScope below.

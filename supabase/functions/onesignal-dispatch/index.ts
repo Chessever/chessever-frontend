@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
 
 type OutboxItem = {
   id: string;
@@ -752,35 +753,33 @@ async function processItem(item: OutboxItem) {
       return { id: item.id, status: "skipped", reason: "no_recipients" };
     }
 
-    // For game_started: exclude users with 2+ favorites playing in the round.
-
-    // Per spec (Scenarios B/C), those users must receive ONE combined notification
-    // from round_started — not individual per-game pushes.
-    // Only single-favorite users (Scenario A) are handled here.
+    // For game_started: multi-fav (2+ favorites in the round) users get the
+    // combined round_started push (Scenarios B/C), not per-game spam.
+    // Single-favorite users (Scenario A) and map-miss (count 0 but still in
+    // playerUserIds for THIS game) keep game_started — see
+    // filterGameStartedPlayerRecipients / shouldReceiveGameStartedForPlayerFavorite.
     if (item.event_type === "game_started" && item.round_id) {
-      for (const uid of Array.from(filteredUserIds)) {
-        const favCount = (context.playerFavoriteMap.get(uid) ?? []).length;
-        if (favCount !== 1) filteredUserIds.delete(uid);
-      }
-
-      // Also skip users who already received a round_started notification
-      // for this round (window recorded by the round_started handler when
-      // cron fires before the first move arrives).  This prevents the
-      // second push when the game_started trigger fires later.
-      if (filteredUserIds.size > 0) {
-        const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
-          item.round_id,
-          Array.from(filteredUserIds),
-        );
-        for (const uid of alreadyCovered) {
-          filteredUserIds.delete(uid);
-        }
-      }
+      const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
+        item.round_id,
+        Array.from(filteredUserIds),
+      );
+      const { keep } = filterGameStartedPlayerRecipients(
+        filteredUserIds,
+        context.playerFavoriteMap,
+        alreadyCovered,
+      );
+      filteredUserIds.clear();
+      for (const uid of keep) filteredUserIds.add(uid);
     }
 
     if (filteredUserIds.size === 0) {
-      await markSent(item.id);
-      return { id: item.id, status: "sent", recipients: 0 };
+      // Honest skip — never markSent with zero recipients (that hid misses).
+      await markSkipped(item.id, "no_game_started_recipients");
+      return {
+        id: item.id,
+        status: "skipped",
+        reason: "no_game_started_recipients",
+      };
     }
 
     const notification = buildNotification(context, item);

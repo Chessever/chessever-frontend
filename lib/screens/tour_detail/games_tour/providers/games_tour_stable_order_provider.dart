@@ -247,3 +247,45 @@ int _priorityForGame(
   if (countrymanGameIds.contains(gameId)) return 1;
   return 2;
 }
+
+/// Snapshot-based "Focus on live games" ordering.
+///
+/// Boards whose ids were live at activation ([liveGameIdsAtSnapshot]) bubble
+/// above the rest while preserving relative order within each group. Callers
+/// freeze [liveGameIdsAtSnapshot] for the whole focus session so later status
+/// changes do not reshuffle; a new snapshot is only taken on re-activation.
+///
+/// All boards remain present — this never filters finished games out.
+List<GamesTourModel> applyLiveFocusOrder({
+  required Iterable<GamesTourModel> games,
+  required Set<String> liveGameIdsAtSnapshot,
+}) {
+  if (liveGameIdsAtSnapshot.isEmpty) {
+    return List<GamesTourModel>.of(games, growable: false);
+  }
+
+  final live = <GamesTourModel>[];
+  final rest = <GamesTourModel>[];
+  for (final game in games) {
+    if (liveGameIdsAtSnapshot.contains(game.gameId)) {
+      live.add(game);
+    } else {
+      rest.add(game);
+    }
+  }
+  if (live.isEmpty || rest.isEmpty) {
+    return List<GamesTourModel>.of(games, growable: false);
+  }
+  return <GamesTourModel>[...live, ...rest];
+}
+
+/// Game ids treated as live for a focus-mode snapshot.
+///
+/// Uses [GamesTourModel.effectiveGameStatus] so clock-flagged boards that the
+/// UI already treats as finished are not snapped as live.
+Set<String> liveGameIdsForFocusSnapshot(Iterable<GamesTourModel> games) {
+  return <String>{
+    for (final game in games)
+      if (!game.effectiveGameStatus.isFinished) game.gameId,
+  };
+}
