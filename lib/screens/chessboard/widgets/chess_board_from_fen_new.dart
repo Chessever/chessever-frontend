@@ -79,9 +79,15 @@ bool _shouldShowEvalBar(WidgetRef ref) {
 }
 
 bool _hideFinishedSpoilers(WidgetRef ref, GamesTourModel game) {
+  if (!game.gameStatus.isFinished) return false;
+  // "No spoilers" is an event-level toggle keyed by broadcast tour id, so it
+  // only means anything for live broadcast games. Archive sources (gamebase,
+  // TWIC, saved analyses) carry an event *name* in tourId, which can never
+  // match a stored key — the lookup only bought a sqlite read per distinct
+  // event plus a frame where the card hid content it was always going to show.
+  if (game.source != GameSource.supabase) return false;
   final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
-  return (spoilerState.isLoading || spoilerState.enabled) &&
-      game.gameStatus.isFinished;
+  return spoilerState.isLoading || spoilerState.enabled;
 }
 
 /// Resolved FEN provider that caches the resolution logic for a game model

@@ -94,7 +94,11 @@ Future<void> openMiniatureGame({
     if (!context.mounted) return;
     navigator.pop(); // loading
     messenger.showSnackBar(
-      SnackBar(content: Text(userFacingError(e, fallback: 'Could not open this game.'))),
+      SnackBar(
+        content: Text(
+          userFacingError(e, fallback: 'Could not open this game.'),
+        ),
+      ),
     );
   }
 }

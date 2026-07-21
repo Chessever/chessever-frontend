@@ -26,6 +26,14 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final LiveGamesBatchKey? liveBatchKey;
   final Future<bool> Function()? onBeforeOpen;
 
+  /// Metadata line for the card footer, used by archive lists whose games have
+  /// no clock and no last move so the footer strip would otherwise be blank.
+  final String? footerDetail;
+
+  /// Passed through to [GameCard]: drops the long-press Pin item where there is
+  /// no pin target (archive lists stub [onPinToggle] out).
+  final bool showPin;
+
   const GameCardWrapperWidget({
     super.key,
     required this.game,
@@ -40,6 +48,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.streamEnabled = true,
     this.liveBatchKey,
     this.onBeforeOpen,
+    this.footerDetail,
+    this.showPin = true,
   });
 
   @override
@@ -137,6 +147,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 onPinToggle: handlePinToggle,
                 onShare: (game) => showGameShareOverlay(context, ref, game),
                 allowStockfishFallback: effectiveAllowStockfishFallback,
+                footerDetail: footerDetail,
+                showPin: showPin,
                 onTap: navigateToGame,
               ),
     );

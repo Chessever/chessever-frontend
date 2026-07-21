@@ -5,8 +5,8 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
-import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/miniatures_filter_dialog.dart';
+import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
@@ -202,6 +202,29 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     if (deltaDays == 0) return 'Today';
     if (deltaDays == 1) return 'Yesterday';
     return DateFormat('EEEE, MMM d, y').format(target);
+  }
+
+  /// Footer line for a miniature card. The list already carries the date in its
+  /// section header, so the strip earns its space with what is specific to the
+  /// game: where it was played, the opening code, and how short it was.
+  /// [GamesTourModel.boardNr] holds the final move number for miniatures.
+  String? _footerDetail(GamesTourModel game) {
+    final parts = <String>[];
+
+    final event = game.tourId.trim();
+    if (event.isNotEmpty && event.toLowerCase() != 'miniatures') {
+      parts.add(event);
+    }
+
+    final eco = game.eco?.trim() ?? '';
+    if (eco.isNotEmpty) parts.add(eco);
+
+    final moves = game.boardNr;
+    if (moves != null && moves > 0) {
+      parts.add('$moves ${moves == 1 ? 'move' : 'moves'}');
+    }
+
+    return parts.isEmpty ? null : parts.join('  ·  ');
   }
 
   Future<void> _openGame(List<GamesTourModel> games, int index) {
@@ -570,40 +593,54 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     }
 
     if (entry is _MiniatureGameEntry) {
-      if (entry.isBoard) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: entry.isLast ? 16.h : 12.h),
-          child: GameCardWrapperWidget(
-            key: ValueKey('mini_board_${entry.game.gameId}'),
-            game: entry.game,
-            gamesData: gamesData,
-            gameIndex: entry.gameIndex,
-            isChessBoardVisible: true,
-            streamEnabled: false,
-            onPinToggle: (_) async {},
-            // Miniatures need their PGN fetched before the board can replay
-            // them, so the wrapper's own navigation is declined and the
-            // launcher takes over.
-            onBeforeOpen: () async {
-              await _openGame(games, entry.gameIndex);
-              return false;
-            },
-          ),
+      // Same card as the tournament Games tab. GameCardWrapperWidget renders
+      // the canonical GameCard, whose header and footer are fixed-height, so a
+      // row can never re-measure when async data (eval, flags, result) lands
+      // and the list never reflows under the user.
+      //
+      // Miniatures need their PGN fetched before the board can replay them, so
+      // the wrapper's own navigation is declined and the launcher takes over.
+      Widget card = GameCardWrapperWidget(
+        key: ValueKey(
+          'mini_${entry.isBoard ? 'board' : 'card'}_${entry.game.gameId}',
+        ),
+        game: entry.game,
+        gamesData: gamesData,
+        gameIndex: entry.gameIndex,
+        isChessBoardVisible: entry.isBoard,
+        streamEnabled: false,
+        footerDetail: _footerDetail(entry.game),
+        // Pinning is meaningless outside a tour scope, so the long-press menu
+        // drops the item rather than offering a tap that does nothing.
+        showPin: false,
+        onPinToggle: (_) async {},
+        onBeforeOpen: () async {
+          await _openGame(games, entry.gameIndex);
+          return false;
+        },
+      );
+
+      // Swipe-to-add stays on the card rows only; board rows are already a
+      // full-width interactive board with no room for a drag affordance.
+      if (!entry.isBoard) {
+        card = SwipeActionCard(
+          dismissKey: ValueKey('mini_add_${entry.game.gameId}'),
+          icon: Icons.add_rounded,
+          label: 'Add',
+          backgroundColor: kGreenColor,
+          onAction: () async {
+            final hasPremium = await requirePremiumGuard(context, ref);
+            if (!hasPremium || !mounted) return;
+            HapticFeedbackService.medium();
+            showAddToFolderSheet(context: context, game: entry.game);
+          },
+          child: card,
         );
       }
 
       return Padding(
         padding: EdgeInsets.only(bottom: entry.isLast ? 16.h : 12.h),
-        child: GamebaseSearchGameCard(
-          key: ValueKey('mini_card_${entry.game.gameId}'),
-          game: entry.game,
-          allGames: games,
-          gameIndex: entry.gameIndex,
-          showRound: true,
-          showGamebaseButton: false,
-          onAdd: () => showAddToFolderSheet(context: context, game: entry.game),
-          onTap: () => _openGame(games, entry.gameIndex),
-        ),
+        child: card,
       );
     }
 
@@ -679,7 +716,9 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
             padding: EdgeInsets.only(bottom: 12.h),
             child: SkeletonWidget(
               child: Container(
-                height: 92.h,
+                // Matches GameCard exactly (60.h header + 24.h footer) so the
+                // swap from skeleton to real rows does not jump.
+                height: 84.h,
                 decoration: BoxDecoration(
                   color: context.colors.surface,
                   borderRadius: BorderRadius.circular(12.br),

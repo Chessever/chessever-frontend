@@ -29,11 +29,22 @@ class GameCard extends ConsumerWidget {
     required this.onTap,
     this.onShare,
     this.allowStockfishFallback = true,
+    this.footerDetail,
+    this.showPin = true,
     super.key,
   });
 
   final MatchWithComparison matchComparison;
   final FutureOr<void> Function(GamesTourModel game) onPinToggle;
+
+  /// Optional metadata line for the footer strip, used by archive lists where
+  /// the game never "started" so there is no clock and no last move to show.
+  /// Ignored once either of those has something to render.
+  final String? footerDetail;
+
+  /// Whether the long-press menu offers Pin. Archive lists have no pin target,
+  /// so they drop the item instead of showing one that does nothing.
+  final bool showPin;
 
   /// Opens the share flow for this game. When null, the long-press Share
   /// action is a no-op (the menu just closes).
@@ -53,6 +64,7 @@ class GameCard extends ConsumerWidget {
           _GameCardContent(
             matchComparison: matchComparison,
             allowStockfishFallback: allowStockfishFallback,
+            footerDetail: footerDetail,
           ),
           if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
         ],
@@ -138,6 +150,8 @@ class GameCard extends ConsumerWidget {
           cardSize: cardSize,
           menuPosition: Offset(details.globalPosition.dx - 60.w, menuTop),
           matchComparison: matchComparison,
+          footerDetail: footerDetail,
+          showPin: showPin,
           isPinned: isPinned,
           onDismiss: () => Navigator.of(buildContext).pop(),
           onPinToggle: () {
@@ -164,11 +178,13 @@ class _GameCardContent extends ConsumerWidget {
     required this.matchComparison,
     this.showClock = true,
     this.allowStockfishFallback = true,
+    this.footerDetail,
   });
 
   final MatchWithComparison matchComparison;
   final bool showClock;
   final bool allowStockfishFallback;
+  final String? footerDetail;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -178,7 +194,11 @@ class _GameCardContent extends ConsumerWidget {
           matchComparison: matchComparison,
           allowStockfishFallback: allowStockfishFallback,
         ),
-        _BottomSection(matchComparison: matchComparison, showClock: showClock),
+        _BottomSection(
+          matchComparison: matchComparison,
+          showClock: showClock,
+          footerDetail: footerDetail,
+        ),
       ],
     );
   }
@@ -331,11 +351,18 @@ class _CenterContent extends ConsumerWidget {
     // it no longer rebuilds when unrelated fields of EventNoSpoilersState churn.
     // (Riverpod best practice — minimize rebuild surface on a widget that
     // renders in every game-card list, including deep navigation stacks.)
-    final hideSpoilers = ref.watch(
-      eventNoSpoilersProvider(
-        matchWithComparison.game.tourId,
-      ).select((state) => state.isLoading || state.enabled),
-    );
+    //
+    // Only broadcast games consult it: archive sources (gamebase, TWIC, saved)
+    // put an event *name* in tourId, which never matches a stored key, so the
+    // read only cost a sqlite hit per distinct event and left the result blank
+    // for a frame before popping in.
+    final hideSpoilers =
+        matchWithComparison.game.source == GameSource.supabase &&
+        ref.watch(
+          eventNoSpoilersProvider(
+            matchWithComparison.game.tourId,
+          ).select((state) => state.isLoading || state.enabled),
+        );
 
     // If game is not ongoing, show result text unless this event is spoiler-free.
     if (effectiveStatus != GameStatus.ongoing) {
@@ -383,10 +410,15 @@ class _CenterContent extends ConsumerWidget {
 }
 
 class _BottomSection extends ConsumerWidget {
-  const _BottomSection({required this.matchComparison, this.showClock = true});
+  const _BottomSection({
+    required this.matchComparison,
+    this.showClock = true,
+    this.footerDetail,
+  });
 
   final MatchWithComparison matchComparison;
   final bool showClock;
+  final String? footerDetail;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -399,6 +431,13 @@ class _BottomSection extends ConsumerWidget {
 
     // When clocks are hidden or game hasn't started, handle accordingly
     if (!showClock || !matchComparison.game.hasStarted) {
+      final detail = footerDetail?.trim() ?? '';
+      final hasNotation =
+          formatGameCardLastMoveNotation(
+            lastMove: matchComparison.game.lastMove,
+            fen: matchComparison.game.fen,
+          )?.isNotEmpty ??
+          false;
       return Container(
         height: 24.h,
         padding: EdgeInsets.symmetric(horizontal: 16.sp),
@@ -409,7 +448,26 @@ class _BottomSection extends ConsumerWidget {
             bottomRight: Radius.circular(12.br),
           ),
         ),
-        child: Row(children: [lastMoveWidget]),
+        child: Row(
+          children: [
+            if (!hasNotation && detail.isNotEmpty)
+              Expanded(
+                child: Center(
+                  child: Text(
+                    detail,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
+            else
+              lastMoveWidget,
+          ],
+        ),
       );
     }
 
@@ -893,12 +951,16 @@ class _MotorPopupWrapper extends StatefulWidget {
     required this.onDismiss,
     required this.onPinToggle,
     required this.onShare,
+    this.footerDetail,
+    this.showPin = true,
   });
 
   final Offset cardPosition;
   final Size cardSize;
   final Offset menuPosition;
   final MatchWithComparison matchComparison;
+  final String? footerDetail;
+  final bool showPin;
   final bool isPinned;
   final VoidCallback onDismiss;
   final VoidCallback onPinToggle;
@@ -996,6 +1058,7 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
                               children: [
                                 _GameCardContent(
                                   matchComparison: widget.matchComparison,
+                                  footerDetail: widget.footerDetail,
                                 ),
                                 if (widget.isPinned)
                                   PinIconOverlay(right: 8.sp, top: 4.sp),
@@ -1016,6 +1079,7 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
                     child: Transform.scale(
                       scale: menuScale,
                       child: ContextPopupMenu(
+                        showPin: widget.showPin,
                         isPinned: widget.isPinned,
                         onPinToggle: widget.onPinToggle,
                         onShare: widget.onShare,

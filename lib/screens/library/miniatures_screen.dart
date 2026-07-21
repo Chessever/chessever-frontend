@@ -136,11 +136,33 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
               ),
             ),
           ),
-          Text(
-            'Miniatures',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-              fontWeight: FontWeight.w600,
+          // Icon and title travel as one centred lockup. The horizontal
+          // padding keeps that lockup clear of the back button on the
+          // narrowest phones instead of letting the two overlap.
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 56.w),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Same bare mark the Library card uses for this collection.
+                Icon(
+                  Icons.bolt_rounded,
+                  size: 18.sp,
+                  color: context.colors.iconPrimary,
+                ),
+                SizedBox(width: 6.w),
+                Flexible(
+                  child: Text(
+                    'Miniatures',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: context.colors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

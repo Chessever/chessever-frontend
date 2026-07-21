@@ -16,11 +16,16 @@ class ContextPopupMenu extends StatelessWidget {
     required this.onShare,
     this.isLiveEnabled,
     this.onLiveToggle,
+    this.showPin = true,
     this.width = 120,
   });
 
   final bool isPinned;
   final VoidCallback onPinToggle;
+
+  /// Archive contexts (gamebase, miniatures) have nothing to pin to, so the
+  /// item is dropped rather than rendered as a tap that does nothing.
+  final bool showPin;
   final VoidCallback onShare;
   final bool? isLiveEnabled;
   final VoidCallback? onLiveToggle;
@@ -36,23 +41,24 @@ class ContextPopupMenu extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            InkWell(
-              onTap: onPinToggle,
-              child: Container(
-                width: 120.w,
-                height: 40.h,
-                padding: EdgeInsets.symmetric(
-                  horizontal: 12.sp,
-                  vertical: 8.sp,
-                ),
-                child: MenuItemContent(
-                  text: isPinned ? "Unpin" : "Pin",
-                  iconAsset: SvgAsset.pin,
+            if (showPin) ...[
+              InkWell(
+                onTap: onPinToggle,
+                child: Container(
+                  width: 120.w,
+                  height: 40.h,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.sp,
+                    vertical: 8.sp,
+                  ),
+                  child: MenuItemContent(
+                    text: isPinned ? "Unpin" : "Pin",
+                    iconAsset: SvgAsset.pin,
+                  ),
                 ),
               ),
-            ),
-
-            const MenuDivider(),
+              const MenuDivider(),
+            ],
             if (onLiveToggle != null && isLiveEnabled != null) ...[
               InkWell(
                 onTap: onLiveToggle,
