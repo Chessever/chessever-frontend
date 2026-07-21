@@ -109,7 +109,12 @@ class ChessGameNavigatorState {
           // If the variation move is played by the same color as the current move,
           // it's an alternative TO the current move (e.g. playing d4 instead of e4 at ply 0).
           // Otherwise, it's an alternative to the continuation AFTER the current move.
-          if (variation.first.turn == currentMove.turn) {
+          // Classify by FEN side-to-move, NOT `ChessMove.turn`: that field is
+          // inconsistent (PGN-parsed moves store the mover, navigator-created
+          // moves store who is next), so a continuation like 11.Be3 after
+          // 10...h6 wrongly compared equal and dropped h6 from the path.
+          if (_fenSideToMove(variation.first.fen) ==
+              _fenSideToMove(currentMove.fen)) {
             path.removeLast();
           }
         }
@@ -1274,6 +1279,13 @@ final chessGameNavigatorProvider = StateNotifierProvider.autoDispose
     .family<ChessGameNavigator, ChessGameNavigatorState, ChessGame>(
       (ref, game) => ChessGameNavigator(game),
     );
+
+/// Side to move in [fen] ('w' or 'b'); '' when malformed. Reliable across both
+/// PGN-parsed and navigator-created moves, unlike [ChessMove.turn].
+String _fenSideToMove(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  return parts.length > 1 ? parts[1] : '';
+}
 
 ChessLine? _lineForPointerInGame(ChessGame game, ChessMovePointer pointer) {
   ChessLine? line = game.mainline;

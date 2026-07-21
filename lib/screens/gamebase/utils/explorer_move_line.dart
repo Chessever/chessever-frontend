@@ -32,8 +32,15 @@ List<ChessMove> pathFromPointer(ChessGame game, ChessMovePointer pointer) {
         break;
       }
       final variation = currentMove.variations![index];
-      if (variation.isNotEmpty && variation.first.turn == currentMove.turn) {
-        // Variation that *replaces* the parent move (same colour plays).
+      if (variation.isNotEmpty &&
+          _fenSideToMove(variation.first.fen) ==
+              _fenSideToMove(currentMove.fen)) {
+        // Variation that *replaces* the parent move: both are the same side's
+        // move, so their resulting positions share a side-to-move. Classify by
+        // FEN, NOT `ChessMove.turn` — that field is inconsistent (PGN-parsed
+        // moves store the mover, navigator-created moves store who is next), so
+        // a *continuation* like 11.Be3 after 10...h6 compared equal and wrongly
+        // dropped h6, producing a line that no longer replays to the board FEN.
         path.removeLast();
       }
       currentList = variation;
@@ -216,6 +223,13 @@ NormalMove? _alternateCastling(Position position, NormalMove move) {
   final alt = pairs['${move.from.name}${move.to.name}'];
   if (alt == null) return null;
   return NormalMove.fromUci(alt);
+}
+
+/// Side to move in [fen] ('w' or 'b'); '' when malformed. Reliable across both
+/// PGN-parsed and navigator-created moves, unlike [ChessMove.turn].
+String _fenSideToMove(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  return parts.length > 1 ? parts[1] : '';
 }
 
 bool _sameExactFen(String left, String right) =>
