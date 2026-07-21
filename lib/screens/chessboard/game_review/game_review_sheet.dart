@@ -3,8 +3,9 @@ import 'dart:math' as math;
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -28,7 +29,7 @@ Future<void> showMobileGameReviewSheet({
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.68),
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder:
           (context) => _GameReviewSheet(
             controller: controller,
@@ -72,88 +73,98 @@ class GameAnalysisButton extends StatelessWidget {
             : 'Game Analysis';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      child: Semantics(
-        button: true,
-        enabled: enabled,
-        value: running ? '$percentage percent' : null,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: enabled ? onPressed : null,
-            borderRadius: BorderRadius.circular(12),
-            child: Ink(
-              height: 46,
-              decoration: BoxDecoration(
-                color:
-                    enabled
-                        ? kBlack3Color
-                        : kBlack3Color.withValues(alpha: 0.5),
+      padding: const EdgeInsets.only(top: 8, bottom: 10),
+      child: Align(
+        alignment: Alignment.center,
+        child: FractionallySizedBox(
+          widthFactor: 0.75,
+          child: Semantics(
+            button: true,
+            enabled: enabled,
+            value: running ? '$percentage percent' : null,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: enabled ? onPressed : null,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color:
-                      completed
-                          ? const Color(0xFF28833A)
-                          : running
-                          ? kPrimaryColor.withValues(alpha: 0.7)
-                          : kDividerColor,
-                ),
-              ),
-              child: Stack(
-                children: [
-                  if (running)
-                    Positioned.fill(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(11),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: AnimatedFractionallySizedBox(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOut,
-                            widthFactor: reportState.progress.clamp(0.0, 1.0),
-                            heightFactor: 1,
-                            child: ColoredBox(
-                              color: kPrimaryColor.withValues(alpha: 0.16),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
+                child: Ink(
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color:
+                        enabled
+                            ? kBlack3Color
+                            : kBlack3Color.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color:
                           completed
-                              ? Icons.check_circle_outline_rounded
-                              : retry
-                              ? Icons.refresh_rounded
-                              : Icons.analytics_outlined,
-                          size: 19,
-                          color:
-                              enabled
-                                  ? completed
-                                      ? const Color(0xFF45C86E)
-                                      : kPrimaryColor
-                                  : kLightGreyColor,
-                        ),
-                        const SizedBox(width: 9),
-                        Flexible(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: enabled ? kWhiteColor : kLightGreyColor,
-                              fontSize: enabled ? 14 : 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
+                              ? const Color(0xFF28833A)
+                              : running
+                              ? kPrimaryColor.withValues(alpha: 0.7)
+                              : kDividerColor,
                     ),
                   ),
-                ],
+                  child: Stack(
+                    children: [
+                      if (running)
+                        Positioned.fill(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(11),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: AnimatedFractionallySizedBox(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOut,
+                                widthFactor: reportState.progress.clamp(
+                                  0.0,
+                                  1.0,
+                                ),
+                                heightFactor: 1,
+                                child: ColoredBox(
+                                  color: kPrimaryColor.withValues(alpha: 0.16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              completed
+                                  ? Icons.check_circle_outline_rounded
+                                  : retry
+                                  ? Icons.refresh_rounded
+                                  : Icons.analytics_outlined,
+                              size: 19,
+                              color:
+                                  enabled
+                                      ? completed
+                                          ? const Color(0xFF45C86E)
+                                          : kPrimaryColor
+                                      : kLightGreyColor,
+                            ),
+                            const SizedBox(width: 9),
+                            Flexible(
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color:
+                                      enabled ? kWhiteColor : kLightGreyColor,
+                                  fontSize: enabled ? 14 : 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -181,25 +192,18 @@ class _GameReviewSheet extends StatefulWidget {
 }
 
 class _GameReviewSheetState extends State<_GameReviewSheet> {
-  bool _expanded = false;
-
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
+      key: const ValueKey('game-review-full-sheet'),
       expand: false,
-      initialChildSize: 0.62,
-      minChildSize: 0.48,
+      initialChildSize: 0.45,
+      minChildSize: 0.45,
       maxChildSize: 0.94,
       snap: true,
-      snapSizes: const [0.62, 0.94],
-      builder: (context, scrollController) {
-        return NotificationListener<DraggableScrollableNotification>(
-          onNotification: (notification) {
-            final next = notification.extent >= 0.77;
-            if (next != _expanded) setState(() => _expanded = next);
-            return false;
-          },
-          child: Container(
+      snapSizes: const [0.45, 0.94],
+      builder:
+          (context, scrollController) => Container(
             decoration: const BoxDecoration(
               color: kBackgroundColor,
               borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -212,7 +216,7 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
                 return CustomScrollView(
                   controller: scrollController,
                   slivers: [
-                    SliverToBoxAdapter(child: _SheetHeader(game: widget.game)),
+                    const SliverToBoxAdapter(child: _SheetDragHandle()),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
                       sliver: SliverToBoxAdapter(
@@ -224,8 +228,6 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
               },
             ),
           ),
-        );
-      },
     );
   }
 
@@ -239,7 +241,6 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
           return _CompletedReview(
             report: report,
             game: widget.game,
-            expanded: _expanded,
             activePly: widget.activePly,
             onJumpToPly: widget.onJumpToPly,
           );
@@ -270,62 +271,22 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
   }
 }
 
-class _SheetHeader extends StatelessWidget {
-  const _SheetHeader({required this.game});
-
-  final GamesTourModel game;
+class _SheetDragHandle extends StatelessWidget {
+  const _SheetDragHandle();
 
   @override
   Widget build(BuildContext context) {
-    final result = game.effectiveGameStatus.displayText;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-      child: Column(
-        children: [
-          Container(
-            width: 44,
-            height: 5,
-            decoration: BoxDecoration(
-              color: kLightGreyColor,
-              borderRadius: BorderRadius.circular(999),
-            ),
+      padding: const EdgeInsets.only(top: 10, bottom: 12),
+      child: Center(
+        child: Container(
+          width: 44,
+          height: 5,
+          decoration: BoxDecoration(
+            color: kLightGreyColor,
+            borderRadius: BorderRadius.circular(999),
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Game Review',
-                  style: TextStyle(
-                    color: kWhiteColor,
-                    fontSize: 25,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              if (result.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: kBlack3Color,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: kDividerColor),
-                  ),
-                  child: Text(
-                    result,
-                    style: const TextStyle(
-                      color: kWhiteColor,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -339,6 +300,8 @@ class _ReviewProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = state.progress.clamp(0.0, 1.0);
+    final analyzedPlies = math.max(0, (state.totalPositions - 1) ~/ 2);
+    final totalMoves = (analyzedPlies + 1) ~/ 2;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 56),
       child: Column(
@@ -373,7 +336,7 @@ class _ReviewProgress extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    '${(value * 100).round()}% · ${state.completedPositions}/${state.totalPositions}',
+                    '${(value * 100).round()}% · $totalMoves moves',
                     style: const TextStyle(color: kWhiteColor70, fontSize: 13),
                   ),
                 ],
@@ -441,14 +404,12 @@ class _CompletedReview extends StatefulWidget {
   const _CompletedReview({
     required this.report,
     required this.game,
-    required this.expanded,
     required this.activePly,
     required this.onJumpToPly,
   });
 
   final GameAnalysisReport report;
   final GamesTourModel game;
-  final bool expanded;
   final int activePly;
   final ValueChanged<int> onJumpToPly;
 
@@ -458,6 +419,7 @@ class _CompletedReview extends StatefulWidget {
 
 class _CompletedReviewState extends State<_CompletedReview> {
   late int _selectedPly;
+  final Map<String, int> _recapCycle = <String, int>{};
 
   @override
   void initState() {
@@ -475,36 +437,39 @@ class _CompletedReviewState extends State<_CompletedReview> {
     widget.onJumpToPly(next);
   }
 
+  void _jumpToClassification(
+    GameMoveClassification classification,
+    bool white,
+  ) {
+    final matches = widget.report.moves
+        .where(
+          (move) =>
+              move.isWhite == white && move.classification == classification,
+        )
+        .toList(growable: false);
+    if (matches.isEmpty) return;
+    final key = '${classification.name}:$white';
+    final current = _recapCycle[key] ?? 0;
+    _recapCycle[key] = current + 1;
+    _jump(matches[current % matches.length].ply);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        AnimatedSize(
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOut,
-          child:
-              widget.expanded
-                  ? Column(
-                    children: [
-                      _EvaluationGraph(
-                        report: widget.report,
-                        activePly: _selectedPly,
-                        onJumpToPly: _jump,
-                      ),
-                      const SizedBox(height: 12),
-                      _GraphNavigator(
-                        report: widget.report,
-                        activePly: _selectedPly,
-                        onJumpToPly: _jump,
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-                  )
-                  : const SizedBox.shrink(),
+        _EvaluationGraph(
+          report: widget.report,
+          activePly: _selectedPly,
+          onJumpToPly: _jump,
         ),
+        const SizedBox(height: 20),
         _PlayerSummary(report: widget.report, game: widget.game),
         const SizedBox(height: 24),
-        _ClassificationRecap(report: widget.report),
+        _ClassificationRecap(
+          report: widget.report,
+          onScoreTap: _jumpToClassification,
+        ),
       ],
     );
   }
@@ -518,111 +483,179 @@ class _PlayerSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: _PlayerColumn(
-            player: game.whitePlayer,
-            accuracy: report.whiteAccuracy,
-            white: true,
-          ),
-        ),
-        const SizedBox(width: 18),
-        Expanded(
-          child: _PlayerColumn(
-            player: game.blackPlayer,
-            accuracy: report.blackAccuracy,
-            white: false,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PlayerColumn extends StatelessWidget {
-  const _PlayerColumn({
-    required this.player,
-    required this.accuracy,
-    required this.white,
-  });
-
-  final PlayerCard player;
-  final double accuracy;
-  final bool white;
-
-  @override
-  Widget build(BuildContext context) {
-    final words = player.name.trim().split(RegExp(r'\s+'));
-    final initials = words.take(2).map((word) => word[0].toUpperCase()).join();
-    final federation =
-        player.countryCode.isNotEmpty ? player.countryCode : player.federation;
     return Column(
       children: [
-        Stack(
-          clipBehavior: Clip.none,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: white ? kBlack3Color : const Color(0xFF303034),
-              child: Text(
-                initials,
-                style: const TextStyle(
-                  color: kWhiteColor,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            if (federation.trim().isNotEmpty)
-              Positioned(
-                right: -5,
-                bottom: -2,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: FederationFlag(
-                    federation: federation,
-                    width: 20,
-                    height: 14,
-                  ),
-                ),
-              ),
+            Expanded(child: _PlayerColumn(player: game.whitePlayer)),
+            const SizedBox(width: 18),
+            Expanded(child: _PlayerColumn(player: game.blackPlayer)),
           ],
         ),
         const SizedBox(height: 14),
-        Text(
-          player.name,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: kWhiteColor,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
+        _SummaryMetricRow(
+          label: 'Accuracy',
+          left: report.whiteAccuracy.toStringAsFixed(1),
+          right: report.blackAccuracy.toStringAsFixed(1),
+          suffix: '%',
+          cardValues: true,
         ),
-        const SizedBox(height: 3),
-        Text(
-          player.rating > 0 ? '${player.rating}' : 'Unrated',
-          style: const TextStyle(color: kWhiteColor70, fontSize: 14),
+        const SizedBox(height: 10),
+        _SummaryMetricRow(
+          label: 'Game Rating',
+          left: report.whiteEstimatedRating?.toString() ?? '—',
+          right: report.blackEstimatedRating?.toString() ?? '—',
         ),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(
-            color: white ? kBlack3Color : const Color(0xFFD0D0D2),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: white ? kLightGreyColor : kDividerColor),
-          ),
+      ],
+    );
+  }
+}
+
+class _SummaryMetricRow extends StatelessWidget {
+  const _SummaryMetricRow({
+    required this.label,
+    required this.left,
+    required this.right,
+    this.suffix = '',
+    this.cardValues = false,
+  });
+
+  final String label;
+  final String left;
+  final String right;
+  final String suffix;
+  final bool cardValues;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: _metricValue(left, lightBackground: cardValues)),
+        SizedBox(
+          width: 88,
           child: Text(
-            '${accuracy.toStringAsFixed(1)}%',
+            label,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: white ? kWhiteColor : const Color(0xFF222222),
-              fontSize: 23,
-              fontWeight: FontWeight.w800,
+            style: const TextStyle(
+              color: kWhiteColor70,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Expanded(child: _metricValue(right, lightBackground: false)),
+      ],
+    );
+  }
+
+  Widget _metricValue(String value, {required bool lightBackground}) {
+    final content = Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: value),
+          if (suffix.isNotEmpty)
+            TextSpan(
+              text: suffix,
+              style: TextStyle(
+                color:
+                    lightBackground ? const Color(0xFF77777A) : kWhiteColor70,
+                fontSize: 15,
+              ),
+            ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: lightBackground ? const Color(0xFF222222) : kWhiteColor,
+        fontSize: cardValues ? 24 : 17,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+    if (!cardValues) {
+      return SizedBox(height: 24, child: Center(child: content));
+    }
+    return Align(
+      alignment: Alignment.center,
+      child: FractionallySizedBox(
+        widthFactor: 0.82,
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: lightBackground ? const Color(0xFFD0D0D2) : kBlack3Color,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: lightBackground ? kDividerColor : kLightGreyColor,
+            ),
+          ),
+          child: content,
+        ),
+      ),
+    );
+  }
+}
+
+class _PlayerColumn extends StatefulWidget {
+  const _PlayerColumn({required this.player});
+
+  final PlayerCard player;
+
+  @override
+  State<_PlayerColumn> createState() => _PlayerColumnState();
+}
+
+class _PlayerColumnState extends State<_PlayerColumn> {
+  late Future<String?> _photoFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _photoFuture = _loadPhoto(widget.player.fideId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlayerColumn oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.player.fideId != widget.player.fideId) {
+      _photoFuture = _loadPhoto(widget.player.fideId);
+    }
+  }
+
+  Future<String?> _loadPhoto(int? fideId) =>
+      fideId == null
+          ? Future<String?>.value()
+          : FidePhotoService.getPhotoUrlOrNull(fideId.toString());
+
+  @override
+  Widget build(BuildContext context) {
+    final player = widget.player;
+    return Column(
+      children: [
+        FutureBuilder<String?>(
+          future: _photoFuture,
+          builder:
+              (context, snapshot) => PlayerInitialsAvatar(
+                photoUrl: snapshot.data,
+                initials: _playerInitials(player.name),
+                size: 52,
+                borderRadius: 26,
+              ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 24,
+          child: Center(
+            child: Text(
+              _playerTitleAndLastName(player),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: kWhiteColor,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -631,10 +664,39 @@ class _PlayerColumn extends StatelessWidget {
   }
 }
 
+String _playerTitleAndLastName(PlayerCard player) {
+  final name = player.name.trim();
+  final comma = name.indexOf(',');
+  final lastName =
+      comma > 0
+          ? name.substring(0, comma).trim()
+          : name.split(RegExp(r'\s+')).last;
+  return [
+    if (player.title.trim().isNotEmpty) player.title.trim(),
+    lastName,
+  ].join(' ');
+}
+
+String _playerInitials(String name) {
+  final normalized = name.trim();
+  if (normalized.isEmpty) return '';
+  final commaParts = normalized.split(',');
+  if (commaParts.length > 1 &&
+      commaParts.first.trim().isNotEmpty &&
+      commaParts[1].trim().isNotEmpty) {
+    return '${commaParts.first.trim()[0]}${commaParts[1].trim()[0]}'
+        .toUpperCase();
+  }
+  final words = normalized.split(RegExp(r'\s+'));
+  return words.take(2).map((word) => word[0]).join().toUpperCase();
+}
+
 class _ClassificationRecap extends StatelessWidget {
-  const _ClassificationRecap({required this.report});
+  const _ClassificationRecap({required this.report, required this.onScoreTap});
 
   final GameAnalysisReport report;
+  final void Function(GameMoveClassification classification, bool white)
+  onScoreTap;
 
   @override
   Widget build(BuildContext context) {
@@ -643,44 +705,95 @@ class _ClassificationRecap extends StatelessWidget {
         for (final classification in GameMoveClassification.values)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${report.count(classification, white: true)}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: kWhiteColor, fontSize: 16),
+            child: SizedBox(
+              height: 30,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _ClassificationScore(
+                      classification: classification,
+                      count: report.count(classification, white: true),
+                      white: true,
+                      onTap: () => onScoreTap(classification, true),
+                    ),
                   ),
-                ),
-                SizedBox(
-                  width: 170,
-                  child: Row(
-                    children: [
-                      _ClassificationIcon(classification: classification),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          classification.label,
-                          style: const TextStyle(
-                            color: kWhiteColor,
-                            fontSize: 15,
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        _ClassificationIcon(classification: classification),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            classification.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: classificationColor(classification),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: Text(
-                    '${report.count(classification, white: false)}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: kWhiteColor, fontSize: 16),
+                  Expanded(
+                    child: _ClassificationScore(
+                      classification: classification,
+                      count: report.count(classification, white: false),
+                      white: false,
+                      onTap: () => onScoreTap(classification, false),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
       ],
+    );
+  }
+}
+
+class _ClassificationScore extends StatelessWidget {
+  const _ClassificationScore({
+    required this.classification,
+    required this.count,
+    required this.white,
+    required this.onTap,
+  });
+
+  final GameMoveClassification classification;
+  final int count;
+  final bool white;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: count > 0,
+      enabled: count > 0,
+      label:
+          '${white ? 'White' : 'Black'} ${classification.label}: $count moves',
+      child: InkWell(
+        key: ValueKey(
+          'game-review-${classification.name}-${white ? 'white' : 'black'}-score',
+        ),
+        onTap: count > 0 ? onTap : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Center(
+          child: Text(
+            '$count',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: classificationColor(classification),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -710,11 +823,10 @@ String classificationIconAsset(GameMoveClassification classification) =>
       GameMoveClassification.brilliant => 'assets/svgs/brilliant.svg',
       GameMoveClassification.goodMove => 'assets/svgs/good_move.svg',
       GameMoveClassification.bestMove => 'assets/svgs/best_move.svg',
-      GameMoveClassification.forced => 'assets/svgs/forced_move.svg',
+      GameMoveClassification.missedWin => 'assets/svgs/missed_win.svg',
       GameMoveClassification.inaccuracy => 'assets/svgs/inaccuracy.svg',
       GameMoveClassification.mistake => 'assets/svgs/mistake.svg',
       GameMoveClassification.blunder => 'assets/svgs/blunder.svg',
-      GameMoveClassification.missedWin => 'assets/svgs/missed_win.svg',
     };
 
 Color classificationColor(GameMoveClassification classification) =>
@@ -722,11 +834,10 @@ Color classificationColor(GameMoveClassification classification) =>
       GameMoveClassification.brilliant => const Color(0xFF177A68),
       GameMoveClassification.goodMove => const Color(0xFF177A68),
       GameMoveClassification.bestMove => const Color(0xFF28833A),
-      GameMoveClassification.forced => const Color(0xFF6B7A8A),
+      GameMoveClassification.missedWin => const Color(0xFF8F1E1E),
       GameMoveClassification.inaccuracy => const Color(0xFFFABE46),
       GameMoveClassification.mistake => const Color(0xFFC55A1E),
       GameMoveClassification.blunder => const Color(0xFFC9342E),
-      GameMoveClassification.missedWin => const Color(0xFF8F1E1E),
     };
 
 class _EvaluationGraph extends StatelessWidget {
@@ -746,52 +857,158 @@ class _EvaluationGraph extends StatelessWidget {
     return ((dx / width).clamp(0.0, 1.0) * maxPly).round();
   }
 
+  String _description() {
+    final line = report.positions[activePly].bestLine;
+    final evaluation =
+        line.mate != null
+            ? 'M${line.mate}'
+            : ((line.centipawns ?? 0) / 100).toStringAsFixed(2);
+    final parts = <String>['${activePly + 1}/${report.positions.length}'];
+    if (activePly == 0) {
+      parts.add('Start');
+    } else {
+      final move = report.moves[activePly - 1];
+      final moveNumber = (activePly + 1) ~/ 2;
+      final prefix = move.isWhite ? '$moveNumber.' : '$moveNumber...';
+      parts.add('$prefix ${move.san}');
+    }
+    parts
+      ..add(evaluation)
+      ..add(
+        '${gameReportWinPercentage(report.positions[activePly].bestLine).round()}% White',
+      );
+    if (activePly > 0) {
+      final classification = report.moves[activePly - 1].classification;
+      if (classification != null) parts.add(classification.label);
+    }
+    return parts.join('  ');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       children: [
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Text('OPENING', style: _phaseStyle),
-            Text('MIDDLEGAME', style: _phaseStyle),
-            Text('ENDGAME', style: _phaseStyle),
-          ],
+        _GraphStepButton(
+          key: const ValueKey('game-review-previous-move'),
+          icon: Icons.chevron_left_rounded,
+          enabled: activePly > 0,
+          onTap: () => onJumpToPly(activePly - 1),
         ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 150,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              void jump(Offset position) =>
-                  onJumpToPly(_plyAt(position.dx, constraints.maxWidth));
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) => jump(details.localPosition),
-                onHorizontalDragUpdate:
-                    (details) => jump(details.localPosition),
-                child: CustomPaint(
-                  painter: _ReviewGraphPainter(
-                    positions: report.positions,
-                    activePly: activePly,
-                  ),
-                  child: const SizedBox.expand(),
-                ),
-              );
-            },
+        const SizedBox(width: 8),
+        Expanded(
+          child: SizedBox(
+            key: const ValueKey('game-review-evaluation-graph'),
+            height: 75,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                void jump(Offset position) =>
+                    onJumpToPly(_plyAt(position.dx, constraints.maxWidth));
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (details) => jump(details.localPosition),
+                      onHorizontalDragUpdate:
+                          (details) => jump(details.localPosition),
+                      child: CustomPaint(
+                        painter: _ReviewGraphPainter(
+                          positions: report.positions,
+                          activePly: activePly,
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    Positioned(
+                      top: 5,
+                      left: 5,
+                      right: 5,
+                      child: IgnorePointer(
+                        child: Center(
+                          child: Container(
+                            key: const ValueKey('game-review-graph-info'),
+                            constraints: const BoxConstraints(maxWidth: 260),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF303034,
+                              ).withValues(alpha: 0.92),
+                              borderRadius: BorderRadius.circular(6),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black38,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              _description(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: kWhiteColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
+        ),
+        const SizedBox(width: 8),
+        _GraphStepButton(
+          key: const ValueKey('game-review-next-move'),
+          icon: Icons.chevron_right_rounded,
+          enabled: activePly < report.positions.length - 1,
+          onTap: () => onJumpToPly(activePly + 1),
         ),
       ],
     );
   }
 }
 
-const _phaseStyle = TextStyle(
-  color: kLightGreyColor,
-  fontSize: 11,
-  fontWeight: FontWeight.w700,
-  letterSpacing: 0.8,
-);
+class _GraphStepButton extends StatelessWidget {
+  const _GraphStepButton({
+    super.key,
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 34,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        iconSize: 25,
+        onPressed: enabled ? onTap : null,
+        style: IconButton.styleFrom(
+          foregroundColor: kWhiteColor,
+          disabledForegroundColor: kLightGreyColor.withValues(alpha: 0.4),
+          backgroundColor: kBlack3Color,
+          disabledBackgroundColor: kBlack3Color.withValues(alpha: 0.45),
+        ),
+        icon: Icon(icon),
+      ),
+    );
+  }
+}
 
 class _ReviewGraphPainter extends CustomPainter {
   const _ReviewGraphPainter({required this.positions, required this.activePly});
@@ -879,65 +1096,4 @@ class _ReviewGraphPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ReviewGraphPainter oldDelegate) =>
       oldDelegate.activePly != activePly || oldDelegate.positions != positions;
-}
-
-class _GraphNavigator extends StatelessWidget {
-  const _GraphNavigator({
-    required this.report,
-    required this.activePly,
-    required this.onJumpToPly,
-  });
-
-  final GameAnalysisReport report;
-  final int activePly;
-  final ValueChanged<int> onJumpToPly;
-
-  @override
-  Widget build(BuildContext context) {
-    final line = report.positions[activePly].bestLine;
-    final evaluation =
-        line.mate != null
-            ? 'M${line.mate}'
-            : '${(line.centipawns ?? 0) >= 0 ? '+' : ''}${((line.centipawns ?? 0) / 100).toStringAsFixed(1)}';
-    return Row(
-      children: [
-        _navButton(
-          icon: Icons.chevron_left_rounded,
-          enabled: activePly > 0,
-          onTap: () => onJumpToPly(activePly - 1),
-        ),
-        Expanded(
-          child: Text(
-            '$activePly/${report.positions.length - 1}  $evaluation',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: kWhiteColor,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        _navButton(
-          icon: Icons.chevron_right_rounded,
-          enabled: activePly < report.positions.length - 1,
-          onTap: () => onJumpToPly(activePly + 1),
-        ),
-      ],
-    );
-  }
-
-  Widget _navButton({
-    required IconData icon,
-    required bool enabled,
-    required VoidCallback onTap,
-  }) {
-    return IconButton.filled(
-      onPressed: enabled ? onTap : null,
-      style: IconButton.styleFrom(
-        backgroundColor: kBlack3Color,
-        disabledBackgroundColor: kBlack3Color.withValues(alpha: 0.45),
-      ),
-      icon: Icon(icon),
-    );
-  }
 }

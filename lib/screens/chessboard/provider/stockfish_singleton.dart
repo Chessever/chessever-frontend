@@ -124,6 +124,7 @@ class StockfishSingleton {
   }
 
   Stockfish? _engine;
+  Stockfish? _configuredEngine;
   _EvalJob? _currentJob;
   StreamSubscription? _currentSubscription;
   final Map<String, EnhancedCloudEval> _evaluationCache = {};
@@ -140,6 +141,7 @@ class StockfishSingleton {
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
   static const int _maxBackgroundBacklog =
       24; // Cap low-priority backlog to protect visible-board responsiveness
+  static const int _maxEvaluationCacheEntries = 256;
 
   // Global instance lock to prevent "Multiple instances not supported" on Android
   // Android's native Stockfish library requires strict single-instance management
@@ -163,6 +165,14 @@ class StockfishSingleton {
   bool get _isAndroid {
     try {
       return Platform.isAndroid;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool get _isMobile {
+    try {
+      return Platform.isAndroid || Platform.isIOS;
     } catch (_) {
       return false;
     }
@@ -236,9 +246,23 @@ class StockfishSingleton {
     // This prevents different providers from sharing completers (which caused wrong evals)
     final jobKey = ownerId != null ? '${cacheKey}_$ownerId' : cacheKey;
 
-    if (allowCache && _evaluationCache.containsKey(cacheKey)) {
-      debugPrint('📦 CACHE HIT for $fen');
-      return _evaluationCache[cacheKey]!;
+    if (allowCache) {
+      final cacheCandidates = <String>[
+        cacheKey,
+        // A deeper-width result fully satisfies a single-PV request. This is
+        // especially useful when board analysis has already visited a report
+        // position before the staged mobile pass starts.
+        if (multiPV == 1)
+          for (var cachedPv = 2; cachedPv <= 5; cachedPv++)
+            '${fen}_${searchMode}_pv${cachedPv}_$sideToMove',
+      ];
+      for (final candidate in cacheCandidates) {
+        final cached = _evaluationCache.remove(candidate);
+        if (cached == null) continue;
+        debugPrint('📦 CACHE HIT for $fen');
+        _evaluationCache[candidate] = cached;
+        return cached;
+      }
     }
 
     // Deduplicate: only coalesce with jobs from the SAME owner
@@ -433,7 +457,7 @@ class StockfishSingleton {
         !result.isCancelled &&
         result.pvs.isNotEmpty &&
         result.pvs.first.moves.isNotEmpty) {
-      _evaluationCache[cacheKey] = result;
+      _cacheEvaluation(cacheKey, result);
       debugPrint(
         '✅ CACHED: Stockfish eval for $fen (depth=${result.depth}, cp=${result.pvs.first.cp})',
       );
@@ -446,21 +470,34 @@ class StockfishSingleton {
     return result;
   }
 
+  void _cacheEvaluation(String key, EnhancedCloudEval value) {
+    // Dart maps preserve insertion order, so remove/reinsert provides a small
+    // LRU cache without another dependency. Whole-game reports can otherwise
+    // retain hundreds of large PV strings across several mobile sessions.
+    _evaluationCache.remove(key);
+    _evaluationCache[key] = value;
+    while (_evaluationCache.length > _maxEvaluationCacheEntries) {
+      _evaluationCache.remove(_evaluationCache.keys.first);
+    }
+  }
+
   /// Pre-warms the Stockfish engine in the background so it's ready
   /// before the user first enables analysis. Call this on screen load.
   /// Safe to call multiple times — no-ops if already initializing or ready.
-  Future<void> warmUp() async {
+  Future<void> warmUp({bool allowInDebug = false}) async {
     // Debug-only: never start the engine in debug (see [kEnableStockfishInDebug])
     // — its blocking native FFI isolates make hot restart hang. Release builds
     // are unaffected (guard is tree-shaken out).
-    if (kDebugMode && !kEnableStockfishInDebug) return;
+    if (kDebugMode && !kEnableStockfishInDebug && !allowInDebug) return;
     if (!_appIsForeground) return;
-    if (_engine != null) return;
-    if (_isInitializing) return;
+    if (_engine != null && _engine!.state.value == StockfishState.ready) return;
 
     debugPrint('🔥 STOCKFISH: Pre-warming engine in background...');
     try {
-      // Only initialize — do NOT call _processQueue or queue any job
+      // Only initialize — do NOT call _processQueue or queue any job. If
+      // another caller is already initializing, _ensureEngineReady waits for
+      // that same initialization instead of returning before the engine is
+      // actually usable.
       await _ensureEngineReady();
       // Leave engine idle at 'readyok', no 'go' command sent
       debugPrint('✅ STOCKFISH: Pre-warm complete, engine is ready and idle');
@@ -1363,13 +1400,23 @@ class StockfishSingleton {
 
   Future<void> _configureEngineForAnalysis() async {
     if (_engine == null) return;
+    if (identical(_configuredEngine, _engine)) return;
     // CRITICAL: Configure Stockfish for analysis (not tablebase lookup)
     // Disable tablebase probing to force actual search with depth progression
     try {
       _engine!.stdin = 'setoption name SyzygyProbeLimit value 0';
       _engine!.stdin = 'setoption name UCI_AnalyseMode value true';
+      if (_isMobile) {
+        // A single search thread avoids saturating mobile CPUs and the small
+        // hash cap bounds native memory. These are set once per engine because
+        // changing Hash clears Stockfish's transposition table.
+        _engine!.stdin = 'setoption name Threads value 1';
+        _engine!.stdin = 'setoption name Hash value 32';
+      }
+      _configuredEngine = _engine;
       debugPrint(
-        '✅ Stockfish configured: Tablebases disabled for progressive search',
+        '✅ Stockfish configured for progressive analysis'
+        '${_isMobile ? " (1 thread, 32 MB hash)" : ""}',
       );
     } catch (e) {
       debugPrint('⚠️ Could not configure Stockfish tablebases: $e');

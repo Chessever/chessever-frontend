@@ -311,11 +311,10 @@ LichessMoveAnnotationType _annotationTypeForGameReport(
   GameMoveClassification.brilliant => LichessMoveAnnotationType.brilliant,
   GameMoveClassification.goodMove => LichessMoveAnnotationType.goodMove,
   GameMoveClassification.bestMove => LichessMoveAnnotationType.bestMove,
-  GameMoveClassification.forced => LichessMoveAnnotationType.forced,
+  GameMoveClassification.missedWin => LichessMoveAnnotationType.missedWin,
   GameMoveClassification.inaccuracy => LichessMoveAnnotationType.inaccuracy,
   GameMoveClassification.mistake => LichessMoveAnnotationType.mistake,
   GameMoveClassification.blunder => LichessMoveAnnotationType.blunder,
-  GameMoveClassification.missedWin => LichessMoveAnnotationType.missedWin,
 };
 
 /// Merge NAGs baked into the PGN with NAGs the user has applied locally.
@@ -1913,14 +1912,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     );
   }
 
-  void _handleLifecyclePaused() {
+  void _handleLifecyclePaused({bool preserveVisibleGameReview = false}) {
     if (!mounted || widget.games.isEmpty) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
-    ref.read(mobileGameReviewProvider(params)).setActive(false);
     try {
       final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+      // A modal bottom sheet also triggers RouteAware.didPushNext(). The Game
+      // Review sheet has already suspended this page's live-position analysis,
+      // so keep the whole-game report active while that specific route covers
+      // the board. Real app backgrounding and other routes still pause it.
+      if (!preserveVisibleGameReview || !notifier.isGameReviewVisible) {
+        ref.read(mobileGameReviewProvider(params)).setActive(false);
+      }
       unawaited(notifier.onBecameInvisible());
     } catch (e) {
       debugPrint('Error pausing Stockfish on lifecycle change: $e');
@@ -1951,7 +1956,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _isRouteCovered = true;
     // Another route pushed on top (e.g. Player Profile, Explorer).
     // Pause Stockfish so it doesn't compete with the foreground screen.
-    _handleLifecyclePaused();
+    _handleLifecyclePaused(preserveVisibleGameReview: true);
     // Stop the native iOS PiP priming loop behind every route pushed above this
     // board. Provider emissions are gated while covered, and didPopNext
     // re-primes from the latest state through the normal resume path.
@@ -11038,7 +11043,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // (see `onRightMove` override at the call site), at which point the
     // notation renders normally starting from the FEN's fullmove counter.
     if (rows.isEmpty) {
-      final notationContent = Center(
+      final emptyMessage = Center(
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
           child: Column(
@@ -11071,6 +11076,21 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           ),
         ),
       );
+      final notationContent = SingleChildScrollView(
+        controller: _scrollController,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            emptyMessage,
+            GameAnalysisButton(
+              key: const ValueKey('game-analysis-button'),
+              state: reviewState,
+              onPressed: openGameReview,
+            ),
+          ],
+        ),
+      );
       Widget content = Container(
         key: e2eKey(E2eIds.boardNotationRoot),
         decoration: BoxDecoration(
@@ -11080,32 +11100,34 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             topRight: Radius.circular(12.sp),
           ),
         ),
-        child: Column(
-          children: [
-            Expanded(child: notationContent),
-            GameAnalysisButton(
-              key: const ValueKey('game-analysis-button'),
-              state: reviewState,
-              onPressed: openGameReview,
-            ),
-          ],
-        ),
+        child: notationContent,
       );
       return content;
     }
 
     final notationContent = SingleChildScrollView(
       controller: _scrollController,
-      child: Container(
-        alignment: Alignment.centerLeft,
-        padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 20.sp),
-        child: ExcludeSemantics(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: rows,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            alignment: Alignment.centerLeft,
+            padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 20.sp),
+            child: ExcludeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: rows,
+              ),
+            ),
           ),
-        ),
+          GameAnalysisButton(
+            key: const ValueKey('game-analysis-button'),
+            state: reviewState,
+            onPressed: openGameReview,
+          ),
+        ],
       ),
     );
 
@@ -11313,11 +11335,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   ),
               ],
             ),
-          ),
-          GameAnalysisButton(
-            key: const ValueKey('game-analysis-button'),
-            state: reviewState,
-            onPressed: openGameReview,
           ),
           if (showNextMovePanel)
             _NextMoveOptionsPanel(
@@ -13463,9 +13480,10 @@ class _PrincipalVariationListState
         }
 
         // Highlight the WHOLE move token when selected (piece + square).
-        final moveStyle = isSelectedMove
-            ? baseStyle.copyWith(color: context.colors.textPrimary)
-            : baseStyle;
+        final moveStyle =
+            isSelectedMove
+                ? baseStyle.copyWith(color: context.colors.textPrimary)
+                : baseStyle;
 
         // Create GlobalKey for this move to enable scrolling
         final key = GlobalKey();
@@ -13485,16 +13503,20 @@ class _PrincipalVariationListState
           inner = Text(token.text, style: moveStyle);
         }
 
-        final Widget moveContent = isSelectedMove
-            ? Container(
-                padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
-                decoration: BoxDecoration(
-                  color: variantColor.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(3.sp),
-                ),
-                child: inner,
-              )
-            : inner;
+        final Widget moveContent =
+            isSelectedMove
+                ? Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 3.sp,
+                    vertical: 1.sp,
+                  ),
+                  decoration: BoxDecoration(
+                    color: variantColor.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(3.sp),
+                  ),
+                  child: inner,
+                )
+                : inner;
 
         // Wrap move text in a widget with key for scroll targeting
         spans.add(
@@ -14198,9 +14220,10 @@ class _PrincipalVariationListState
 
       // Highlight the WHOLE move token (piece figurine + square, e.g. "Rh7")
       // when selected — not just the destination square.
-      final moveStyle = isSelectedMove
-          ? baseStyle.copyWith(color: context.colors.textPrimary)
-          : baseStyle;
+      final moveStyle =
+          isSelectedMove
+              ? baseStyle.copyWith(color: context.colors.textPrimary)
+              : baseStyle;
 
       // Build move content - either with figurine pieces or plain text
       Widget inner;
@@ -14216,16 +14239,17 @@ class _PrincipalVariationListState
         inner = Text(token.text, style: moveStyle);
       }
 
-      final Widget moveContent = isSelectedMove
-          ? Container(
-              padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
-              decoration: BoxDecoration(
-                color: kPrimaryColor.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(3.sp),
-              ),
-              child: inner,
-            )
-          : inner;
+      final Widget moveContent =
+          isSelectedMove
+              ? Container(
+                padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(3.sp),
+                ),
+                child: inner,
+              )
+              : inner;
 
       // Use WidgetSpan with GestureDetector to handle tap and long press.
       // A trailing gap separates moves without becoming part of the highlight.

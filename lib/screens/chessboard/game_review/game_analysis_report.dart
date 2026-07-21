@@ -10,13 +10,12 @@ enum GameReportStatus { idle, running, completed, cancelled, failed }
 
 enum GameMoveClassification {
   brilliant('Brilliant'),
-  goodMove('Good Move'),
-  bestMove('Best Move'),
-  forced('Forced'),
+  goodMove('Best'),
+  bestMove('Great'),
+  missedWin('Missed Win'),
   inaccuracy('Inaccuracy'),
   mistake('Mistake'),
-  blunder('Blunder'),
-  missedWin('Missed Win');
+  blunder('Blunder');
 
   const GameMoveClassification(this.label);
   final String label;
@@ -136,9 +135,15 @@ class GameAnalysisReportController extends ChangeNotifier {
   }) : _stockfish = stockfish ?? StockfishSingleton(),
        _evaluator = evaluator;
 
-  static const int reportDepth = 16;
+  static const int reportDepth = 12;
   static const int reportMultiPv = 3;
   static const double reportKnodeReference = 500;
+  static const Duration primarySearchBudget = Duration(milliseconds: 500);
+  static const Duration refinementSearchBudget = Duration(milliseconds: 500);
+  static const int unavailableRetryLimit = 4;
+  static const Duration unavailableRetryDelay = Duration(milliseconds: 200);
+  static const Duration _progressThrottle = Duration(milliseconds: 120);
+  static const Duration _mobileSearchYield = Duration(milliseconds: 12);
 
   final StockfishSingleton _stockfish;
   final GameReportEvaluator? _evaluator;
@@ -149,6 +154,7 @@ class GameAnalysisReportController extends ChangeNotifier {
   GameReportState _state = const GameReportState();
   int _generation = 0;
   bool _disposed = false;
+  DateTime? _lastProgressNotification;
 
   GameReportState get state => _state;
 
@@ -181,16 +187,28 @@ class GameAnalysisReportController extends ChangeNotifier {
     final generation = ++_generation;
     final fingerprint = gameReportFingerprint(game);
     final fens = gameReportFens(game);
+    final totalMoves = (game.mainline.length + 1) ~/ 2;
+    final totalWorkUnits = fens.length + game.mainline.length;
+    _lastProgressNotification = null;
     _setState(
       GameReportState(
         status: GameReportStatus.running,
-        totalPositions: fens.length,
+        totalPositions: totalWorkUnits,
         message: 'Preparing Stockfish…',
       ),
     );
 
     final positions = <GameReportPosition>[];
+    final evaluatedPositions = <String, GameReportPosition>{};
     try {
+      if (_evaluator == null) {
+        await _stockfish.warmUp(allowInDebug: true);
+        if (_disposed || generation != _generation) return;
+      }
+      // First pass: one principal variation is sufficient for the evaluation
+      // graph, accuracy, rating estimate, and loss-based classifications. This
+      // is substantially cheaper than asking Stockfish for three lines at
+      // every ply on thermally constrained mobile devices.
       for (var i = 0; i < fens.length; i++) {
         if (_disposed || generation != _generation) return;
         final fen = fens[i];
@@ -199,50 +217,80 @@ class GameAnalysisReportController extends ChangeNotifier {
         if (terminal != null) {
           position = terminal;
         } else {
-          while (true) {
-            if (_disposed || generation != _generation) return;
-            try {
-              position = await _evaluate(
-                fen,
-                depth: reportDepth,
-                multiPv: reportMultiPv,
-                ownerId: _ownerId,
-                onProgress: (reached, knodes) {
-                  if (knodes <= 0) return;
-                  final within = 1 - 1 / (1 + knodes / reportKnodeReference);
-                  _reportProgress(
-                    generation: generation,
-                    progress: (i + within) / fens.length,
-                    completedPositions: i,
-                    totalPositions: fens.length,
-                    message: 'Analyzing position ${i + 1} of ${fens.length}',
-                  );
-                },
-              );
-              break;
-            } on _ReportPositionPreempted {
-              if (_disposed || generation != _generation) return;
-              _reportProgress(
-                generation: generation,
-                progress: _state.progress,
-                completedPositions: i,
-                totalPositions: fens.length,
-                message: 'Waiting for live position analysis…',
-              );
-              await Future<void>.delayed(const Duration(milliseconds: 100));
-            }
+          final reused = evaluatedPositions[fen];
+          if (reused != null) {
+            position = reused;
+          } else {
+            position = await _evaluateWithRetry(
+              fen,
+              generation: generation,
+              multiPv: 1,
+              completedWorkUnits: i,
+              totalWorkUnits: totalWorkUnits,
+              message: _primaryPassMessage(i, totalMoves),
+            );
           }
+          evaluatedPositions[fen] = position;
         }
         if (_disposed || generation != _generation) return;
         positions.add(position);
         final done = i + 1;
         _reportProgress(
           generation: generation,
-          progress: done / fens.length,
+          progress: done / totalWorkUnits,
           completedPositions: done,
-          totalPositions: fens.length,
-          message: 'Analyzing position $done of ${fens.length}',
+          totalPositions: totalWorkUnits,
+          message: _primaryPassMessage(i, totalMoves),
+          force: true,
         );
+        await _yieldForMobile();
+      }
+
+      // Second pass: request alternative lines only where they can affect the
+      // report (Best/Good/Brilliant and best-alternative data). Bad moves keep
+      // their depth-12 primary evaluation without paying the MultiPV cost.
+      final winPercentages = positions
+          .map((position) => gameReportWinPercentage(position.bestLine))
+          .toList(growable: false);
+      final refinedPositions = <String, GameReportPosition>{};
+      for (var moveIndex = 0; moveIndex < game.mainline.length; moveIndex++) {
+        if (_disposed || generation != _generation) return;
+        final completedBefore = fens.length + moveIndex;
+        final needsRefinement = gameReportMoveNeedsMultiPv(
+          index: moveIndex,
+          game: game,
+          positions: positions,
+          winPercentages: winPercentages,
+        );
+        if (needsRefinement) {
+          final fen = fens[moveIndex];
+          final reused = refinedPositions[fen];
+          late final GameReportPosition refined;
+          if (reused != null) {
+            refined = reused;
+          } else {
+            refined = await _evaluateWithRetry(
+              fen,
+              generation: generation,
+              multiPv: reportMultiPv,
+              completedWorkUnits: completedBefore,
+              totalWorkUnits: totalWorkUnits,
+              message: _refinementPassMessage(moveIndex, totalMoves),
+            );
+          }
+          refinedPositions[fen] = refined;
+          positions[moveIndex] = refined;
+        }
+        final done = completedBefore + 1;
+        _reportProgress(
+          generation: generation,
+          progress: done / totalWorkUnits,
+          completedPositions: done,
+          totalPositions: totalWorkUnits,
+          message: _refinementPassMessage(moveIndex, totalMoves),
+          force: true,
+        );
+        await _yieldForMobile();
       }
 
       final report = buildGameAnalysisReport(
@@ -257,8 +305,8 @@ class GameAnalysisReportController extends ChangeNotifier {
         GameReportState(
           status: GameReportStatus.completed,
           progress: 1,
-          completedPositions: fens.length,
-          totalPositions: fens.length,
+          completedPositions: totalWorkUnits,
+          totalPositions: totalWorkUnits,
           report: report,
         ),
       );
@@ -267,10 +315,95 @@ class GameAnalysisReportController extends ChangeNotifier {
     }
   }
 
+  String _primaryPassMessage(int positionIndex, int totalMoves) {
+    if (positionIndex == 0) return 'Analyzing starting position';
+    final moveNumber = (positionIndex + 1) ~/ 2;
+    return 'Analyzing move $moveNumber of $totalMoves';
+  }
+
+  String _refinementPassMessage(int moveIndex, int totalMoves) {
+    final moveNumber = moveIndex ~/ 2 + 1;
+    return 'Refining move $moveNumber of $totalMoves';
+  }
+
+  Future<GameReportPosition> _evaluateWithRetry(
+    String fen, {
+    required int generation,
+    required int multiPv,
+    required int completedWorkUnits,
+    required int totalWorkUnits,
+    required String message,
+  }) async {
+    var attempt = 0;
+    while (true) {
+      if (_disposed || generation != _generation) {
+        throw const _ReportPositionPreempted();
+      }
+      try {
+        attempt++;
+        final searchBudget =
+            multiPv == 1 ? primarySearchBudget : refinementSearchBudget;
+        final position = await _evaluate(
+          fen,
+          depth: reportDepth,
+          multiPv: multiPv,
+          searchDuration: searchBudget,
+          ownerId: _ownerId,
+          onProgress: (reached, knodes) {
+            if (knodes <= 0) return;
+            final within = 1 - 1 / (1 + knodes / reportKnodeReference);
+            _reportProgress(
+              generation: generation,
+              progress: (completedWorkUnits + within) / totalWorkUnits,
+              completedPositions: completedWorkUnits,
+              totalPositions: totalWorkUnits,
+              message: message,
+            );
+          },
+        );
+        return position;
+      } on _ReportPositionPreempted {
+        if (_disposed || generation != _generation) rethrow;
+        _reportProgress(
+          generation: generation,
+          progress: _state.progress,
+          completedPositions: completedWorkUnits,
+          totalPositions: totalWorkUnits,
+          message: 'Waiting for live position analysis…',
+          force: true,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      } on _ReportPositionUnavailable {
+        if (attempt >= unavailableRetryLimit ||
+            _disposed ||
+            generation != _generation) {
+          rethrow;
+        }
+        _reportProgress(
+          generation: generation,
+          progress: _state.progress,
+          completedPositions: completedWorkUnits,
+          totalPositions: totalWorkUnits,
+          message: 'Stockfish is warming up…',
+          force: true,
+        );
+        await Future<void>.delayed(unavailableRetryDelay);
+      }
+    }
+  }
+
+  Future<void> _yieldForMobile() async {
+    final isMobile =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    await Future<void>.delayed(isMobile ? _mobileSearchYield : Duration.zero);
+  }
+
   Future<GameReportPosition> _evaluate(
     String fen, {
     required int depth,
     required int multiPv,
+    required Duration searchDuration,
     required String ownerId,
     void Function(int reachedDepth, int knodes)? onProgress,
   }) async {
@@ -288,6 +421,7 @@ class GameAnalysisReportController extends ChangeNotifier {
               fen,
               depth: depth,
               maxDepth: depth,
+              searchDuration: searchDuration,
               multiPV: multiPv,
               isCurrentPosition: false,
               allowCache: true,
@@ -312,7 +446,7 @@ class GameAnalysisReportController extends ChangeNotifier {
           ),
     ];
     if (lines.isEmpty) {
-      throw StateError('Stockfish returned no principal variation');
+      throw const _ReportPositionUnavailable();
     }
     return GameReportPosition(fen: fen, lines: List.unmodifiable(lines));
   }
@@ -329,10 +463,19 @@ class GameAnalysisReportController extends ChangeNotifier {
     required int completedPositions,
     required int totalPositions,
     required String message,
+    bool force = false,
   }) {
     if (_disposed || generation != _generation) return;
+    final now = DateTime.now();
+    final lastNotification = _lastProgressNotification;
+    if (!force &&
+        lastNotification != null &&
+        now.difference(lastNotification) < _progressThrottle) {
+      return;
+    }
     final nextProgress = math.max(progress, _state.progress);
     if (nextProgress == _state.progress && message == _state.message) return;
+    _lastProgressNotification = now;
     _setState(
       GameReportState(
         status: GameReportStatus.running,
@@ -361,6 +504,13 @@ class GameAnalysisReportController extends ChangeNotifier {
 
 class _ReportPositionPreempted implements Exception {
   const _ReportPositionPreempted();
+}
+
+class _ReportPositionUnavailable implements Exception {
+  const _ReportPositionUnavailable();
+
+  @override
+  String toString() => 'Stockfish returned no principal variation';
 }
 
 String gameReportFingerprint(ChessGame game) =>
@@ -463,6 +613,28 @@ String? _bestAlternative(GameReportPosition position, String playedMove) {
   return null;
 }
 
+/// Whether a move needs alternative Stockfish lines in the refinement pass.
+///
+/// Loss-based classifications and accuracy only need the primary depth-12
+/// evaluation. Near-best moves need alternatives for Good/Brilliant detection,
+/// while a played engine-best move needs one for the report's best alternative.
+bool gameReportMoveNeedsMultiPv({
+  required int index,
+  required ChessGame game,
+  required List<GameReportPosition> positions,
+  required List<double> winPercentages,
+}) {
+  final move = game.mainline[index];
+  final before = positions[index];
+  final isWhite = move.turn == ChessColor.white;
+  final moverChange =
+      (winPercentages[index + 1] - winPercentages[index]) * (isWhite ? 1 : -1);
+  final playedIsBest =
+      before.bestLine.moves.isNotEmpty &&
+      before.bestLine.moves.first == move.uci;
+  return playedIsBest || moverChange >= -2;
+}
+
 GameMoveClassification? classifyGameReportMove({
   required int index,
   required ChessGame game,
@@ -481,10 +653,6 @@ GameMoveClassification? classifyGameReportMove({
   final alternatives = before.lines
       .where((line) => line.moves.isNotEmpty && line.moves.first != move.uci)
       .toList(growable: false);
-
-  if (before.lines.where((line) => line.moves.isNotEmpty).length <= 1) {
-    return GameMoveClassification.forced;
-  }
 
   final alternativeWin =
       alternatives.isEmpty ? null : gameReportWinPercentage(alternatives.first);

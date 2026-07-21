@@ -51,8 +51,13 @@ class MobileGameReviewState {
 }
 
 class MobileGameReviewController extends ChangeNotifier {
-  MobileGameReviewController({GameAnalysisReportController? reportController})
-    : _reportController = reportController ?? GameAnalysisReportController() {
+  static const Duration defaultAutoStartDelay = Duration(seconds: 2);
+
+  MobileGameReviewController({
+    GameAnalysisReportController? reportController,
+    Duration autoStartDelay = defaultAutoStartDelay,
+  }) : _reportController = reportController ?? GameAnalysisReportController(),
+       _autoStartDelay = autoStartDelay {
     _reportController.addListener(_onReportChanged);
   }
 
@@ -63,6 +68,8 @@ class MobileGameReviewController extends ChangeNotifier {
   int? _blackRating;
   bool _active = false;
   bool _disposed = false;
+  Timer? _autoStartTimer;
+  final Duration _autoStartDelay;
 
   MobileGameReviewState get state => _state;
 
@@ -82,6 +89,7 @@ class MobileGameReviewController extends ChangeNotifier {
     _active = active;
 
     if (changed) {
+      _autoStartTimer?.cancel();
       _reportController.invalidate();
       _state = MobileGameReviewState(
         fingerprint: fingerprint,
@@ -110,6 +118,7 @@ class MobileGameReviewController extends ChangeNotifier {
     }
 
     if (!active) {
+      _autoStartTimer?.cancel();
       if (_reportController.state.isRunning) {
         unawaited(_reportController.cancel());
       }
@@ -118,7 +127,7 @@ class MobileGameReviewController extends ChangeNotifier {
     if (_state.isEligible &&
         (_reportController.state.status == GameReportStatus.idle ||
             _reportController.state.status == GameReportStatus.cancelled)) {
-      unawaited(_analyze());
+      _scheduleAnalyze();
     }
   }
 
@@ -126,6 +135,7 @@ class MobileGameReviewController extends ChangeNotifier {
     if (_disposed || _active == active) return;
     _active = active;
     if (!active) {
+      _autoStartTimer?.cancel();
       if (_reportController.state.isRunning) {
         unawaited(_reportController.cancel());
       }
@@ -134,7 +144,7 @@ class MobileGameReviewController extends ChangeNotifier {
     if (_state.isEligible &&
         (_reportController.state.status == GameReportStatus.idle ||
             _reportController.state.status == GameReportStatus.cancelled)) {
-      unawaited(_analyze());
+      _scheduleAnalyze();
     }
   }
 
@@ -158,8 +168,20 @@ class MobileGameReviewController extends ChangeNotifier {
 
   Future<void> retry() async {
     if (!_active || !_state.isEligible) return;
+    _autoStartTimer?.cancel();
     _reportController.invalidate();
     await _analyze();
+  }
+
+  void _scheduleAnalyze() {
+    // configure() is invoked from the notation build lifecycle. Keep the first
+    // scheduled start so unrelated rebuilds cannot postpone analysis forever.
+    if (_autoStartTimer?.isActive ?? false) return;
+    _autoStartTimer = Timer(_autoStartDelay, () {
+      _autoStartTimer = null;
+      if (_disposed || !_active || !_state.isEligible) return;
+      unawaited(_analyze());
+    });
   }
 
   Future<void> _analyze() async {
@@ -181,6 +203,7 @@ class MobileGameReviewController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _autoStartTimer?.cancel();
     _reportController.removeListener(_onReportChanged);
     _reportController.dispose();
     super.dispose();

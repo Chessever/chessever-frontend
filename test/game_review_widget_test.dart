@@ -5,11 +5,16 @@ import 'package:chessever2/screens/chessboard/game_review/game_review_provider.d
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('review eligibility and reveal state follow the configured game', () {
+    expect(
+      MobileGameReviewController.defaultAutoStartDelay,
+      const Duration(seconds: 2),
+    );
     final controller = MobileGameReviewController();
     addTearDown(controller.dispose);
     final game = ChessGame.fromPgn('eligibility', '1. e4 e5 *');
@@ -73,6 +78,10 @@ void main() {
       find.text('Game analysis starts when the game ends'),
       findsOneWidget,
     );
+    final buttonWidthBoxes = tester
+        .widgetList<FractionallySizedBox>(find.byType(FractionallySizedBox))
+        .where((box) => box.widthFactor == 0.75);
+    expect(buttonWidthBoxes, hasLength(2));
   });
 
   testWidgets('completed review shows players, accuracy, recap, and graph', (
@@ -87,7 +96,9 @@ void main() {
     );
     final controller = MobileGameReviewController(
       reportController: reportController,
+      autoStartDelay: Duration.zero,
     );
+    int? jumpedToPly;
     addTearDown(controller.dispose);
     final game = _game();
     await tester.runAsync(() async {
@@ -100,11 +111,11 @@ void main() {
       );
       for (
         var i = 0;
-        i < 20 &&
+        i < 30 &&
             controller.state.reportState.status != GameReportStatus.completed;
         i++
       ) {
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     });
     expect(controller.state.reportState.status, GameReportStatus.completed);
@@ -121,7 +132,7 @@ void main() {
                         controller: controller,
                         game: game,
                         activePly: 0,
-                        onJumpToPly: (_) {},
+                        onJumpToPly: (ply) => jumpedToPly = ply,
                       ),
                   child: const Text('Open'),
                 ),
@@ -132,19 +143,78 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('Game Review'), findsOneWidget);
-    expect(find.text('Ada Lovelace'), findsOneWidget);
-    expect(find.text('Grace Hopper'), findsOneWidget);
-    expect(find.text('Forced'), findsOneWidget);
-    expect(find.text('1-0'), findsOneWidget);
+    expect(find.text('Game Review'), findsNothing);
+    expect(find.text('GM Lovelace'), findsOneWidget);
+    expect(find.text('IM Hopper'), findsOneWidget);
+    expect(find.byType(PlayerInitialsAvatar), findsNWidgets(2));
+    expect(find.text('Accuracy'), findsOneWidget);
+    expect(find.text('Game Rating'), findsOneWidget);
+    final completedReport = controller.state.reportState.report!;
+    expect(
+      find.text('${completedReport.whiteEstimatedRating}'),
+      findsAtLeastNWidgets(1),
+    );
+    expect(
+      find.text('${completedReport.blackEstimatedRating}'),
+      findsAtLeastNWidgets(1),
+    );
+    expect(find.text('Forced'), findsNothing);
+    expect(find.text('Best'), findsOneWidget);
+    expect(find.text('Great'), findsOneWidget);
+    expect(find.text('Missed Win'), findsOneWidget);
+    expect(find.text('1-0'), findsNothing);
+    expect(find.byType(CircleAvatar), findsNothing);
+    expect(
+      find.byKey(const ValueKey('game-review-evaluation-graph')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('game-review-evaluation-graph')))
+          .height,
+      75,
+    );
+    expect(
+      find.byKey(const ValueKey('game-review-graph-info')),
+      findsOneWidget,
+    );
+    expect(find.byType(DraggableScrollableSheet), findsOneWidget);
+    final sheet = tester.widget<DraggableScrollableSheet>(
+      find.byType(DraggableScrollableSheet),
+    );
+    expect(sheet.initialChildSize, 0.45);
+    expect(sheet.minChildSize, 0.45);
+    expect(sheet.maxChildSize, 0.94);
+    expect(
+      find.byKey(const ValueKey('game-review-full-sheet')),
+      findsOneWidget,
+    );
 
-    await tester.drag(find.text('Game Review'), const Offset(0, -500));
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('OPENING'), findsOneWidget);
-    expect(find.text('MIDDLEGAME'), findsOneWidget);
-    expect(find.text('ENDGAME'), findsOneWidget);
+    expect(find.text('OPENING'), findsNothing);
+    expect(find.text('MIDDLEGAME'), findsNothing);
+    expect(find.text('ENDGAME'), findsNothing);
+    expect(find.textContaining('1/3'), findsOneWidget);
 
-    Navigator.of(tester.element(find.text('Game Review'))).pop();
+    await tester.drag(
+      find.byType(DraggableScrollableSheet),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('game-review-bestMove-white-score')),
+    );
+    await tester.pump();
+    expect(jumpedToPly, 1);
+    expect(find.textContaining('2/3'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('game-review-next-move')));
+    await tester.pump();
+    expect(jumpedToPly, 2);
+    expect(find.textContaining('3/3'), findsOneWidget);
+
+    Navigator.of(
+      tester.element(find.byKey(const ValueKey('game-review-full-sheet'))),
+    ).pop();
     await tester.pump(const Duration(milliseconds: 500));
   });
 }
@@ -159,11 +229,20 @@ Future<EnhancedCloudEval> _evaluator(
   void Function(int reachedDepth, int knodes)? onProgress,
 }) async {
   onProgress?.call(depth, 500);
+  final whiteToMove = fen.split(' ')[1] == 'w';
   return EnhancedCloudEval(
     fen: fen,
     knodes: 500,
     depth: depth,
-    pvs: [Pv(moves: 'a2a3', cp: 10)],
+    pvs: [
+      Pv(
+        moves:
+            whiteToMove
+                ? (fen.startsWith('rnbqkbnr/pppppppp') ? 'e2e4' : 'g1f3')
+                : 'e7e5',
+        cp: 10,
+      ),
+    ],
     requestedMultiPv: multiPv,
   );
 }
@@ -173,7 +252,7 @@ GamesTourModel _game() => GamesTourModel(
   whitePlayer: PlayerCard(
     name: 'Ada Lovelace',
     federation: '',
-    title: '',
+    title: 'GM',
     rating: 2100,
     countryCode: '',
     team: null,
@@ -181,7 +260,7 @@ GamesTourModel _game() => GamesTourModel(
   blackPlayer: PlayerCard(
     name: 'Grace Hopper',
     federation: '',
-    title: '',
+    title: 'IM',
     rating: 2050,
     countryCode: '',
     team: null,

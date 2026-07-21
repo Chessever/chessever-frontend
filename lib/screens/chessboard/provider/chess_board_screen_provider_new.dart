@@ -180,6 +180,8 @@ class ChessBoardScreenNotifierNew
   bool _isInitialLoad = true;
   bool _gameReviewVisible = false;
 
+  bool get isGameReviewVisible => _gameReviewVisible;
+
   /// Tracks whether the user is auto-following the latest live move.
   /// Set to false when the user manually navigates backwards, true when they
   /// return to the last move. Prevents race conditions between parseMoves()

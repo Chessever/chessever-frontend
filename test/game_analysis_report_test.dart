@@ -98,9 +98,12 @@ void main() {
       final controller = GameAnalysisReportController(evaluator: evaluator);
       addTearDown(controller.dispose);
       final progresses = <double>[];
+      final messages = <String>[];
       controller.addListener(() {
         if (controller.state.isRunning) {
           progresses.add(controller.state.progress);
+          final message = controller.state.message;
+          if (message != null) messages.add(message);
         }
       });
 
@@ -111,7 +114,57 @@ void main() {
       for (var i = 1; i < progresses.length; i++) {
         expect(progresses[i], greaterThanOrEqualTo(progresses[i - 1]));
       }
-      expect(progresses.length, greaterThan(gameReportFens(game).length * 2));
+      expect(progresses.length, greaterThan(gameReportFens(game).length));
+      expect(messages, contains('Analyzing move 1 of 2'));
+      expect(messages, contains('Analyzing move 2 of 2'));
+      expect(messages.where((message) => message.contains('of 4')), isEmpty);
+    });
+
+    test('runs a primary pass before selective MultiPV refinement', () async {
+      expect(
+        GameAnalysisReportController.primarySearchBudget,
+        const Duration(milliseconds: 500),
+      );
+      expect(
+        GameAnalysisReportController.refinementSearchBudget,
+        const Duration(milliseconds: 500),
+      );
+      final game = ChessGame.fromPgn('staged', '1. e4 e5 2. Nf3 *');
+      final requestedWidths = <int>[];
+      final requestedDepths = <int>[];
+
+      Future<EnhancedCloudEval> recordingEvaluator(
+        String fen, {
+        required int depth,
+        required int multiPv,
+        required String ownerId,
+        void Function(int reachedDepth, int knodes)? onProgress,
+      }) async {
+        requestedWidths.add(multiPv);
+        requestedDepths.add(depth);
+        return EnhancedCloudEval(
+          fen: fen,
+          knodes: 100,
+          depth: depth,
+          pvs: [
+            Pv(moves: 'a2a3', cp: 0),
+            if (multiPv > 1) Pv(moves: 'h2h3', cp: -5),
+          ],
+          requestedMultiPv: multiPv,
+        );
+      }
+
+      final controller = GameAnalysisReportController(
+        evaluator: recordingEvaluator,
+      );
+      addTearDown(controller.dispose);
+      await controller.analyze(game);
+
+      final primaryCount = gameReportFens(game).length;
+      expect(requestedWidths.take(primaryCount), everyElement(1));
+      expect(requestedWidths.skip(primaryCount), everyElement(3));
+      expect(requestedDepths, everyElement(12));
+      expect(controller.state.status, GameReportStatus.completed);
     });
 
     test(
@@ -154,6 +207,40 @@ void main() {
         expect(controller.state.report, isNotNull);
       },
     );
+
+    test('empty first-use results retry while the engine warms up', () async {
+      var calls = 0;
+      Future<EnhancedCloudEval> warmingEvaluator(
+        String fen, {
+        required int depth,
+        required int multiPv,
+        required String ownerId,
+        void Function(int reachedDepth, int knodes)? onProgress,
+      }) async {
+        calls++;
+        return EnhancedCloudEval(
+          fen: fen,
+          knodes: calls < 4 ? 0 : 100,
+          depth: calls < 4 ? 0 : depth,
+          pvs: [Pv(moves: calls < 4 ? '' : 'e2e4', cp: 0)],
+          requestedMultiPv: multiPv,
+        );
+      }
+
+      final controller = GameAnalysisReportController(
+        evaluator: warmingEvaluator,
+      );
+      addTearDown(controller.dispose);
+      final messages = <String?>[];
+      controller.addListener(() => messages.add(controller.state.message));
+
+      await controller.analyze(ChessGame.fromPgn('warm-up', '1. e4 *'));
+
+      expect(calls, greaterThanOrEqualTo(4));
+      expect(messages, contains('Stockfish is warming up…'));
+      expect(controller.state.status, GameReportStatus.completed);
+      expect(controller.state.report, isNotNull);
+    });
   });
 
   group('move classification', () {
@@ -166,14 +253,10 @@ void main() {
       expect(_classify(game, 50, 25), GameMoveClassification.blunder);
     });
 
-    test('best and forced precede score thresholds', () {
+    test('engine best precedes score thresholds', () {
       expect(
         _classify(game, 50, 20, bestMove: 'e2e4'),
         GameMoveClassification.bestMove,
-      );
-      expect(
-        _classify(game, 50, 20, alternatives: false),
-        GameMoveClassification.forced,
       );
     });
 
@@ -230,10 +313,11 @@ GameMoveClassification? _classify(
   double after, {
   String bestMove = 'a2a3',
   bool alternatives = true,
+  String? beforeFen,
 }) {
   final positions = [
     GameReportPosition(
-      fen: game.startingFen,
+      fen: beforeFen ?? game.startingFen,
       lines: [
         _line(cp: 0, moves: [bestMove]),
         if (alternatives) _line(cp: 0, moves: const ['h2h3']),
