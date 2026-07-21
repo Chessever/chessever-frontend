@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_day_list_utils.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/miniatures_filter_dialog.dart';
@@ -119,20 +120,38 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     setState(() {
       if (!_collapsedDates.remove(dateKey)) _collapsedDates.add(dateKey);
     });
+    // Same as Countrymen / Favorites Games: collapsing can leave content
+    // shorter than the viewport with hasMore still true — keep paging.
     _checkScrollAfterLayoutChange();
   }
 
   /// Collapsing a section can shrink the list below the viewport, which would
   /// otherwise strand pagination with no scroll event left to fire.
+  /// Chains another page load when the list is still short after a fetch.
   void _checkScrollAfterLayoutChange() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || !_scrollController.hasClients) return;
+
       final position = _scrollController.position;
-      if (position.maxScrollExtent - position.pixels < 200) {
-        final state = ref.read(miniaturesPaginatedProvider);
-        if (!state.isLoading && state.hasMore) {
-          ref.read(miniaturesPaginatedProvider.notifier).loadNextPage();
-        }
+      final needsMore = miniaturesListNeedsMoreAfterLayout(
+        maxScrollExtent: position.maxScrollExtent,
+        pixels: position.pixels,
+        viewportDimension: position.viewportDimension,
+      );
+      if (!needsMore) return;
+
+      final state = ref.read(miniaturesPaginatedProvider);
+      if (!state.hasMore || state.isLoading) return;
+
+      final beforeCount = state.items.length;
+      await ref.read(miniaturesPaginatedProvider.notifier).loadNextPage();
+      if (!mounted) return;
+
+      final afterCount = ref.read(miniaturesPaginatedProvider).items.length;
+      // Only recurse when the page actually grew — avoids a tight loop if the
+      // backend returns empty while hasMore is still true.
+      if (afterCount > beforeCount) {
+        _checkScrollAfterLayoutChange();
       }
     });
   }
@@ -447,7 +466,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       listEntries.add(
         _MiniatureDateHeaderEntry(
           dateKey: dateKey,
-          gameCount: dateGames.length,
           isExpanded: !isCollapsed,
         ),
       );
@@ -529,8 +547,9 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       return Padding(
         padding: EdgeInsets.only(bottom: 12.h),
         child: _DateHeader(
-          dateLabel: _formatDateHeader(entry.dateKey),
-          gameCount: entry.gameCount,
+          dateLabel: miniatureDateHeaderLabel(
+            _formatDateHeader(entry.dateKey),
+          ),
           isExpanded: entry.isExpanded,
           onToggle: () => _toggleDateSection(entry.dateKey),
         ),
@@ -720,12 +739,10 @@ sealed class _MiniatureListEntry {
 class _MiniatureDateHeaderEntry extends _MiniatureListEntry {
   const _MiniatureDateHeaderEntry({
     required this.dateKey,
-    required this.gameCount,
     required this.isExpanded,
   });
 
   final String dateKey;
-  final int gameCount;
   final bool isExpanded;
 }
 
@@ -768,13 +785,11 @@ class _MiniatureFooterEntry extends _MiniatureListEntry {
 class _DateHeader extends StatelessWidget {
   const _DateHeader({
     required this.dateLabel,
-    required this.gameCount,
     required this.isExpanded,
     this.onToggle,
   });
 
   final String dateLabel;
-  final int gameCount;
   final bool isExpanded;
   final VoidCallback? onToggle;
 
@@ -813,7 +828,8 @@ class _DateHeader extends StatelessWidget {
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
-                '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
+                // Date only — never an in-memory page-subset game count.
+                dateLabel,
                 style: AppTypography.textSmMedium.copyWith(
                   color: context.colors.textPrimary,
                   fontSize: 16.sp,

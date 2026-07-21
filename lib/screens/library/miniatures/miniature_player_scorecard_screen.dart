@@ -4,6 +4,7 @@ import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
     show playerPhotoProvider;
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_day_list_utils.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
@@ -151,6 +152,38 @@ class _MiniaturePlayerScorecardScreenState
     setState(() {
       if (!_collapsedDates.remove(dateKey)) _collapsedDates.add(dateKey);
     });
+    // Countrymen / Favorites Games parity: collapse can leave content shorter
+    // than the viewport with hasMore still true — keep paging next pages.
+    _checkScrollAfterLayoutChange();
+  }
+
+  void _checkScrollAfterLayoutChange() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      final position = _scrollController.position;
+      final needsMore = miniaturesListNeedsMoreAfterLayout(
+        maxScrollExtent: position.maxScrollExtent,
+        pixels: position.pixels,
+        viewportDimension: position.viewportDimension,
+      );
+      if (!needsMore) return;
+
+      final state = ref.read(miniaturePlayerGamesPaginatedProvider(_playerId));
+      if (!state.hasMore || state.isLoading) return;
+
+      final beforeCount = state.items.length;
+      await ref
+          .read(miniaturePlayerGamesPaginatedProvider(_playerId).notifier)
+          .loadNextPage();
+      if (!mounted) return;
+
+      final afterCount =
+          ref.read(miniaturePlayerGamesPaginatedProvider(_playerId)).items.length;
+      if (afterCount > beforeCount) {
+        _checkScrollAfterLayoutChange();
+      }
+    });
   }
 
   Map<String, List<GamesTourModel>> _groupGamesByDate(
@@ -225,6 +258,9 @@ class _MiniaturePlayerScorecardScreenState
       phone: 16.w,
       tablet: 24.w,
     );
+    // Keep bottom home-indicator inset inside the scrollable, not as a body
+    // SafeArea clip — cards scroll fully into the inset instead of hard-cutting.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     Widget content = RefreshIndicator(
       onRefresh: () async {
@@ -242,31 +278,15 @@ class _MiniaturePlayerScorecardScreenState
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                8.h,
-                horizontalPadding,
-                8.h,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _PlayerHeader(
-                    player: widget.player,
-                    avatarHeroTag:
-                        widget.avatarHeroTag ?? widget.player.avatarHeroTag,
-                    onOpenProfile: _openFullProfile,
-                  ),
-                  SizedBox(height: 20.h),
-                  _buildSearchBar(filter),
-                ],
-              ),
-            ),
+          // AppBar already owns the top safe inset; pad content in the scroll
+          // view (not a body SafeArea) so nothing hard-cuts at the edges.
+          ..._buildScrollSlivers(
+            state: state,
+            games: games,
+            filter: filter,
+            horizontalPadding: horizontalPadding,
+            bottomInset: bottomInset,
           ),
-          _buildContentSliver(state, games, filter),
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
         ],
       ),
     );
@@ -284,6 +304,7 @@ class _MiniaturePlayerScorecardScreenState
 
     // Title is empty at rest so it does not duplicate the body header; it
     // fades in once the header name scrolls under the bar, and out on return.
+    // No body SafeArea: top is the AppBar; bottom inset is list padding only.
     return Scaffold(
       backgroundColor: context.colors.background,
       appBar: AppBar(
@@ -305,7 +326,7 @@ class _MiniaturePlayerScorecardScreenState
           ),
         ),
       ),
-      body: SafeArea(child: content),
+      body: content,
     );
   }
 
@@ -427,64 +448,109 @@ class _MiniaturePlayerScorecardScreenState
     );
   }
 
-  Widget _buildContentSliver(
-    MiniaturesPaginationState state,
-    List<GamesTourModel> games,
-    MiniatureGamesFilter filter,
-  ) {
+  /// Header + day list as scroll slivers. Horizontal and bottom-safe padding
+  /// live on [SliverPadding] so the body is never wrapped in [SafeArea].
+  List<Widget> _buildScrollSlivers({
+    required MiniaturesPaginationState state,
+    required List<GamesTourModel> games,
+    required MiniatureGamesFilter filter,
+    required double horizontalPadding,
+    required double bottomInset,
+  }) {
+    final header = SliverPadding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        8.h,
+        horizontalPadding,
+        8.h,
+      ),
+      sliver: SliverToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PlayerHeader(
+              player: widget.player,
+              avatarHeroTag:
+                  widget.avatarHeroTag ?? widget.player.avatarHeroTag,
+              onOpenProfile: _openFullProfile,
+            ),
+            SizedBox(height: 20.h),
+            _buildSearchBar(filter),
+          ],
+        ),
+      ),
+    );
+
     if (state.isLoading && games.isEmpty) {
-      return SliverToBoxAdapter(child: _buildSkeletonList());
+      return [
+        header,
+        SliverPadding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          sliver: SliverToBoxAdapter(child: _buildSkeletonList()),
+        ),
+      ];
     }
 
     if (state.error != null && games.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _ScorecardMessage(
-          icon: Icons.cloud_off_rounded,
-          title: 'Could not load games',
-          subtitle: 'Check your connection and try again.',
-          actionLabel: 'Retry',
-          onAction:
-              () =>
-                  ref
-                      .read(
-                        miniaturePlayerGamesPaginatedProvider(
-                          _playerId,
-                        ).notifier,
-                      )
-                      .refresh(),
+      return [
+        header,
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: _ScorecardMessage(
+              icon: Icons.cloud_off_rounded,
+              title: 'Could not load games',
+              subtitle: 'Check your connection and try again.',
+              actionLabel: 'Retry',
+              onAction:
+                  () =>
+                      ref
+                          .read(
+                            miniaturePlayerGamesPaginatedProvider(
+                              _playerId,
+                            ).notifier,
+                          )
+                          .refresh(),
+            ),
+          ),
         ),
-      );
+      ];
     }
 
     if (games.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _ScorecardMessage(
-          icon: Icons.bolt_outlined,
-          title: 'No miniatures found',
-          subtitle:
-              filter.hasActiveFilters
-                  ? 'Try widening your filters or clearing the search.'
-                  : "${widget.player.name} has no miniature games yet.",
-          actionLabel: filter.hasActiveFilters ? 'Clear filters' : null,
-          onAction:
-              filter.hasActiveFilters
-                  ? () {
-                    _searchController.clear();
-                    ref
-                        .read(
-                          miniaturePlayerGamesFilterProvider(
-                            _playerId,
-                          ).notifier,
-                        )
-                        .state = MiniatureGamesFilter.defaultFilter.copyWith(
-                      playerId: _playerId,
-                    );
-                  }
-                  : null,
+      return [
+        header,
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: _ScorecardMessage(
+              icon: Icons.bolt_outlined,
+              title: 'No miniatures found',
+              subtitle:
+                  filter.hasActiveFilters
+                      ? 'Try widening your filters or clearing the search.'
+                      : "${widget.player.name} has no miniature games yet.",
+              actionLabel: filter.hasActiveFilters ? 'Clear filters' : null,
+              onAction:
+                  filter.hasActiveFilters
+                      ? () {
+                        _searchController.clear();
+                        ref
+                            .read(
+                              miniaturePlayerGamesFilterProvider(
+                                _playerId,
+                              ).notifier,
+                            )
+                            .state = MiniatureGamesFilter.defaultFilter
+                            .copyWith(playerId: _playerId);
+                      }
+                      : null,
+            ),
+          ),
         ),
-      );
+      ];
     }
 
     final gameIdToIndex = <String, int>{
@@ -500,7 +566,6 @@ class _MiniaturePlayerScorecardScreenState
       listEntries.add(
         _ScorecardDateHeaderEntry(
           dateKey: dateKey,
-          gameCount: dateGames.length,
           isExpanded: !isCollapsed,
         ),
       );
@@ -528,20 +593,26 @@ class _MiniaturePlayerScorecardScreenState
       listEntries.add(const _ScorecardFooterEntry(_ScorecardFooterType.end));
     }
 
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
-      tablet: 24.w,
-    );
-    return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildListEntry(listEntries[index], games: games),
-          childCount: listEntries.length,
-          addAutomaticKeepAlives: false,
+    return [
+      header,
+      SliverPadding(
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          0,
+          horizontalPadding,
+          // List padding owns the home-indicator inset (not body SafeArea).
+          24.h + bottomInset,
+        ),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) =>
+                _buildListEntry(listEntries[index], games: games),
+            childCount: listEntries.length,
+            addAutomaticKeepAlives: false,
+          ),
         ),
       ),
-    );
+    ];
   }
 
   Widget _buildListEntry(
@@ -552,8 +623,9 @@ class _MiniaturePlayerScorecardScreenState
       return Padding(
         padding: EdgeInsets.only(bottom: 12.h),
         child: _ScorecardDateHeader(
-          dateLabel: _formatDateHeader(entry.dateKey),
-          gameCount: entry.gameCount,
+          dateLabel: miniatureDateHeaderLabel(
+            _formatDateHeader(entry.dateKey),
+          ),
           isExpanded: entry.isExpanded,
           onToggle: () => _toggleDateSection(entry.dateKey),
         ),
@@ -952,12 +1024,10 @@ sealed class _ScorecardListEntry {
 class _ScorecardDateHeaderEntry extends _ScorecardListEntry {
   const _ScorecardDateHeaderEntry({
     required this.dateKey,
-    required this.gameCount,
     required this.isExpanded,
   });
 
   final String dateKey;
-  final int gameCount;
   final bool isExpanded;
 }
 
@@ -986,13 +1056,11 @@ class _ScorecardFooterEntry extends _ScorecardListEntry {
 class _ScorecardDateHeader extends StatelessWidget {
   const _ScorecardDateHeader({
     required this.dateLabel,
-    required this.gameCount,
     required this.isExpanded,
     this.onToggle,
   });
 
   final String dateLabel;
-  final int gameCount;
   final bool isExpanded;
   final VoidCallback? onToggle;
 
@@ -1023,7 +1091,8 @@ class _ScorecardDateHeader extends StatelessWidget {
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
-                '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
+                // Date only — never an in-memory page-subset game count.
+                dateLabel,
                 style: AppTypography.textSmMedium.copyWith(
                   color: context.colors.textPrimary,
                   fontSize: 16.sp,
