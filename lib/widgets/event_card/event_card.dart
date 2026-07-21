@@ -7,6 +7,7 @@ import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/favorite_event_ids.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -922,7 +923,18 @@ class _StarWidget extends ConsumerWidget {
     final favoritesAsync = ref.watch(favoriteEventsProvider);
 
     final isStarred = favoritesAsync.maybeWhen(
-      data: (events) => events.any((e) => e.eventId == tourEventCardModel.id),
+      data:
+          (events) => events.any(
+            (e) =>
+                favoriteEventMatchesId(
+                  storedEventId: e.eventId,
+                  candidateId: tourEventCardModel.id,
+                  eventName: e.eventName,
+                  metadata: e.metadata,
+                ) ||
+                e.eventName.trim().toLowerCase() ==
+                    tourEventCardModel.title.trim().toLowerCase(),
+          ),
       orElse: () => false,
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
@@ -973,6 +985,8 @@ class _StarWidget extends ConsumerWidget {
                       ? tourEventCardModel.dates
                       : null,
             )
+            // Same path for Current / For You / Calendar cards — remaps
+            // synthetic cal_event_* ids to group_broadcasts.id when possible.
             .then((isFavorited) {
               final nextCount =
                   isFavorited

@@ -188,4 +188,87 @@ void main() {
       expect(continuationChipLabel(fen, 2, 'Bc5'), 'Bc5');
     });
   });
+
+  group('full-game continuation (past API 20-ply cap)', () {
+    // 24 half-moves from start — longer than notationPlies: 20.
+    const longPgn =
+        '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 '
+        '6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7 '
+        '11. c4 c6 12. cxb5 axb5 1-0';
+
+    test('fromPgn yields full remainder past ply 20', () {
+      const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      final full = buildFullContinuationLine(
+        anchorFen: start,
+        gameId: 'g-long',
+        pgn: longPgn,
+      );
+      expect(full, isNotNull);
+      // 24 SANs in the PGN mainline.
+      expect(full!.sans.length, greaterThan(20));
+      expect(full.sans.length, 24);
+      expect(full.fens.length, full.sans.length + 1);
+      expect(full.sans.first, 'e4');
+      expect(full.sans.last, 'axb5');
+    });
+
+    test('from mid-game anchor keeps only the rest of the game', () {
+      // After 1.e4 e5 2.Nf3 — black to move.
+      const afterNf3 =
+          'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2';
+      final full = buildFullContinuationLine(
+        anchorFen: afterNf3,
+        gameId: 'g-mid',
+        pgn: longPgn,
+      );
+      expect(full, isNotNull);
+      // Entire game 24 plies minus 3 already played.
+      expect(full!.sans.length, 21);
+      expect(full.sans.first, 'Nc6');
+      expect(full.sans.last, 'axb5');
+    });
+
+    test('structured gamebase data path also builds full line', () {
+      const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      final uciData = {
+        'sf': start,
+        'md': {'Result': '1-0'},
+        'm': [
+          for (final u in const [
+            'e2e4',
+            'e7e5',
+            'g1f3',
+            'b8c6',
+            'f1b5',
+            'a7a6',
+            'b5a4',
+            'g8f6',
+            'e1g1',
+            'f8e7',
+            'f1e1',
+            'b7b5',
+            'a4b3',
+            'd7d6',
+            'c2c3',
+            'e8g8',
+            'h2h3',
+            'c6b8',
+            'd2d4',
+            'b8d7',
+            'c3c4',
+            'c7c6',
+          ])
+            {'u': u},
+        ],
+      };
+      final full = buildFullContinuationLine(
+        anchorFen: start,
+        gameId: 'g-data',
+        data: uciData,
+      );
+      expect(full, isNotNull);
+      expect(full!.sans.length, 22);
+      expect(full.sans.length, greaterThan(20));
+    });
+  });
 }

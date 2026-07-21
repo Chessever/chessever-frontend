@@ -29,6 +29,8 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
+    show GameCardChessboard;
 import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
@@ -140,6 +142,11 @@ final likeTutorialRequestProvider = StateProvider<int>((_) => 0);
 final boardSelectionClearRequestProvider = StateProvider.family<int, String>(
   (_, _) => 0,
 );
+
+/// True while the board notation↔explorer PageView is on the explorer page
+/// (left-swipe). Drives a light translucent bottom nav so games under the bar
+/// stay faintly visible — not the persisted gamebase toggle preference.
+final boardExplorerPanelVisibleProvider = StateProvider<bool>((_) => false);
 
 final _androidPipBoardRecoveryEpochProvider = StateProvider.family<int, String>(
   (_, _) => 0,
@@ -2894,7 +2901,7 @@ class _BorderProgressPainter extends CustomPainter {
   }
 }
 
-class _GamePage extends StatelessWidget {
+class _GamePage extends ConsumerWidget {
   final GamesTourModel game;
   final ChessBoardStateNew state;
   final List<GamesTourModel> games;
@@ -2926,10 +2933,14 @@ class _GamePage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Let explorer content paint under the bottom nav so a light translucent
+    // bar can reveal that more games sit below.
+    final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
     final scaffold = Scaffold(
       backgroundColor: context.colors.background,
       resizeToAvoidBottomInset: false,
+      extendBody: explorerVisible,
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
         state: state,
@@ -5368,6 +5379,14 @@ String _formatRoundDate(DateTime? date) {
   return '${date.day} ${_shortMonthNames[date.month - 1]}';
 }
 
+/// Parses a game's last-move UCI into a [Move] for the mini board's from/to
+/// highlight, matching the games grid (`_uciToMove`). Null when absent/invalid.
+Move? _dropdownLastMove(String? uci) {
+  final u = uci?.trim().toLowerCase();
+  if (u == null || u.length < 4 || u.length > 5) return null;
+  return Move.parse(u);
+}
+
 /// Game-switcher content: a horizontal, borderless strip of big game-selector
 /// rows (mini board with player identity stacked directly above and below
 /// it, mirroring how the main board's `PlayerFirstRowDetailWidget` rows flank
@@ -5377,7 +5396,7 @@ String _formatRoundDate(DateTime? date) {
 /// strip, and swaps to the next round's label once that round's boards start
 /// passing underneath — no per-game card boxes, games are separated by
 /// whitespace only.
-class _GameDropdownContent extends StatefulWidget {
+class _GameDropdownContent extends ConsumerStatefulWidget {
   final double dropdownWidth;
   final double availableHeight;
   final Animation<double> animation;
@@ -5397,10 +5416,11 @@ class _GameDropdownContent extends StatefulWidget {
   });
 
   @override
-  State<_GameDropdownContent> createState() => _GameDropdownContentState();
+  ConsumerState<_GameDropdownContent> createState() =>
+      _GameDropdownContentState();
 }
 
-class _GameDropdownContentState extends State<_GameDropdownContent> {
+class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
   final ScrollController _scrollController = ScrollController();
   static const double _cardSpacing = 26.0;
   static const double _cardRowHeight = 270.0;
@@ -5408,11 +5428,29 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   static const double _sectionGap = 12.0;
   static const double _verticalPadding = 12.0;
 
+  // Live streaming for the mini-boards is gated by `shouldStreamProvider`, which
+  // `navigateToChessBoard` flips OFF while the board screen is open (to pause the
+  // tournament grid underneath). The switcher's boards ARE live cards the user is
+  // actively looking at, so re-enable streaming for exactly as long as this
+  // dropdown is mounted, restoring the prior value on close.
+  //
+  // The provider is a top-level (non-autoDispose) StateProvider, so its notifier
+  // outlives this widget — capture it in initState and use it directly in
+  // dispose (Riverpod forbids `ref` in dispose).
+  bool? _prevShouldStream;
+  StateController<bool>? _streamNotifier;
+
   @override
   void initState() {
     super.initState();
-    // Center the current game's row after the widget is built.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final notifier = ref.read(shouldStreamProvider.notifier);
+      _streamNotifier = notifier;
+      _prevShouldStream = notifier.state;
+      if (notifier.state != true) {
+        notifier.state = true;
+      }
       _scrollToCurrent(animate: false);
     });
   }
@@ -5429,6 +5467,15 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
 
   @override
   void dispose() {
+    // Restore the streaming flag to whatever it was before the dropdown opened
+    // (false inside the board), pausing the mini-boards again on close. Use the
+    // captured notifier (NOT `ref`, which is illegal in dispose) and defer the
+    // write to a microtask so it never mutates a provider mid-teardown.
+    final notifier = _streamNotifier;
+    final prev = _prevShouldStream;
+    if (notifier != null && prev != null && prev != true) {
+      Future.microtask(() => notifier.state = prev);
+    }
     _scrollController.dispose();
     super.dispose();
   }
@@ -5482,9 +5529,9 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
 
   /// Separator between item [index] and [index+1]. At a round boundary it is a
   /// dashed vertical rule marking where one round's boards end and the next
-  /// round's begin; otherwise plain spacing. Both are exactly [_cardSpacing]
-  /// wide so the scroll stride stays constant and the sticky timeline's
-  /// index↔offset math remains exact.
+  /// begin; otherwise plain spacing. Both are exactly [_cardSpacing] wide so the
+  /// scroll stride stays constant and the sticky timeline's index↔offset math
+  /// remains exact.
   Widget _buildSeparator(int index) {
     if (!_startsNewRound(index + 1)) {
       return SizedBox(width: _cardSpacing.w);
@@ -5927,12 +5974,10 @@ class _GameSelectorCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final boardSettings =
-        ref.watch(boardSettingsProviderNew).valueOrNull ??
-        const BoardSettingsNew();
-
     // Same gate the Games tab uses (`streamEnabled = shouldStream`): pauses all
     // realtime work when the app backgrounds it, without unmounting the cards.
+    // The dropdown re-enables `shouldStream` while it is open (see
+    // [_GameDropdownContentState]), so these boards stream live.
     final streamEnabled = ref.watch(shouldStreamProvider);
 
     // Live position (fen/status) merged off the shared batched stream — the
@@ -6047,15 +6092,16 @@ class _GameSelectorCard extends ConsumerWidget {
                           isFlipped: false, // board is white-at-bottom
                           allowStockfishFallback: streamEnabled,
                         ),
-                      StaticChessboard(
-                        size: boardSize,
-                        settings: StaticChessboardSettings(
-                          enableCoordinates: false,
-                          colorScheme: boardSettings.colorScheme,
-                          pieceAssets: boardSettings.pieceAssets,
-                        ),
-                        orientation: Side.white,
+                      // Same mini board the grid game cards use: last-move
+                      // from/to highlight, decisive red fallen-king, draw dove
+                      // markers — all driven by the live fen + status.
+                      GameCardChessboard(
                         fen: boardFen,
+                        lastMove: _dropdownLastMove(liveGame.lastMove),
+                        boardSize: boardSize,
+                        orientation: Side.white,
+                        showCoordinates: false,
+                        gameStatus: liveGame.gameStatus,
                       ),
                     ],
                   ),
@@ -6496,10 +6542,56 @@ class _BottomNavBar extends ConsumerWidget {
       }
     });
 
+    final explorerPanelVisible = ref.watch(boardExplorerPanelVisibleProvider);
+
+    // Shipped arrow ownership (Trello #984). Pin expands games over PV only;
+    // it must never steal arrows from a focused card.
+    final arrows = resolveBoardNavArrowRouting(
+      focus: explorerFocus,
+      focusNotifier: explorerFocusNotifier,
+      boardCanMoveForward: effectiveCanMoveForward,
+      boardCanMoveBackward: effectiveCanMoveBackward,
+      // Normal board arrows only navigate saved notation/PV-preview moves.
+      // Do not fall through to engine/PV insertion at the end of notation.
+      onBoardForward: () {
+        clearBoardSelection();
+        notifier.moveForward().then((_) {
+          final updatedState =
+              ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          if (updatedState == null ||
+              updatedState.isPvPreviewActive ||
+              !updatedState.hasUnseenMoves) {
+            return;
+          }
+          final atLastMove =
+              updatedState.analysisState.currentMoveIndex >=
+              updatedState.allMoves.length - 1;
+          if (atLastMove) {
+            notifier.markMovesAsSeen();
+          }
+        });
+      },
+      onBoardBackward: () {
+        clearBoardSelection();
+        notifier.moveBackward();
+      },
+      onBoardLongPressBackwardStart: () {
+        clearBoardSelection();
+        notifier.startLongPressBackward();
+      },
+      onBoardLongPressBackwardEnd: () => notifier.stopLongPress(),
+      onBoardLongPressForwardStart: () {
+        clearBoardSelection();
+        notifier.startLongPressForward();
+      },
+      onBoardLongPressForwardEnd: () => notifier.stopLongPress(),
+    );
+
     return ChessBoardBottomNavBar(
       key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
       gameIndex: index,
       showGamebaseButton: showGamebaseButton,
+      explorerPanelVisible: explorerPanelVisible,
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
       onEngineSettingsLongPress: () {
@@ -6511,72 +6603,14 @@ class _BottomNavBar extends ConsumerWidget {
           ).push(SettingsPage.route(initiallyExpanded: SettingsSection.engine));
         });
       },
-      onRightMove:
-          explorerFocus != null
-              ? (explorerFocus.canGoForward
-                  ? explorerFocusNotifier.forward
-                  : null)
-              // Normal board arrows only navigate saved notation/PV-preview
-              // moves. Do not fall through to engine/PV insertion at the end
-              // of notation; engine moves must come from explicit PV/engine
-              // UI actions.
-              : effectiveCanMoveForward
-              ? () {
-                clearBoardSelection();
-                notifier.moveForward().then((_) {
-                  final updatedState =
-                      ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
-                  if (updatedState == null ||
-                      updatedState.isPvPreviewActive ||
-                      !updatedState.hasUnseenMoves) {
-                    return;
-                  }
-                  final atLastMove =
-                      updatedState.analysisState.currentMoveIndex >=
-                      updatedState.allMoves.length - 1;
-                  if (atLastMove) {
-                    notifier.markMovesAsSeen();
-                  }
-                });
-              }
-              : null,
-      onLeftMove:
-          explorerFocus != null
-              ? (explorerFocus.canGoBackward
-                  ? explorerFocusNotifier.backward
-                  : null)
-              : effectiveCanMoveBackward
-              ? () {
-                clearBoardSelection();
-                notifier.moveBackward();
-              }
-              : null,
-      onLongPressBackwardStart:
-          explorerFocus != null
-              ? (explorerFocus.canGoBackward
-                  ? explorerFocusNotifier.backward
-                  : null)
-              : () {
-                clearBoardSelection();
-                notifier.startLongPressBackward();
-              },
-      onLongPressBackwardEnd:
-          explorerFocus != null ? null : () => notifier.stopLongPress(),
-      onLongPressForwardStart:
-          explorerFocus != null
-              ? (explorerFocus.canGoForward
-                  ? explorerFocusNotifier.forward
-                  : null)
-              : effectiveCanMoveForward
-              ? () {
-                clearBoardSelection();
-                notifier.startLongPressForward();
-              }
-              : null,
-      onLongPressForwardEnd:
-          explorerFocus != null ? null : () => notifier.stopLongPress(),
-      canMoveForward: explorerFocus?.canGoForward ?? effectiveCanMoveForward,
-      canMoveBackward: explorerFocus?.canGoBackward ?? effectiveCanMoveBackward,
+      onRightMove: arrows.onRightMove,
+      onLeftMove: arrows.onLeftMove,
+      onLongPressBackwardStart: arrows.onLongPressBackwardStart,
+      onLongPressBackwardEnd: arrows.onLongPressBackwardEnd,
+      onLongPressForwardStart: arrows.onLongPressForwardStart,
+      onLongPressForwardEnd: arrows.onLongPressForwardEnd,
+      canMoveForward: arrows.canMoveForward,
+      canMoveBackward: arrows.canMoveBackward,
       showEngineAnalysis: state.showEngineAnalysis,
       showUnseenMoveBadge: state.hasUnseenMoves,
       onGamebaseToggle: onGamebaseToggle,
@@ -6619,6 +6653,61 @@ class _GameBody extends StatelessWidget {
   }
 }
 
+/// Duration/curve for explorer-games expand: PV collapse + analysis grow.
+/// Matched so board chrome and the panel ease together (no layout jump).
+const Duration _kExplorerGamesExpandDuration = Duration(milliseconds: 320);
+const Curve _kExplorerGamesExpandCurve = Curves.easeInOutCubic;
+
+/// Collapses [child] (engine PV) when explorer games pin, so the analysis
+/// panel can grow into that space with a smooth height + fade — not a snap.
+class _CollapsingExplorerPvSlot extends StatelessWidget {
+  const _CollapsingExplorerPvSlot({
+    required this.collapsed,
+    required this.child,
+    this.bottomGap = 0,
+  });
+
+  final bool collapsed;
+  final Widget child;
+  final double bottomGap;
+
+  @override
+  Widget build(BuildContext context) {
+    // TweenAnimationBuilder keeps the last factor and eases to the new end
+    // when [collapsed] flips — no AnimationController / StatefulWidget needed.
+    return TweenAnimationBuilder<double>(
+      duration: _kExplorerGamesExpandDuration,
+      curve: _kExplorerGamesExpandCurve,
+      // begin null → first frame sits at [end]; later flips ease from the
+      // live value so pin/unpin never snaps the PV height.
+      tween: Tween<double>(end: collapsed ? 0.0 : 1.0),
+      builder: (context, t, child) {
+        final factor = t.clamp(0.0, 1.0);
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: factor,
+            child: Opacity(
+              // Fade slightly faster than the height ease so text softens
+              // before the slot fully closes (less "pop" at the cut).
+              opacity: Curves.easeOut.transform(factor),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          child,
+          if (bottomGap > 0) SizedBox(height: bottomGap),
+        ],
+      ),
+    );
+  }
+}
+
 class _AnalysisGameBody extends ConsumerWidget {
   final int index;
   final int currentPageIndex;
@@ -6648,6 +6737,17 @@ class _AnalysisGameBody extends ConsumerWidget {
     final isTabletLandscape =
         ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
+    // When the user scrolls into explorer games, drop engine PV so the
+    // analysis/games panel grows into that space. Bottom nav stays so
+    // card-focus arrows remain usable (no slide-hide).
+    final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
+    final gamesPinned = ref.watch(explorerInlineGamesPinnedProvider);
+    final expandGamesOverPv = shouldExpandExplorerGamesOverPv(
+      pageVisible: index == currentPageIndex,
+      explorerPanelVisible: explorerVisible,
+      gamesPinned: gamesPinned,
+    );
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isVisiblePage = index == currentPageIndex;
@@ -6659,26 +6759,46 @@ class _AnalysisGameBody extends ConsumerWidget {
         final useCompactLayout =
             availableHeight < compactThreshold && !isTabletLandscape;
 
-        final pvSection = <Widget>[];
-        // PV section sits above the swipeable panels and renders on both
-        // pages. The explorer panel suppresses its own internal PV via
-        // `showHorizontalPvLines: false` so we don't duplicate.
-        if (state.isAnalysisMode &&
+        // PV sits above the swipeable panels on both pages. The explorer
+        // suppresses its own internal PV via `showHorizontalPvLines: false`.
+        // When games pin we collapse PV with a height/opacity ease so the
+        // analysis panel grows into that space without a layout jump.
+        final showPv =
+            state.isAnalysisMode &&
             state.showEngineAnalysis &&
-            state.showPrincipalVariations) {
-          pvSection.add(SizedBox(height: 2.h));
-          final pvList = _PrincipalVariationList(
-            key: e2eKey(E2eIds.boardPvList),
-            index: index,
-            state: state,
-            game: game,
-          );
-          if (useCompactLayout) {
-            pvSection.add(pvList);
-          } else {
-            pvSection.add(Flexible(flex: 0, child: pvList));
-          }
+            state.showPrincipalVariations;
+        // Tablet right-column / portrait put a gap under PV; fold it into the
+        // collapsing slot so that gap eases away with the lines (no residual jump).
+        final double pvBottomGap;
+        if (isTabletLandscape) {
+          pvBottomGap = 8.sp;
+        } else if (ResponsiveHelper.isTablet) {
+          pvBottomGap = 4.sp;
+        } else {
+          pvBottomGap = 0;
         }
+        final Widget? collapsingPv =
+            showPv
+                ? _CollapsingExplorerPvSlot(
+                  collapsed: expandGamesOverPv,
+                  bottomGap: pvBottomGap,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(height: 2.h),
+                      _PrincipalVariationList(
+                        key: e2eKey(E2eIds.boardPvList),
+                        index: index,
+                        state: state,
+                        game: game,
+                      ),
+                    ],
+                  ),
+                )
+                : null;
+        // Legacy list form for tablet branches that spread `...pvSection`.
+        final pvSection = <Widget>[if (collapsingPv != null) collapsingPv];
 
         ValueChanged<String> editNameCallback(bool isWhite) {
           return (newName) {
@@ -6824,7 +6944,13 @@ class _AnalysisGameBody extends ConsumerWidget {
         }
 
         if (useCompactLayout) {
-          final movesPanelHeight = math.max(220.h, availableHeight * 0.55);
+          // When games expand over PV, give the panel most of the viewport
+          // so cards stay readable under a still-visible bottom nav.
+          // Height eases with the PV collapse so the panel doesn't jump.
+          final movesPanelHeight =
+              expandGamesOverPv
+                  ? math.max(320.h, availableHeight * 0.72)
+                  : math.max(220.h, availableHeight * 0.55);
           return SingleChildScrollView(
             padding: EdgeInsets.only(bottom: 12.h),
             physics: const ClampingScrollPhysics(),
@@ -6833,7 +6959,12 @@ class _AnalysisGameBody extends ConsumerWidget {
               children: [
                 ...headerChildren,
                 SizedBox(height: 12.h),
-                SizedBox(height: movesPanelHeight, child: buildAnalysisView()),
+                AnimatedContainer(
+                  duration: _kExplorerGamesExpandDuration,
+                  curve: _kExplorerGamesExpandCurve,
+                  height: movesPanelHeight,
+                  child: buildAnalysisView(),
+                ),
               ],
             ),
           );
@@ -6929,11 +7060,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                     height: screenHeight - 16.sp,
                     child: Column(
                       children: [
-                        // PV Cards section for tablet landscape
-                        if (pvSection.isNotEmpty) ...[
-                          ...pvSection,
-                          SizedBox(height: 8.sp),
-                        ],
+                        // PV collapses with bottom gap inside the slot.
+                        ...pvSection,
                         // Moves panel with elegant container
                         Expanded(
                           child: Container(
@@ -7013,9 +7141,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                                 : null,
                       ),
                     ),
-                    // PV section
+                    // PV collapses with its under-gap; keep a static gap only
+                    // when engine PV is off so the moves panel still breathes.
                     ...pvSection,
-                    SizedBox(height: 4.sp),
+                    if (pvSection.isEmpty) SizedBox(height: 4.sp),
                     // Moves panel with elegant container
                     Expanded(
                       child: Container(
@@ -9246,6 +9375,12 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
     _pageController = PageController(initialPage: _currentPage);
     _lastTutorialRequest = ref.read(analysisSwitchViewsTutorialRequestProvider);
     _setupSwipeAnimation();
+    // Seed visibility for bottom-nav translucency (post-frame: ref write safe).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(boardExplorerPanelVisibleProvider.notifier).state =
+          _currentPage == 1;
+    });
   }
 
   @override
@@ -9472,6 +9607,13 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
       onPageChanged: (page) {
         if (_showTutorialOverlay) return;
         _currentPage = page;
+        // Light translucent bottom nav while explorer is showing so games
+        // under the bar stay faintly visible.
+        ref.read(boardExplorerPanelVisibleProvider.notifier).state = page == 1;
+        // Leaving explorer always restores the bottom nav.
+        if (page != 1) {
+          ref.read(explorerInlineGamesPinnedProvider.notifier).state = false;
+        }
         if (!widget.syncWithGamebaseToggle) return;
         // Keep the toggle button reflection in sync with the swipe so the
         // button label/icon doesn't lie about the visible panel.

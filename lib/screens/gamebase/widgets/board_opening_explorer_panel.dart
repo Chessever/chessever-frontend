@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +81,17 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
       return null;
     }, [currentFen, lineKey, startingFen]);
 
-    return MoveStatisticsPanel(onMove: onMoveSelected);
+    // Board scaffold uses extendBody + a translucent bottom nav while this
+    // panel is open. Pad the list so the last moves / game rows can scroll
+    // fully clear of the bar (and the home indicator).
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final navHeight =
+        kBottomNavigationBarHeight + (ResponsiveHelper.isTablet ? 14.0 : 0.0);
+    final listBottomPadding = safeBottom + navHeight + 20;
+
+    return MoveStatisticsPanel(
+      onMove: onMoveSelected,
+      listBottomPadding: listBottomPadding,
+    );
   }
 }

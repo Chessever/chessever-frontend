@@ -556,6 +556,19 @@ GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
             ? '$opening: $variation'
             : (opening.trim().isNotEmpty ? opening : null);
 
+    final fen =
+        (readString('fen').isNotEmpty
+                ? readString('fen')
+                : (readString('lastFen').isNotEmpty
+                    ? readString('lastFen')
+                    : readString('finalFen')))
+            .trim();
+    final lastMove =
+        (readString('lastMove').isNotEmpty
+                ? readString('lastMove')
+                : readString('last_move'))
+            .trim();
+
     return GamesTourModel(
       gameId: safeId,
       source: GameSource.gamebase,
@@ -588,6 +601,8 @@ GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
       roundSlug: formatCode.isNotEmpty ? formatCode : null,
       tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
       tourSlug: null,
+      fen: fen.isNotEmpty ? fen : null,
+      lastMove: lastMove.isNotEmpty ? lastMove : null,
       lastMoveTime: date,
       eco: eco.trim().isNotEmpty ? eco.trim() : null,
       openingName: openingName,

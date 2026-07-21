@@ -604,13 +604,16 @@ async function processItem(item: OutboxItem) {
     //      individual game_finished pushes for each game they follow.
     //   3. Muted users are already stripped by resolveRecipients() above.
     //   4. Requires favorite_event_alerts opt-in (handled by filterRoundRecipients).
+    //   5. Dual-channel users (star + player fav in round) still get the results
+    //      digest: pass an empty player set so they are not demoted out of
+    //      eventRecipients by filterRoundRecipients.
     if (item.event_type === "round_finished") {
       const rfTimeControl = await resolveGameTimeControl(
         buildTimeControlLookup(item, context),
       );
       const { eventRecipients } = await filterRoundRecipients(
         context.eventUserIds,
-        context.playerUserIds,
+        new Set<string>(),
         rfTimeControl,
       );
 
@@ -932,6 +935,7 @@ async function buildContext(item: OutboxItem) {
 
   const { eventUserIds, playerUserIds } = await resolveRecipients({
     groupBroadcastId,
+    eventName,
     fideIds: Array.from(fideIdSet),
     players: Array.from(playerNames),
   });
@@ -1089,8 +1093,18 @@ async function fetchRoundPlayers(roundId: string) {
   };
 }
 
+/** Calendar-card favorite id: cal_event_<sanitized name> (matches Flutter). */
+function calendarEventFavoriteIdFromName(name: string): string {
+  const sanitized = name
+    .replaceAll(" ", "_")
+    .replace(/[^\w\-]/g, "")
+    .toLowerCase();
+  return `cal_event_${sanitized}`;
+}
+
 async function resolveRecipients(args: {
   groupBroadcastId: string | null;
+  eventName?: string | null;
   fideIds: string[];
   players: string[];
 }) {
@@ -1098,12 +1112,33 @@ async function resolveRecipients(args: {
   const playerUserIds = new Set<string>();
 
   if (args.groupBroadcastId) {
+    // Match every id shape used across Calendar / For You / Current:
+    // 1) group_broadcasts.id (Current + For You + remapped calendar stars)
+    // 2) cal_event_<sanitized name> (historical calendar stars)
+    const eventIds = new Set<string>([args.groupBroadcastId]);
+    const name = args.eventName?.trim();
+    if (name) {
+      eventIds.add(calendarEventFavoriteIdFromName(name));
+    }
+
     const { data } = await supabase
       .from("user_favorite_events")
       .select("user_id")
-      .eq("event_id", args.groupBroadcastId);
+      .in("event_id", Array.from(eventIds));
     for (const row of data ?? []) {
       eventUserIds.add(row.user_id as string);
+    }
+
+    // Also match by display name (case-insensitive) so renamed-id leftovers
+    // and pure name-starred rows still receive round notifications.
+    if (name) {
+      const { data: byName } = await supabase
+        .from("user_favorite_events")
+        .select("user_id")
+        .ilike("event_name", name);
+      for (const row of byName ?? []) {
+        eventUserIds.add(row.user_id as string);
+      }
     }
   }
 

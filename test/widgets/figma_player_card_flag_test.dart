@@ -56,4 +56,64 @@ void main() {
     expect(find.byType(Image), findsNothing);
     expect(find.byType(fcf.FlutterCountryFlags), findsNothing);
   });
+
+  testWidgets('colors W primary and L danger for win-loss matchScore', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: FigmaPlayerCard(
+                  player: PlayerStandingModel(
+                    countryCode: '',
+                    title: 'GM',
+                    name: 'Morphy, Paul',
+                    score: 2800,
+                    scoreChange: 0,
+                    matchScore: '12W-4L',
+                  ),
+                  rank: 1,
+                  showFavoriteButton: false,
+                  onTap: () {},
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final richFinder = find.byWidgetPredicate(
+      (w) => w is RichText && w.text.toPlainText() == '12W-4L',
+    );
+    expect(richFinder, findsOneWidget);
+
+    final root = tester.widget<RichText>(richFinder).text as TextSpan;
+    TextSpan? winSpan;
+    TextSpan? lossSpan;
+    void walk(InlineSpan span) {
+      if (span is TextSpan) {
+        if (span.text == '12W') winSpan = span;
+        if (span.text == '4L') lossSpan = span;
+        for (final child in span.children ?? const <InlineSpan>[]) {
+          walk(child);
+        }
+      }
+    }
+
+    walk(root);
+    expect(winSpan, isNotNull);
+    expect(winSpan!.style?.color, kPrimaryColor);
+    expect(lossSpan, isNotNull);
+    expect(lossSpan!.style?.color, kRedColor);
+  });
 }

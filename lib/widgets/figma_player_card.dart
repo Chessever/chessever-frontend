@@ -236,15 +236,53 @@ class FigmaPlayerCard extends ConsumerWidget {
             else if (!showFavoriteButton)
               Padding(
                 padding: EdgeInsets.only(left: 8.w),
-                child: Text(
-                  player.matchScore ?? '',
-                  style: AppTypography.textMdMedium.copyWith(
-                    color: context.colors.textPrimary,
-                  ),
-                ),
+                child: _MatchScoreText(score: player.matchScore ?? ''),
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Standings use plain tournament scores (`5.0/9`); miniatures leaderboard
+/// rows use `12W-4L`. Color W with brand primary and L with danger red so the
+/// record reads like result chips elsewhere (board player rows, team W/D/L).
+class _MatchScoreText extends StatelessWidget {
+  const _MatchScoreText({required this.score});
+
+  final String score;
+
+  static final _winLoss = RegExp(r'^(\d+)W-(\d+)L$');
+
+  @override
+  Widget build(BuildContext context) {
+    final base = AppTypography.textMdMedium;
+    final match = _winLoss.firstMatch(score.trim());
+    if (match == null) {
+      return Text(
+        score,
+        style: base.copyWith(color: context.colors.textPrimary),
+      );
+    }
+
+    return Text.rich(
+      TextSpan(
+        style: base,
+        children: [
+          TextSpan(
+            text: '${match.group(1)}W',
+            style: base.copyWith(color: kPrimaryColor),
+          ),
+          TextSpan(
+            text: '-',
+            style: base.copyWith(color: context.colors.textSecondary),
+          ),
+          TextSpan(
+            text: '${match.group(2)}L',
+            style: base.copyWith(color: context.colors.danger),
+          ),
+        ],
       ),
     );
   }

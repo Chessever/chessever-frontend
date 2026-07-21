@@ -123,3 +123,90 @@ final explorerFocusedGameProvider = StateNotifierProvider.autoDispose<
   });
   return notifier;
 });
+
+/// True while the explorer move list has scrolled so the inline games section
+/// is pinned under the sticky header. Board chrome expands the games surface
+/// over engine lines + the move table (bottom nav stays put for card arrows).
+/// Cleared when scrolling back to moves or leaving the explorer panel.
+final explorerInlineGamesPinnedProvider = StateProvider<bool>((_) => false);
+
+/// Drop engine PV so the explorer games surface expands over that strip and
+/// the move-table region. Pin alone is not enough — explorer page must be
+/// visible on the active board page. Bottom nav is never hidden for this.
+bool shouldExpandExplorerGamesOverPv({
+  required bool pageVisible,
+  required bool explorerPanelVisible,
+  required bool gamesPinned,
+}) =>
+    pageVisible && explorerPanelVisible && gamesPinned;
+
+/// Resolved bottom-nav arrow callbacks + enable flags for the board chrome.
+///
+/// When [focus] is non-null the arrows walk the focused explorer card's
+/// continuation via [focusNotifier] — including while
+/// [explorerInlineGamesPinnedProvider] is true (pin only expands layout).
+@immutable
+class BoardNavArrowRouting {
+  const BoardNavArrowRouting({
+    required this.onLeftMove,
+    required this.onRightMove,
+    required this.canMoveForward,
+    required this.canMoveBackward,
+    required this.onLongPressBackwardStart,
+    required this.onLongPressBackwardEnd,
+    required this.onLongPressForwardStart,
+    required this.onLongPressForwardEnd,
+  });
+
+  final VoidCallback? onLeftMove;
+  final VoidCallback? onRightMove;
+  final bool canMoveForward;
+  final bool canMoveBackward;
+  final VoidCallback? onLongPressBackwardStart;
+  final VoidCallback? onLongPressBackwardEnd;
+  final VoidCallback? onLongPressForwardStart;
+  final VoidCallback? onLongPressForwardEnd;
+}
+
+/// Shipped ownership rules for board bottom-nav arrows (Trello #984).
+///
+/// Callers pass board-side handlers; when a card is focused those are ignored
+/// and the focus notifier owns forward/back (and long-press steps).
+BoardNavArrowRouting resolveBoardNavArrowRouting({
+  required ExplorerGameFocus? focus,
+  required ExplorerFocusedGameNotifier focusNotifier,
+  required bool boardCanMoveForward,
+  required bool boardCanMoveBackward,
+  required VoidCallback onBoardForward,
+  required VoidCallback onBoardBackward,
+  required VoidCallback onBoardLongPressBackwardStart,
+  required VoidCallback onBoardLongPressBackwardEnd,
+  required VoidCallback onBoardLongPressForwardStart,
+  required VoidCallback onBoardLongPressForwardEnd,
+}) {
+  if (focus != null) {
+    return BoardNavArrowRouting(
+      onLeftMove: focus.canGoBackward ? focusNotifier.backward : null,
+      onRightMove: focus.canGoForward ? focusNotifier.forward : null,
+      canMoveForward: focus.canGoForward,
+      canMoveBackward: focus.canGoBackward,
+      onLongPressBackwardStart:
+          focus.canGoBackward ? focusNotifier.backward : null,
+      onLongPressBackwardEnd: null,
+      onLongPressForwardStart:
+          focus.canGoForward ? focusNotifier.forward : null,
+      onLongPressForwardEnd: null,
+    );
+  }
+  return BoardNavArrowRouting(
+    onLeftMove: boardCanMoveBackward ? onBoardBackward : null,
+    onRightMove: boardCanMoveForward ? onBoardForward : null,
+    canMoveForward: boardCanMoveForward,
+    canMoveBackward: boardCanMoveBackward,
+    onLongPressBackwardStart: onBoardLongPressBackwardStart,
+    onLongPressBackwardEnd: onBoardLongPressBackwardEnd,
+    onLongPressForwardStart:
+        boardCanMoveForward ? onBoardLongPressForwardStart : null,
+    onLongPressForwardEnd: onBoardLongPressForwardEnd,
+  );
+}

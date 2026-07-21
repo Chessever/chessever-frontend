@@ -561,10 +561,19 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     }
 
     if (entry is _MiniatureGameEntry) {
-      // Same card as the tournament Games tab. GameCardWrapperWidget renders
-      // the canonical GameCard, whose header and footer are fixed-height, so a
-      // row can never re-measure when async data (eval, flags, result) lands
-      // and the list never reflows under the user.
+      // Same wrappers as tournament Games tab / For You:
+      // - list: GameCard (fixed 60.h + 24.h; result chip for finished games)
+      // - board: ChessBoardFromFENNew via isChessBoardVisible
+      //
+      // For You / tournament cards already have fen+lastMove from the API, so
+      // the side eval bar is present on first paint. Miniatures are header-only
+      // until per-card gamebase hydration; the shared board path still mounts
+      // the eval bar for finished games immediately (geometry reserved; text
+      // fills later) so board width never jumps the way it did when the bar
+      // was gated on hasStarted/lastMove.
+      //
+      // List-level skeleton above is only for an empty loading list (same as
+      // For You) — not a per-card shimmer while waiting for eval/hydration.
       //
       // Miniatures need their PGN fetched before the board can replay them, so
       // the wrapper's own navigation is declined and the launcher takes over.
@@ -652,6 +661,9 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     int gameIndex,
     List<GamesTourModel> allGames,
   ) {
+    // Same GridChessBoardFromFENNew path as For You / tournament grid. Eval
+    // bar geometry is reserved on first paint for finished archive games even
+    // before fen/lastMove hydration (see _shouldShowEvalBarForGame).
     return GridGameCardWrapperWidget(
       key: ValueKey('mini_grid_${game.gameId}'),
       game: game,

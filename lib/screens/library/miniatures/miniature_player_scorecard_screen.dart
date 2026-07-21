@@ -59,6 +59,15 @@ class _MiniaturePlayerScorecardScreenState
 
   final Set<String> _collapsedDates = {};
 
+  /// 0 at the top of the list (body header owns the name); 1 once the header
+  /// has scrolled under the app bar. Driven by [_onScroll].
+  double _appBarTitleOpacity = 0;
+
+  /// Scroll range over which the app-bar title eases in. Tuned to the body
+  /// header (avatar + name) so the title appears as that name leaves view.
+  static const double _titleFadeStart = 28;
+  static const double _titleFadeEnd = 88;
+
   String get _playerId => widget.player.playerId;
 
   @override
@@ -79,8 +88,21 @@ class _MiniaturePlayerScorecardScreenState
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+
+    final offset = _scrollController.position.pixels;
+    final span = _titleFadeEnd - _titleFadeStart;
+    final next =
+        span <= 0
+            ? 0.0
+            : ((offset - _titleFadeStart) / span).clamp(0.0, 1.0);
+    // Skip tiny noise so we do not rebuild every pixel.
+    if ((next - _appBarTitleOpacity).abs() > 0.02 ||
+        (next == 0) != (_appBarTitleOpacity == 0) ||
+        (next == 1) != (_appBarTitleOpacity == 1)) {
+      setState(() => _appBarTitleOpacity = next);
+    }
+
+    if (offset >= _scrollController.position.maxScrollExtent - 200) {
       final state = ref.read(miniaturePlayerGamesPaginatedProvider(_playerId));
       if (!state.isLoading && state.hasMore) {
         ref
@@ -260,18 +282,26 @@ class _MiniaturePlayerScorecardScreenState
       );
     }
 
+    // Title is empty at rest so it does not duplicate the body header; it
+    // fades in once the header name scrolls under the bar, and out on return.
     return Scaffold(
       backgroundColor: context.colors.background,
       appBar: AppBar(
         backgroundColor: context.colors.background,
         elevation: 0,
         titleSpacing: 0,
-        title: Text(
-          widget.player.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.textMdMedium.copyWith(
-            color: context.colors.textPrimary,
+        title: IgnorePointer(
+          ignoring: _appBarTitleOpacity < 0.05,
+          child: Opacity(
+            opacity: _appBarTitleOpacity,
+            child: Text(
+              widget.player.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
           ),
         ),
       ),
@@ -813,7 +843,10 @@ class _MiniatureStatsRow extends StatelessWidget {
           SizedBox(width: 10.w),
           Expanded(
             child: _StatTile(
-              value: '${player.wins}W-${player.losses}L',
+              valueWidget: _WinLossValue(
+                wins: player.wins,
+                losses: player.losses,
+              ),
               label: '${player.winRate.round()}% won',
             ),
           ),
@@ -831,13 +864,19 @@ class _MiniatureStatsRow extends StatelessWidget {
 }
 
 class _StatTile extends StatelessWidget {
-  const _StatTile({required this.value, required this.label});
+  const _StatTile({this.value, this.valueWidget, required this.label})
+    : assert(value != null || valueWidget != null);
 
-  final String value;
+  final String? value;
+  final Widget? valueWidget;
   final String label;
 
   @override
   Widget build(BuildContext context) {
+    final style = AppTypography.textSmMedium.copyWith(
+      color: context.colors.textPrimary,
+      fontWeight: FontWeight.w600,
+    );
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 12.h),
       decoration: BoxDecoration(
@@ -851,14 +890,9 @@ class _StatTile extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child:
+                valueWidget ??
+                Text(value!, maxLines: 1, style: style),
           ),
           SizedBox(height: 4.h),
           Text(
@@ -869,6 +903,42 @@ class _StatTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Same W/L colors as [FigmaPlayerCard] leaderboard rows: brand primary wins,
+/// danger red losses.
+class _WinLossValue extends StatelessWidget {
+  const _WinLossValue({required this.wins, required this.losses});
+
+  final int wins;
+  final int losses;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = AppTypography.textSmMedium.copyWith(
+      fontWeight: FontWeight.w600,
+    );
+    return Text.rich(
+      TextSpan(
+        style: base,
+        children: [
+          TextSpan(
+            text: '${wins}W',
+            style: base.copyWith(color: kPrimaryColor),
+          ),
+          TextSpan(
+            text: '-',
+            style: base.copyWith(color: context.colors.textSecondary),
+          ),
+          TextSpan(
+            text: '${losses}L',
+            style: base.copyWith(color: context.colors.danger),
+          ),
+        ],
+      ),
+      maxLines: 1,
     );
   }
 }

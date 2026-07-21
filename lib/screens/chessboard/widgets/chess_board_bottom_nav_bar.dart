@@ -3,7 +3,6 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +27,10 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool isGamebaseActive;
   final bool showGamebaseButton;
 
+  /// When true (opening explorer page visible), the bar background is lightly
+  /// translucent so explorer games under the bar stay faintly visible.
+  final bool explorerPanelVisible;
+
   const ChessBoardBottomNavBar({
     super.key,
     required this.gameIndex,
@@ -47,6 +50,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     this.onGamebaseToggle,
     this.isGamebaseActive = false,
     this.showGamebaseButton = false,
+    this.explorerPanelVisible = false,
   });
 
   @override
@@ -84,7 +88,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
-    final activeComponent = depthSnapshot?.component;
     final gaugeProgress = depthSnapshot?.progress;
 
     // Check if user wants to see depth overlay
@@ -158,11 +161,23 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       ],
     );
 
+    // Subtle translucency only while the explorer panel is open — enough to
+    // hint that more games sit under the bar, without washing out the chrome.
+    const explorerBarAlpha = 0.86;
+    final barColor =
+        explorerPanelVisible
+            ? context.colors.background.withValues(alpha: explorerBarAlpha)
+            : context.colors.background;
+    final tabletSurface =
+        explorerPanelVisible
+            ? context.colors.surface.withValues(alpha: explorerBarAlpha)
+            : context.colors.surface;
+
     // Tablet-refined container with subtle top border
     final bar = Container(
       width: fullWidth,
       decoration: BoxDecoration(
-        color: context.colors.background,
+        color: barColor,
         // Add subtle top border for visual separation on tablets
         border:
             isTablet
@@ -185,7 +200,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
                     ? Container(
                       height: barHeight - 12,
                       decoration: BoxDecoration(
-                        color: context.colors.surface,
+                        color: tabletSurface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       margin: EdgeInsets.symmetric(vertical: 4),
@@ -202,6 +217,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       ),
     );
 
+    // Bottom nav always stays put so explorer game-card focus arrows remain
+    // usable while browsing inline games (games expand covers PV + table instead).
     if (!isTabletLandscape) {
       return bar;
     }

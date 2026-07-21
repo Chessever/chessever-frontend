@@ -8,6 +8,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -268,16 +269,102 @@ class _SortHeader extends StatelessWidget {
   }
 }
 
+
+/// Sync sticky header mode from the games section's position in the list.
+///
+/// Uses light hysteresis so the Move ↔ Games crossfade does not flicker, but
+/// restores chrome as soon as the user scrolls up to the top of the games
+/// block (about to re-enter the moves area).
+///
+/// Must not run during layout/paint: `localToGlobal` reads [RenderBox.size],
+/// which asserts when content size changes mid-frame (PV expand, full-line
+/// upgrade, ballistic fling). Callers schedule this via post-frame callback.
+void _syncExplorerHeaderMode({
+  required GlobalKey gamesSectionKey,
+  required ScrollController scrollController,
+  required bool currentlyInGames,
+  required ValueChanged<bool> setInGames,
+}) {
+  if (!scrollController.hasClients) {
+    if (currentlyInGames) setInGames(false);
+    return;
+  }
+
+  // Absolute top of the scrollable: never keep games mode / expand-over-PV.
+  final position = scrollController.position;
+  if (position.pixels <= position.minScrollExtent + 1.0) {
+    if (currentlyInGames) setInGames(false);
+    return;
+  }
+
+  final gamesContext = gamesSectionKey.currentContext;
+  if (gamesContext == null) {
+    if (currentlyInGames) setInGames(false);
+    return;
+  }
+  final gamesBox = gamesContext.findRenderObject();
+  if (gamesBox is! RenderBox || !gamesBox.hasSize) {
+    if (currentlyInGames) setInGames(false);
+    return;
+  }
+  final scrollContext = position.context.notificationContext;
+  if (scrollContext == null) {
+    if (currentlyInGames) setInGames(false);
+    return;
+  }
+  final listBox = scrollContext.findRenderObject();
+  if (listBox is! RenderBox || !listBox.hasSize) {
+    if (currentlyInGames) setInGames(false);
+    return;
+  }
+
+  // Defensive: never read geometry while the pipeline is still laying out.
+  final phase = SchedulerBinding.instance.schedulerPhase;
+  if (phase == SchedulerPhase.persistentCallbacks ||
+      phase == SchedulerPhase.midFrameMicrotasks) {
+    return;
+  }
+
+  late final double listTop;
+  late final double gamesTop;
+  try {
+    listTop = listBox.localToGlobal(Offset.zero).dy;
+    gamesTop = gamesBox.localToGlobal(Offset.zero).dy;
+  } catch (_) {
+    // Size access not permitted mid-layout — retry is scheduled by the caller.
+    return;
+  }
+  // delta <= 0  → games section top is at/above the sticky edge (deep in games)
+  // delta > 0   → games section top has dropped below the edge (leaving games)
+  final delta = gamesTop - listTop;
+
+  // Enter once the section reaches the sticky edge; leave as soon as it peeks
+  // back a few pixels under the edge (user scrolled up toward moves).
+  const enterPx = 8.0;
+  const exitPx = 12.0;
+  final next = currentlyInGames ? delta <= exitPx : delta <= enterPx;
+  if (next != currentlyInGames) setInGames(next);
+}
+
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
 class MoveStatisticsPanel extends HookConsumerWidget {
-  const MoveStatisticsPanel({super.key, this.onMove});
+  const MoveStatisticsPanel({
+    super.key,
+    this.onMove,
+    this.listBottomPadding,
+  });
 
   /// Optional handler for move taps. When supplied, taps invoke this callback
   /// instead of advancing the gamebase explorer's internal state — used when
   /// embedding the panel in the chess board screen so taps play on the user's
   /// game rather than diverging into the explorer's standalone exploration.
   final void Function(String uci)? onMove;
+
+  /// Extra scroll padding under the move/games list so the last rows clear a
+  /// floating bottom nav (board `extendBody` / translucent bar). When null,
+  /// a small default gap is used.
+  final double? listBottomPadding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -290,6 +377,64 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     void cycleSort(ExplorerMoveSortField field) {
       sort.value = ExplorerMoveSort.cycle(sort.value, field);
     }
+
+    // Sticky header crossfade: Move columns ↔ Games columns when the inline
+    // games section scrolls up under the header.
+    final scrollController = useScrollController();
+    final gamesSectionKey = useMemoized(
+      () => GlobalKey(debugLabel: 'explorer_inline_games_section'),
+    );
+    final headerInGames = useState(false);
+    // Coalesce geometry reads onto the next frame — scroll metrics can change
+    // mid-layout (PV expand / line upgrade) and localToGlobal is illegal then.
+    final headerSyncScheduled = useRef(false);
+
+    void runHeaderModeSync() {
+      _syncExplorerHeaderMode(
+        gamesSectionKey: gamesSectionKey,
+        scrollController: scrollController,
+        currentlyInGames: headerInGames.value,
+        setInGames: (v) {
+          if (headerInGames.value == v) return;
+          headerInGames.value = v;
+          // Drive games expanded-overlay mode (covers engine lines + table).
+          final pinned = ref.read(explorerInlineGamesPinnedProvider);
+          if (pinned != v) {
+            ref.read(explorerInlineGamesPinnedProvider.notifier).state = v;
+          }
+        },
+      );
+    }
+
+    void syncHeaderMode() {
+      if (headerSyncScheduled.value) return;
+      headerSyncScheduled.value = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        headerSyncScheduled.value = false;
+        runHeaderModeSync();
+      });
+    }
+
+    useEffect(() {
+      void onScroll() => syncHeaderMode();
+      scrollController.addListener(onScroll);
+      syncHeaderMode();
+      return () {
+        scrollController.removeListener(onScroll);
+        // Leave chrome unpinned when this panel unmounts.
+        Future.microtask(() {
+          try {
+            ref.read(explorerInlineGamesPinnedProvider.notifier).state = false;
+          } catch (_) {}
+        });
+      };
+    }, [scrollController]);
+
+    // Re-measure when the games section mounts/unmounts with data changes.
+    useEffect(() {
+      syncHeaderMode();
+      return null;
+    }, [state.totalGames, state.isLoading, state.currentFen]);
 
     final sortedAggregates = applyExplorerMoveSort(
       state.moveAggregates,
@@ -400,6 +545,69 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       );
     }
 
+    final movesHeader = Row(
+      key: const ValueKey<String>('explorer_header_moves'),
+      children: [
+        SizedBox(
+          width: _kMoveColumnWidth.w,
+          child: _SortHeader(
+            label: 'Move',
+            field: ExplorerMoveSortField.move,
+            align: TextAlign.left,
+            sort: sort.value,
+            onSort: cycleSort,
+          ),
+        ),
+        SizedBox(width: _kColumnGap.sp),
+        Expanded(
+          child: _SortHeader(
+            label: 'Score',
+            field: ExplorerMoveSortField.score,
+            align: TextAlign.center,
+            sort: sort.value,
+            onSort: cycleSort,
+          ),
+        ),
+        SizedBox(width: _kColumnGap.sp),
+        SizedBox(
+          width: _kGamesColumnWidth.w,
+          child: _SortHeader(
+            label: 'Games',
+            field: ExplorerMoveSortField.games,
+            align: TextAlign.right,
+            sort: sort.value,
+            onSort: cycleSort,
+            color: kPrimaryColor,
+          ),
+        ),
+        SizedBox(width: _kColumnGap.sp),
+        SizedBox(
+          width: _kLastColumnWidth.w,
+          child: _SortHeader(
+            label: 'Last',
+            field: ExplorerMoveSortField.last,
+            align: TextAlign.right,
+            sort: sort.value,
+            onSort: cycleSort,
+          ),
+        ),
+      ],
+    );
+
+    // Sticky label when the inline game cards section is under the header.
+    final gamesHeader = Align(
+      key: const ValueKey<String>('explorer_header_games'),
+      alignment: Alignment.centerLeft,
+      child: Text(
+        'Games',
+        style: TextStyle(
+          color: context.colors.textSecondary,
+          fontSize: 11.f,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+
     final Widget mainContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -411,59 +619,56 @@ class MoveStatisticsPanel extends HookConsumerWidget {
           ),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
-          child: Row(
-            children: [
-              SizedBox(
-                width: _kMoveColumnWidth.w,
-                child: _SortHeader(
-                  label: 'Move',
-                  field: ExplorerMoveSortField.move,
-                  align: TextAlign.left,
-                  sort: sort.value,
-                  onSort: cycleSort,
-                ),
-              ),
-              SizedBox(width: _kColumnGap.sp),
-              Expanded(
-                child: _SortHeader(
-                  label: 'Score',
-                  field: ExplorerMoveSortField.score,
-                  align: TextAlign.center,
-                  sort: sort.value,
-                  onSort: cycleSort,
-                ),
-              ),
-              SizedBox(width: _kColumnGap.sp),
-              SizedBox(
-                width: _kGamesColumnWidth.w,
-                child: _SortHeader(
-                  label: 'Games',
-                  field: ExplorerMoveSortField.games,
-                  align: TextAlign.right,
-                  sort: sort.value,
-                  onSort: cycleSort,
-                  color: kPrimaryColor,
-                ),
-              ),
-              SizedBox(width: _kColumnGap.sp),
-              SizedBox(
-                width: _kLastColumnWidth.w,
-                child: _SortHeader(
-                  label: 'Last',
-                  field: ExplorerMoveSortField.last,
-                  align: TextAlign.right,
-                  sort: sort.value,
-                  onSort: cycleSort,
-                ),
-              ),
-            ],
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            layoutBuilder: (currentChild, previousChildren) {
+              return Stack(
+                alignment: Alignment.centerLeft,
+                children: <Widget>[
+                  ...previousChildren,
+                  if (currentChild != null) currentChild,
+                ],
+              );
+            },
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: child,
+              );
+            },
+            child: headerInGames.value ? gamesHeader : movesHeader,
           ),
         ),
         Divider(color: context.colors.divider, height: 1),
         // Move list
         Expanded(
-          child:
-              showSkeleton
+          child: Builder(
+            builder: (context) {
+              // Clear the bottom nav / home indicator so last move rows and
+              // inline game cards are fully scrollable into view.
+              final listPadding = EdgeInsets.only(
+                bottom: listBottomPadding ?? 8.sp,
+              );
+              // Catch every scroll update (including ballistic / edge bounce)
+              // so bottom-nav restore isn't missed when flinging up to the
+              // top of the games block.
+              Widget wrapScroll(Widget child) {
+                return NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification is ScrollUpdateNotification ||
+                        notification is ScrollEndNotification ||
+                        notification is OverscrollNotification) {
+                      syncHeaderMode();
+                    }
+                    return false;
+                  },
+                  child: child,
+                );
+              }
+
+              return showSkeleton
                   ? Skeletonizer(
                     enabled: true,
                     // Match the app-wide loading shimmer: a low-alpha, inactive
@@ -477,30 +682,40 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                       ),
                       duration: const Duration(milliseconds: 1500),
                     ),
-                    child: ListView.separated(
-                      padding: EdgeInsets.zero,
-                      itemCount: 7,
-                      separatorBuilder:
-                          (_, __) => Divider(
-                            color: context.colors.divider,
-                            height: 1,
-                            indent: 12.sp,
-                          ),
-                      itemBuilder:
-                          (_, index) => _MoveStatisticsSkeletonRow(seed: index),
+                    child: wrapScroll(
+                      ListView.separated(
+                        controller: scrollController,
+                        padding: listPadding,
+                        itemCount: 7,
+                        separatorBuilder:
+                            (_, __) => Divider(
+                              color: context.colors.divider,
+                              height: 1,
+                              indent: 12.sp,
+                            ),
+                        itemBuilder:
+                            (_, index) =>
+                                _MoveStatisticsSkeletonRow(seed: index),
+                      ),
                     ),
                   )
-                  : ListView(
-                    padding: EdgeInsets.zero,
-                    children: _buildListChildren(
-                      context,
-                      ref,
-                      state,
-                      aggregates: sortedAggregates,
-                      showGate: showGate,
-                      nextStepCrossesLimit: nextStepCrossesLimit,
+                  : wrapScroll(
+                    ListView(
+                      controller: scrollController,
+                      padding: listPadding,
+                      children: _buildListChildren(
+                        context,
+                        ref,
+                        state,
+                        aggregates: sortedAggregates,
+                        showGate: showGate,
+                        nextStepCrossesLimit: nextStepCrossesLimit,
+                        gamesSectionKey: gamesSectionKey,
+                      ),
                     ),
-                  ),
+                  );
+            },
+          ),
         ),
       ],
     );
@@ -538,6 +753,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     required List<MoveAggregate> aggregates,
     required bool showGate,
     required bool nextStepCrossesLimit,
+    GlobalKey? gamesSectionKey,
   }) {
     Widget divider() =>
         Divider(color: context.colors.divider, height: 1, indent: 12.sp);
@@ -609,10 +825,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         totalGames <= kExplorerInlineGamesLimit) {
       children.add(divider());
       children.add(
-        ExplorerGamesSection(
-          fen: state.currentFen,
-          moves: state.exploredMoves,
-          filters: state.filters,
+        KeyedSubtree(
+          key: gamesSectionKey,
+          child: ExplorerGamesSection(
+            fen: state.currentFen,
+            moves: state.exploredMoves,
+            filters: state.filters,
+          ),
         ),
       );
     }

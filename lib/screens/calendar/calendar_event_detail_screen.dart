@@ -7,6 +7,7 @@ import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/favorite_event_ids.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -362,7 +363,18 @@ class _CalendarEventFavoriteStar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final favoritesAsync = ref.watch(favoriteEventsProvider);
     final isStarred = favoritesAsync.maybeWhen(
-      data: (events) => events.any((favorite) => favorite.eventId == event.id),
+      data:
+          (events) => events.any(
+            (favorite) =>
+                favoriteEventMatchesId(
+                  storedEventId: favorite.eventId,
+                  candidateId: event.id,
+                  eventName: favorite.eventName,
+                  metadata: favorite.metadata,
+                ) ||
+                favorite.eventName.trim().toLowerCase() ==
+                    event.title.trim().toLowerCase(),
+          ),
       orElse: () => false,
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,

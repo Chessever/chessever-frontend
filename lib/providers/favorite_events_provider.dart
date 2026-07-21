@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/utils/favorite_event_ids.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -102,7 +103,13 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     }
   }
 
-  /// Add event to favorites (optimistic update)
+  /// Add event to favorites (optimistic update).
+  ///
+  /// Stores a notification-matchable id whenever possible:
+  /// - Current / For You Lichess cards already pass `group_broadcasts.id`
+  /// - Calendar `cal_event_*` ids are remapped to a matching broadcast id
+  ///   when one exists under the same name so round push dispatch can find
+  ///   the star. The original synthetic id is kept in metadata for UI aliasing.
   Future<void> addFavorite({
     required String eventId,
     required String eventName,
@@ -116,10 +123,20 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
       throw Exception('User must be logged in to favorite events');
     }
 
+    final resolved = await _resolveCanonicalEventId(
+      eventId: eventId,
+      eventName: eventName,
+    );
+    final storeId = resolved.storeId;
+    final calAlias = calendarEventFavoriteIdFromName(eventName);
+
     final metadata = <String, dynamic>{
       if (timeControl != null) 'timeControl': timeControl,
       if (maxAvgElo != null) 'maxAvgElo': maxAvgElo,
       if (dates != null) 'dates': dates,
+      'cal_event_alias': calAlias,
+      if (resolved.sourceEventId != null)
+        'source_event_id': resolved.sourceEventId,
       ...?extraMetadata,
     };
 
@@ -127,7 +144,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     final optimisticEvent = FavoriteEvent(
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
       userId: userId,
-      eventId: eventId,
+      eventId: storeId,
       eventName: eventName,
       metadata: metadata,
       createdAt: DateTime.now(),
@@ -136,20 +153,42 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
     // STEP 1: Optimistic update - update state immediately
     final currentEvents = state.valueOrNull ?? [];
-    final updatedEvents = [...currentEvents, optimisticEvent];
+    // Drop any alias rows for the same tournament so we don't keep both a
+    // cal_event_* and a GBID star for one event.
+    final withoutAliases =
+        currentEvents
+            .where((e) => !_matchesFavorite(e, eventId, eventName: eventName))
+            .where((e) => !_matchesFavorite(e, storeId, eventName: eventName))
+            .toList();
+    final updatedEvents = [...withoutAliases, optimisticEvent];
     state = AsyncValue.data(updatedEvents);
 
     // Cache immediately
     await _cacheEvents(updatedEvents, userId);
 
     try {
-      // STEP 2: Sync to Supabase in background (upsert prevents duplicates)
+      // Remove alias rows first (calendar id vs remapped GBID) so one star
+      // remains, keyed by the dispatch-matchable id.
+      final aliasIds = favoriteEventIdCandidates(
+        eventId,
+        eventName: eventName,
+      )..add(storeId);
+      for (final id in aliasIds) {
+        if (id == storeId) continue;
+        await _supabase
+            .from('user_favorite_events')
+            .delete()
+            .eq('user_id', userId)
+            .eq('event_id', id);
+      }
+
+      // STEP 2: Sync to Supabase (upsert prevents duplicates)
       await _supabase
           .from('user_favorite_events')
           .upsert(
             {
               'user_id': userId,
-              'event_id': eventId,
+              'event_id': storeId,
               'event_name': eventName,
               'metadata': metadata,
             },
@@ -157,7 +196,14 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
             ignoreDuplicates: true,
           );
 
-      debugPrint('[FavoriteEvents] Added event $eventId to Supabase');
+      debugPrint(
+        '[FavoriteEvents] Added event $storeId to Supabase '
+        '(requested=$eventId)',
+      );
+
+      // Starring an event is an opt-in for event-round alerts. Do not force
+      // push_enabled (needs OS permission); only ensure the category flag.
+      unawaited(_ensureFavoriteEventAlertsEnabled(userId));
 
       // STEP 3: Fetch fresh data from Supabase (without loading state)
       final freshEvents = await _loadFavorites();
@@ -174,8 +220,11 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     }
   }
 
-  /// Remove event from favorites (optimistic update)
-  Future<void> removeFavorite(String eventId) async {
+  /// Remove event from favorites (optimistic update).
+  ///
+  /// Deletes every stored row that aliases to [eventId] (GBID, cal_event_*,
+  /// or metadata bridges) so Calendar / For You / Current share one unstar.
+  Future<void> removeFavorite(String eventId, {String? eventName}) async {
     final userId = _getCurrentUserId();
     if (userId == null) {
       throw Exception('User must be logged in to remove favorites');
@@ -183,20 +232,40 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
     // STEP 1: Optimistic update - update state immediately
     final currentEvents = state.valueOrNull ?? [];
+    final removed =
+        currentEvents
+            .where((e) => _matchesFavorite(e, eventId, eventName: eventName))
+            .toList();
     final updatedEvents =
-        currentEvents.where((e) => e.eventId != eventId).toList();
+        currentEvents
+            .where((e) => !_matchesFavorite(e, eventId, eventName: eventName))
+            .toList();
     state = AsyncValue.data(updatedEvents);
 
     // Cache immediately
     await _cacheEvents(updatedEvents, userId);
 
     try {
-      // STEP 2: Sync to Supabase in background
-      await _supabase
-          .from('user_favorite_events')
-          .delete()
-          .eq('user_id', userId)
-          .eq('event_id', eventId);
+      // STEP 2: Sync to Supabase — delete all alias ids for this star
+      final idsToDelete = <String>{
+        eventId,
+        for (final e in removed) e.eventId,
+        for (final e in removed)
+          if (e.metadata['cal_event_alias'] is String)
+            e.metadata['cal_event_alias'] as String,
+        for (final e in removed)
+          if (e.metadata['source_event_id'] is String)
+            e.metadata['source_event_id'] as String,
+        if (eventName != null && eventName.trim().isNotEmpty)
+          calendarEventFavoriteIdFromName(eventName),
+      };
+      for (final id in idsToDelete) {
+        await _supabase
+            .from('user_favorite_events')
+            .delete()
+            .eq('user_id', userId)
+            .eq('event_id', id);
+      }
 
       debugPrint('[FavoriteEvents] Removed event $eventId from Supabase');
 
@@ -272,11 +341,8 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     String? dates,
     Map<String, dynamic>? extraMetadata,
   }) async {
-    final currentState = state.valueOrNull ?? [];
-    final isFavorited = currentState.any((e) => e.eventId == eventId);
-
-    if (isFavorited) {
-      await removeFavorite(eventId);
+    if (isFavorited(eventId, eventName: eventName)) {
+      await removeFavorite(eventId, eventName: eventName);
       return false;
     } else {
       await addFavorite(
@@ -291,11 +357,93 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     }
   }
 
-  /// Check if event is favorited
-  bool isFavorited(String eventId) {
+  /// Check if event is favorited (matches GBID, cal_event alias, metadata).
+  bool isFavorited(String eventId, {String? eventName}) {
     final currentState = state.valueOrNull;
     if (currentState == null) return false;
-    return currentState.any((e) => e.eventId == eventId);
+    return currentState.any(
+      (e) => _matchesFavorite(e, eventId, eventName: eventName),
+    );
+  }
+
+  bool _matchesFavorite(
+    FavoriteEvent favorite,
+    String candidateId, {
+    String? eventName,
+  }) {
+    if (favoriteEventMatchesId(
+      storedEventId: favorite.eventId,
+      candidateId: candidateId,
+      eventName: favorite.eventName,
+      metadata: favorite.metadata,
+    )) {
+      return true;
+    }
+    // Also match when the card is a cal_event_* alias of the stored name
+    // or the stored row's cal_event_alias equals the candidate.
+    if (eventName != null && eventName.trim().isNotEmpty) {
+      if (favoriteEventMatchesId(
+        storedEventId: favorite.eventId,
+        candidateId: calendarEventFavoriteIdFromName(eventName),
+        eventName: favorite.eventName,
+        metadata: favorite.metadata,
+      )) {
+        return true;
+      }
+      // Stored cal_event / name vs card GBID: same display name.
+      if (!isSyntheticFavoriteEventId(candidateId) &&
+          favorite.eventName.trim().toLowerCase() ==
+              eventName.trim().toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// When a calendar/community id is used, prefer a live `group_broadcasts.id`
+  /// with the same name so round notifications can resolve the star.
+  Future<({String storeId, String? sourceEventId})> _resolveCanonicalEventId({
+    required String eventId,
+    required String eventName,
+  }) async {
+    if (!isSyntheticFavoriteEventId(eventId)) {
+      return (storeId: eventId, sourceEventId: null);
+    }
+    try {
+      final response =
+          await _supabase
+              .from('group_broadcasts')
+              .select('id')
+              .ilike('name', eventName.trim())
+              .limit(1)
+              .maybeSingle();
+      final gbid = response?['id'] as String?;
+      if (gbid != null && gbid.isNotEmpty) {
+        debugPrint(
+          '[FavoriteEvents] Remapped $eventId → $gbid for notifications',
+        );
+        return (storeId: gbid, sourceEventId: eventId);
+      }
+    } catch (e) {
+      debugPrint('[FavoriteEvents] Canonical id lookup failed: $e');
+    }
+    return (storeId: eventId, sourceEventId: null);
+  }
+
+  /// Ensure starred-event push category is on after the user stars an event.
+  ///
+  /// Update-only: never upsert a partial prefs row (DB defaults would force
+  /// `push_enabled=false` and other columns). Missing prefs rows already
+  /// fail-open in onesignal-dispatch for this category.
+  Future<void> _ensureFavoriteEventAlertsEnabled(String userId) async {
+    try {
+      await _supabase
+          .from('user_notification_preferences')
+          .update({'favorite_event_alerts': true})
+          .eq('user_id', userId);
+    } catch (e) {
+      debugPrint('[FavoriteEvents] Could not enable favorite_event_alerts: $e');
+    }
   }
 
   /// Refresh favorites from Supabase
@@ -364,11 +512,19 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   }
 }
 
-/// Provider to check if a specific event is favorited
+/// Provider to check if a specific event is favorited (alias-aware).
 final isEventFavoritedProvider = Provider.family<bool, String>((ref, eventId) {
   final favorites = ref.watch(favoriteEventsProvider);
   return favorites.maybeWhen(
-    data: (events) => events.any((e) => e.eventId == eventId),
+    data:
+        (events) => events.any(
+          (e) => favoriteEventMatchesId(
+            storedEventId: e.eventId,
+            candidateId: eventId,
+            eventName: e.eventName,
+            metadata: e.metadata,
+          ),
+        ),
     orElse: () => false,
   );
 });

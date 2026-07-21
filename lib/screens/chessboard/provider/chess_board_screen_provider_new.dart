@@ -13,6 +13,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
+import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -417,7 +418,7 @@ class ChessBoardScreenNotifierNew
           _releaseLog(
             '   → Forcing re-evaluation with new PV setting=${nextValue.principalVariationLabel()} (was ${prevValue?.principalVariationLabel() ?? "null"})...',
           );
-          _evaluatePosition(force: true);
+          _evaluatePosition(force: true, forceRestart: true);
           _releaseLog('   ✅ Re-evaluation triggered for PV setting change');
         } else {
           // For other settings (like search time), only re-evaluate if currently visible
@@ -426,7 +427,7 @@ class ChessBoardScreenNotifierNew
           );
           if (index == currentVisiblePage) {
             _releaseLog('   → Forcing re-evaluation with new settings...');
-            _evaluatePosition(force: true);
+            _evaluatePosition(force: true, forceRestart: true);
             _releaseLog('   ✅ Re-evaluation triggered');
           } else {
             _releaseLog(
@@ -582,7 +583,10 @@ class ChessBoardScreenNotifierNew
       stockfish.forceRecovery().then((_) {
         if (mounted) {
           Future.delayed(const Duration(milliseconds: 1000), () {
-            if (mounted) _evaluatePosition(force: true);
+            // forceRestart: true — stall recovery must re-run even if partial PVs linger
+            if (mounted) {
+              _evaluatePosition(force: true, forceRestart: true);
+            }
           });
         }
       });
@@ -597,7 +601,7 @@ class ChessBoardScreenNotifierNew
       );
       stockfish.forceRecovery().then((_) {
         if (mounted) {
-          _evaluatePosition(force: true);
+          _evaluatePosition(force: true, forceRestart: true);
         }
       });
       return;
@@ -606,7 +610,7 @@ class ChessBoardScreenNotifierNew
     // Simple delayed retry for early timeouts
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
-        _evaluatePosition(force: true);
+        _evaluatePosition(force: true, forceRestart: true);
       }
     });
   }
@@ -629,10 +633,12 @@ class ChessBoardScreenNotifierNew
 
   /// Re-run the evaluation for [fen] after a cancellation/failure, but cap the
   /// number of consecutive same-position retries. The retry sites use
-  /// `_evaluatePosition(force: true)`, which bypasses coalescing; without a cap
-  /// a position that keeps failing (e.g. Stockfish disabled in debug) or whose
-  /// PVs keep getting rejected would re-fire with no delay forever and freeze
-  /// the UI isolate. After the cap we stop and clear the loading flag instead.
+  /// `_evaluatePosition(force: true)`, which previously bypassed coalescing;
+  /// without a cap a position that keeps failing (e.g. Stockfish disabled in
+  /// debug) or whose PVs keep getting rejected would re-fire with no delay
+  /// forever and freeze the UI isolate. After the cap we stop and clear the
+  /// loading flag instead. Same-FEN coalesce / complete short-circuit still
+  /// apply unless a newer request already owns the position.
   void _retryEvaluationForFen(String fen, {required String reason}) {
     final normalizedFen = _normalizeFen(fen);
     if (_evalRetryFen == normalizedFen) {
@@ -652,6 +658,8 @@ class ChessBoardScreenNotifierNew
       }
       return;
     }
+    // Do not forceRestart: if a newer same-FEN eval is already in flight or
+    // cascade already applied a complete multiPV, the restart policy no-ops.
     _evaluatePosition(force: true);
   }
 
@@ -5576,6 +5584,7 @@ class ChessBoardScreenNotifierNew
 
   Future<void> _evaluatePosition({
     bool force = false,
+    bool forceRestart = false,
     bool preserveCurrentPvs = false,
     bool preserveDepthProgress = false,
     bool skipPvUpdates = false,
@@ -5621,7 +5630,7 @@ class ChessBoardScreenNotifierNew
       // CRITICAL: Skip evaluation entirely if this is not the currently visible game
       // This prevents resource-intensive Stockfish analysis from running for off-screen games
       final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
-      if (index != currentVisiblePage && !force) {
+      if (index != currentVisiblePage && !force && !forceRestart) {
         _releaseLog(
           '🚫 EVAL: Skipping evaluation for non-visible game (page $index, visible: $currentVisiblePage)',
         );
@@ -5753,6 +5762,7 @@ class ChessBoardScreenNotifierNew
       // OPTIMIZATION: Skip recently failed evaluations (avoid hammering engine)
       final lastFailure = _failedEvalTimestamps[cacheKey];
       if (!force &&
+          !forceRestart &&
           lastFailure != null &&
           DateTime.now().difference(lastFailure) < const Duration(seconds: 3)) {
         _releaseLog('⚠️ EVAL: Skipping (recent failure < 3s ago)');
@@ -5767,28 +5777,57 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      // OPTIMIZATION: Coalesce duplicate requests for same position
-      if (!force &&
+      // Same-FEN restart policy: coalesce in-flight and skip complete results
+      // even when [force] is true (visible-page / navigation). Only
+      // [forceRestart] (settings, threats, stalled watchdog) may bypass.
+      final activeRequestIsStale =
+          _activeEvalStartTime != null &&
+          DateTime.now().difference(_activeEvalStartTime!) >
+              const Duration(seconds: 15);
+      final hasCompleteUsable = hasCompleteUsableBoardEval(
+        principalVariationsBaseFen: initialState.principalVariationsBaseFen,
+        principalVariationCount: initialState.principalVariations.length,
+        currentBoardFen: fen,
+        isEvaluating: initialState.isEvaluating,
+        normalizeFen: _normalizeFen,
+      );
+      final startDecision = decideBoardEvalStart(
+        requestedCacheKey: cacheKey,
+        activeEvalKey: _activeEvalKey,
+        hasActiveRequest: _activeEvalRequestId != null,
+        activeRequestIsStale: activeRequestIsStale,
+        hasCompleteUsableResultForKey: hasCompleteUsable,
+        forceRestart: forceRestart,
+      );
+      if (!startDecision.shouldStart) {
+        if (startDecision.action == BoardEvalStartAction.coalesceInFlight) {
+          _releaseLog(
+            '⏭️ EVAL: Coalescing (already evaluating same position)',
+          );
+        } else {
+          _releaseLog(
+            '⏭️ EVAL: Skipping restart — ${startDecision.reason}',
+          );
+          // Ensure we never leave a stuck loading spinner after a complete apply.
+          if (initialState.isEvaluating && hasCompleteUsable) {
+            state = AsyncValue.data(
+              initialState.copyWith(isEvaluating: false),
+            );
+          }
+        }
+        return;
+      }
+
+      if (activeRequestIsStale &&
           _activeEvalKey == cacheKey &&
           _activeEvalRequestId != null) {
-        // Check if stale (> 15s for deep staged analysis)
-        final isStale =
-            _activeEvalStartTime != null &&
-            DateTime.now().difference(_activeEvalStartTime!) >
-                const Duration(seconds: 15);
-
-        if (isStale) {
-          _releaseLog(
-            '⚠️ EVAL: Stale request (${DateTime.now().difference(_activeEvalStartTime!).inSeconds}s), forcing fresh eval',
-          );
-          state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
-          _activeEvalRequestId = null;
-          _activeEvalKey = null;
-          _activeEvalStartTime = null;
-        } else {
-          _releaseLog('⏭️ EVAL: Coalescing (already evaluating same position)');
-          return; // Let existing request complete
-        }
+        _releaseLog(
+          '⚠️ EVAL: Stale request (${DateTime.now().difference(_activeEvalStartTime!).inSeconds}s), forcing fresh eval',
+        );
+        state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
+        _activeEvalRequestId = null;
+        _activeEvalKey = null;
+        _activeEvalStartTime = null;
       }
 
       _registerPendingEvaluation(fen);
@@ -6037,11 +6076,16 @@ class ChessBoardScreenNotifierNew
                                 : snapshot.position!),
                         cascadeEval,
                       );
+              // Mark evaluation fully settled so same-FEN re-triggers no-op
+              // via hasCompleteUsableBoardEval (isEvaluating must be false with
+              // matching principalVariationsBaseFen).
               state = AsyncValue.data(
                 snapshot.copyWith(
                   evaluation: evaluation,
                   mate: _mateFromPv(cascadeEval.pvs.first, fenToAnalyze),
                   isEvaluating: false,
+                  principalVariations: pvLines,
+                  principalVariationsBaseFen: fen,
                   shapes:
                       snapshot.isPvPreviewActive
                           ? const ISet<Shape>.empty()
@@ -6049,6 +6093,9 @@ class ChessBoardScreenNotifierNew
                 ),
               );
             }
+            // Resolve pending/watchdog before return so a complete cascade does
+            // not look "stuck" and re-arm a force restart.
+            _resolvePendingEvaluation(fen);
             _releaseLog(
               '🎯 EVAL: Skipping local Stockfish - cached/backend eval is sufficient (depth=${cascadeEval.depth}, mate=${firstCascadePv.mate})',
             );
@@ -6273,13 +6320,21 @@ class ChessBoardScreenNotifierNew
           }
 
           // Only retry if NOT caused by watchdog — watchdog has its own retry path.
+          // Also skip if a newer request already owns evaluation (superseded) —
+          // otherwise cancelled stockfish jobs re-fire force evals forever.
           if (mounted &&
               !_cancelEvaluation &&
-              _consecutiveWatchdogTimeouts == 0) {
+              _consecutiveWatchdogTimeouts == 0 &&
+              (_activeEvalRequestId == null ||
+                  _activeEvalRequestId == currentRequestId)) {
             Future.microtask(() {
               if (!mounted ||
                   _cancelEvaluation ||
                   _consecutiveWatchdogTimeouts > 0) {
+                return;
+              }
+              if (_activeEvalRequestId != null &&
+                  _activeEvalRequestId != currentRequestId) {
                 return;
               }
               final latestState = state.value;
@@ -6404,11 +6459,17 @@ class ChessBoardScreenNotifierNew
       if (stockfishFailed &&
           mounted &&
           !_cancelEvaluation &&
-          _consecutiveWatchdogTimeouts == 0) {
+          _consecutiveWatchdogTimeouts == 0 &&
+          (_activeEvalRequestId == null ||
+              _activeEvalRequestId == currentRequestId)) {
         Future.microtask(() {
           if (!mounted ||
               _cancelEvaluation ||
               _consecutiveWatchdogTimeouts > 0) {
+            return;
+          }
+          if (_activeEvalRequestId != null &&
+              _activeEvalRequestId != currentRequestId) {
             return;
           }
           final latestState = state.value;
@@ -7242,26 +7303,24 @@ class ChessBoardScreenNotifierNew
     final newMode = !currentState.isThreatsMode;
     state = AsyncValue.data(currentState.copyWith(isThreatsMode: newMode));
 
-    // Force re-evaluation to show threats or return to normal
-    _evaluatePosition(force: true);
+    // Threats flips the side-to-move analysis target — always restart.
+    _evaluatePosition(force: true, forceRestart: true);
   }
 
   void _updateEvaluation({
     bool force = false,
+    bool forceRestart = false,
     bool preserveCurrentPvs = false,
     bool preserveDepthProgress = false,
   }) {
     if (_isLongPressing || _gameReviewVisible) return;
 
-    if (force) {
+    if (force || forceRestart) {
       // Force requests should interrupt any pending scheduled evaluations
       EasyDebounce.cancel('evaluation-$index');
     }
 
     _cancelEvaluation = false;
-    if (force) {
-      _clearActiveEvalState();
-    }
 
     final currentState = state.value;
     if (currentState == null) return;
@@ -7273,19 +7332,48 @@ class ChessBoardScreenNotifierNew
     final currentFen = currentPosition?.fen;
     if (currentFen == null || currentFen.trim().isEmpty) return;
 
-    // If an eval for the same position is already active, do not schedule a
-    // new one. This avoids depth resets/flicker when unrelated UI updates
-    // trigger _updateEvaluation repeatedly while browsing opening explorer.
+    // Same-FEN coalesce / complete short-circuit BEFORE clearing active state.
+    // Clearing active first used to make every force call look like a fresh
+    // request and re-enter the cascade loop after CASCADE APPLY complete.
     final fenToAnalyze =
         currentState.isThreatsMode ? _getThreatFen(currentFen) : currentFen;
-    final activeCacheKey = _fenCacheKey(
-      fenToAnalyze,
-      multiPV: _currentMultiPvSetting(),
+    final multiPv = _currentMultiPvSetting();
+    final activeCacheKey = _fenCacheKey(fenToAnalyze, multiPV: multiPv);
+    final activeRequestIsStale =
+        _activeEvalStartTime != null &&
+        DateTime.now().difference(_activeEvalStartTime!) >
+            const Duration(seconds: 15);
+    final hasCompleteUsable = hasCompleteUsableBoardEval(
+      principalVariationsBaseFen: currentState.principalVariationsBaseFen,
+      principalVariationCount: currentState.principalVariations.length,
+      currentBoardFen: currentFen,
+      isEvaluating: currentState.isEvaluating,
+      normalizeFen: _normalizeFen,
     );
-    if (!force &&
-        _activeEvalRequestId != null &&
-        _activeEvalKey == activeCacheKey) {
+    final startDecision = decideBoardEvalStart(
+      requestedCacheKey: activeCacheKey,
+      activeEvalKey: _activeEvalKey,
+      hasActiveRequest: _activeEvalRequestId != null,
+      activeRequestIsStale: activeRequestIsStale,
+      hasCompleteUsableResultForKey: hasCompleteUsable,
+      forceRestart: forceRestart,
+    );
+    if (!startDecision.shouldStart) {
+      if (startDecision.action == BoardEvalStartAction.coalesceInFlight) {
+        // Keep the existing request; do not clear depth or re-fire cascade.
+        return;
+      }
+      _releaseLog('⏭️ EVAL: Skipping schedule — ${startDecision.reason}');
+      if (currentState.isEvaluating && hasCompleteUsable) {
+        state = AsyncValue.data(currentState.copyWith(isEvaluating: false));
+      }
       return;
+    }
+
+    // Only clear the in-flight marker when we are actually starting a new eval
+    // (new FEN, missing result, or explicit forceRestart).
+    if (force || forceRestart) {
+      _clearActiveEvalState();
     }
 
     final previewActive = currentState.isPvPreviewActive;
@@ -7337,7 +7425,7 @@ class ChessBoardScreenNotifierNew
       if (state.value == null) return;
 
       _releaseLog(
-        force
+        force || forceRestart
             ? '🎯 EVAL: Forcing evaluation for current position'
             : '🎯 EVAL: Scheduling evaluation for current position',
       );
@@ -7345,17 +7433,19 @@ class ChessBoardScreenNotifierNew
       // circuit-breaker so a previously capped position can be evaluated again.
       _evalRetryCount = 0;
       _evalRetryFen = null;
-      final visibleIndex = ref.read(currentlyVisiblePageIndexProvider);
-      final shouldForce = force || (visibleIndex == index);
+      // Do NOT auto-force for the visible page: that bypassed same-FEN coalesce
+      // and re-fired cascade forever after a complete apply. Visibility is
+      // already enforced inside _evaluatePosition.
       _evaluatePosition(
-        force: shouldForce,
+        force: force || forceRestart,
+        forceRestart: forceRestart,
         preserveCurrentPvs: effectivePreservePvs,
         preserveDepthProgress: effectivePreserveDepth,
         skipPvUpdates: skipPvUpdates,
       );
     }
 
-    if (force) {
+    if (force || forceRestart) {
       scheduleEvaluation();
     } else {
       // Debounce rapid navigation so we only evaluate after the user settles on a move

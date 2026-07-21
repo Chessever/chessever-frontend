@@ -90,6 +90,21 @@ bool _hideFinishedSpoilers(WidgetRef ref, GamesTourModel game) {
   return spoilerState.isLoading || spoilerState.enabled;
 }
 
+/// Whether board/grid game cards should reserve the side eval bar and mount
+/// [EvaluationBarWidgetForGames] on the first frame.
+///
+/// Finished games (Miniatures / gamebase archive) often arrive without
+/// `lastMove`/`fen` until hydration. Gating the bar on [GamesTourModel.hasStarted]
+/// inserts it later and reflows board width. Reserve geometry up front when the
+/// gauge is allowed; eval text/fill may still resolve asynchronously.
+/// Ongoing games still require a started position so upcoming boards stay bar-free.
+bool _shouldShowEvalBarForGame(WidgetRef ref, GamesTourModel game) {
+  if (!_shouldShowEvalBar(ref)) return false;
+  if (_hideFinishedSpoilers(ref, game)) return false;
+  if (game.gameStatus.isFinished) return true;
+  return game.hasStarted;
+}
+
 /// Resolved FEN provider that caches the resolution logic for a game model
 @immutable
 class _ResolvedFenKey {
@@ -527,11 +542,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hideFinishedSpoilers = _hideFinishedSpoilers(ref, gamesTourModel);
-    final showEvalBar =
-        _shouldShowEvalBar(ref) &&
-        gamesTourModel.hasStarted &&
-        !hideFinishedSpoilers;
+    final showEvalBar = _shouldShowEvalBarForGame(ref, gamesTourModel);
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return Padding(
@@ -748,11 +759,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hideFinishedSpoilers = _hideFinishedSpoilers(ref, gamesTourModel);
-    final showEvalBar =
-        _shouldShowEvalBar(ref) &&
-        gamesTourModel.hasStarted &&
-        !hideFinishedSpoilers;
+    final showEvalBar = _shouldShowEvalBarForGame(ref, gamesTourModel);
     final sideBarWidth = showEvalBar ? 10.w : 0.w;
     final bottomSide = fixedBottomSide ?? Side.white;
     final topSide = _oppositeSide(bottomSide);
@@ -1017,11 +1024,7 @@ class _ChessBoardContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hideFinishedSpoilers = _hideFinishedSpoilers(ref, gamesTourModel);
-    final showEvalBar =
-        _shouldShowEvalBar(ref) &&
-        gamesTourModel.hasStarted &&
-        !hideFinishedSpoilers;
+    final showEvalBar = _shouldShowEvalBarForGame(ref, gamesTourModel);
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
     final bottomSide = fixedBottomSide ?? Side.white;
     final topSide = _oppositeSide(bottomSide);
@@ -1152,8 +1155,8 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
       _resolvedFenProvider(_ResolvedFenKey.fromGame(gamesTourModel)),
     );
 
-    if (!showEvalBar || !gamesTourModel.hasStarted) {
-      return _ChessBoardWidget(
+    if (!showEvalBar) {
+      return GameCardChessboard(
         fen: resolvedFen,
         lastMove: lastMove,
         boardSize: boardSize,
@@ -1173,7 +1176,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           isFlipped: orientation == Side.black,
           allowStockfishFallback: allowStockfishFallback,
         ),
-        _ChessBoardWidget(
+        GameCardChessboard(
           fen: resolvedFen,
           lastMove: lastMove,
           boardSize: boardSize,
@@ -1186,8 +1189,11 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   }
 }
 
-class _ChessBoardWidget extends ConsumerWidget {
-  const _ChessBoardWidget({
+/// Mini board used by grid game cards (and explorer inline cards): last-move
+/// highlight, decisive red fallen-king square, draw dove markers.
+class GameCardChessboard extends ConsumerWidget {
+  const GameCardChessboard({
+    super.key,
     required this.fen,
     required this.lastMove,
     required this.boardSize,

@@ -71,18 +71,34 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? watchLiveGameClock(ref, baseGameModel, batchKey: liveBatchKey)
             : null;
     final effectiveGameModel = scopedClockGame ?? baseGameModel;
-    final spoilerState = ref.watch(
-      eventNoSpoilersProvider(effectiveGameModel.tourId),
-    );
-    final spoilersRevealedForGame = ref.watch(
-      eventNoSpoilersRevealedGamesProvider.select(
-        (gameIds) => gameIds.contains(effectiveGameModel.gameId),
-      ),
-    );
+    // "No spoilers" is keyed by broadcast tour id. Archive sources (gamebase,
+    // TWIC, saved) put an event *name* in tourId, so the lookup never applies —
+    // waiting on it only delays result/eval-bar padding and causes layout shift
+    // (same short-circuit as board cards in chess_board_from_fen_new).
+    // Ongoing games also skip the lookup (nothing to spoil yet).
+    final isArchiveSource =
+        effectiveGameModel.source != GameSource.supabase;
+    final needsSpoilerLookup =
+        !isArchiveSource && effectiveGameModel.gameStatus.isFinished;
+    final spoilerState =
+        needsSpoilerLookup
+            ? ref.watch(eventNoSpoilersProvider(effectiveGameModel.tourId))
+            : null;
+    final spoilersRevealedForGame =
+        needsSpoilerLookup
+            ? ref.watch(
+              eventNoSpoilersRevealedGamesProvider.select(
+                (gameIds) => gameIds.contains(effectiveGameModel.gameId),
+              ),
+            )
+            : false;
     final revealSpoilers =
-        (!spoilerState.isLoading && !spoilerState.enabled) ||
+        isArchiveSource ||
         !effectiveGameModel.gameStatus.isFinished ||
-        spoilersRevealedForGame;
+        spoilersRevealedForGame ||
+        (spoilerState != null &&
+            !spoilerState.isLoading &&
+            !spoilerState.enabled);
     final currentPosition =
         chessBoardState?.isAnalysisMode == true
             ? chessBoardState?.analysisState.position
