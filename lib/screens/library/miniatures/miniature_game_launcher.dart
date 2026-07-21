@@ -1,6 +1,8 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -9,6 +11,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -18,6 +21,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// fetched by game id before the board can replay anything. Every entry point
 /// into the board from the Miniatures screen goes through here so the fetch,
 /// the spinner and the error handling stay in one place.
+///
+/// Free users may open only games dated **Today** (see
+/// [isMiniatureGameLocked]); older or undated games show the premium paywall
+/// and do not navigate until the user is subscribed.
 Future<void> openMiniatureGame({
   required BuildContext context,
   required WidgetRef ref,
@@ -25,6 +32,17 @@ Future<void> openMiniatureGame({
   required int index,
 }) async {
   if (index < 0 || index >= games.length) return;
+
+  final subscription = ref.read(subscriptionProvider);
+  final locked = isMiniatureGameLocked(
+    games[index].lastMoveTime,
+    isSubscribed: subscription.isSubscribed,
+    subscriptionLoading: subscription.isLoading,
+  );
+  if (locked) {
+    final unlocked = await requirePremiumGuard(context, ref);
+    if (!unlocked || !context.mounted) return;
+  }
 
   HapticFeedbackService.cardTap();
 

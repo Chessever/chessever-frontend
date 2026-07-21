@@ -73,48 +73,21 @@ class FigmaPlayerCard extends ConsumerWidget {
     final tag = avatarHeroTag;
     final useHero = tag != null && tag.isNotEmpty;
 
-    // When a heroine flight is active, keep the same avatar widget type so the
-    // flight does not jump between a skeleton box and a photo/initials face.
-    final avatar = photoAsync.when(
-      data:
-          (photoUrl) => PlayerInitialsAvatar(
-            photoUrl: photoUrl,
-            initials: initials,
-            size: avatarSize,
-            borderRadius: 8.br,
-            title: player.title,
-          ),
-      loading:
-          () =>
-              useHero
-                  ? PlayerInitialsAvatar(
-                    initials: initials,
-                    size: avatarSize,
-                    borderRadius: 8.br,
-                    title: player.title,
-                  )
-                  : skel.Skeletonizer(
-                    enabled: true,
-                    effect: const skel.ShimmerEffect(
-                      baseColor: Color(0xFF2A2A2A),
-                      highlightColor: Color(0xFF3A3A3A),
-                    ),
-                    child: Container(
-                      width: avatarSize,
-                      height: avatarSize,
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
-                    ),
-                  ),
-      error:
-          (_, __) => PlayerInitialsAvatar(
-            initials: initials,
-            size: avatarSize,
-            borderRadius: 8.br,
-            title: player.title,
-          ),
+    // Initials paint on the very first frame; the resolved photo (if any) swaps
+    // in the instant its URL arrives. We never show a shimmer/blank box while
+    // the FIDE photo URL is being fetched — the letters are the base layer.
+    //
+    // `valueOrNull` collapses loading + error + confirmed-absent all to null,
+    // which PlayerInitialsAvatar renders as pure initials with zero network.
+    // When the URL resolves, PlayerInitialsAvatar's own CachedNetworkImage
+    // keeps the same initials as its placeholder *and* error fallback, so the
+    // face is continuous: initials → photo, never initials → box → photo.
+    final avatar = PlayerInitialsAvatar(
+      photoUrl: photoAsync.valueOrNull,
+      initials: initials,
+      size: avatarSize,
+      borderRadius: 8.br,
+      title: player.title,
     );
 
     if (!useHero) return avatar;

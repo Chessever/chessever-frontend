@@ -43,6 +43,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart'
+    show watchLiveGamePosition, liveBatchKeysForGames;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
@@ -5207,10 +5209,16 @@ class _GameDropdownOverlay extends StatelessWidget {
                 child: Container(
                   width: dropdownWidth,
                   constraints: BoxConstraints(
-                    maxHeight: availableHeight.clamp(180.0, 380.0),
+                    maxHeight: availableHeight.clamp(180.0, 520.0),
                   ),
                   decoration: BoxDecoration(
-                    color: context.colors.surface,
+                    // Slightly see-through so a move played on the board
+                    // underneath is still noticeable while the dropdown is
+                    // open. A flat alpha fill, not a blur: BackdropFilter
+                    // would repaint the blur every scroll/animation frame
+                    // this popup is open for — a solid translucent color is
+                    // free by comparison and just as readable here.
+                    color: context.colors.surface.withValues(alpha: 0.96),
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
                       color: context.colors.textPrimary.withValues(alpha: 0.08),
@@ -5239,7 +5247,106 @@ class _GameDropdownOverlay extends StatelessWidget {
   }
 }
 
-/// Minimal dropdown content with round section separators
+/// Fixed logical width shared by every [_GameSelectorCard], so the
+/// scroll-to-current math in [_GameDropdownContentState] stays in sync with
+/// what's actually laid out.
+const double _gameSelectorCardWidth = 178;
+
+/// One contiguous run of games sharing the same round, in the order they
+/// appear in [GamesTourModel] list handed to the dropdown.
+class _RoundGroup {
+  const _RoundGroup({
+    required this.label,
+    required this.date,
+    required this.startIndex,
+  });
+
+  final String label;
+  final DateTime? date;
+
+  /// Index of this round's first game within the dropdown's game list.
+  final int startIndex;
+}
+
+/// Groups an already round-sorted game list into contiguous round runs,
+/// keyed by `roundSlug ?? roundId` — the same grouping the previous vertical
+/// dropdown used for its round separators.
+List<_RoundGroup> _buildRoundGroups(List<GamesTourModel> games) {
+  final groups = <_RoundGroup>[];
+  String? lastRoundKey;
+  for (var i = 0; i < games.length; i++) {
+    final game = games[i];
+    final roundKey = game.roundSlug ?? game.roundId;
+    if (roundKey != lastRoundKey) {
+      groups.add(
+        _RoundGroup(
+          label: _formatRoundLabel(roundKey),
+          date: game.bucketDate,
+          startIndex: i,
+        ),
+      );
+      lastRoundKey = roundKey;
+    }
+  }
+  return groups;
+}
+
+/// Index into [groups] of the round that contains [gameIndex].
+int _activeRoundIndex(List<_RoundGroup> groups, int gameIndex) {
+  var active = 0;
+  for (var i = 0; i < groups.length; i++) {
+    if (groups[i].startIndex <= gameIndex) {
+      active = i;
+    } else {
+      break;
+    }
+  }
+  return active;
+}
+
+/// Formats a round slug/id like "round-3" into "Round 3".
+String _formatRoundLabel(String slug) {
+  return slug
+      .replaceAll('-', ' ')
+      .replaceAll('_', ' ')
+      .split(' ')
+      .map(
+        (word) =>
+            word.isEmpty ? '' : '${word[0].toUpperCase()}${word.substring(1)}',
+      )
+      .join(' ');
+}
+
+const List<String> _shortMonthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// Formats a round's start date compactly, e.g. "21 Jul".
+String _formatRoundDate(DateTime? date) {
+  if (date == null) return '';
+  return '${date.day} ${_shortMonthNames[date.month - 1]}';
+}
+
+/// Game-switcher content: a horizontal, borderless strip of big game-selector
+/// rows (mini board with player identity stacked directly above and below
+/// it, mirroring how the main board's `PlayerFirstRowDetailWidget` rows flank
+/// the real board) with a sticky round timeline pinned to the bottom. The
+/// timeline behaves like a horizontal calendar's sticky section header: it
+/// shows "Round N · date" for whichever round is currently scrolled under the
+/// strip, and swaps to the next round's label once that round's boards start
+/// passing underneath — no per-game card boxes, games are separated by
+/// whitespace only.
 class _GameDropdownContent extends StatefulWidget {
   final double dropdownWidth;
   final double availableHeight;
@@ -5265,34 +5372,18 @@ class _GameDropdownContent extends StatefulWidget {
 
 class _GameDropdownContentState extends State<_GameDropdownContent> {
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey _listKey = GlobalKey();
-  final List<GlobalKey> _itemKeys = [];
-
-  bool _isDragging = false;
-  int _currentIndex = 0;
-  double _targetY = 0.0;
-
-  // Item metrics (measured after layout)
-  double _itemHeight = 36.0;
-  double _itemStride = 38.0; // height + spacing between rows
-  double _itemBaseTop = 6.0; // accounts for list padding/margins
-  double get _totalItemHeight => _itemStride;
-  static const double _indicatorInset = 2.0;
-
-  // Track if pointer started on the selector
-  bool _pointerStartedOnSelector = false;
-  Offset? _lastPointerPosition;
+  static const double _cardSpacing = 26.0;
+  static const double _cardRowHeight = 270.0;
+  static const double _timelineHeight = 46.0;
+  static const double _sectionGap = 12.0;
+  static const double _verticalPadding = 12.0;
 
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.currentGameIndex;
-    _targetY = _itemBaseTop + _currentIndex * _totalItemHeight;
-
-    // Scroll to center the current game after the widget is built
+    // Center the current game's row after the widget is built.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _measureMetrics();
-      _scrollToCenter();
+      _scrollToCurrent(animate: false);
     });
   }
 
@@ -5302,112 +5393,8 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     if (widget.games.isEmpty) return;
     if (oldWidget.currentGameIndex != widget.currentGameIndex ||
         oldWidget.games.length != widget.games.length) {
-      _currentIndex = widget.currentGameIndex.clamp(0, widget.games.length - 1);
-      _targetY = _getTargetY(_currentIndex);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _measureMetrics();
-        _scrollToCenter();
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrent());
     }
-  }
-
-  /// Scrolls the list to center the current game in the visible area
-  void _scrollToCenter() {
-    if (!_scrollController.hasClients) return;
-
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-
-    // Calculate the scroll offset to center the current item
-    // Item's center position minus half the viewport height
-    final itemCenter = _targetY + (_itemHeight / 2);
-    final targetScroll = itemCenter - (viewportHeight / 2);
-
-    // Clamp to valid scroll range
-    final clampedScroll = targetScroll.clamp(0.0, maxScroll);
-
-    _scrollController.jumpTo(clampedScroll);
-  }
-
-  void _measureMetrics() {
-    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox == null) return;
-
-    final scrollAtMeasure =
-        _scrollController.hasClients ? _scrollController.offset : 0.0;
-
-    double? itemHeight;
-    double? firstTop;
-    double? secondTop;
-
-    if (_itemKeys.isNotEmpty) {
-      final firstCtx = _itemKeys[0].currentContext;
-      final firstBox = firstCtx?.findRenderObject() as RenderBox?;
-      if (firstBox != null && firstBox.hasSize) {
-        itemHeight = firstBox.size.height;
-        firstTop =
-            listBox.globalToLocal(firstBox.localToGlobal(Offset.zero)).dy;
-      }
-    }
-
-    if (_itemKeys.length > 1) {
-      final secondCtx = _itemKeys[1].currentContext;
-      final secondBox = secondCtx?.findRenderObject() as RenderBox?;
-      if (secondBox != null && secondBox.hasSize && firstTop != null) {
-        secondTop =
-            listBox.globalToLocal(secondBox.localToGlobal(Offset.zero)).dy;
-      }
-    }
-
-    final resolvedHeight = itemHeight ?? _itemHeight;
-    // Convert to content-space (viewport Y + scroll offset)
-    final resolvedBaseTop =
-        firstTop != null ? firstTop + scrollAtMeasure : _itemBaseTop;
-    final fallbackStride = resolvedHeight + 2.h; // margin/padding allowance
-
-    double resolvedStride = _itemStride;
-    if (secondTop != null && firstTop != null) {
-      final stride = secondTop - firstTop;
-      resolvedStride = stride > 0 ? stride : fallbackStride;
-    } else {
-      resolvedStride = fallbackStride;
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _itemHeight = resolvedHeight;
-      _itemBaseTop = resolvedBaseTop;
-      _itemStride = resolvedStride;
-      _targetY = _getTargetY(_currentIndex);
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCenter());
-  }
-
-  /// Get the content-space Y of the game row for item at [index].
-  /// Uses actual rendered position when available, falls back to stride formula.
-  /// Items with round separators are taller; this offsets to the game row.
-  double _getTargetY(int index) {
-    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox != null && index >= 0 && index < _itemKeys.length) {
-      final ctx = _itemKeys[index].currentContext;
-      final box = ctx?.findRenderObject() as RenderBox?;
-      if (box != null && box.hasSize) {
-        final scrollOffset =
-            _scrollController.hasClients ? _scrollController.offset : 0.0;
-        final vpY = listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
-        final contentY = vpY + scrollOffset;
-        // If the item includes a round separator header, its total height
-        // exceeds _itemHeight. Offset to the game row at the bottom.
-        final separatorOffset = (box.size.height - _itemHeight).clamp(
-          0.0,
-          double.infinity,
-        );
-        return contentY + separatorOffset;
-      }
-    }
-    return _itemBaseTop + index * _itemStride;
   }
 
   @override
@@ -5416,290 +5403,237 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     super.dispose();
   }
 
-  /// Check if a global position is within the current selector bounds
-  bool _isOnSelector(Offset globalPosition) {
-    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox == null) return false;
+  /// Centers the current game's row in the visible strip.
+  void _scrollToCurrent({bool animate = true}) {
+    if (!_scrollController.hasClients || widget.games.isEmpty) return;
 
-    final localPos = listBox.globalToLocal(globalPosition);
-    final scrollOffset =
-        _scrollController.hasClients ? _scrollController.offset : 0.0;
-
-    // Calculate selector's current visual position (accounting for scroll and padding)
-    final indicatorInset = _indicatorInset.h;
-    final selectorHeight = (_itemHeight - indicatorInset * 2).clamp(
-      0.0,
-      _itemHeight,
-    );
-    final selectorVisualTop = _targetY - scrollOffset + indicatorInset;
-    final selectorVisualBottom = selectorVisualTop + selectorHeight;
-
-    // Add some tolerance for easier grabbing
-    const tolerance = 8.0;
-    return localPos.dy >= (selectorVisualTop - tolerance) &&
-        localPos.dy <= (selectorVisualBottom + tolerance);
-  }
-
-  void _handlePointerDown(PointerDownEvent event) {
-    _lastPointerPosition = event.position;
-    _pointerStartedOnSelector = _isOnSelector(event.position);
-  }
-
-  void _handlePointerMove(PointerMoveEvent event) {
-    if (_lastPointerPosition == null) return;
-
-    _lastPointerPosition = event.position;
-
-    // Only start dragging if pointer started on the selector
-    if (!_isDragging && _pointerStartedOnSelector) {
-      HapticFeedback.heavyImpact();
-      setState(() => _isDragging = true);
-    }
-
-    if (_isDragging) {
-      // Update selector position based on current pointer position
-      _updateIndexFromPosition(event.position);
-
-      // Auto-scroll when near edges
-      _handleEdgeScroll(event.position);
-    }
-  }
-
-  void _handleEdgeScroll(Offset globalPosition) {
-    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox == null || !_scrollController.hasClients) return;
-
-    final localPos = listBox.globalToLocal(globalPosition);
-    final listHeight = listBox.size.height;
+    final index = widget.currentGameIndex.clamp(0, widget.games.length - 1);
+    final stride = _gameSelectorCardWidth.w + _cardSpacing.w;
+    final viewport = _scrollController.position.viewportDimension;
     final maxScroll = _scrollController.position.maxScrollExtent;
 
-    const edgeThreshold = 60.0;
-    const scrollSpeed = 8.0;
+    // Leading pad must match the ListView's horizontal padding (14.w) so the
+    // card's true center lands under the viewport center.
+    final itemCenter = 14.w + index * stride + (_gameSelectorCardWidth.w / 2);
+    final target = (itemCenter - viewport / 2).clamp(0.0, maxScroll);
 
-    if (localPos.dy < edgeThreshold && _scrollController.offset > 0) {
-      // Near top edge - scroll up
-      final intensity = 1.0 - (localPos.dy / edgeThreshold);
-      final scrollAmount = scrollSpeed * intensity;
-      final newScroll = (_scrollController.offset - scrollAmount).clamp(
-        0.0,
-        maxScroll,
+    if (animate) {
+      _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
       );
-      _scrollController.jumpTo(newScroll);
-      // Update index after scroll
-      _updateIndexFromPosition(globalPosition);
-    } else if (localPos.dy > listHeight - edgeThreshold &&
-        _scrollController.offset < maxScroll) {
-      // Near bottom edge - scroll down
-      final intensity = 1.0 - ((listHeight - localPos.dy) / edgeThreshold);
-      final scrollAmount = scrollSpeed * intensity;
-      final newScroll = (_scrollController.offset + scrollAmount).clamp(
-        0.0,
-        maxScroll,
-      );
-      _scrollController.jumpTo(newScroll);
-      // Update index after scroll
-      _updateIndexFromPosition(globalPosition);
+    } else {
+      _scrollController.jumpTo(target);
     }
   }
 
-  void _handlePointerUp(PointerUpEvent event) {
-    if (_isDragging &&
-        _currentIndex >= 0 &&
-        _currentIndex < widget.games.length) {
-      HapticFeedback.mediumImpact();
-      widget.onSelect(_currentIndex);
-    }
-    setState(() => _isDragging = false);
-    _lastPointerPosition = null;
-    _pointerStartedOnSelector = false;
+  /// Jumps the strip so a round's first game sits near the left edge — lets
+  /// the sticky timeline's tick marks browse rounds without changing which
+  /// game is actually open.
+  void _scrollToRoundStart(int startIndex) {
+    if (!_scrollController.hasClients) return;
+    final stride = _gameSelectorCardWidth.w + _cardSpacing.w;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final target = (startIndex * stride).clamp(0.0, maxScroll);
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
   }
 
-  void _handlePointerCancel(PointerCancelEvent event) {
-    setState(() => _isDragging = false);
-    _lastPointerPosition = null;
-    _pointerStartedOnSelector = false;
+  bool _startsNewRound(int index) {
+    if (index <= 0) return true;
+    final prev = widget.games[index - 1].roundSlug ?? widget.games[index - 1].roundId;
+    final curr = widget.games[index].roundSlug ?? widget.games[index].roundId;
+    return prev != curr;
   }
 
-  void _updateIndexFromPosition(Offset globalPosition) {
-    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
-    if (listBox == null) return;
-
-    final localPos = listBox.globalToLocal(globalPosition);
-    final scrollOffset =
-        _scrollController.hasClients ? _scrollController.offset : 0.0;
-    final contentY = localPos.dy + scrollOffset;
-
-    // Find the nearest game row by checking actual rendered positions.
-    // Only visible items have a valid context; off-screen keys are skipped.
-    int bestIndex = _currentIndex;
-    double bestDist = double.infinity;
-    bool foundAny = false;
-
-    for (int i = 0; i < widget.games.length && i < _itemKeys.length; i++) {
-      final ctx = _itemKeys[i].currentContext;
-      final box = ctx?.findRenderObject() as RenderBox?;
-      if (box == null || !box.hasSize) continue;
-
-      final vpY = listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
-      final itemContentY = vpY + scrollOffset;
-      final separatorOffset = (box.size.height - _itemHeight).clamp(
-        0.0,
-        double.infinity,
-      );
-      final gameRowCenter = itemContentY + separatorOffset + _itemHeight / 2;
-
-      final dist = (contentY - gameRowCenter).abs();
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIndex = i;
-        foundAny = true;
-      }
+  /// Separator between item [index] and [index+1]. At a round boundary it is a
+  /// dashed vertical rule marking where one round's boards end and the next
+  /// round's begin; otherwise plain spacing. Both are exactly [_cardSpacing]
+  /// wide so the scroll stride stays constant and the sticky timeline's
+  /// index↔offset math remains exact.
+  Widget _buildSeparator(int index) {
+    if (!_startsNewRound(index + 1)) {
+      return SizedBox(width: _cardSpacing.w);
     }
-
-    // Fallback to stride-based calculation if no items were rendered
-    if (!foundAny) {
-      final stride =
-          _totalItemHeight <= 0 ? (_itemHeight + 2.h) : _totalItemHeight;
-      final adjustedY = contentY - _itemBaseTop;
-      bestIndex = (adjustedY / stride).floor().clamp(
-        0,
-        widget.games.length - 1,
-      );
-    }
-
-    if (bestIndex != _currentIndex) {
-      HapticFeedback.selectionClick();
-      _animateToIndex(bestIndex);
-    }
-  }
-
-  void _animateToIndex(int index) {
-    setState(() {
-      _currentIndex = index;
-      _targetY = _getTargetY(index);
-    });
-  }
-
-  /// Format round slug/id into a readable label
-  String _formatRoundLabel(String slug) {
-    return slug
-        .replaceAll('-', ' ')
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map(
-          (word) =>
-              word.isEmpty
-                  ? ''
-                  : '${word[0].toUpperCase()}${word.substring(1)}',
-        )
-        .join(' ');
+    return SizedBox(
+      width: _cardSpacing.w,
+      child: Center(
+        child: _DashedVerticalLine(
+          height: _cardRowHeight.h,
+          color: kPrimaryColor.withValues(alpha: 0.5),
+          dashLength: 5,
+          gapLength: 4,
+          thickness: 1.4,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    if (widget.games.isEmpty) {
+      return SizedBox(height: (_verticalPadding * 2 + _cardRowHeight).h);
+    }
+
+    final roundGroups = _buildRoundGroups(widget.games);
+    final showTimeline = roundGroups.length > 1;
+
+    // Live-game batching — byte-for-byte the Games tab's scheme
+    // (`_buildLiveBatchKeys` in games_list_view.dart): group by round, then one
+    // chunked `.inFilter` realtime channel per round via
+    // `scopePrefix: 'tour_round:$roundId'`. Using the SAME scope prefix means
+    // an ongoing round already streaming for the Games tab is shared, not
+    // duplicated. Finished/non-supabase games get no key and never subscribe.
+    // The card, its board and both player-row clocks all reuse one key.
+    final gamesByRound = <String, List<GamesTourModel>>{};
+    for (final g in widget.games) {
+      (gamesByRound[g.roundSlug ?? g.roundId] ??= <GamesTourModel>[]).add(g);
+    }
+    final liveBatchKeys = <String, LiveGamesBatchKey>{};
+    gamesByRound.forEach((roundId, roundGames) {
+      liveBatchKeys.addAll(
+        liveBatchKeysForGames(
+          games: roundGames,
+          scopePrefix: 'tour_round:$roundId',
+        ),
+      );
+    });
+
+    final contentHeight =
+        (_verticalPadding * 2).h +
+        _cardRowHeight.h +
+        (showTimeline ? (_sectionGap + _timelineHeight).h : 0);
+    final boxHeight = math.min(
+      contentHeight,
+      widget.availableHeight.clamp(150.h, 500.h),
+    );
+
+    return SizedBox(
       width: widget.dropdownWidth,
-      constraints: BoxConstraints(
-        maxHeight: widget.availableHeight.clamp(180.h, 380.h),
-      ),
-      child: Listener(
-        onPointerDown: _handlePointerDown,
-        onPointerMove: _handlePointerMove,
-        onPointerUp: _handlePointerUp,
-        onPointerCancel: _handlePointerCancel,
-        child: Stack(
+      height: boxHeight,
+      child: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        padding: EdgeInsets.symmetric(vertical: _verticalPadding.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // List of games - physics disabled only when dragging selector
-            ScrollConfiguration(
-              behavior: ScrollConfiguration.of(
-                context,
-              ).copyWith(scrollbars: false),
-              child: ListView.builder(
-                key: _listKey,
-                controller: _scrollController,
-                physics:
-                    _isDragging ? const NeverScrollableScrollPhysics() : null,
-                padding: EdgeInsets.symmetric(vertical: 6.h),
-                itemCount: widget.games.length,
-                itemBuilder: (context, index) {
-                  final game = widget.games[index];
-                  final isSelected = index == _currentIndex;
+            SizedBox(
+              height: _cardRowHeight.h,
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
+                child: ListView.separated(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  padding: EdgeInsets.symmetric(horizontal: 14.w),
+                  itemCount: widget.games.length,
+                  separatorBuilder: (_, index) => _buildSeparator(index),
+                  itemBuilder: (context, index) {
+                    final game = widget.games[index];
+                    final isSelected = index == widget.currentGameIndex;
+                    final itemDelay = index * 0.04;
+                    final itemAnimation = CurvedAnimation(
+                      parent: widget.animation,
+                      curve: Interval(
+                        itemDelay.clamp(0.0, 0.4),
+                        (itemDelay + 0.5).clamp(0.0, 1.0),
+                        curve: Curves.easeOutCubic,
+                      ),
+                    );
 
-                  while (_itemKeys.length <= index) {
-                    _itemKeys.add(GlobalKey());
-                  }
-
-                  // Determine if we should show round separator
-                  final currentRound = game.roundSlug ?? game.roundId;
-                  final previousRound =
-                      index > 0
-                          ? (widget.games[index - 1].roundSlug ??
-                              widget.games[index - 1].roundId)
-                          : null;
-                  final showRoundSeparator =
-                      previousRound != null && currentRound != previousRound;
-                  final roundLabel =
-                      showRoundSeparator
-                          ? _formatRoundLabel(currentRound)
-                          : null;
-
-                  return KeyedSubtree(
-                    key: _itemKeys[index],
-                    child: _GameItemSimple(
-                      index: index,
-                      animation: widget.animation,
-                      game: game,
-                      isSelected: isSelected,
-                      isDragging: _isDragging,
-                      showRoundSeparator: showRoundSeparator,
-                      roundLabel: roundLabel,
-                      onTap: () {
-                        _animateToIndex(index);
-                        widget.onSelect(index);
+                    return AnimatedBuilder(
+                      animation: itemAnimation,
+                      builder: (context, child) {
+                        final v = itemAnimation.value.clamp(0.0, 1.0);
+                        return Transform.translate(
+                          offset: Offset(0, 8 * (1 - v)),
+                          child: Opacity(opacity: v, child: child),
+                        );
                       },
-                    ),
-                  );
-                },
-              ),
-            ),
-            // Floating water droplet selector - clipped to stay within bounds
-            Positioned.fill(
-              child: ClipRect(
-                child: IgnorePointer(
-                  child: ListenableBuilder(
-                    listenable: _scrollController,
-                    builder: (context, _) {
-                      final scrollOffset =
-                          _scrollController.hasClients
-                              ? _scrollController.offset
-                              : 0.0;
-                      final indicatorInset = _indicatorInset.h;
-                      final indicatorHeight = (_itemHeight - indicatorInset * 2)
-                          .clamp(0.0, _itemHeight);
-
-                      return SingleMotionBuilder(
-                        motion:
-                            _isDragging
-                                ? CupertinoMotion.snappy()
-                                : CupertinoMotion.bouncy(),
-                        value: _targetY - scrollOffset + indicatorInset,
-                        builder: (context, animatedY, _) {
-                          return CustomPaint(
-                            painter: _GameSelectorPainter(
-                              y: animatedY,
-                              height: indicatorHeight,
-                              isDragging: _isDragging,
-                              baseColor: kPrimaryColor,
-                              horizontalMargin: 6.w,
-                            ),
-                          );
+                      child: _GameSelectorCard(
+                        game: game,
+                        isSelected: isSelected,
+                        liveBatchKey: liveBatchKeys[game.gameId],
+                        // Label only the first board of each round group; every
+                        // card still reserves the header slot so boards stay
+                        // vertically aligned across the strip.
+                        roundLabel:
+                            _startsNewRound(index)
+                                ? _formatRoundLabel(
+                                  game.roundSlug ?? game.roundId,
+                                )
+                                : null,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          widget.onSelect(index);
                         },
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
+            if (showTimeline) ...[
+              SizedBox(height: _sectionGap.h),
+              SizedBox(
+                height: _timelineHeight.h,
+                width: widget.dropdownWidth,
+                child: ListenableBuilder(
+                  listenable: _scrollController,
+                  builder: (context, _) {
+                    // `hasClients` only means a ScrollPosition is attached — it
+                    // can still be pre-layout (no pixels/viewport measured yet),
+                    // where those getters null-check-crash. Guard first.
+                    final position =
+                        _scrollController.hasClients
+                            ? _scrollController.position
+                            : null;
+                    final ready =
+                        position != null &&
+                        position.hasPixels &&
+                        position.hasContentDimensions;
+                    final stride = _gameSelectorCardWidth.w + _cardSpacing.w;
+                    final leadingPad = 14.w; // == ListView horizontal padding
+                    final lastIndex = widget.games.length - 1;
+
+                    // Focused game = the card whose stride-wide region contains
+                    // the viewport center. A floor (region) mapping — not a
+                    // round-to-nearest — so the index changes monotonically and
+                    // flips only once, when the center crosses into the next
+                    // card's region (no boundary oscillation).
+                    final int focusedIndex;
+                    if (ready) {
+                      final centerX =
+                          position.pixels + position.viewportDimension / 2;
+                      focusedIndex =
+                          stride <= 0
+                              ? 0
+                              : ((centerX - leadingPad) / stride)
+                                  .floor()
+                                  .clamp(0, lastIndex);
+                    } else {
+                      focusedIndex = widget.currentGameIndex.clamp(0, lastIndex);
+                    }
+                    final activeIndex = _activeRoundIndex(
+                      roundGroups,
+                      focusedIndex,
+                    );
+
+                    return _StickyRoundTimeline(
+                      groups: roundGroups,
+                      activeIndex: activeIndex,
+                      onTapRound: _scrollToRoundStart,
+                    );
+                  },
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -5707,281 +5641,403 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   }
 }
 
-/// Simple game item - tap handled here, drag handled at list level
-class _GameItemSimple extends StatelessWidget {
-  final int index;
-  final Animation<double> animation;
-  final GamesTourModel game;
-  final bool isSelected;
-  final bool isDragging;
-  final VoidCallback onTap;
-  final bool showRoundSeparator;
-  final String? roundLabel;
-
-  const _GameItemSimple({
-    required this.index,
-    required this.animation,
-    required this.game,
-    required this.isSelected,
-    required this.isDragging,
-    required this.onTap,
-    this.showRoundSeparator = false,
-    this.roundLabel,
+/// Sticky, calendar-timeline-style round rail pinned below the game strip.
+/// EVERY round is shown as its own label ("Round N" + date) in one horizontal,
+/// scrollable row — the active round (whichever is currently under the strip)
+/// is accent-highlighted and auto-centered as you scroll the boards. Tapping a
+/// round jumps the strip to that round. No boxes/pills, no swapping single
+/// label: the whole schedule is always visible (scroll to reach far rounds).
+class _StickyRoundTimeline extends StatefulWidget {
+  const _StickyRoundTimeline({
+    required this.groups,
+    required this.activeIndex,
+    required this.onTapRound,
   });
 
-  String _extractLastName(String fullName) {
-    final name = fullName.trim();
-    if (name.isEmpty) return fullName;
-    if (name.contains(',')) {
-      final lastName = name.split(',').first.trim();
-      if (lastName.isNotEmpty) return lastName;
+  final List<_RoundGroup> groups;
+  final int activeIndex;
+  final ValueChanged<int> onTapRound;
+
+  @override
+  State<_StickyRoundTimeline> createState() => _StickyRoundTimelineState();
+}
+
+class _StickyRoundTimelineState extends State<_StickyRoundTimeline> {
+  final ScrollController _controller = ScrollController();
+  final List<GlobalKey> _keys = [];
+
+  void _ensureKeys() {
+    while (_keys.length < widget.groups.length) {
+      _keys.add(GlobalKey());
     }
-    const suffixes = {
-      'jr',
-      'jr.',
-      'sr',
-      'sr.',
-      'ii',
-      'iii',
-      'iv',
-      'v',
-      '2nd',
-      '3rd',
-      '4th',
-      '5th',
-    };
-    final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return fullName;
-    if (parts.length == 1) return parts.first;
-    for (int i = parts.length - 1; i >= 0; i--) {
-      if (!suffixes.contains(parts[i].toLowerCase())) return parts[i];
-    }
-    return parts.last;
   }
 
-  String _getResultText() {
-    switch (game.gameStatus) {
-      case GameStatus.whiteWins:
-        return '1–0';
-      case GameStatus.blackWins:
-        return '0–1';
-      case GameStatus.draw:
-        return '½–½';
-      case GameStatus.ongoing:
-        return '';
-      case GameStatus.unknown:
-        return '';
+  /// Keeps the active round's label in view (centered) as the boards scroll.
+  void _scheduleCenterActive() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final i = widget.activeIndex;
+      if (i < 0 || i >= _keys.length) return;
+      final ctx = _keys[i].currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureKeys();
+    _scheduleCenterActive();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StickyRoundTimeline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _ensureKeys();
+    if (oldWidget.activeIndex != widget.activeIndex ||
+        oldWidget.groups.length != widget.groups.length) {
+      _scheduleCenterActive();
     }
   }
 
   @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final itemDelay = index * 0.05;
-    final itemAnimation = CurvedAnimation(
-      parent: animation,
-      curve: Interval(
-        itemDelay.clamp(0.0, 0.4),
-        (itemDelay + 0.5).clamp(0.0, 1.0),
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    if (widget.groups.isEmpty) return const SizedBox.shrink();
+    _ensureKeys();
 
-    final isLive = game.gameStatus == GameStatus.ongoing;
-    final resultText = _getResultText();
-    final whiteName = _extractLastName(game.whitePlayer.displayName);
-    final blackName = _extractLastName(game.blackPlayer.displayName);
+    return SizedBox(
+      height: _GameDropdownContentState._timelineHeight.h,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: ListView.separated(
+          controller: _controller,
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(horizontal: 14.w),
+          itemCount: widget.groups.length,
+          separatorBuilder: (_, __) => SizedBox(width: 18.w),
+          itemBuilder: (context, i) {
+            final group = widget.groups[i];
+            final isActive = i == widget.activeIndex;
+            final dateText = _formatRoundDate(group.date);
 
-    return AnimatedBuilder(
-      animation: itemAnimation,
-      builder: (context, child) {
-        final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
-        return Transform.translate(
-          offset: Offset(0, 10 * (1 - clampedValue)),
-          child: Opacity(opacity: clampedValue, child: child),
-        );
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Round separator - subtle divider between different rounds
-            if (showRoundSeparator && roundLabel != null)
-              Container(
-                padding: EdgeInsets.only(
-                  left: 14.w,
-                  right: 14.w,
-                  top: index == 0 ? 2.h : 6.h,
-                  bottom: 4.h,
-                ),
-                child: Row(
+            return GestureDetector(
+              key: _keys[i],
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                widget.onTapRound(group.startIndex);
+              },
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      roundLabel!,
-                      style: AppTypography.textXxsMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.35,
-                        ),
-                        letterSpacing: 0.5,
-                        fontSize: 9.sp,
+                      group.label,
+                      maxLines: 1,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color:
+                            isActive
+                                ? kPrimaryColor
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.5,
+                                ),
+                        fontWeight:
+                            isActive ? FontWeight.w700 : FontWeight.w500,
                       ),
                     ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: Container(
-                        height: 0.5,
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.06,
+                    if (dateText.isNotEmpty) ...[
+                      SizedBox(height: 2.h),
+                      Text(
+                        dateText,
+                        maxLines: 1,
+                        style: AppTypography.textXxsRegular.copyWith(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: isActive ? 0.5 : 0.3,
+                          ),
                         ),
+                      ),
+                    ],
+                    SizedBox(height: 3.h),
+                    // Under-label indicator: a short accent bar on the active
+                    // round, a transparent one otherwise (reserves the space so
+                    // items never resize as the active round changes).
+                    Container(
+                      height: 2,
+                      width: 16.w,
+                      decoration: BoxDecoration(
+                        color: isActive ? kPrimaryColor : Colors.transparent,
+                        borderRadius: BorderRadius.circular(1.br),
                       ),
                     ),
                   ],
                 ),
               ),
-            // Game row
-            Container(
-              height: 36.0,
-              margin: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
-              padding: EdgeInsets.symmetric(horizontal: 10.w),
-              child: Row(
-                children: [
-                  // Live indicator
-                  SizedBox(
-                    width: 14.w,
-                    child:
-                        isLive
-                            ? Container(
-                              width: 6.w,
-                              height: 6.h,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: kPrimaryColor,
-                              ),
-                            )
-                            : null,
-                  ),
-                  // White player
-                  Expanded(
-                    child: Text(
-                      whiteName,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color:
-                            isSelected
-                                ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.9,
-                                ),
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  // Result
-                  Container(
-                    width: 36.w,
-                    alignment: Alignment.center,
-                    child:
-                        resultText.isNotEmpty
-                            ? Text(
-                              resultText,
-                              style: AppTypography.textXxsMedium.copyWith(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.5,
-                                ),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            )
-                            : Text(
-                              'vs',
-                              style: AppTypography.textXxsRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.35,
-                                ),
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                  ),
-                  // Black player
-                  Expanded(
-                    child: Text(
-                      blackName,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color:
-                            isSelected
-                                ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.9,
-                                ),
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-/// Painter for the floating game selector
-class _GameSelectorPainter extends CustomPainter {
-  final double y;
-  final double height;
-  final bool isDragging;
-  final Color baseColor;
-  final double horizontalMargin;
-
-  _GameSelectorPainter({
-    required this.y,
+/// A vertical dashed rule used in the game strip to mark a round boundary —
+/// the gap between the last board of one round and the first board of the
+/// next. Cheap: one CustomPaint drawing a handful of short line segments.
+class _DashedVerticalLine extends StatelessWidget {
+  const _DashedVerticalLine({
     required this.height,
-    required this.isDragging,
-    required this.baseColor,
-    required this.horizontalMargin,
+    required this.color,
+    this.dashLength = 4,
+    this.gapLength = 4,
+    this.thickness = 1.4,
   });
+
+  final double height;
+  final Color color;
+  final double dashLength;
+  final double gapLength;
+  final double thickness;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(thickness, height),
+      painter: _DashedVerticalLinePainter(
+        color: color,
+        dashLength: dashLength,
+        gapLength: gapLength,
+        thickness: thickness,
+      ),
+    );
+  }
+}
+
+class _DashedVerticalLinePainter extends CustomPainter {
+  _DashedVerticalLinePainter({
+    required this.color,
+    required this.dashLength,
+    required this.gapLength,
+    required this.thickness,
+  });
+
+  final Color color;
+  final double dashLength;
+  final double gapLength;
+  final double thickness;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        horizontalMargin,
-        y,
-        size.width - horizontalMargin * 2,
-        height,
-      ),
-      const Radius.circular(8),
-    );
-
-    // Fill
-    final fillPaint =
+    final paint =
         Paint()
-          ..color = baseColor.withValues(alpha: isDragging ? 0.15 : 0.1)
-          ..style = PaintingStyle.fill;
-    canvas.drawRRect(rect, fillPaint);
-
-    // Border
-    final borderPaint =
-        Paint()
-          ..color = baseColor.withValues(alpha: isDragging ? 0.4 : 0.25)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0;
-    canvas.drawRRect(rect, borderPaint);
+          ..color = color
+          ..strokeWidth = thickness
+          ..strokeCap = StrokeCap.round;
+    final x = size.width / 2;
+    final step = dashLength + gapLength;
+    for (var y = 0.0; y < size.height; y += step) {
+      final end = math.min(y + dashLength, size.height);
+      canvas.drawLine(Offset(x, y), Offset(x, end), paint);
+    }
   }
 
   @override
-  bool shouldRepaint(_GameSelectorPainter oldDelegate) {
-    return y != oldDelegate.y ||
-        height != oldDelegate.height ||
-        isDragging != oldDelegate.isDragging;
+  bool shouldRepaint(_DashedVerticalLinePainter old) =>
+      old.color != color ||
+      old.dashLength != dashLength ||
+      old.gapLength != gapLength ||
+      old.thickness != thickness;
+}
+
+/// One game-selector row: an optional round-label header, then the exact game
+/// grid-card player rows (`PlayerFirstRowDetailWidget` in gridView) stacked
+/// above and below a mini board. Deliberately unboxed: no background fill or
+/// border around the whole row, so games read as one continuous strip instead
+/// of discrete cards. The selected game is cued only by an accent ring around
+/// its board.
+///
+/// Live updates are streamed the same way the games grid does it: [liveBatchKey]
+/// (one shared batched channel per chunk of live games, null for finished/
+/// non-supabase games) feeds the board's position AND both player rows' clocks
+/// off the single [watchLiveGamePosition] merge + the rows' own batched clock
+/// watch, so nothing opens a per-card subscription.
+class _GameSelectorCard extends ConsumerWidget {
+  const _GameSelectorCard({
+    required this.game,
+    required this.isSelected,
+    required this.onTap,
+    this.liveBatchKey,
+    this.roundLabel,
+  });
+
+  final GamesTourModel game;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  /// Shared batched realtime channel for this game's round chunk. Null for
+  /// finished/non-live games (no subscription).
+  final LiveGamesBatchKey? liveBatchKey;
+
+  /// Non-null only for the first board of a round group; renders as a small
+  /// "Round N" header above the card. The header slot is always reserved (see
+  /// [build]) so labelled and unlabelled cards stay vertically aligned.
+  final String? roundLabel;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final boardSettings =
+        ref.watch(boardSettingsProviderNew).valueOrNull ??
+        const BoardSettingsNew();
+
+    // Same gate the Games tab uses (`streamEnabled = shouldStream`): pauses all
+    // realtime work when the app backgrounds it, without unmounting the cards.
+    final streamEnabled = ref.watch(shouldStreamProvider);
+
+    // Live position (fen/status) merged off the shared batched stream — the
+    // board updates as moves come in without opening its own channel.
+    final liveGame = watchLiveGamePosition(
+      ref,
+      game,
+      batchKey: liveBatchKey,
+      streamEnabled: streamEnabled,
+    );
+    final boardFen =
+        (liveGame.fen != null && liveGame.fen!.trim().isNotEmpty)
+            ? liveGame.fen!
+            : Chess.initial.fen;
+
+    // Eval bar — wired exactly like the games grid card
+    // (`_ChessBoardWithEvaluation`): a thin gauge on the board's left, shown
+    // only when the engine gauge setting is on, the game has started, and the
+    // event isn't hiding finished-game spoilers.
+    final showEngineGauge =
+        ref.watch(engineSettingsProviderNew).valueOrNull?.showEngineGauge ??
+        true;
+    var hideFinishedSpoilers = false;
+    if (liveGame.gameStatus.isFinished &&
+        liveGame.source == GameSource.supabase) {
+      final spoiler = ref.watch(eventNoSpoilersProvider(liveGame.tourId));
+      hideFinishedSpoilers = spoiler.isLoading || spoiler.enabled;
+    }
+    final showEvalBar =
+        showEngineGauge && liveGame.hasStarted && !hideFinishedSpoilers;
+    final innerBoardWidth = _gameSelectorCardWidth.w - 8.w;
+    final evalBarWidth = showEvalBar ? 10.w : 0.0;
+    final boardSize = innerBoardWidth - evalBarWidth;
+
+    // Player rows are the exact game grid-card rows
+    // (PlayerFirstRowDetailWidget in gridView): federation flag, title, full
+    // name, elo inline, and the clock on the right — identical metadata to a
+    // board in the games grid. They stream their own clocks via the SAME
+    // [liveBatchKey], so no extra channel is opened. Black on top / White on
+    // bottom, matching the board's white-at-bottom orientation.
+    Widget playerRow(bool isWhite) => PlayerFirstRowDetailWidget(
+      gamesTourModel: liveGame,
+      isWhitePlayer: isWhite,
+      isCurrentPlayer:
+          liveGame.activePlayer == (isWhite ? Side.white : Side.black),
+      playerView: PlayerView.gridView,
+      showClock: liveGame.hasStarted,
+      liveBatchKey: liveBatchKey,
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: _gameSelectorCardWidth.w,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Reserved round-label header — always the same height so every
+            // board's top edge lines up across the strip; only the first board
+            // of a round group actually shows the "Round N" text.
+            SizedBox(
+              height: 16.h,
+              child:
+                  roundLabel == null
+                      ? null
+                      : Row(
+                        children: [
+                          Text(
+                            roundLabel!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.textXxsMedium.copyWith(
+                              color: kPrimaryColor,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+            ),
+            SizedBox(height: 4.h),
+            playerRow(false),
+            SizedBox(height: 4.h),
+            // Border always occupies space (transparent when unselected) so
+            // the board never resizes when selection changes. The eval gauge
+            // sits to the LEFT of the board, exactly like the grid card.
+            Container(
+              padding: EdgeInsets.all(2.w),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.br),
+                border: Border.all(
+                  color: isSelected ? kPrimaryColor : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(5.br),
+                child: SizedBox(
+                  width: innerBoardWidth,
+                  height: boardSize,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showEvalBar)
+                        EvaluationBarWidgetForGames(
+                          width: evalBarWidth,
+                          height: boardSize,
+                          fen: boardFen,
+                          playerView: PlayerView.gridView,
+                          isFlipped: false, // board is white-at-bottom
+                          allowStockfishFallback: streamEnabled,
+                        ),
+                      StaticChessboard(
+                        size: boardSize,
+                        settings: StaticChessboardSettings(
+                          enableCoordinates: false,
+                          colorScheme: boardSettings.colorScheme,
+                          pieceAssets: boardSettings.pieceAssets,
+                        ),
+                        orientation: Side.white,
+                        fen: boardFen,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 4.h),
+            playerRow(true),
+          ],
+        ),
+      ),
+    );
   }
 }
 

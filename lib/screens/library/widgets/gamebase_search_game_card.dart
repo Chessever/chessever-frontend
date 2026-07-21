@@ -32,6 +32,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     // this.showGamebaseButton = true,
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
+    this.requirePremiumToAdd = true,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.onTap,
   });
@@ -53,6 +54,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
   /// If true, hides the event info button in ChessBoardScreenNew.
   /// Set to true for library/position analysis where event info is not relevant.
   final bool hideEventInfo;
+
+  /// When false, swipe-to-add skips the premium paywall (e.g. Miniatures).
+  final bool requirePremiumToAdd;
 
   final PlayerProfileDataSource playerProfileDataSource;
 
@@ -79,9 +83,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       label: 'Add',
       backgroundColor: kGreenColor,
       onAction: () async {
-        // Premium guard - show paywall if not subscribed
-        final hasPremium = await requirePremiumGuard(context, ref);
-        if (!hasPremium) return;
+        if (requirePremiumToAdd) {
+          final hasPremium = await requirePremiumGuard(context, ref);
+          if (!hasPremium) return;
+        }
 
         HapticFeedbackService.medium();
         onAdd();

@@ -1270,7 +1270,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       _nextPointerInGame(state.game, pointer);
 
   ChessMovePointer? _previousPointerFrom(ChessMovePointer pointer) =>
-      _previousPointer(pointer);
+      _previousPointer(state.game, pointer);
 }
 
 // PERF: Added autoDispose to prevent memory buildup during rapid page swiping
@@ -1351,7 +1351,34 @@ ChessMovePointer? _nextPointerInGame(ChessGame game, ChessMovePointer pointer) {
   return null;
 }
 
-ChessMovePointer? _previousPointer(ChessMovePointer pointer) {
+/// Resolve the move at [pointer] in [game], or null if invalid/empty.
+ChessMove? _moveForPointerInGame(ChessGame game, ChessMovePointer pointer) {
+  if (pointer.isEmpty) return null;
+  List<ChessMove>? currentList = game.mainline;
+  ChessMove? currentMove;
+  for (var i = 0; i < pointer.length; i++) {
+    final index = pointer[i];
+    if (i.isEven) {
+      if (currentList == null || index >= currentList.length) {
+        return null;
+      }
+      currentMove = currentList[index];
+    } else {
+      if (currentMove == null ||
+          currentMove.variations == null ||
+          index >= currentMove.variations!.length) {
+        return null;
+      }
+      currentList = currentMove.variations![index];
+    }
+  }
+  return currentMove;
+}
+
+/// Previous half-move pointer. Game-aware so leaving a variation head steps
+/// one ply: continuation → parent; alternative (same side-to-move as parent)
+/// → before parent. Mirrors [ChessGameNavigatorState.fullMovePath] classification.
+ChessMovePointer? _previousPointer(ChessGame game, ChessMovePointer pointer) {
   if (pointer.isEmpty) {
     return null;
   }
@@ -1362,11 +1389,33 @@ ChessMovePointer? _previousPointer(ChessMovePointer pointer) {
     return previous;
   }
 
+  // At index 0 of a line: either start of mainline, or head of a variation.
   if (previous.length >= 3) {
-    previous.removeLast(); // move index
-    previous.removeLast(); // variation index
-    return _previousPointer(previous);
+    // Variation head: pop move index + variation index → parent pointer.
+    previous.removeLast(); // move index (0)
+    final variationIndex = previous.removeLast(); // variation index
+    // [previous] is now the parent move pointer.
+
+    final parentMove = _moveForPointerInGame(game, previous);
+    final variations = parentMove?.variations;
+    if (parentMove != null &&
+        variations != null &&
+        variationIndex >= 0 &&
+        variationIndex < variations.length &&
+        variations[variationIndex].isNotEmpty) {
+      final firstVarMove = variations[variationIndex].first;
+      // Same side-to-move after first var ply as after parent ⇒ alternative
+      // (e.g. 1.d4 vs 1.e4). Different ⇒ continuation after parent (e.g.
+      // 11.Be3 after 10...h6). Use FEN side, not ChessMove.turn.
+      if (_fenSideToMove(firstVarMove.fen) ==
+          _fenSideToMove(parentMove.fen)) {
+        return _previousPointer(game, previous);
+      }
+    }
+    // Continuation (or unclassifiable): land on the branch-point parent.
+    return previous;
   }
 
+  // Mainline first ply (or empty after pop): starting position.
   return const [];
 }

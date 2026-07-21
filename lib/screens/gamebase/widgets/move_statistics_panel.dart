@@ -588,7 +588,14 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // Lichess-style '∑' totals row — hidden when only one move remains.
     if (aggregates.length > 1) {
       children.add(divider());
-      children.add(_MoveStatisticsSummaryRow(aggregates: aggregates));
+      children.add(
+        _MoveStatisticsSummaryRow(
+          aggregates: aggregates,
+          currentFen: state.currentFen,
+          exploredMoves: state.exploredMoves,
+          filters: state.filters,
+        ),
+      );
     }
 
     // Inline games section once few enough games remain in this position.
@@ -618,26 +625,71 @@ class MoveStatisticsPanel extends HookConsumerWidget {
 /// aggregate game count, and the most recent last-played date. Mirrors the
 /// per-row column geometry so it reads as part of the table.
 class _MoveStatisticsSummaryRow extends StatelessWidget {
-  const _MoveStatisticsSummaryRow({required this.aggregates});
+  const _MoveStatisticsSummaryRow({
+    required this.aggregates,
+    required this.currentFen,
+    required this.exploredMoves,
+    required this.filters,
+  });
 
   final List<MoveAggregate> aggregates;
+  final String currentFen;
+  final List<String> exploredMoves;
+  final GamebaseFilters filters;
 
   @override
   Widget build(BuildContext context) {
     final summary = MoveAggregatesSummary.fromAggregates(aggregates);
+    final moveNumberLabel = explorerMoveNumberLabelFromFen(currentFen);
+
+    void openGames() {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        builder:
+            (_) => PositionGamesSheet(
+              fen: currentFen,
+              moves: exploredMoves,
+              // No per-move UCI: all games that reached this explorer position.
+              filters: filters,
+              title: 'Games for $moveNumberLabel∑',
+            ),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
       child: Row(
         children: [
           SizedBox(
             width: _kMoveColumnWidth.w,
-            child: Text(
-              '∑',
-              style: TextStyle(
-                color: context.colors.textPrimary,
-                fontSize: 14.f,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Row(
+              children: [
+                Text(
+                  moveNumberLabel,
+                  style: TextStyle(
+                    color: context.colors.textSecondary,
+                    fontSize: 12.f,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(width: 4.w),
+                Expanded(
+                  child: Text(
+                    '∑',
+                    style: TextStyle(
+                      color: context.colors.textPrimary,
+                      fontSize: 14.f,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
@@ -651,14 +703,63 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
           SizedBox(width: _kColumnGap.sp),
           SizedBox(
             width: _kGamesColumnWidth.w,
-            child: Text(
-              summary.formattedTotal,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: kPrimaryColor,
-                fontSize: 12.f,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Tooltip(
+                    message: 'Games',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: openGames,
+                        borderRadius: BorderRadius.circular(20.br),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8.w,
+                            vertical: 4.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(20.br),
+                            border: Border.all(
+                              color: kPrimaryColor.withValues(alpha: 0.45),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  summary.formattedTotal,
+                                  textAlign: TextAlign.right,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: kPrimaryColor,
+                                    fontSize: 12.f,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 4.w),
+                              Icon(
+                                Icons.list_alt_rounded,
+                                color: kPrimaryColor,
+                                size: 15.ic,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .animate(onPlay: (c) => c.repeat(reverse: true))
+                  .scaleXY(
+                    begin: 1.0,
+                    end: 1.04,
+                    duration: 1200.ms,
+                    curve: Curves.easeInOut,
+                  ),
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
@@ -834,10 +935,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final (sanMove, _) = uciToSanAndFen(aggregate.uci, currentFen);
-    final moveNumberLabel =
-        currentFen.split(' ')[1] == 'w'
-            ? '${_fullMoveNumberFromFen(currentFen)}.'
-            : '${_fullMoveNumberFromFen(currentFen)}...';
+    final moveNumberLabel = explorerMoveNumberLabelFromFen(currentFen);
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
@@ -1040,6 +1138,17 @@ int _fullMoveNumberFromFen(String fen) {
   final parts = fen.trim().split(RegExp(r'\s+'));
   if (parts.length < 6) return 1;
   return int.tryParse(parts[5]) ?? 1;
+}
+
+/// Move-number prefix shown before SAN (and the ∑ summary) in the explorer
+/// move table: `12.` when White to move, `12...` when Black to move.
+///
+/// Public so pure-logic tests can lock the SUM-row / move-row label contract.
+String explorerMoveNumberLabelFromFen(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  final isWhite = parts.length < 2 || parts[1] == 'w';
+  final fullMove = _fullMoveNumberFromFen(fen);
+  return isWhite ? '$fullMove.' : '$fullMove...';
 }
 
 /// Like [uciToSan] but also returns the resulting FEN after the move.

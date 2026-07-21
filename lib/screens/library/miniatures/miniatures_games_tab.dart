@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -18,7 +17,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -49,10 +47,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
   /// Collapsed (not expanded) day keys. Empty means every section is open.
   final Set<String> _collapsedDates = {};
-
-  /// Set once [requirePremiumGuard] passes, so the search field unwraps from
-  /// its paywall interceptor before the subscription provider re-emits.
-  bool _premiumUnlocked = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -89,17 +83,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     }
   }
 
-  bool get _isPremium =>
-      _premiumUnlocked || ref.read(subscriptionProvider).isSubscribed;
-
-  /// Free users browse and open games; search, filters and sorting are premium.
-  Future<bool> _ensurePremium() async {
-    if (_isPremium) return true;
-    final ok = await requirePremiumGuard(context, ref);
-    if (ok && mounted) setState(() => _premiumUnlocked = true);
-    return ok;
-  }
-
   void _onSearchChanged(String query) {
     final trimmed = query.trim();
     _debounceTimer?.cancel();
@@ -113,13 +96,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     });
   }
 
-  Future<void> _handleSearchTap() async {
-    if (_isPremium) return;
-    HapticFeedbackService.light();
-    final ok = await _ensurePremium();
-    if (ok && mounted) _searchFocusNode.requestFocus();
-  }
-
   void _clearSearch() {
     _searchController.clear();
     _onSearchChanged('');
@@ -127,7 +103,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
   Future<void> _openFilters() async {
     HapticFeedbackService.buttonPress();
-    if (!await _ensurePremium()) return;
     if (!mounted) return;
 
     final newFilter = await showMiniaturesFilterDialog(
@@ -358,13 +333,6 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
         ],
       ),
     );
-
-    if (!_isPremium) {
-      searchField = GestureDetector(
-        onTap: _handleSearchTap,
-        child: AbsorbPointer(child: searchField),
-      );
-    }
 
     return SizedBox(
       height: searchBarHeight,
@@ -629,8 +597,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
           label: 'Add',
           backgroundColor: kGreenColor,
           onAction: () async {
-            final hasPremium = await requirePremiumGuard(context, ref);
-            if (!hasPremium || !mounted) return;
+            if (!mounted) return;
             HapticFeedbackService.medium();
             showAddToFolderSheet(context: context, game: entry.game);
           },
