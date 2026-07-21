@@ -352,6 +352,74 @@ void main() {
     // which returns nothing past ply 20.
     expect(h.repo.calls.first, _line.take(28).toList());
   });
+
+  test(
+    'setPositionWithMoves keeps the prefix that reaches the board FEN',
+    () async {
+      // Stale callers can pass trailing plies past the cursor. Playing them
+      // all and then dropping the whole path for "mismatch" is what used to
+      // empty deep aggregates. Stop at the target FEN instead.
+      final h = _harness(_FakeRepo());
+      final notifier = h.container.read(gamebaseExplorerProvider.notifier);
+
+      final targetFen = _fenAfter(24);
+      final lineWithTrailing = _line.take(28).toList(); // 4 plies past target
+
+      notifier.setPositionWithMoves(
+        targetFen,
+        lineWithTrailing,
+        startingFen: Chess.initial.fen,
+      );
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      final explorer = h.container.read(gamebaseExplorerProvider);
+      expect(
+        explorer.exploredMoves,
+        _line.take(24).toList(),
+        reason:
+            'must keep the 24-ply prefix that reaches the board FEN, not drop '
+            'the line because trailing plies overshot',
+      );
+      expect(h.repo.calls.first, _line.take(24).toList());
+      expect(explorer.moveAggregates, isNotEmpty);
+    },
+  );
+
+  test(
+    'fetch still sends the caller line when the local tree cannot rebuild',
+    () async {
+      // Regression: after a tree rebuild miss, startingFen used to flip to the
+      // deep FEN so startsFromInitial became false and fetch forced moves=[].
+      // Past ply 20 that is always empty on the server.
+      final h = _harness(_FakeRepo());
+      final notifier = h.container.read(gamebaseExplorerProvider.notifier);
+
+      final deepLine = _line.take(28).toList();
+      // Pass a line that cannot rebuild (illegal mid-path) but the first 24
+      // plies are real — the query line must still be the caller line so the
+      // repository can salvage / the server can answer.
+      final brokenLine = <String>[...deepLine.take(24), 'a2a2' /* illegal */];
+
+      notifier.setPositionWithMoves(
+        _fenAfter(24),
+        brokenLine,
+        startingFen: Chess.initial.fen,
+      );
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      // Query must not be empty. Either the resolved 24-ply prefix or the
+      // raw caller line — never moves=[].
+      expect(h.repo.calls, isNotEmpty);
+      expect(
+        h.repo.calls.first,
+        isNotEmpty,
+        reason:
+            'empty moves past the indexed window always returns no games; '
+            'the board line must survive a tree rebuild miss',
+      );
+      expect(h.repo.calls.first.length, greaterThanOrEqualTo(24));
+    },
+  );
 }
 
 /// Four moves whose games / score / last-played ranks are all different, so

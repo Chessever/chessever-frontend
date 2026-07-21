@@ -97,6 +97,7 @@ import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
+import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
@@ -6657,18 +6658,41 @@ class _AnalysisGameBody extends ConsumerWidget {
           // doesn't begin at "1."), so the user is searching for a specific
           // position rather than studying an opening tree. Replace the
           // opening-explorer swipe page with a position-search games table.
+          // Compare the first 4 FEN fields only so counter drift never flips
+          // a normal game into the FEN-games table (which shows "No Games
+          // Found" at depth).
           final startingFen = state.analysisState.startingPosition?.fen;
-          final isPositionSearchFlow =
-              startingFen != null && startingFen != Chess.initial.fen;
+          final isPositionSearchFlow = () {
+            if (startingFen == null) return false;
+            final a = startingFen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+            final b =
+                Chess.initial.fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+            return a != b;
+          }();
+
+          // ── Desktop board_pane (WORKING path) ──────────────────────────
+          // lineUcis = pathFromPointer(chessGame, pointer).map((m) => m.uci)
+          // setPositionWithMoves(currentFen, lineUcis, startingFen: game.startingFen)
+          // resolveExplorerMoveLine == that formula (+ fallbacks if tree lag).
+          final analysis = state.analysisState;
+          final explorerLineUcis = resolveExplorerMoveLine(analysis);
+          // Always prefer real game start; force initial fen when it is the
+          // standard start so fromInitial stays true for deep line queries.
+          final rawStart =
+              resolveExplorerStartingFen(analysis) ?? Chess.initial.fen;
+          final explorerStartingFen =
+              isInitialExplorerFen(rawStart) ? Chess.initial.fen : rawStart;
 
           final gamebaseDisplay =
               isPositionSearchFlow
                   ? _FenPositionGamesTable(
-                    fen: state.analysisState.position.fen,
+                    fen: analysis.position.fen,
                     enabled: isVisiblePage,
                   )
                   : BoardOpeningExplorerPanel(
-                    state: state,
+                    currentFen: analysis.position.fen,
+                    startingFen: explorerStartingFen,
+                    lineUcis: explorerLineUcis,
                     onMoveSelected: (uci) {
                       final params = ChessBoardProviderParams(
                         game: game,

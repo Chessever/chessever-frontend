@@ -287,7 +287,7 @@ void main() {
               builder: (context) {
                 ResponsiveHelper.init(context);
                 return Scaffold(
-                  body: BoardOpeningExplorerPanel(
+                  body: BoardOpeningExplorerPanel.fromBoardState(
                     state: state,
                     onMoveSelected: (_) {},
                   ),
@@ -379,7 +379,7 @@ void main() {
               builder: (context) {
                 ResponsiveHelper.init(context);
                 return Scaffold(
-                  body: BoardOpeningExplorerPanel(
+                  body: BoardOpeningExplorerPanel.fromBoardState(
                     state: state,
                     onMoveSelected: (_) {},
                   ),
@@ -409,4 +409,86 @@ void main() {
       containerDisposed = true;
     });
   }
+
+  testWidgets(
+    'board explorer recovers the full line when the pointer lags but the tree has the mainline',
+    (tester) async {
+      // Live parse can land a deeper board FEN while movePointer is still
+      // empty / at the start. Desktop never has this dual-state race; mobile
+      // must recover the path by scanning the mainline for the board FEN.
+      final fakeRepository = _FakeGamebaseRepository();
+      final container = ProviderContainer(
+        overrides: [
+          gamebaseRepositoryProvider.overrideWithValue(fakeRepository),
+        ],
+      );
+      var containerDisposed = false;
+      addTearDown(() {
+        if (!containerDisposed) container.dispose();
+      });
+
+      final game = ChessGame.fromPgn(
+        'deep-lag',
+        '1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Nc6 5. Nc3 Qc7 6. Be3 a6 '
+            '7. Qf3 Nf6 8. O-O-O h5 9. Nxc6 dxc6 10. h3 b5 11. e5 Nd5 '
+            '12. Bf4 Bb7 13. Nxd5 cxd5 14. Bd3 Rc8 15. Kb1 Be7',
+      );
+      const ply = 30;
+      final expectedMoves =
+          game.mainline.take(ply).map((m) => m.uci).toList(growable: false);
+
+      final state = ChessBoardStateNew(
+        game: _dummyGame(),
+        isAnalysisMode: true,
+        position: null,
+        analysisState: AnalysisBoardState(
+          position: Position.setupPosition(
+            Rule.chess,
+            Setup.parseFen(game.mainline[ply - 1].fen),
+          ),
+          startingPosition: Chess.initial,
+          allMoves: expectedMoves.map(NormalMove.fromUci).toList(),
+          game: game,
+          // Stale pointer: tree has the mainline, cursor metadata has not
+          // caught up. Flat index is also lagging.
+          movePointer: const [],
+          currentMoveIndex: 10,
+        ),
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  body: BoardOpeningExplorerPanel.fromBoardState(
+                    state: state,
+                    onMoveSelected: (_) {},
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(
+        container.read(gamebaseExplorerProvider).exploredMoves,
+        expectedMoves,
+        reason:
+            'stale pointer must not truncate the deep line to empty / short',
+      );
+
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(fakeRepository.lastMoves, expectedMoves);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      containerDisposed = true;
+    },
+  );
 }

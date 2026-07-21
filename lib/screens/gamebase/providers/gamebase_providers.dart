@@ -104,6 +104,23 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       {};
   String? _enabledLocalPlayerTreeId;
 
+  /// Move line that must be sent with the next aggregates request.
+  ///
+  /// Independent of the in-memory game tree. When `setPositionWithMoves`
+  /// fails to rebuild a tree (or rewrites `startingFen` to the deep FEN after
+  /// a path mismatch), `state.exploredMoves` becomes empty and fetch used to
+  /// ship `moves: []` — which the server answers empty past ply 20. The board
+  /// panel's line is the source of truth for the query; keep it here.
+  List<String> _queryMoves = const <String>[];
+  bool _queryFromInitial = true;
+
+  void _syncQueryMovesFromTree() {
+    if (state.game != null && _isInitialFen(state.game!.startingFen)) {
+      _queryFromInitial = true;
+      _queryMoves = List<String>.unmodifiable(state.exploredMoves);
+    }
+  }
+
   /// Play SFX for a SAN move string if sound is enabled.
   void _playSfx(String san) {
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
@@ -250,10 +267,21 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       return;
     }
 
-    final startsFromInitial =
-        state.game != null && _isInitialFen(state.game!.startingFen);
+    // Desktop board explorer always sends the line the board just pumped in.
+    // `_queryMoves` is that line. Never fall back to an empty tree path after
+    // a rebuild miss — that is exactly "No move statistics" past ply 20.
     final exploredMoves =
-        startsFromInitial ? state.exploredMoves : const <String>[];
+        _queryFromInitial ? _queryMoves : const <String>[];
+
+    if (kDebugMode &&
+        _queryFromInitial &&
+        exploredMoves.isEmpty &&
+        _pliesFromFen(requestedFen) > 20) {
+      debugPrint(
+        '[GamebaseExplorer] WARNING: deep FEN query with empty moves line — '
+        'aggregates will be empty. fen=${requestedFen.split(' ').take(2).join(' ')}',
+      );
+    }
 
     final cacheKey = _buildCacheKey(
       fen: requestedFen,
@@ -422,7 +450,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     try {
       final position = Position.setupPosition(Rule.chess, Setup.parseFen(fen));
       final move = NormalMove.fromUci(uci);
-      return position.isLegal(move);
+      if (position.isLegal(move)) return true;
+      final alt = _alternateCastlingMove(position, move);
+      return alt != null && position.isLegal(alt);
     } catch (_) {
       return false;
     }
@@ -465,6 +495,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             currentFen: normalizeFenForGamebase(nextMove.fen),
             movePointer: pointer,
           );
+          _syncQueryMovesFromTree();
           _scheduleFetch();
           return;
         }
@@ -492,6 +523,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               currentFen: normalizeFenForGamebase(variation[0].fen),
               movePointer: newPointer,
             );
+            _syncQueryMovesFromTree();
             _scheduleFetch();
             return;
           }
@@ -582,6 +614,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         }
       }
 
+      _syncQueryMovesFromTree();
       _scheduleFetch(); // Use default debounce
     } catch (e) {
       debugPrint('[GamebaseExplorer] makeMove error for $normalizedUci: $e');
@@ -715,6 +748,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: normalizeFenForGamebase(fen),
     );
 
+    _syncQueryMovesFromTree();
     _scheduleFetch();
   }
 
@@ -750,6 +784,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           movePointer: nextPointer,
           currentFen: normalizeFenForGamebase(move.fen),
         );
+        _syncQueryMovesFromTree();
         _scheduleFetch();
       }
     } else if (!state.isLoading && state.moveAggregates.isNotEmpty) {
@@ -781,6 +816,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: state.game!.startingFen,
     );
     _playSfx('');
+    _syncQueryMovesFromTree();
     _scheduleFetch();
   }
 
@@ -803,6 +839,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         currentFen: normalizeFenForGamebase(move.fen),
       );
       _playSfx('');
+      _syncQueryMovesFromTree();
       _scheduleFetch();
     }
   }
@@ -823,6 +860,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: normalizeFenForGamebase(move.fen),
     );
     _playSfx('');
+    _syncQueryMovesFromTree();
     _scheduleFetch();
   }
 
@@ -838,6 +876,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: normalizeFenForGamebase(fen),
     );
     _playSfx('');
+    _syncQueryMovesFromTree();
     _scheduleFetch();
   }
 
@@ -847,6 +886,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// single fetch. Avoids the double-fetch that would occur if [goToStart]
   /// and [addPlayerFilter] were called separately.
   void initializeWithPlayer(GamebasePlayer player) {
+    _queryFromInitial = true;
+    _queryMoves = const <String>[];
     state = GamebaseExplorerState(
       currentFen: _kInitialFen,
       game: ChessGame(
@@ -942,8 +983,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   /// Set position from board FEN and full explored move line (UCI).
   ///
-  /// This keeps the explorer aligned with the board and enables backend deep
-  /// line aggregation beyond the indexed opening window.
+  /// **Desktop `NotationOpeningPanel._syncProvider` behaviour:**
+  /// - Input `moves` is the board's `lineUcis` (path from start to cursor).
+  /// - That line is what the aggregates request must send.
+  /// - Local ChessGame rebuild is only for explorer UI navigation.
   void setPositionWithMoves(
     String fen,
     List<String> moves, {
@@ -960,109 +1003,131 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       final actualStartingFen =
           startingFen ??
           'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      // Prefer treating standard starts as initial even if counters differ.
+      final fromInitial = _isInitialFen(actualStartingFen);
 
-      // Fetch if we've never loaded aggregates for this position — otherwise a
-      // freshly-constructed notifier that happens to already hold the target
-      // position (e.g. initial chess position) would sit with an empty list
-      // forever, and the embedded board explorer panel would render a bogus
-      // "No games found" at the opening position.
-      final needsInitialFetch =
-          state.moveAggregates.isEmpty && !state.isLoading;
+      // ═══════════════════════════════════════════════════════════════════
+      // CRITICAL: lock the query line BEFORE any tree rebuild logic.
+      // Desktop never lets a tree miss clear the lineUcis it just received.
+      // ═══════════════════════════════════════════════════════════════════
+      _queryFromInitial = fromInitial;
+      _queryMoves =
+          fromInitial
+              ? List<String>.unmodifiable(sanitizedMoves)
+              : const <String>[];
 
-      if (state.game != null && state.game!.startingFen == actualStartingFen) {
-        final existingPointer = _findPointerForPath(
-          state.game!.mainline,
-          sanitizedMoves,
+      if (kDebugMode) {
+        debugPrint(
+          '[GamebaseExplorer] setPosition: '
+          '${normalized.split(' ').take(2).join(' ')}... '
+          'line=${_queryMoves.length} fromInitial=$fromInitial '
+          'castles=${_queryMoves.where((u) => u.startsWith('e1') || u.startsWith('e8')).toList()}',
         );
-        if (existingPointer != null) {
-          if (_positionKeyForComparison(state.currentFen) ==
-                  targetPositionKey &&
-              listEquals(state.movePointer, existingPointer)) {
-            if (needsInitialFetch) _scheduleFetch();
-            return;
-          }
-          // Enter the loading state with the position change itself, not when
-          // the debounced fetch finally starts. Otherwise there is a window
-          // (the debounce delay, plus the whole request past the indexed
-          // boundary) where `isLoading` is false and `moveAggregates` is the
-          // previous position's — or empty — and the panel renders a bogus
-          // "No games found for this position".
-          state = state.copyWith(
-            currentFen: normalized,
-            movePointer: existingPointer,
-            isLoading: true,
-            error: null,
-            moveAggregates: const [],
-          );
-          _scheduleFetch();
-          return;
-        }
       }
 
-      // Build a simple ChessGame from these moves if current game is empty or different starting position
-      final currentExploredMoves = state.exploredMoves;
-      if (listEquals(currentExploredMoves, sanitizedMoves) &&
-          _positionKeyForComparison(state.currentFen) == targetPositionKey &&
-          state.game?.startingFen == actualStartingFen) {
-        if (needsInitialFetch) _scheduleFetch();
+      // Same FEN + same line + already have rows → skip (desktop early-out).
+      if (_positionKeyForComparison(state.currentFen) == targetPositionKey &&
+          listEquals(state.exploredMoves, sanitizedMoves) &&
+          listEquals(_queryMoves, sanitizedMoves) &&
+          state.moveAggregates.isNotEmpty &&
+          !state.isLoading) {
         return;
       }
 
-      debugPrint(
-        '[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...',
-      );
-
-      // Build a new ChessGame with these moves as mainline
-      final mainline = <ChessMove>[];
+      // ── Rebuild local tree (desktop loop) ─────────────────────────────
+      final fullMainline = <ChessMove>[];
       var currentPosition = Position.setupPosition(
         Rule.chess,
         Setup.parseFen(actualStartingFen),
       );
 
+      // Ply index (into fullMainline) after which the board FEN is reached.
+      // -1 = target is the starting position; null = the replay never lands on
+      // the target (genuine rebuild miss). We track the LONGEST prefix that
+      // reaches it so repetitions resolve to the cursor, not the first pass.
+      int? reachedAtPly =
+          _positionKeyForComparison(
+                    normalizeFenForGamebase(currentPosition.fen),
+                  ) ==
+                  targetPositionKey
+              ? -1
+              : null;
+
       for (final uci in sanitizedMoves) {
-        final move = NormalMove.fromUci(uci);
+        var move = NormalMove.fromUci(uci);
         if (!currentPosition.isLegal(move)) {
-          debugPrint(
-            '[GamebaseExplorer] setPosition found illegal move $uci in path. Truncating.',
-          );
-          break;
+          final alt = _alternateCastlingMove(currentPosition, move);
+          if (alt == null || !currentPosition.isLegal(alt)) {
+            debugPrint(
+              '[GamebaseExplorer] setPosition illegal $uci — '
+              'keeping query line of ${_queryMoves.length} for fetch',
+            );
+            break;
+          }
+          move = alt;
         }
         final (nextPos, san) = currentPosition.makeSan(move);
         final nextToMove =
             nextPos.turn == Side.white ? ChessColor.white : ChessColor.black;
-
-        mainline.add(
+        fullMainline.add(
           ChessMove(
             num: currentPosition.fullmoves,
             fen: nextPos.fen,
             san: san,
+            // Keep the UCI the board sent (repo rewrites castling for API).
             uci: uci,
             turn: nextToMove,
           ),
         );
         currentPosition = nextPos;
+        if (_positionKeyForComparison(normalizeFenForGamebase(nextPos.fen)) ==
+            targetPositionKey) {
+          reachedAtPly = fullMainline.length - 1;
+        }
       }
 
-      final replayedFen = normalizeFenForGamebase(currentPosition.fen);
-      final pathMatchesTarget =
-          _positionKeyForComparison(replayedFen) == targetPositionKey;
+      final pathMatchesTarget = reachedAtPly != null;
 
-      if (!pathMatchesTarget) {
+      // Trim to the prefix that actually reaches the board FEN. A stale caller
+      // can send trailing plies past the cursor; replaying them all and then
+      // dropping the whole path for "mismatch" is exactly what emptied deep
+      // aggregates past ply 20 ("No move statistics for this position").
+      final mainline =
+          reachedAtPly != null
+              ? fullMainline.sublist(0, reachedAtPly + 1)
+              : const <ChessMove>[];
+
+      // When we reached the target from the initial position, the query line is
+      // exactly that prefix — not the longer line a stale caller overshot with.
+      // On a genuine rebuild miss keep the caller line: fetch must not depend on
+      // tree rebuild success past ply 20 (desktop keeps lineUcis at the panel).
+      if (fromInitial && pathMatchesTarget) {
+        _queryMoves = List<String>.unmodifiable(
+          mainline.map((m) => m.uci).toList(growable: false),
+        );
+      } else if (!pathMatchesTarget && sanitizedMoves.isNotEmpty) {
         debugPrint(
-          '[GamebaseExplorer] setPosition dropping mismatched move path. Target: $normalized, Replayed: $replayedFen',
+          '[GamebaseExplorer] tree replay fen mismatch '
+          '(target vs ${normalizeFenForGamebase(currentPosition.fen).split(' ').take(4).join(' ')}) — '
+          'still querying with line=${_queryMoves.length}',
         );
       }
 
       state = state.copyWith(
         currentFen: normalized,
-        // Same reason as the fast path above: never leave a settled-but-empty
-        // table on screen while the new position's fetch is pending.
         isLoading: true,
         error: null,
         moveAggregates: const [],
         game: ChessGame(
           gameId: 'explorer_sync_${DateTime.now().millisecondsSinceEpoch}',
-          startingFen: pathMatchesTarget ? actualStartingFen : normalized,
+          // Desktop uses actualStartingFen when path matches; when it does
+          // not, desktop sets deep fen which breaks startsFromInitial. We
+          // always keep initial when fromInitial so tree helpers stay sane;
+          // fetch uses _queryMoves, not tree.
+          startingFen:
+              fromInitial
+                  ? actualStartingFen
+                  : (pathMatchesTarget ? actualStartingFen : normalized),
           metadata: {
             'Event': 'Opening Explorer',
             'Site': 'ChessEver',
@@ -1076,79 +1141,40 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
                 : const [],
       );
       _scheduleFetch();
-    } catch (e) {
-      debugPrint('[GamebaseExplorer] setPosition error: $e');
-      state = state.copyWith(error: 'Invalid FEN: $fen');
+    } catch (e, st) {
+      debugPrint('[GamebaseExplorer] setPosition error: $e\n$st');
+      state = state.copyWith(error: 'Invalid FEN: $fen', isLoading: false);
     }
   }
 
-  /// Recursively find a pointer for a UCI path in a game tree.
-  ChessMovePointer? _findPointerForPath(ChessLine line, List<String> path) {
-    if (path.isEmpty) return const [];
-
-    // 1. Try to find in the current line
-    for (var i = 0; i < line.length; i++) {
-      if (line[i].uci == path[0]) {
-        // Found first move. Check if the rest of the path matches this line.
-        bool matchesLine = true;
-        for (var j = 1; j < path.length; j++) {
-          if (i + j >= line.length || line[i + j].uci != path[j]) {
-            matchesLine = false;
-            break;
-          }
-        }
-        if (matchesLine) {
-          return [i + path.length - 1];
-        }
-
-        // Rest of the path didn't match the mainline. Check variations of the
-        // moves we DID match.
-        // We matched line[i...i+matchedCount-1].
-        // Try to branch off from each of those.
-        for (
-          var matchedCount = 1;
-          matchedCount <= path.length;
-          matchedCount++
-        ) {
-          if (i + matchedCount - 1 >= line.length) break;
-          final moveAtBranch = line[i + matchedCount - 1];
-          if (moveAtBranch.uci != path[matchedCount - 1]) break;
-
-          if (moveAtBranch.variations != null) {
-            final remainingPath = path.sublist(matchedCount);
-            if (remainingPath.isEmpty) {
-              // Path ended exactly at this move
-              return [i + matchedCount - 1];
-            }
-
-            for (var v = 0; v < moveAtBranch.variations!.length; v++) {
-              final variation = moveAtBranch.variations![v];
-              final subPointer = _findPointerForPath(variation, remainingPath);
-              if (subPointer != null) {
-                return [i + matchedCount - 1, v, ...subPointer];
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Also check variations of the branching position if it matched the START
-    // of our path but with a DIFFERENT first move.
-    // (This is rare for ChessLine because it usually represents a continuation)
-
-    return null;
+  /// King-to-rook ↔ king-to-g/c castling when the other spelling is legal.
+  NormalMove? _alternateCastlingMove(Position position, NormalMove move) {
+    final piece = position.board.pieceAt(move.from);
+    if (piece == null || piece.role != Role.king) return null;
+    const pairs = <String, String>{
+      'e1h1': 'e1g1',
+      'e1g1': 'e1h1',
+      'e1a1': 'e1c1',
+      'e1c1': 'e1a1',
+      'e8h8': 'e8g8',
+      'e8g8': 'e8h8',
+      'e8a8': 'e8c8',
+      'e8c8': 'e8a8',
+    };
+    final alt = pairs['${move.from.name}${move.to.name}'];
+    if (alt == null) return null;
+    return NormalMove.fromUci(alt);
   }
 
   /// Update filters and refetch data
-  void updateFilters(GamebaseFilters filters) {
+  void updateFilters(GamebaseFilters filters, {bool fetch = true}) {
     final localPlayerId = _localTreePlayerId(filters);
     final nextFilters =
         localPlayerId != null && isLocalPlayerTreeEnabledFor(localPlayerId)
             ? _treeCompatibleFilters(filters)
             : filters;
     state = state.copyWith(filters: nextFilters);
-    _scheduleFetch();
+    if (fetch) _scheduleFetch();
   }
 
   void syncLocalPlayerTree(String playerId) {
@@ -1257,8 +1283,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   }
 
   /// Clear all filters
-  void clearFilters() {
-    updateFilters(const GamebaseFilters());
+  void clearFilters({bool fetch = true}) {
+    updateFilters(const GamebaseFilters(), fetch: fetch);
   }
 
   /// Select a game to view

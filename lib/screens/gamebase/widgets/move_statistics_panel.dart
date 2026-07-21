@@ -39,10 +39,29 @@ const int kFreeExplorerMoveNumberLimit = 20;
 const int kExplorerInlineGamesLimit = 10;
 
 /// Backend move statistics are answerable from the FEN alone only through 20
-/// played plies (`OPENING_EXPLORER_MAX_INDEXED_PLY`). `currentMoveNumber` is
-/// `ply + 1`, so above this the aggregate result is no longer authoritative:
-/// an empty answer can mean "not indexed this deep" rather than "no games".
+/// played plies (`OPENING_EXPLORER_MAX_INDEXED_PLY` / `MV_MAX_PLY` on the
+/// fast path). `currentMoveNumber` is `ply + 1`, so above this the aggregate
+/// result is no longer authoritative without a move line: an empty answer can
+/// mean "not indexed this deep" rather than "no games".
+///
+/// Production still needs the full UCI line past this boundary even when the
+/// server's exact storage goes to 150 plies — FEN-only queries return empty
+/// until deep backfill is complete. Never claim "no games" from aggregates
+/// alone past this depth.
 const int kExplorerIndexedAggregateMoveNumberLimit = 21;
+
+/// Played plies implied by a 6-field FEN (fullmove + side to move).
+///
+/// Used when the explorer tree was dropped and `currentMoveNumber` is no
+/// longer trustworthy for "are we past the indexed window?" decisions.
+int _explorerPliesFromFen(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  if (parts.length < 6) return 0;
+  final turn = parts[1];
+  final fullMove = int.tryParse(parts[5]) ?? 1;
+  final base = (fullMove - 1) * 2;
+  return base + (turn == 'b' ? 1 : 0);
+}
 
 /// Empty state for the move table.
 ///
@@ -324,8 +343,18 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       // Inside the indexed window the aggregate answer IS authoritative, so
       // only second-guess it past that boundary; that also keeps this from
       // costing an extra request on ordinary empty openings.
+      //
+      // Depth must be derived from the board FEN (and the explored line), not
+      // only `currentMoveNumber`. When a line-drop leaves the explorer tree
+      // empty, `currentMoveNumber` collapses to 1 and the old check treated a
+      // deep midgame as "inside the indexed window", permanently claiming
+      // "No games match this position".
+      final pliesFromFen = _explorerPliesFromFen(state.currentFen);
       final pastIndexedWindow =
-          state.currentMoveNumber > kExplorerIndexedAggregateMoveNumberLimit;
+          state.currentMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
+          state.exploredMoves.length >=
+              kExplorerIndexedAggregateMoveNumberLimit ||
+          pliesFromFen >= kExplorerIndexedAggregateMoveNumberLimit;
 
       if (!pastIndexedWindow) {
         return const _ExplorerEmpty(

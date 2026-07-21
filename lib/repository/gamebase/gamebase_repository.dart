@@ -249,9 +249,18 @@ class GamebaseRepository {
       Position position = Chess.initial;
       final replayed = <String>[];
       for (final uci in normalizedMoves) {
-        final move = _normalMoveFromUci(uci);
-        if (move == null || !position.isLegal(move)) {
+        var move = _normalMoveFromUci(uci);
+        if (move == null) {
           return const [];
+        }
+        if (!position.isLegal(move)) {
+          // Accept the other castling spelling (e1a1 ↔ e1c1, e1h1 ↔ e1g1).
+          final altUci = _alternateCastlingUciString(uci);
+          final alt = altUci == null ? null : _normalMoveFromUci(altUci);
+          if (alt == null || !position.isLegal(alt)) {
+            return const [];
+          }
+          move = alt;
         }
         // dartchess encodes castling king-to-rook (e1h1), but the backend
         // (chess.js) only accepts the standard king-to-g/c UCI. Emit the
@@ -274,6 +283,20 @@ class GamebaseRepository {
     } catch (_) {
       return const [];
     }
+  }
+
+  static String? _alternateCastlingUciString(String uci) {
+    const pairs = <String, String>{
+      'e1h1': 'e1g1',
+      'e1g1': 'e1h1',
+      'e1a1': 'e1c1',
+      'e1c1': 'e1a1',
+      'e8h8': 'e8g8',
+      'e8g8': 'e8h8',
+      'e8a8': 'e8c8',
+      'e8c8': 'e8a8',
+    };
+    return pairs[uci];
   }
 
   /// Returns the standard king-to-target UCI for a castling move, or the
