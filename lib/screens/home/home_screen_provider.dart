@@ -22,8 +22,8 @@ class _HomeScreenController {
       case BottomNavBarItem.tournaments:
         ref.read(groupEventScreenProvider.notifier).onRefresh();
         break;
-      case BottomNavBarItem.calendar:
-        debugPrint('Refreshing calendar...');
+      case BottomNavBarItem.discover:
+        debugPrint('Refreshing discover...');
         break;
       case BottomNavBarItem.library:
         debugPrint('Refreshing library...');

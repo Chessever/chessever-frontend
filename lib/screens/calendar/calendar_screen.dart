@@ -6,7 +6,6 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event_rep
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -79,26 +78,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     super.dispose();
   }
 
-  void _scrollToTop() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
-      previous,
-      next,
-    ) {
-      if (next.item == BottomNavBarItem.calendar) {
-        _scrollToTop();
-      }
-    });
-
     final yearList = ref.read(availableYearsProvider);
     const timeControls = ['Standard', 'Rapid', 'Blitz'];
     final filterMode = ref.watch(calendarFilterModeProvider);

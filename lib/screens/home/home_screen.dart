@@ -4,7 +4,7 @@ import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
-import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/discover/discover_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
@@ -303,8 +303,8 @@ class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
     switch (item) {
       case BottomNavBarItem.tournaments:
         return const GroupEventScreen();
-      case BottomNavBarItem.calendar:
-        return const CalendarScreen();
+      case BottomNavBarItem.discover:
+        return const DiscoverScreen();
       case BottomNavBarItem.library:
         return const LibraryScreen();
     }

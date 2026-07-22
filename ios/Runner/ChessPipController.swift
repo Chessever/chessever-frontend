@@ -16,8 +16,8 @@ final class ChessPipController: NSObject {
   private var pollTimer: DispatchSourceTimer?
   private let pollQueue = DispatchQueue(label: "com.chessever.pip.poll")
   // Foreground keeps the layer "playing" with a cached frame. Keep the already
-  // converted pixel buffer too: recreating and drawing a 720x720 buffer every
-  // second on the main queue caused visible Flutter frame stalls.
+  // converted pixel buffer too: recreating and drawing a PiP frame every second
+  // on the main queue caused visible Flutter frame stalls.
   private var cachedPixelBuffer: CVPixelBuffer?
   private var cachedFormatDescription: CMVideoFormatDescription?
   private var renderDirty = true
@@ -324,7 +324,11 @@ final class ChessPipController: NSObject {
     }
     let isActive = pipController?.isPictureInPictureActive == true
     if renderDirty || isActive || cachedPixelBuffer == nil || cachedFormatDescription == nil {
-      guard let rendered = ChessPipRenderer.render(payload: payload, size: CGSize(width: 720, height: 720)) else {
+      // iOS derives the initial PiP presentation from the sample-buffer aspect
+      // ratio and does not expose a public window-size API. A square source made
+      // the board take over the screen, so send a compact 16:9 composition with
+      // the board deliberately inset instead.
+      guard let rendered = ChessPipRenderer.render(payload: payload, size: CGSize(width: 1280, height: 720)) else {
         return
       }
       guard cachePixelBuffer(image: rendered) else { return }
@@ -729,18 +733,15 @@ private enum ChessPipRenderer {
       UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1).setFill()
       context.cgContext.fill(CGRect(origin: .zero, size: size))
 
-      let side = min(size.width, size.height)
-      let left = (size.width - side) / 2
-      let headerH = side * 0.07
-      let footerH = side * 0.07
-      let evalW = side * 0.028
-      let evalGap = side * 0.018
-      let horizontalMargin = side * 0.06
-      let maxBoardWidth = side - horizontalMargin * 2 - evalW - evalGap
-      let maxBoardHeight = side - headerH - footerH - side * 0.025
-      let boardSize = min(maxBoardWidth, maxBoardHeight)
+      let headerH = size.height * 0.075
+      let footerH = size.height * 0.075
+      let evalW = size.height * 0.028
+      let evalGap = size.height * 0.018
+      // Keep the actual board at roughly 40% of the screen width in the
+      // system's landscape PiP window, leaving enough room to keep scrolling.
+      let boardSize = min(size.height * 0.70, size.width * 0.48)
       let groupWidth = evalW + evalGap + boardSize
-      let groupLeft = left + (side - groupWidth) / 2
+      let groupLeft = (size.width - groupWidth) / 2
       let totalHeight = headerH + boardSize + footerH
       let top = (size.height - totalHeight) / 2
       let boardRect = CGRect(x: groupLeft + evalW + evalGap, y: top + headerH, width: boardSize, height: boardSize)
@@ -1219,7 +1220,9 @@ private final class PieceImageCache {
   }
 
   private func loadImage(pieceSet: String, pieceCode: String) -> UIImage? {
-    let assetPath = "packages/chessground/assets/piece_sets/\(pieceSet)/\(pieceCode).png"
+    // chessground packages its piece sets as WebP. Looking for PNGs made every
+    // native PiP lookup fail and exposed the letter fallback instead of a piece.
+    let assetPath = "packages/chessground/assets/piece_sets/\(pieceSet)/\(pieceCode).webp"
     let candidates = [
       "flutter_assets/\(assetPath)",
       "Frameworks/App.framework/flutter_assets/\(assetPath)",

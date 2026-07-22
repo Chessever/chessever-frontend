@@ -31,6 +31,7 @@ class SvgAsset {
   static const calendarIcon = 'assets/svgs/calendar.svg';
   static const tournamentIcon = 'assets/svgs/tournament.svg';
   static const calendarNavIcon = 'assets/svgs/calendar_nav.svg';
+  static const discoverNavIcon = 'assets/svgs/discover_nav.svg';
   static const libraryNavIcon = 'assets/svgs/library_nav.svg';
   static const websiteIcon = 'assets/svgs/website.svg';
   static const infoIcon = 'assets/svgs/info.svg';
@@ -100,6 +101,7 @@ class SvgAsset {
       calendarIcon,
       tournamentIcon,
       calendarNavIcon,
+      discoverNavIcon,
       libraryNavIcon,
       websiteIcon,
       infoIcon,

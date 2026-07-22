@@ -10,6 +10,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
+import 'package:chessever2/repository/gamebase/discovery/discovery_models.dart';
 
 part 'gamebase_repository.mapper.dart';
 
@@ -1066,6 +1067,148 @@ class GamebaseRepository {
     } catch (e) {
       throw Exception('Failed to load FEN position games: $e');
     }
+  }
+
+  // ── Discovery: Studies ────────────────────────────────────────────────
+
+  Future<PagedResult<LichessStudy>> listStudies({
+    String sort = 'score',
+    String order = 'desc',
+    int limit = 50,
+    int offset = 0,
+    String? q,
+    Map<String, dynamic>? filters,
+  }) async {
+    final response = await _dio.get(
+      '$_baseUrl/api/studies',
+      queryParameters: {
+        'sort': sort,
+        'order': order,
+        'limit': limit,
+        'offset': offset,
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        ..._cleanParams(filters),
+      },
+      options: Options(
+        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+      ),
+    );
+    final data = Map<String, dynamic>.from(response.data['data'] as Map);
+    return PagedResult.fromData(data, LichessStudy.fromJson);
+  }
+
+  /// Distinct filter values for the studies filter UI. Empty on failure.
+  Future<StudyFacets> getStudyFacets() async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/studies/facets',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+      final data = response.data['data'];
+      if (data == null) return StudyFacets.empty;
+      return StudyFacets.fromJson(Map<String, dynamic>.from(data));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[GamebaseRepository] getStudyFacets: $e');
+      return StudyFacets.empty;
+    }
+  }
+
+  /// Drops null / empty-string / empty-list values so we never send blank
+  /// query params to the backend.
+  Map<String, dynamic> _cleanParams(Map<String, dynamic>? params) {
+    if (params == null) return const {};
+    final out = <String, dynamic>{};
+    params.forEach((key, value) {
+      if (value == null) return;
+      if (value is String && value.trim().isEmpty) return;
+      if (value is Iterable && value.isEmpty) return;
+      out[key] = value;
+    });
+    return out;
+  }
+
+  /// Enqueues a background re-sync (pull-to-refresh). Best-effort.
+  Future<bool> refreshStudies() async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/studies/refresh',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+      final data = response.data['data'];
+      return data is Map && data['enqueued'] == true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[GamebaseRepository] refreshStudies: $e');
+      return false;
+    }
+  }
+
+  Future<LichessStudyDetail?> getStudy(String id) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/studies/$id',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+      final data = response.data['data'];
+      if (data == null) return null;
+      return LichessStudyDetail.fromJson(Map<String, dynamic>.from(data));
+    } on DioException catch (e) {
+      if (kDebugMode) debugPrint('[GamebaseRepository] getStudy: ${e.message}');
+      return null;
+    }
+  }
+
+  /// Returns the chapter's PGN body (plain text), or null on failure.
+  Future<String?> getStudyChapterPgn(String studyId, String chapterId) async {
+    try {
+      final response = await _dio.get<String>(
+        '$_baseUrl/api/studies/$studyId/chapters/$chapterId/pgn',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/x-chess-pgn'},
+          responseType: ResponseType.plain,
+        ),
+      );
+      final body = response.data;
+      return (body != null && body.trim().isNotEmpty) ? body : null;
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getStudyChapterPgn: ${e.message}');
+      }
+      return null;
+    }
+  }
+
+  // ── Discovery: Miniatures ─────────────────────────────────────────────
+
+  Future<PagedResult<Miniature>> listMiniatures({
+    String window = 'all',
+    String sort = 'rating',
+    String order = 'desc',
+    int limit = 50,
+    int offset = 0,
+    Map<String, dynamic>? filters,
+  }) async {
+    final response = await _dio.get(
+      '$_baseUrl/api/miniatures',
+      queryParameters: {
+        'window': window,
+        'sort': sort,
+        'order': order,
+        'limit': limit,
+        'offset': offset,
+        ..._cleanParams(filters),
+      },
+      options: Options(
+        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+      ),
+    );
+    final data = Map<String, dynamic>.from(response.data['data'] as Map);
+    return PagedResult.fromData(data, Miniature.fromJson);
   }
 }
 

@@ -23,7 +23,7 @@ void main() {
     );
   });
 
-  test('iOS PiP does not churn full 720px frames behind covered routes', () {
+  test('iOS PiP uses actual piece assets and does not churn frames behind covered routes', () {
     final pipSource =
         File('ios/Runner/ChessPipController.swift').readAsStringSync();
     final boardSource =
@@ -36,6 +36,20 @@ void main() {
     );
 
     expect(pipSource, contains('cachedPixelBuffer'));
+    expect(
+      pipSource,
+      contains('piece_sets/\\(pieceSet)/\\(pieceCode).webp'),
+      reason:
+          'Chessground ships WebP piece assets. A PNG lookup silently falls '
+          'back to letter glyphs in native PiP.',
+    );
+    expect(
+      pipSource,
+      contains('CGSize(width: 1280, height: 720)'),
+      reason:
+          'A landscape PiP canvas keeps the board compact instead of letting a '
+          'square source consume the phone screen.',
+    );
     expect(
       pipSource,
       isNot(contains('makeSampleBuffer(image: image)')),

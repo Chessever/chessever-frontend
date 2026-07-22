@@ -9,7 +9,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-enum BottomNavBarItem { tournaments, calendar, library }
+enum BottomNavBarItem { tournaments, discover, library }
 
 /// Emitted whenever the user taps the already-selected bottom nav item.
 /// Screens that own a scrollable surface for [item] should listen and
@@ -45,13 +45,13 @@ final bottomNavBarReTapRequestProvider = StateNotifierProvider<
 
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
-  BottomNavBarItem.calendar: SvgAsset.calendarNavIcon,
+  BottomNavBarItem.discover: SvgAsset.discoverNavIcon,
   BottomNavBarItem.library: SvgAsset.libraryNavIcon,
 };
 
 final namesBottomNavBarIcons = {
   BottomNavBarItem.tournaments: 'Events',
-  BottomNavBarItem.calendar: 'Calendar',
+  BottomNavBarItem.discover: 'Discover',
   BottomNavBarItem.library: 'Library',
 };
 
@@ -91,7 +91,7 @@ class BottomNavBar extends ConsumerWidget {
           (index) => BottomNavBarWidget(
             key: switch (BottomNavBarItem.values[index]) {
               BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
-              BottomNavBarItem.calendar => e2eKey(E2eIds.navCalendar),
+              BottomNavBarItem.discover => e2eKey(E2eIds.navCalendar),
               BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
             },
             width:
